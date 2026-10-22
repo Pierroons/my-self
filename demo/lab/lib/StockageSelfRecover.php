@@ -156,6 +156,7 @@ final class StockageSelfRecover implements StorageInterface
         $st = $this->pdo->prepare('SELECT id, pass_hash, pass_emise_le FROM accounts WHERE username = ?');
         $st->execute([$nomCompte]);
         $ligne = $st->fetch(PDO::FETCH_ASSOC);
+        $st->closeCursor();
         if ($ligne === false) {
             return null;
         }
@@ -225,6 +226,7 @@ final class StockageSelfRecover implements StorageInterface
         );
         $st->execute([$credentialId]);
         $ligne = $st->fetch(PDO::FETCH_ASSOC);
+        $st->closeCursor();
 
         return $ligne === false ? null : new Appareil(
             $credentialId,
@@ -443,7 +445,9 @@ final class StockageSelfRecover implements StorageInterface
         if ($st->rowCount() !== 1) {
             $etat = $this->pdo->prepare('SELECT status FROM disputes WHERE id = ?');
             $etat->execute([$litigeId]);
-            if (!in_array($etat->fetchColumn(), ['open', 'awaiting_admin'], true)) {
+            $statut = $etat->fetchColumn();
+            $etat->closeCursor();
+            if (!in_array($statut, ['open', 'awaiting_admin'], true)) {
                 throw new LitigeDejaTranche('aucun dossier en cours à ce numéro');
             }
         }
@@ -509,6 +513,7 @@ final class StockageSelfRecover implements StorageInterface
         $st = $this->pdo->prepare('SELECT gele_jusqu_a FROM l3_gel WHERE account_id = ?');
         $st->execute([$compteId]);
         $v = (int) ($st->fetchColumn() ?: 0);
+        $st->closeCursor();
 
         return $v > $maintenant ? $v : 0;
     }
@@ -640,6 +645,7 @@ final class StockageSelfRecover implements StorageInterface
         );
         $st->execute([$compteId]);
         $l = $st->fetch(PDO::FETCH_ASSOC);
+        $st->closeCursor();
         if ($l === false) {
             return null;
         }

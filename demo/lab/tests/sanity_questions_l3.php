@@ -23,6 +23,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.inc';
+
 $dir = sys_get_temp_dir() . '/sanity_questions_l3_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
 register_shutdown_function(static function () use ($dir): void {

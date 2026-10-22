@@ -60,9 +60,12 @@ final class AttackSimulator
     public static function run(string $scenario): array
     {
         // La sandbox est jetable : ses bans simulés n'ont pas leur place au
-        // journal de modération du site.
+        // journal de modération du site. Ni ses blobs le numéro de la vraie base : le
+        // lire ouvrait celle-ci, et la créait hors d'une route (mesuré par la huitième
+        // passe d'audit) ; et scellés sous lui, ils valaient dans ses contextes.
         $journal = Moderate::journal();
         Moderate::setJournal(null);
+        $numero = Db::substituerGeneration(bin2hex(random_bytes(16)));
         try {
             return match ($scenario) {
                 'dump'       => self::runDumpBase(),
@@ -73,6 +76,7 @@ final class AttackSimulator
             };
         } finally {
             Moderate::setJournal($journal);
+            Db::substituerGeneration($numero);
         }
     }
 
@@ -107,7 +111,7 @@ final class AttackSimulator
             'etapes' => [
                 ['action' => 'Bob envoie un DM contenant son RIB à Alice', 'resultat' => 'message chiffré XChaCha20-Poly1305 avant insertion'],
                 ['action' => 'Alice renseigne son adresse dans son profil', 'resultat' => 'profil chiffré at-rest'],
-                ['action' => "L'attaquant exfiltre la base et lit les tables dm + profiles", 'resultat' => 'il n\'obtient que des blobs SDG2. illisibles'],
+                ['action' => "L'attaquant exfiltre la base et lit les tables dm + profiles", 'resultat' => 'il n\'obtient que des blobs illisibles, chacun scellé sous la ligne où il a été écrit'],
             ],
             'cote_attaquant' => [
                 'label' => 'Dump SQL brut (ce que voit l\'attaquant)',

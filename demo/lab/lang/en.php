@@ -306,6 +306,7 @@ return [
     'log.noaccount'  => 'No account? <a href="/register.php">Create one</a> (no email needed).',
     'log.forgot'     => 'Forgot your password? <a href="/recover.php">Recovery without email</a> (recovery word).',
     'log.error'      => 'Error',
+    'err.indisponible' => 'The service is temporarily unavailable. Try again in a moment.',
 
     'reg.goto_login' => 'Go to log in →',
 
@@ -514,6 +515,9 @@ return [
     'prf.js.decrypted' => 'Decrypted locally. The key stays in this page and is never sent.',
     'prf.js.locked'  => 'Vault locked.',
     'prf.js.saved2'  => 'Memo re-encrypted and saved.',
+    'prf.illisible' => 'Your profile exists but the server cannot read it right now. It is not shown, and it will not be replaced unless you ask.',
+    'prf.illisible.remplacer' => 'Start a fresh profile — the old one will be lost for good',
+    'prf.illisible.vue' => 'This member has a profile, but it cannot be shown right now.',
 
     // ── Access recovery (SelfRecover) ─────────────────────────────────────
     'rec.title'   => 'Access recovery',

@@ -26,6 +26,7 @@ use PDO;
 require_once __DIR__ . '/i18n.php';
 
 require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/reponse.php';
 
 final class Auth
@@ -92,7 +93,9 @@ final class Auth
      */
     public static function siteSalt(): string
     {
-        return SecretInstance::lire('.sitesalt', 32, SecretInstance::PLANCHER, 'LAB_SITESALT_PATH');
+        return SecretInstance::lire('.sitesalt', 32, SecretInstance::PLANCHER, 'LAB_SITESALT_PATH', static fn (): ?string => Db::ceQuiDepend([
+            'recovery_codes' => 'code(s) de récupération, retrouvés par leur empreinte sous ce sel',
+        ]));
     }
 
     /** Mot de passe temporaire rendu après une récupération. */
@@ -145,7 +148,9 @@ final class Auth
 
         $stmt = $pdo->prepare('SELECT 1 FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
-        if ($stmt->fetchColumn()) {
+        $pris = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($pris) {
             // LAB-05 : une sonde d'existence consomme le quota IP au même titre qu'une création,
             // pour casser l'énumération de masse (les usernames restent publics par nature sur un forum).
             if ($ip !== null) {
@@ -219,7 +224,7 @@ final class Auth
         $sessionToken = self::generateSessionToken();
         $pdo->prepare(
             'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
-        )->execute([(int) $accountId, $sessionToken, time()]);
+        )->execute([(int) $accountId, Db::empreinteJeton($sessionToken), time()]);
 
         return [
             'ok' => true,
@@ -278,6 +283,7 @@ final class Auth
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
+        $stmt->closeCursor();
         // LAB-02 : toujours exécuter un Argon2id (hash factice si le compte n'existe pas) pour que
         // le temps de réponse ne trahisse pas l'existence du compte.
         $ok = password_verify($password, $acc ? $acc['pw_hash'] : Hashing::dummyHash()) && (bool) $acc;
@@ -315,7 +321,7 @@ final class Auth
         $token = self::generateSessionToken();
         $pdo->prepare(
             'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
-        )->execute([(int) $acc['id'], $token, time()]);
+        )->execute([(int) $acc['id'], Db::empreinteJeton($token), time()]);
 
         return ['ok' => true, 'token' => $token];
     }
@@ -441,6 +447,7 @@ final class Auth
             );
             $st->execute([self::protocole($pdo)->indexRecherche($code)]);
             $trouve = $st->fetchColumn();
+            $st->closeCursor();
             if ($trouve !== false && $trouve !== '') {
                 return (string) $trouve;
             }
@@ -451,7 +458,7 @@ final class Auth
 
     public static function logout(PDO $pdo, string $token): void
     {
-        $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([$token]);
+        $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([Db::empreinteJeton($token)]);
     }
 
     /** Compte courant depuis le cookie de session (avec TTL), ou null. */
@@ -467,14 +474,15 @@ final class Auth
                JOIN app_sessions s ON s.account_id = a.id
               WHERE s.token = ?'
         );
-        $stmt->execute([$token]);
+        $stmt->execute([Db::empreinteJeton($token)]);
         $row = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$row) {
             return null;
         }
         // TTL : session expirée → suppression + null
         if (time() - (int) $row['session_started'] > self::SESSION_TTL) {
-            $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([$token]);
+            $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([Db::empreinteJeton($token)]);
             return null;
         }
         return ['id' => $row['id'], 'username' => $row['username'], 'is_admin' => (int) $row['is_admin']];

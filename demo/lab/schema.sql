@@ -29,14 +29,34 @@ CREATE TABLE IF NOT EXISTS accounts (
     -- compte vivait, sans rien révéler de ses secrets.
     last_login_at INTEGER,
     login_count   INTEGER NOT NULL DEFAULT 0,
-    banned_until  INTEGER
+    banned_until  INTEGER,
+    -- 🔑 Tirée au hasard à la création du compte, elle entre dans le contexte de ses
+    -- chiffrés : un numéro de compte se réattribue, une graine non.
+    graine        TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))
 );
 
 -- Sessions applicatives (token cookie)
+-- Le numéro de cette base, tiré au hasard à sa naissance par `Db::migrate()` : il
+-- entre dans le contexte de chaque chiffré, pour qu'un blob d'une base effacée ne
+-- s'ouvre pas dans la suivante, dont les comptes repartent de 1. Une seule ligne.
+CREATE TABLE IF NOT EXISTS lab_generation (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    valeur  TEXT NOT NULL,
+    nee_le  INTEGER NOT NULL          -- ce qui est plus ancien a été écrit sans ce numéro
+);
+
+-- Les migrations qui ne doivent jouer qu'une fois, et dont la trace évite qu'elles
+-- réparent en silence ce qu'un chemin régressé abîmerait de nouveau.
+CREATE TABLE IF NOT EXISTS lab_migrations (
+    nom      TEXT PRIMARY KEY,
+    faite_le INTEGER NOT NULL,
+    valeur   TEXT                     -- ce que la migration a fixé, quand il faut pouvoir le vérifier
+);
+
 CREATE TABLE IF NOT EXISTS app_sessions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id  INTEGER NOT NULL,
-    token       TEXT UNIQUE NOT NULL,
+    token       TEXT UNIQUE NOT NULL,      -- empreinte du jeton (Db::empreinteJeton), jamais le jeton du cookie
     created_at  INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
@@ -179,7 +199,8 @@ CREATE TABLE IF NOT EXISTS redteam_reports (
     ciphertext  TEXT NOT NULL,                     -- message PGP armuré, chiffré côté client — jamais le rapport en clair
     status      TEXT NOT NULL DEFAULT 'nouveau',   -- nouveau|valide|rejete
     ip_hash     TEXT,                              -- HMAC-SHA256 de l'IP (rate-limit), jamais l'IP en clair
-    created_at  INTEGER NOT NULL
+    created_at  INTEGER NOT NULL,
+    graine      TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))  -- entre dans le jeton de suivi, comme celle d'un compte
 );
 CREATE INDEX IF NOT EXISTS idx_redteam_status ON redteam_reports(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_redteam_iphash ON redteam_reports(ip_hash, created_at);

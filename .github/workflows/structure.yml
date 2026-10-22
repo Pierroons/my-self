@@ -1542,8 +1542,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_refus_publiable.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du refus publiable a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 18/18 ' \
-            || { echo "::error::le banc du refus publiable n'a pas joué ses 18 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 21/21 ' \
+            || { echo "::error::le banc du refus publiable n'a pas joué ses 21 cas"; exit 1; }
 
       # Refuser un dossier de niveau 3 compte sur le compte VISÉ : un tiers qui en
       # ouvre plusieurs fait geler l'ouverture au titulaire, par la main de
@@ -1568,8 +1568,31 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_simulateur.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du simulateur d'attaques a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 37/37 ' \
-            || { echo "::error::le banc du simulateur n'a pas joué ses 37 contrôles"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 38/38 ' \
+            || { echo "::error::le banc du simulateur n'a pas joué ses 38 contrôles"; exit 1; }
+
+      # Deux fois, une page est tombée sur une classe que rien ne chargeait — le
+      # simulateur sur `derive_cli.php`, l'enregistrement du profil sur `moderate.php`,
+      # que l'autoload ne trouve pas : son nom ne suit pas la casse de sa classe. Les
+      # bancs ne le voient pas, ils chargent eux-mêmes ce qu'ils appellent.
+      - name: Garde-fou — chaque point d'entrée du lab trouve les classes qu'il appelle
+        run: |
+          sortie=$(php demo/lab/tests/sanity_chargement.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::un point d'entrée du lab nomme une classe qu'il ne charge pas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 5/5 ' \
+            || { echo "::error::le banc du chargement n'a pas joué ses 5 contrôles"; exit 1; }
+
+      # Une lecture d'une ligne garde son curseur ouvert : la requête qui écrivait ensuite
+      # perdait son écriture dès qu'une autre écrivait en même temps — un message en 500 par
+      # paire d'envois, une connexion par paire de connexions.
+      - name: Garde-fou — deux requêtes qui écrivent en même temps ne se perdent pas
+        run: |
+          sortie=$(php demo/lab/tests/sanity_ecritures_simultanees.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::deux écritures simultanées du lab se sont perdues"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 4/4 ' \
+            || { echo "::error::le banc des écritures simultanées n'a pas joué ses 4 contrôles"; exit 1; }
 
       - name: Canari — le banc du simulateur rougit quand un scénario perd sa dépendance
         run: |
@@ -1600,8 +1623,19 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_frein_login.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 15/15 ' \
-            || { echo "::error::le banc du frein de connexion n'a pas joué ses 15 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 18/18 ' \
+            || { echo "::error::le banc du frein de connexion n'a pas joué ses 18 cas"; exit 1; }
+
+      # Un blob chiffré n'est lisible que là où il a été écrit. Sans contexte, qui
+      # obtient une écriture recopie un blob dans une ligne qu'il a le droit de lire
+      # et l'application le déchiffre : l'écriture rendait le clair.
+      - name: Garde-fou — un blob chiffré ne se lit que sous son propre contexte
+        run: |
+          sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 86/86 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 86 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1630,22 +1664,30 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les neuf gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les vingt-deux gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
-            F="$1"; cp "$F" /tmp/canari-lab.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            # La sauvegarde dans un fichier à soi : un chemin fixe de `/tmp` se partage
+            # avec un autre rejeu sur la même machine, qui y range le sien — et la
+            # restauration écrit alors un autre fichier à la place de celui-ci (mesuré
+            # par la conv Recover le 20/10).
+            F="$1"; I=$(mktemp); cp "$F" "$I"; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
-              || { echo "::error::canari non planté dans $F"; exit 1; }
+              || { rm -f "$I"; echo "::error::canari non planté dans $F"; exit 1; }
             if sortie=$(php "$4" 2>&1); then
-              cp /tmp/canari-lab.intact "$F"; echo "$sortie"
+              cp "$I" "$F"; rm -f "$I"; echo "$sortie"
               echo "::error::$4 reste VERT sans la garde"; exit 1
             fi
-            cp /tmp/canari-lab.intact "$F"
+            cp "$I" "$F"; rm -f "$I"
             echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
             [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
             echo "✓ $(basename "$4") rougit sur « $5 »"
           }
+
+          # 🔑 La ligne rouge porte son `✗` : un banc imprime le libellé d'un cas
+          # qu'il le passe (`✓`) ou l'échoue, et le libellé nu se lit aussi dans un
+          # rouge venu d'un autre cas.
 
           # 1. La liste blanche débranchée : tout ce que la bibliothèque met dans un
           #    refus ressort, y compris une clé d'état de compte.
@@ -1653,7 +1695,7 @@ jobs:
             "    if ((\$r['ok'] ?? false) === true) {" \
             '    if (true) { // canari' \
             demo/lab/tests/sanity_refus_publiable.php \
-            'signalement'
+            '✗ « signalement » ne sort pas'
 
           # 2. L'abandon d'un dossier L3 se comporte comme un refus : il charge le
           #    compteur de gel, et le titulaire perd son recours.
@@ -1668,7 +1710,7 @@ jobs:
             'if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {' \
             'if ($failsIp >= self::LOGIN_MAX_FAILS_PER_IP) { // canari' \
             demo/lab/tests/sanity_frein_login.php \
-            'au seuil, même le bon mot de passe est refusé'
+            '✗ au seuil, même le bon mot de passe est refusé'
 
           # 4. La page cesse d'honorer le type « month » : le champ redevient libre,
           #    le titulaire écrit « 03/2024 » et diverge en disant vrai.
@@ -1676,7 +1718,7 @@ jobs:
             "q.type==='month' ? ' type=" \
             "false ? ' type=" \
             demo/lab/tests/sanity_questions_l3.php \
-            "aucun type déclaré n'est ignoré par la page"
+            "✗ aucun type déclaré n'est ignoré par la page"
 
           # 5. La liste blanche de la traduction reperd les champs d'écran courts :
           #    six chaînes du simulateur d'attaques repassent en français en silence.
@@ -1684,7 +1726,7 @@ jobs:
             "    'verdict', 'defense', 'hint', 'resume', 'l'," \
             "    // canari : liste blanche amputée" \
             demo/lab/tests/sanity_tc_deep.php \
-            "aucun champ porteur de texte n'est hors de la liste"
+            "✗ aucun champ porteur de texte n'est hors de la liste"
 
           # 6. Le signal du gel ne remonte plus au relais : l'arbitre a perdu le
           #    gel automatique sans recevoir ce qui le remplace, et rien ne le dit.
@@ -1720,6 +1762,115 @@ jobs:
             ")->execute([\$compteId, \$jusqua, \$quand, '']); // canari" \
             demo/lab/tests/sanity_l3_abandon.php \
             "une porte fermée sans nom"
+
+          # 10. Tous les messages privés partagent un seul contexte — le défaut tel
+          #     qu'il était : un blob recopié dans une conversation qu'on a le droit de
+          #     lire s'ouvre, et l'écriture rend le clair.
+          # ⚠️ Planter un seul des deux côtés du chiffrement ne reproduit PAS ce
+          # défaut : écrire avec contexte et lire sans fait échouer le tag, donc tout
+          # rougit, y compris le chemin normal. C'est le contexte qui doit cesser de
+          # distinguer, pas une de ses deux faces.
+          canari demo/lab/lib/dataguard.php \
+            "            'dm'," \
+            "            'dm-fixe'); return Aad::of('dm', // canari" \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ le blob d'un message privé entre deux autres comptes"
+
+          # 11. La passe finie ne ferme plus la lecture sans contexte : un blob gardé
+          #     d'avant elle, replanté n'importe où, rend de nouveau son clair.
+          canari demo/lab/lib/dataguard.php \
+            'if (self::lectureSansContexteFermee()) {' \
+            'if (false) { // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ un blob nu gardé d'avant la passe ne se relit plus"
+
+          # 12. Un secret absent se pose sans demander ce qui dépend de lui : une clé,
+          #     un sel ou un secret neuf rend illisible ou introuvable ce qui précède.
+          canari demo/lab/lib/secret_instance.php \
+            '            if ($enDepend !== null) {' \
+            '            if (false) { // canari' \
+            demo/lab/tests/sanity_secrets_instance.php \
+            "❌ ⭐ absent alors que quelque chose en dépend"
+
+          # 13. `reset-db` ne fait plus tourner la clé : une base neuve sous l'ancienne
+          #     clé rouvre les blobs de l'ancienne à qui y recopie aussi son numéro.
+          canari demo/lab/selfrecover-su \
+            'foreach (DataGuard::fichiersDeLaCle() as $fichier) {' \
+            'foreach ([] as $fichier) { // canari' \
+            demo/lab/tests/sanity_first_admin.php \
+            "✗ après reset-db, l'ancien blob et l'ancien numéro replantés devaient rester illisibles"
+
+          # 14. Un numéro de base perdu se retire à neuf : tout ce qui était scellé sous
+          #     l'ancien devient illisible, sans un mot.
+          canari demo/lab/lib/db.php \
+            '            && !self::numeroADejaServi()) {' \
+            '            ) { // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ numéro perdu, seul témoin restant — la table du numéro"
+
+          # 15. L'enregistrement du profil ne charge plus la modération qu'il interroge :
+          #     la route rend un 500 à tous, et aucun banc qui charge ses classes ne le voit.
+          canari demo/lab/lib/profile.php \
+            "        require_once __DIR__ . '/moderate.php';" \
+            '        // canari' \
+            demo/lab/tests/sanity_chargement.php \
+            "✗ ⭐ chaque route, outil et console trouve chaque classe du lab qu'il nomme"
+
+          # 16. `reset-db` ne demande plus à la base si la clé qu'il voit est la sienne : une
+          #     console sans la prise du site laisse la clé, et la base suivante la reçoit.
+          canari demo/lab/lib/dataguard.php \
+            '        if (!is_file($cle)) {' \
+            '        if (false) { // canari' \
+            demo/lab/tests/sanity_first_admin.php \
+            "✗ sans la clé du site, reset-db devait refuser sans rien figer"
+
+          # 17. Une base absente se recrée sous une clé qui a déjà servi.
+          canari demo/lab/lib/db.php \
+            '        if (is_file($cle) || is_file($temoin)) {' \
+            '        if (false) { // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ une base absente sous une clé qui a servi n'est pas recréée"
+
+          # 18. Un numéro réécrit ne se compare plus à l'empreinte de sa trace : tout devient
+          #     illisible, et le journal accuse la clé.
+          canari demo/lab/lib/db.php \
+            '!hash_equals($ligne' \
+            'false && !hash_equals($ligne' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ un numéro réécrit : la boîte refuse en le nommant"
+
+          # 19. Un fichier vide passe pour une base existante : le schéma s'y pose sous la clé
+          #     de la base qu'il remplace.
+          canari demo/lab/lib/db.php \
+            '            $neuve = !self::estBaseDuLab($tables);' \
+            '            $neuve = !file_exists($chemin); // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ une base vidée à zéro octet sous une clé qui a servi n'est pas remplie"
+
+          # 20. `reset-db` rouvre la base après le gel : la console fait naître la suivante,
+          #     sous la clé qu'elle voit, avant toute requête du site.
+          canari demo/lab/selfrecover-su \
+            "        \$restants = in_array('accounts', Db::tables(), true)" \
+            "        \$restants = Db::pdo() && in_array('accounts', Db::tables(), true) // canari" \
+            demo/lab/tests/sanity_first_admin.php \
+            "✗ reset-db sous une clé étrangère ne devait pas recréer la base"
+
+          # 21. L'envoi d'un message garde ouverte la lecture de son destinataire : deux envois
+          #     simultanés en perdent un.
+          canari demo/lab/lib/dm.php \
+            '        $stmt->closeCursor();' \
+            '        // canari' \
+            demo/lab/tests/sanity_ecritures_simultanees.php \
+            "✗ ⭐ deux envois de messages simultanés : aucun n'est perdu"
+
+          # 22. Le contexte d'un message ne porte plus la graine des comptes : restaurée d'une
+          #     sauvegarde, la base rend son numéro au prochain inscrit, et le message du compte
+          #     disparu s'ouvre pour lui.
+          canari demo/lab/lib/dataguard.php \
+            "            self::graine(\$pdo, 'accounts', \$expediteur)," \
+            "            // canari" \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ restaurée d'une sauvegarde, la base rend le numéro d'un compte disparu"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
@@ -2354,8 +2505,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE 'OK — 30/30 ' \
-            || { echo "::error::le banc first-admin n'a pas joué ses 30 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 49/49 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 49 cas"; exit 1; }
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |
@@ -2426,11 +2577,10 @@ jobs:
           # 0500 ne lui ferme rien, et le banc les saute EN LE DISANT — mais il sort
           # quand même à zéro, puisque rien n'a échoué. Ces deux lignes sont donc le
           # seul témoin qui distingue « tout a été mesuré » de « la moitié l'a été ».
-          # Le premier compteur dit ce qu'il compte : trois LECTURES DE SOURCE, qui
-          # établissent que les trois fonctions délèguent — pas trois secrets écrits
-          # sur un disque fermé, ce que le banc avoue ne pas faire.
-          echo "$sortie" | grep -qE "▸ délégations contrôlées sur le source : 3$" \
-            || { echo "::error::le banc n'a pas contrôlé les trois délégations"; exit 1; }
+          # Le premier compteur dit ce qu'il compte : quatre LECTURES DE SOURCE, qui
+          # établissent que les quatre porteurs délèguent — un par secret d'instance.
+          echo "$sortie" | grep -qE "▸ délégations contrôlées sur le source : 4$" \
+            || { echo "::error::le banc n'a pas contrôlé les quatre délégations"; exit 1; }
           echo "$sortie" | grep -qE "▸ sections sautées : 0$" \
             || { echo "::error::le banc a sauté une section — verdict partiel"; exit 1; }
 

@@ -22,6 +22,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.inc';
+
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../lib/i18n.php';
 require_once __DIR__ . '/../lib/db.php';
@@ -55,7 +58,12 @@ register_shutdown_function(static function () use ($dir): void {
     @rmdir($dir);
 });
 
+// La base d'abord, comme sur une instance neuve : une base ne naît pas sous une clé qui
+// a déjà servi. Puis la clé, sur une base qui ne porte encore aucun message — le banc en
+// range ensuite de faux en SQL, et la garde refuserait à raison de la créer sous eux.
 $pdo = Db::pdo();
+require_once __DIR__ . '/../lib/dataguard.php';
+\Pierroons\MySelfLab\DataGuard::exigerCle();
 
 /** Crée un compte assez ancien pour passer l'anti-Sybil. */
 function membre(PDO $pdo, string $nom): int

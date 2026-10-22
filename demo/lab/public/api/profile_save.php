@@ -16,5 +16,5 @@ $result = Profile::save($pdo, (int) $acc['id'], [
     'bio'          => (string) ($body['bio'] ?? ''),
     'localisation' => (string) ($body['localisation'] ?? ''),
     'lien'         => (string) ($body['lien'] ?? ''),
-]);
+], (bool) ($body['remplacer_illisible'] ?? false));
 json_out($result, $result['ok'] ? 200 : 400);

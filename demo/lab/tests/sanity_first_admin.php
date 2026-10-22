@@ -16,6 +16,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.inc';
+
 require_once __DIR__ . '/../lib/su_audit.php';
 require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 
@@ -40,6 +43,8 @@ register_shutdown_function(static function () use ($dir): void {
     @rmdir($dir);
 });
 
+// Les secrets de l'instance isolée suivent, sous les prises du banc qui l'emportent :
+// sans eux, le sous-processus retombe sur `data/`.
 $env = [
     'PATH'                         => getenv('PATH') ?: '/usr/bin:/bin',
     'LAB_DB_PATH'                  => $base,
@@ -47,7 +52,7 @@ $env = [
     'SELFRECOVER_SU_AUDIT_SECRET'  => 'banc-first-admin-secret-fixe',
     'SELFRECOVER_SU_SECRET_INPUT'  => $passphrase,
     'SU_FORENSIC_MINIMAL'          => '1',
-];
+] + instance_isolee();
 foreach ($env as $k => $v) {
     putenv("$k=$v");
 }
@@ -250,6 +255,192 @@ $c === 0 && est_admin('carol')
     : nok("first-admin devait être rouvert par reset-shell (code $c)");
 
 // ── 10. reset-db : kill all, journal gardé ──────────────────────────────────
+// Un message chiffré sous la clé de cette base, avant le reset — dans un autre
+// processus : la clé dérivée se mémoïse, et ce banc doit relire comme une requête neuve.
+$lab = "$dir/lab.php";
+file_put_contents($lab, '<?php
+require ' . var_export(__DIR__ . '/../vendor/autoload.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/dm.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/profile.php', true) . ';
+use Pierroons\MySelfLab\{Db, DataGuard, Dm, Profile};
+$pdo = Db::pdo();
+if ($argv[1] === "ouvre") {
+    echo "ouverte";
+    exit;
+}
+if ($argv[1] === "profil") {
+    echo json_encode(Profile::save($pdo, 1, ["bio" => "PROFIL-SEUL", "localisation" => "", "lien" => ""]));
+    exit;
+}
+if ($argv[1] === "graine") {
+    Dm::send($pdo, 1, "bob", "SECRET-DE-LA-BASE-FIGEE");
+    echo json_encode([Db::generation(), $pdo->query("SELECT ciphertext FROM dm ORDER BY id DESC LIMIT 1")->fetchColumn(),
+        $pdo->query("SELECT graine FROM accounts WHERE id = 1")->fetchColumn(), $pdo->query("SELECT graine FROM accounts WHERE id = 2")->fetchColumn()]);
+    exit;
+}
+// Le rejeu de qui écrit partout : la base neuve reçoit sa première requête, puis l\'écriture
+// recopie l\'ancien numéro — avec l\'empreinte de sa trace, qu\'il recalcule —, les graines
+// des deux anciens comptes et l\'ancien blob ; et le destinataire n° 2 lit.
+DataGuard::exigerCle();
+$pdo->exec("INSERT OR IGNORE INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (1, \'r1\', \'x\', \'x\', \'x\', 0), (2, \'r2\', \'x\', \'x\', \'x\', 0)");
+$pdo->prepare("UPDATE lab_generation SET valeur = ?")->execute([$argv[2]]);
+$pdo->prepare("UPDATE lab_migrations SET valeur = ? WHERE nom = \'numero-de-base\'")->execute([hash("sha256", $argv[2])]);
+$pdo->prepare("UPDATE accounts SET graine = ? WHERE id = 1")->execute([$argv[4]]);
+$pdo->prepare("UPDATE accounts SET graine = ? WHERE id = 2")->execute([$argv[5]]);
+$pdo->prepare("INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, 0)")->execute([$argv[3]]);
+Db::fermer();
+echo Dm::inbox(Db::pdo(), 2)[0]["message"] ?? "(rien)";
+');
+/** Lance l'aide `lab.php` sur une base et une clé ; rend sa sortie. */
+function lab(string $base, string $cle, string ...$args): string
+{
+    global $env, $lab;
+    $p = proc_open(array_merge([PHP_BINARY, $lab], $args), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $tuyaux, null,
+        ['LAB_DB_PATH' => $base, 'LAB_BLINDKEY_PATH' => $cle] + $env);
+    $out = stream_get_contents($tuyaux[1]) . stream_get_contents($tuyaux[2]);
+    fclose($tuyaux[1]);
+    fclose($tuyaux[2]);
+    proc_close($p);
+
+    return $out;
+}
+$cle = $env['LAB_BLINDKEY_PATH'];
+[$numeroAncien, $blobAncien, $graine1, $graine2] = json_decode(lab($base, $cle, 'graine'), true) ?? [null, null, null, null];
+touch("$cle.scelle");   // le témoin d'une passe de migration faite : il part aussi
+
+// ── 10 a. La console ne crée jamais la base, et `--forcer` est un geste explicite ──
+// Sur une instance à côté, son propre dossier d'état : chaque reset y fige le secret SU,
+// que la suite du banc emploie.
+$cote = chemin_isole('cote');
+mkdir($cote, 0700);
+$enCote = ['LAB_DB_PATH' => "$cote/lab.db", 'LAB_BLINDKEY_PATH' => "$cote/.blindkey", 'SELFRECOVER_STATE_DIR' => $cote];
+$suCote = static fn (array $args, array $plus = []): array => su($args, $plus + $enCote);
+/** Remet l'instance à côté à l'état voulu : un secret SU, une copie de la base du banc, sa clé et ses témoins. */
+$cloner = static function (bool $avecBase, bool $avecCle) use ($cote, $base, $cle, $passphrase): void {
+    foreach (glob("$cote/{,.}*", GLOB_BRACE) ?: [] as $f) {
+        if (is_file($f)) {
+            unlink($f);
+        }
+    }
+    file_put_contents("$cote/su-secret", password_hash($passphrase, PASSWORD_ARGON2ID, Hashing::ARGON2));
+    if ($avecBase) {
+        copy($base, "$cote/lab.db");
+    }
+    if ($avecCle) {
+        copy($cle, "$cote/.blindkey");
+        touch("$cote/.blindkey.existe");
+    }
+};
+
+// Une console qui ne voit ni base ni clé — lancée sans les prises du site — fabriquait une
+// base au chemin qu'elle voyait, la figeait, et annonçait un succès : la base compromise
+// restait servie.
+$cloner(false, false);
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c !== 0 && str_contains($o, 'ni base') && !is_file("$cote/lab.db") && glob("$cote/*.frozen-*") === []
+    ? ok('⭐ une console qui ne voit ni base ni clé refuse, même forcée, et ne crée rien')
+    : nok("sans base ni clé, reset-db devait refuser sans rien créer (code $c) : " . trim(substr($o, 0, 200)));
+
+// Base perdue, clé présente : le remède nommé par le refus du site mourait sur ce refus.
+$cloner(false, true);
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, 'absente ou vide') && str_contains($o, '--forcer') && is_file("$cote/.blindkey")
+    ? ok('⭐ base absente sous une clé qui a servi : refus nommé, qui dit le geste, et rien de figé')
+    : nok("base absente : reset-db devait refuser en nommant --forcer (code $c) : " . trim(substr($o, 0, 200)));
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c === 0 && !is_file("$cote/.blindkey") && !is_file("$cote/.blindkey.existe")
+    && count(glob("$cote/.blindkey.frozen-*") ?: []) === 1 && !is_file("$cote/lab.db")
+    ? ok('⭐ --forcer fige la clé et son témoin, et ne crée pas de base')
+    : nok("reset-db --forcer devait figer la clé sans créer de base (code $c) : " . trim(substr($o, 0, 200)));
+$ouverte = lab("$cote/lab.db", "$cote/.blindkey", 'ouvre');
+str_contains($ouverte, 'ouverte') && is_file("$cote/lab.db")
+    ? ok('après --forcer, la requête suivante du site fait naître la base')
+    : nok('le site devait recréer la base après --forcer : ' . trim(substr($ouverte, 0, 200)));
+
+// Numéro et trace réécrits par qui écrit : la vérification échoue, et `--forcer` passe outre.
+$cloner(true, true);
+$numeroFaux = bin2hex(random_bytes(16));
+base("$cote/lab.db")->prepare('UPDATE lab_generation SET valeur = ?')->execute([$numeroFaux]);
+base("$cote/lab.db")->prepare("UPDATE lab_migrations SET valeur = ? WHERE nom = 'numero-de-base'")
+    ->execute([hash('sha256', $numeroFaux)]);
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, '--forcer') && glob("$cote/*.frozen-*") === [] && glob("$cote/.*.frozen-*") === []
+    ? ok('une base dont le numéro est réécrit fait refuser reset-db, qui nomme le passage forcé')
+    : nok("numéro réécrit : reset-db devait refuser et nommer --forcer (code $c) : " . trim(substr($o, 0, 200)));
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c === 0 && count(glob("$cote/lab.db.frozen-*") ?: []) === 1 && count(glob("$cote/.blindkey.frozen-*") ?: []) === 1
+    && !is_file("$cote/lab.db") && str_contains($o, "n'est pas vérifiée")
+    ? ok('⭐ et --forcer fige la base et la clé, en disant qu\'elle n\'est pas vérifiée : qui écrit ne bloque plus le remède')
+    : nok("reset-db --forcer devait figer base et clé (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base dont les membres n'ont rempli que leur profil : la vérification essaie aussi les profils.
+$cloner(true, true);
+$profil = lab("$cote/lab.db", "$cote/.blindkey", 'profil');
+base("$cote/lab.db")->exec('DELETE FROM dm');
+file_put_contents("$cote/.blindkey-etrangere", bin2hex(random_bytes(48)));
+[$c, $o] = $suCote(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => "$cote/.blindkey-etrangere"]);
+str_contains($profil, '"ok":true') && $c !== 0 && str_contains($o, "ne s'ouvre sous la clé")
+    ? ok('⭐ une base qui ne porte qu\'un profil, sous une clé étrangère : refus')
+    : nok("profil seul sous une clé étrangère : reset-db devait refuser (code $c) : " . trim(substr($profil . ' | ' . $o, 0, 220)));
+
+// Une clé que la console ne peut pas lire se dit illisible, pas étrangère.
+$cloner(true, true);
+chmod("$cote/.blindkey", 0000);
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+chmod("$cote/.blindkey", 0600);
+$c !== 0 && str_contains($o, 'illisible')
+    ? ok('une clé illisible pour la console se dit illisible, et rien ne bouge')
+    : nok("clé illisible : le refus devait le dire (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base scellée dont les chiffrés essayés ne portent pas de liaison — abîmés, ou d'avant la
+// passe : sous une lecture fermée, aucun ne peut confirmer la clé, et le refus le dit.
+$cloner(true, true);
+touch("$cote/.blindkey.scelle");
+base("$cote/lab.db")->exec("UPDATE dm SET ciphertext = 'AAAA' || ciphertext; DELETE FROM profiles");
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, 'ne portent pas de liaison') && glob("$cote/*.frozen-*") === []
+    ? ok('des chiffrés sans liaison sous une lecture fermée : refus qui le dit, rien de figé')
+    : nok("chiffrés sans liaison : reset-db devait refuser en le disant (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base que SQLite n'ouvre pas : un refus qui le dit, et `--forcer` la fige telle quelle.
+$cloner(false, true);
+file_put_contents("$cote/lab.db", random_bytes(4096));
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, "ne s'ouvre pas") && is_file("$cote/lab.db") && is_file("$cote/.blindkey")
+    ? ok('une base que SQLite n\'ouvre pas fait refuser reset-db, en le disant')
+    : nok("base illisible : reset-db devait refuser en le disant (code $c) : " . trim(substr($o, 0, 200)));
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c === 0 && count(glob("$cote/lab.db.frozen-*") ?: []) === 1 && count(glob("$cote/.blindkey.frozen-*") ?: []) === 1 && !is_file("$cote/lab.db")
+    ? ok('et --forcer la fige telle quelle, avec sa clé')
+    : nok("base illisible : reset-db --forcer devait la figer (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base sans aucun chiffré, une console sous une clé étrangère : elle passe, mais ne
+// recrée plus la base suivante sous la clé du site — c'est le site qui refuse, à voix haute.
+$cloner(true, true);
+base("$cote/lab.db")->exec('DELETE FROM dm; DELETE FROM profiles');
+[$c, $o] = $suCote(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => "$cote/.blindkey-etrangere"]);
+$apres = lab("$cote/lab.db", "$cote/.blindkey", 'ouvre');
+$c === 0 && !is_file("$cote/lab.db") && str_contains($apres, 'absente ou vide')
+    ? ok('⭐ une console mal prise ne fait plus naître la base suivante sous la clé du site : le site refuse')
+    : nok("reset-db sous une clé étrangère ne devait pas recréer la base (code $c) : " . trim(substr($o . ' | ' . $apres, 0, 220)));
+
+// 🔑 Le reset ne fige que la clé de CETTE base. Une console qui ne porte pas la prise
+// du site la cherchait ailleurs, ne la trouvait pas, et répondait « rien n'avait été
+// chiffré » : la clé du site restait (mesuré par la neuvième passe d'audit).
+$comptesAvant = (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+mkdir(chemin_isole('ailleurs'), 0700);
+[$c, $o] = su(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => chemin_isole('ailleurs/.blindkey')]);
+$c !== 0 && str_contains($o, 'aucune clé') && is_file($cle) && glob("$base.frozen-*") === []
+    && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $comptesAvant
+    ? ok('⭐ une console qui ne voit pas la clé du site refuse le reset, et rien ne bouge')
+    : nok("sans la clé du site, reset-db devait refuser sans rien figer (code $c) : " . trim(substr($o, 0, 200)));
+mkdir(chemin_isole('etrangere'), 0700);
+file_put_contents(chemin_isole('etrangere/.blindkey'), bin2hex(random_bytes(48)));
+[$c, $o] = su(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => chemin_isole('etrangere/.blindkey')]);
+$c !== 0 && str_contains($o, "ne s'ouvre sous la clé") && is_file($cle) && glob("$base.frozen-*") === []
+    ? ok('une clé valide mais étrangère à la base : refus aussi, rien de figé')
+    : nok("une clé étrangère devait faire refuser reset-db (code $c) : " . trim(substr($o, 0, 200)));
+
 $avant = count(SuAudit::read());
 [$c] = su(['reset-db']);
 $c === 1 && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $comptes
@@ -258,15 +449,37 @@ $c === 1 && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() 
 
 [$c] = su(['reset-db', '--confirm']);
 $figees = glob("$base.frozen-*") ?: [];
-$c === 0 && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === 0
-    ? ok('reset-db --confirm : zéro compte')
-    : nok("reset-db devait vider les comptes (code $c)");
+$c === 0 && !is_file($base)
+    ? ok('reset-db --confirm : la base part, et la console n\'en recrée aucune')
+    : nok("reset-db devait figer la base sans en recréer (code $c)");
+$neuveOuverte = lab($base, $cle, 'ouvre');
+str_contains($neuveOuverte, 'ouverte') && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === 0
+    ? ok('la requête suivante du site fait naître une base sans compte')
+    : nok('le site devait faire naître la base neuve : ' . trim(substr($neuveOuverte, 0, 200)));
 count($figees) === 1 && (int) base($figees[0])->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $comptes
     ? ok('la base figée garde les ' . $comptes . ' comptes — pièce à conviction')
     : nok('base figée absente ou vide : ' . json_encode($figees));
 !is_file("$dir/su-secret") && count(glob("$dir/su-secret.frozen-*") ?: []) === 1
     ? ok('le secret SU est figé')
     : nok('le secret SU devait être mis de côté');
+
+$quand = $figees === [] ? '?' : substr($figees[0], strlen("$base.frozen-"));
+$cleFigee = "$cle.frozen-$quand";
+is_string($blobAncien) && !is_file($cle) && !is_file("$cle.existe") && !is_file("$cle.scelle")
+    && is_file($cleFigee) && is_file("$cle.existe.frozen-$quand") && is_file("$cle.scelle.frozen-$quand")
+    ? ok('la clé des messages est figée avec la base, sous son horodatage, ses deux témoins compris')
+    : nok('la clé et ses témoins devaient partir avec la base : ' . json_encode(array_map('basename', glob(dirname($cle) . '/.blindkey*') ?: [])));
+
+// La base neuve se copie : le rejeu ne doit rien laisser dans celle que la suite emploie.
+copy($base, "$dir/rejeu.db");
+$lu = lab("$dir/rejeu.db", $cle, 'rejeu', (string) $numeroAncien, (string) $blobAncien, (string) $graine1, (string) $graine2);
+!str_contains($lu, 'SECRET-DE-LA-BASE-FIGEE') && str_contains($lu, 'illisible')
+    ? ok('⭐ le message de la base figée, replanté avec son numéro dans la base neuve, ne s\'ouvre pas')
+    : nok('après reset-db, l\'ancien blob et l\'ancien numéro replantés devaient rester illisibles : ' . trim($lu));
+copy($base, "$dir/rejeu-temoin.db");
+str_contains(lab("$dir/rejeu-temoin.db", $cleFigee, 'rejeu', (string) $numeroAncien, (string) $blobAncien, (string) $graine1, (string) $graine2), 'SECRET-DE-LA-BASE-FIGEE')
+    ? ok('contre-témoin : sous la clé figée, le même rejeu rend le clair — seule la rotation l\'arrête')
+    : nok('contre-témoin : sous la clé figée, le rejeu devait rendre le clair, sinon le cas ne mesure rien');
 
 [$c] = su(['list-admins']);
 $c === 2
@@ -308,6 +521,20 @@ $c === 0 && str_contains($o, 'RESET-DB — tous les comptes supprimés')
 str_contains($o, 'Dernier reset-db')
     ? ok('list-admins rappelle le dernier reset-db')
     : nok('list-admins devait rappeler le dernier reset-db');
+
+// ── 10 bis. Une prise du secret SU posée mais vide est refusée ─────────────
+// Retomber en silence sur le dossier d'état ferait lire un autre secret que celui
+// que l'exploitant a désigné. ⚠️ Par `env` : `proc_open` ne transmet pas une variable
+// vide, et le cas aurait mesuré une variable absente (mesuré).
+$p = proc_open(['env', 'SELFRECOVER_SU_SECRET_FILE=', PHP_BINARY, __DIR__ . '/../selfrecover-su', 'list-admins'],
+    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $tuyaux, null, $env);
+$o = stream_get_contents($tuyaux[1]) . stream_get_contents($tuyaux[2]);
+fclose($tuyaux[1]);
+fclose($tuyaux[2]);
+$c = proc_close($p);
+$c !== 0 && str_contains($o, 'SELFRECOVER_SU_SECRET_FILE est posée mais vide')
+    ? ok('SELFRECOVER_SU_SECRET_FILE posée mais vide : la console refuse')
+    : nok("SELFRECOVER_SU_SECRET_FILE vide devait être refusée (code $c) : " . trim(substr($o, 0, 200)));
 
 // ── 11. Un octroi d'avant le reset ne vaut plus ─────────────────────────────
 // carol a été nommée dans ce même journal, avant le reset-db : son octroi y est

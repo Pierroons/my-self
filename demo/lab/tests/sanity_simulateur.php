@@ -27,13 +27,17 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.inc';
+
 require __DIR__ . '/../vendor/autoload.php';
-putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-simulateur-sitesalt-' . getmypid());
+putenv('LAB_SITESALT_PATH=' . chemin_isole('.sitesalt-simulateur'));
 register_shutdown_function(static fn () => @unlink((string) getenv('LAB_SITESALT_PATH')));
 require_once __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/attack_sim.php';
 
 use Pierroons\MySelfLab\AttackSimulator;
+use Pierroons\MySelfLab\Db;
 
 $reussites = 0;
 $echecs = 0;
@@ -55,6 +59,10 @@ verifier(
     AttackSimulator::SCENARIOS !== [],
     'sans elle, la boucle ci-dessous ne mesurerait rien'
 );
+
+// La base du site n'existe pas encore : un scénario qui l'ouvrirait la créerait.
+$baseDuSite = Db::path();
+$baseAvant  = is_file($baseDuSite);
 
 foreach (AttackSimulator::SCENARIOS as $scenario) {
     echo "\n▸ $scenario\n";
@@ -118,6 +126,16 @@ foreach (AttackSimulator::SCENARIOS as $scenario) {
         );
     }
 }
+
+echo "\n▸ la base du site\n";
+// 🔑 « Zéro impact sur lab.db » : le numéro de la base, que chaque chiffré porte, se
+// lisait dans la vraie base, et le scénario `dump` la créait hors d'une route (mesuré
+// par la huitième passe d'audit).
+verifier(
+    '⭐ aucun scénario n\'ouvre la base du site, pas même pour lire son numéro',
+    !$baseAvant && !is_file($baseDuSite),
+    $baseAvant ? 'la base existait avant les scénarios : le cas ne mesure rien' : 'base créée par un scénario'
+);
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0 ? "OK — $reussites/$total contrôles conformes." : "ÉCHEC — $echecs sur $total") . "\n";

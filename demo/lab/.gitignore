@@ -7,6 +7,9 @@ composer.lock
 *.blindkey
 *.sitesalt
 *.serversecret
+*.modaudit
+*.existe
+*.scelle
 *.db
 *.sqlite
 

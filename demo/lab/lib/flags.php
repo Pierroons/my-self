@@ -7,7 +7,7 @@ namespace Pierroons\MySelfLab;
 use PDO;
 
 require_once __DIR__ . '/dataguard.php';
-require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/notify.php';
 
 /**
@@ -63,7 +63,7 @@ final class Flags
         return hash_hmac(
             'sha256',
             trim($drapeau),
-            'flag|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER)
+            'flag|' . Security::secretServeur()
         );
     }
 
@@ -109,7 +109,9 @@ final class Flags
 
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM flag_captures WHERE ip_hash = ? AND captured_at >= ?');
         $stmt->execute([$ipHash, time() - 3600]);
-        if ((int) $stmt->fetchColumn() >= self::PAR_HEURE) {
+        $recents = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($recents >= self::PAR_HEURE) {
             return ['ok' => false, 'message' => tc('Trop de soumissions récentes. Réessaie dans une heure.')];
         }
 
@@ -139,6 +141,7 @@ final class Flags
         $deja = $pdo->prepare('SELECT COUNT(*) FROM flag_captures WHERE code = ?');
         $deja->execute([$trouve]);
         $rang = (int) $deja->fetchColumn() + 1;
+        $deja->closeCursor();
 
         $pdo->prepare(
             'INSERT INTO flag_captures (code, handle, ip_hash, captured_at) VALUES (?, ?, ?, ?)'

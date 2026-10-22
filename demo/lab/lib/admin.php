@@ -156,9 +156,14 @@ final class Admin
         if ($u === false) {
             return null;
         }
+        $lu = Profile::lire($pdo, $accountId);
+
         return [
             'username' => $u,
-            'profil'   => Profile::get($pdo, $accountId),
+            'profil'   => $lu['champs'],
+            // L'arbitre est celui que le titulaire d'un profil illisible est invité à
+            // prévenir : lui montrer des champs vides lui ferait croire à un profil vide.
+            'profil_illisible' => $lu['illisible'],
             // Le mémo est chiffré E2E côté client : l'admin n'a PAS la clé.
             'memo_e2e' => MemoVault::exists($pdo, $accountId),
         ];

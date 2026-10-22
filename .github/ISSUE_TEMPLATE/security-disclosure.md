@@ -10,7 +10,7 @@ assignees: ''
 
 If you have found an **active, exploitable vulnerability**, **please do NOT open a public issue**.
 
-Instead, contact us privately via email — see [SECURITY.md](../../SECURITY.md) for instructions.
+Instead, contact us privately via email — see [SECURITY.md][security] for instructions.
 
 ---
 
@@ -28,3 +28,5 @@ Instead, contact us privately via email — see [SECURITY.md](../../SECURITY.md)
 - **Credit:**
 - **Description:**
 - **Link to original disclosure:**
+
+[security]: https://github.com/Pierroons/my-self/blob/main/SECURITY.md

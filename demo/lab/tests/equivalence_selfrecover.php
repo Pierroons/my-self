@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.inc';
+
 /**
  * La bibliothèque tient-elle sur le schéma réel du lab ?
  *
@@ -25,7 +28,10 @@ require __DIR__ . '/../lib/StockageSelfRecover.php';
 // et non une reconstitution. Son sel de site est détourné vers un fichier
 // jetable : celui de l'instance ne doit pas bouger, un remplacement rendrait
 // introuvables tous les codes déjà émis.
-putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-sonde-sitesalt-' . getmypid());
+putenv('LAB_SITESALT_PATH=' . chemin_isole('.sitesalt-sonde'));
+// La base qu'un secret absent consulte avant de se poser : celle de ce banc est en
+// mémoire, la règle n'en voit donc aucune — et ne lit pas celle de l'instance locale.
+putenv('LAB_DB_PATH=' . sys_get_temp_dir() . '/lab-sonde-sans-base-' . getmypid() . '.db');
 require_once __DIR__ . '/../lib/auth.php';
 require_once __DIR__ . '/../lib/recover_l3.php';
 
@@ -234,12 +240,21 @@ verifier('aucun compte créé par les quatre refus',
 $ok = \Pierroons\MySelfLab\Auth::register($pdo2, 'carol', $MOT, sr_sel_aleatoire(), null);
 verifier('contre-témoin : un sel valide passe toujours', ($ok['ok'] ?? false) === true);
 
+// La session que l'inscription ouvre : le cookie porte le jeton, la base son
+// empreinte seule — rangé en clair, une base volée ouvrait toutes les sessions.
+$rangesEnClair = $pdo2->prepare('SELECT COUNT(*) FROM app_sessions WHERE token = ?');
+$rangesEnClair->execute([(string) ($ok['token'] ?? '')]);
+$rangesSousEmpreinte = $pdo2->prepare('SELECT COUNT(*) FROM app_sessions WHERE token = ?');
+$rangesSousEmpreinte->execute([\Pierroons\MySelfLab\Db::empreinteJeton((string) ($ok['token'] ?? ''))]);
+verifier('⭐ la session ouverte à l\'inscription n\'est rangée que sous l\'empreinte de son jeton',
+    ($ok['token'] ?? '') !== '' && (int) $rangesEnClair->fetchColumn() === 0 && (int) $rangesSousEmpreinte->fetchColumn() === 1);
+
 echo "\n→ Le sel de site refuse de servir vide\n";
 // 🔑 Ce sel porte deux propriétés : il localise les codes émis et il fabrique
 // le faux sel rendu aux codes inconnus. Vide, les index deviennent calculables
 // et l'oracle du sel se rouvre — sans qu'aucune erreur ne survienne. Le
 // répertoire absent suffisait à produire ce cas, observé le 27/08/2026.
-$tmp = sys_get_temp_dir() . '/lab-sitesalt-sonde-' . getmypid();
+$tmp = chemin_isole('.sitesalt-vide');
 putenv('LAB_SITESALT_PATH=' . $tmp);
 try {
     foreach (['vide' => '', 'tronqué' => 'abcd'] as $intitule => $contenu) {
@@ -256,7 +271,7 @@ try {
     verifier('sel de site stable entre deux appels',
         $engendre === \Pierroons\MySelfLab\Auth::siteSalt());
 } finally {
-    putenv('LAB_SITESALT_PATH');
+    putenv('LAB_SITESALT_PATH=' . instance_isolee()['LAB_SITESALT_PATH']);   // rendue à l'isolement, jamais à `data/`
     @unlink($tmp);
 }
 

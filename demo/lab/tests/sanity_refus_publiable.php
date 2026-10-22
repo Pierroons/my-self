@@ -20,6 +20,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.inc';
+
 require_once __DIR__ . '/../lib/reponse.php';
 
 $echecs = 0;
@@ -147,6 +150,15 @@ if (!is_file($src)) {
     $inutiles = array_values(array_diff(array_keys($codes), $motifs, ['invalid_derived_key']));
     v('aucune entrée ne vise un motif disparu', $inutiles === [], implode(', ', $inutiles));
 }
+
+echo "\n# La réponse d'une route qui lève prend la forme de sa route\n";
+
+// Le gestionnaire d'exception répond en JSON aux routes d'API, en HTML aux pages. Le
+// lab servi sous un préfixe (`/lab/api/…`) restait une route d'API (mesuré par la
+// septième passe d'audit : rien ne gardait cette détection).
+v('⭐ une route d\'API servie sous un préfixe reste une route d\'API', est_route_api('/lab/api/report_status.php') === true);
+v('et à la racine aussi', est_route_api('/api/vote.php?x=1') === true);
+v('une page n\'en est pas une, même si sa requête nomme /api/', est_route_api('/profile.php?retour=/api/x') === false);
 
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"

@@ -26,8 +26,11 @@ if (PHP_SAPI !== 'cli') {
 
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/su_audit.php';
+require __DIR__ . '/lib/dataguard.php';
 
+use Pierroons\MySelfLab\DataGuard;
 use Pierroons\MySelfLab\Db;
+use Pierroons\MySelfLab\SecretInstance;
 use Pierroons\MySelfLab\SuAudit;
 
 const SU_DEMO_SECRET = 'demo-su-secret';
@@ -65,8 +68,8 @@ function su_prompt_hidden(string $label): string
 
 function su_secret_path(): string
 {
-    return getenv('SELFRECOVER_SU_SECRET_FILE')
-        ?: ((getenv('SELFRECOVER_STATE_DIR') ?: SuAudit::stateFallback()) . '/su-secret');
+    return SecretInstance::prise('SELFRECOVER_SU_SECRET_FILE')
+        ?? ((SecretInstance::prise('SELFRECOVER_STATE_DIR') ?? SuAudit::stateFallback()) . '/su-secret');
 }
 
 /** Le fichier prime sur l'environnement : `change-passphrase` écrit le premier, l'install pose le second. */
@@ -521,6 +524,7 @@ switch ($cmd) {
         $st   = $db->prepare("SELECT * FROM admin_requests WHERE id = ? AND status = 'pending'");
         $st->execute([$id]);
         $req = $st->fetch() ?: su_fail("Demande #$id introuvable ou déjà traitée.");
+        $st->closeCursor();
         $acc = su_find_account($db, $req['target_username'])
             ?: su_fail("Cible « {$req['target_username']} » introuvable — le compte a disparu depuis la demande.");
 
@@ -546,6 +550,7 @@ switch ($cmd) {
         $st   = $db->prepare("SELECT * FROM admin_requests WHERE id = ? AND status = 'pending'");
         $st->execute([$id]);
         $req = $st->fetch() ?: su_fail("Demande #$id introuvable ou déjà traitée.");
+        $st->closeCursor();
 
         su_ecrire_et_journaliser($db, SuAudit::ACTION_REJECT_REQUEST, $req['target_username'], [
             'request_id'   => (int) $id,
@@ -1038,20 +1043,76 @@ switch ($cmd) {
         // à conviction. Renommer plutôt que vider garantit qu'aucune table n'est
         // oubliée, y compris celles qui n'ont pas de clé étrangère vers `accounts`.
         // Le journal, lui, est GARDÉ : le reset s'y lit au milieu de ce qui précède.
+        // La clé des messages et des profils part avec la base (`DataGuard::fichiersDeLaCle()`) :
+        // une base neuve sous l'ancienne clé rouvrait les blobs de l'ancienne à qui y
+        // recopiait aussi son numéro.
+        //
+        // 🔑 La console ne crée jamais la base. `Db::pdo()` crée celle qui manque : une console
+        // qui ne voyait pas la base du site en fabriquait une vide, la vérifiait, la figeait
+        // et annonçait un succès, quand la base compromise restait servie. La base suivante
+        // naît à la première requête du site, sous la garde qui refuse une clé qui a servi.
+        //
+        // `--forcer` est la décision humaine que le code ne peut pas prendre : une base perdue
+        // et une console qui ne la voit pas ont la même forme, et qui écrit dans la base peut
+        // faire échouer la vérification de la clé. Il ne crée rien non plus.
         su_authenticate();
-        $db    = Db::pdo();
-        $bilan = [
-            'comptes'  => (int) $db->query('SELECT COUNT(*) FROM accounts')->fetchColumn(),
-            'admins'   => su_nb_admins($db),
-            'sessions' => (int) $db->query('SELECT COUNT(*) FROM app_sessions')->fetchColumn(),
-            'litiges'  => (int) $db->query('SELECT COUNT(*) FROM disputes')->fetchColumn(),
-        ];
+        require_once __DIR__ . '/vendor/autoload.php';
+        $forcer = in_array('--forcer', $argv, true);
+        [$cle, $temoin] = DataGuard::fichiersDeLaCle();
+        $bilan = ['comptes' => 0, 'admins' => 0, 'sessions' => 0, 'litiges' => 0];
+        // Une base que SQLite n'ouvre pas — abîmée, ou d'une autre forme — se refuse en le disant ;
+        // `--forcer` la fige telle quelle.
+        try {
+            if (!Db::estBaseDuLab()) {
+                if (!is_file($cle) && !is_file($temoin)) {
+                    su_fail("Reset-db refusé, rien n'a bougé : ni base (" . Db::path() . ") ni clé ({$cle}) ici.\n"
+                        . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
+                        . "   elle ne voit ni la même base ni la même clé.");
+                }
+                if (!$forcer) {
+                    su_fail("Reset-db refusé, rien n'a bougé : la base est absente ou vide (" . Db::path() . "\n"
+                        . "   ne porte pas la table des comptes), et sa clé a servi ({$cle}).\n"
+                        . "   Si la console porte les prises du site, la base est perdue : `reset-db --confirm --forcer`\n"
+                        . "   fige la clé et ses témoins, et ce qu'elle a chiffré ne se relira plus. Sinon, relance la\n"
+                        . "   console avec les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…).");
+                }
+            } else {
+                $db    = Db::pdo();
+                $bilan = [
+                    'comptes'  => (int) $db->query('SELECT COUNT(*) FROM accounts')->fetchColumn(),
+                    'admins'   => su_nb_admins($db),
+                    'sessions' => (int) $db->query('SELECT COUNT(*) FROM app_sessions')->fetchColumn(),
+                    'litiges'  => (int) $db->query('SELECT COUNT(*) FROM disputes')->fetchColumn(),
+                ];
+                // La clé qu'on va figer doit être celle de cette base : figer une autre clé, ou n'en
+                // trouver aucune, laissait celle du site en place sous la base suivante.
+                $refus = DataGuard::cleDeCetteBase($db);
+                if ($refus !== null && !$forcer) {
+                    su_fail("Reset-db refusé, rien n'a bougé : {$refus}.\n"
+                        . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
+                        . "   elle ne voit ni la même base ni la même clé. Si elle les porte, la base a pu être abîmée ou\n"
+                        . "   son numéro réécrit : `reset-db --confirm --forcer` fige la base et la clé que la console voit,\n"
+                        . "   sans les vérifier.");
+                }
+                if ($refus !== null) {
+                    fwrite(STDOUT, "⚠️  --forcer : la clé figée n'est pas vérifiée — {$refus}.\n");
+                }
+            }
+        } catch (\Throwable $e) {
+            Db::fermer();
+            if (!$forcer) {
+                su_fail("Reset-db refusé, rien n'a bougé : la base ne s'ouvre pas (" . Db::path() . ") — {$e->getMessage()}.\n"
+                    . "   `reset-db --confirm --forcer` la fige telle quelle, avec la clé que la console voit.");
+            }
+            fwrite(STDOUT, "⚠️  --forcer : la base ne s'ouvre pas, elle est figée telle quelle — {$e->getMessage()}.\n");
+        }
         if (!in_array('--confirm', $argv, true)) {
             fwrite(STDOUT, "⚠️  RESET-DB (compromission) — tout ce qui suit est SUPPRIMÉ du service :\n");
             fwrite(STDOUT, "   • {$bilan['comptes']} compte(s), dont {$bilan['admins']} administrateur(s)\n");
             fwrite(STDOUT, "   • {$bilan['sessions']} session(s), {$bilan['litiges']} litige(s), appareils, codes de secours\n");
             fwrite(STDOUT, "   • le secret SU : il faudra en reposer un, comme à l'installation\n");
-            fwrite(STDOUT, "   La base et le secret sont mis de côté, jamais détruits ; le journal est gardé.\n\n");
+            fwrite(STDOUT, "   • la clé des messages et des profils (.blindkey) : une neuve naît à la première requête\n");
+            fwrite(STDOUT, "   La base, la clé et le secret sont mis de côté, jamais détruits ; le journal est gardé.\n\n");
             fwrite(STDOUT, "   Relance avec --confirm pour exécuter.\n");
             exit(1);
         }
@@ -1060,6 +1121,16 @@ switch ($cmd) {
         $quand  = (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His');
         Db::fermer();
         $db = null;
+        // La clé avant la base : entre les deux gestes, une requête trouve l'ancienne base
+        // sans sa clé, et refuse en nommant ce qui en dépend — plutôt que d'y écrire sous
+        // une clé qui s'en va.
+        $clesFigees = [];
+        foreach (DataGuard::fichiersDeLaCle() as $fichier) {
+            $fige = su_figer($fichier, $quand);
+            if ($fige !== null) {
+                $clesFigees[] = basename($fige);
+            }
+        }
         $baseFigee = su_figer(Db::path(), $quand);
         foreach (['-wal', '-shm', '-journal'] as $suffixe) {
             su_figer(Db::path() . $suffixe, $quand);
@@ -1069,15 +1140,23 @@ switch ($cmd) {
         SuAudit::append(SuAudit::ACTION_RESET_DB, 'ALL-ACCOUNTS', $bilan + [
             'base_figee'   => $baseFigee ? basename($baseFigee) : null,
             'secret_fige'  => $secretFige ? basename($secretFige) : null,
+            'cle_figee'    => $clesFigees,
         ]);
-        $restants = (int) Db::pdo()->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+        // Relue sans être créée : une requête du site a pu y faire naître la base suivante,
+        // qui ne porte aucun compte.
+        $restants = in_array('accounts', Db::tables(), true)
+            ? (int) Db::lectureSeule()->query('SELECT COUNT(*) FROM accounts')->fetchColumn()
+            : 0;
         if ($restants !== 0) {
-            su_fail("La base rouverte porte encore $restants compte(s) : " . Db::path() . ' n\'a pas été remplacée.');
+            su_fail("La base porte encore $restants compte(s) : " . Db::path() . ' n\'a pas été remplacée.');
         }
 
-        su_ok("Reset-db : {$bilan['comptes']} compte(s) supprimé(s), base neuve, journal gardé.");
+        su_ok("Reset-db : {$bilan['comptes']} compte(s) supprimé(s), journal gardé. La base neuve et sa clé neuve "
+            . 'naissent à la première requête du site.');
+        fwrite(STDOUT, '   Base         → ' . Db::path() . "\n");
         fwrite(STDOUT, '   Base figée   → ' . ($baseFigee ? basename($baseFigee) : '(aucune)') . "\n");
         fwrite(STDOUT, '   Secret figé  → ' . ($secretFige ? basename($secretFige) : '(aucun fichier)') . "\n");
+        fwrite(STDOUT, '   Clé figée    → ' . ($clesFigees !== [] ? implode(', ', $clesFigees) : '(aucune : rien n\'en dépendait)') . "\n");
         if ($source === 'SELFRECOVER_SU_SECRET') {
             fwrite(STDOUT, "   🚨 Le secret SU vient de l'environnement : aucun fichier ne peut le retirer.\n");
             fwrite(STDOUT, "      Retire SELFRECOVER_SU_SECRET, sinon l'ancienne passphrase vaut toujours.\n");
@@ -1086,6 +1165,7 @@ switch ($cmd) {
         fwrite(STDOUT, "   l'inscription du futur admin, puis `first-admin` — la voie est rouverte.\n");
         fwrite(STDOUT, "   ⚠️  Ce reset ne chasse pas un intrus qui a la main sur le SERVEUR, et ne tourne ni le\n");
         fwrite(STDOUT, "      sel d'instance (.sitesalt) ni les secrets serveur : ces gestes-là sont à part.\n");
+        fwrite(STDOUT, "      Restaurer la base figée, c'est restaurer aussi sa clé figée, sous les mêmes noms.\n");
         break;
 
     default:
@@ -1107,7 +1187,8 @@ switch ($cmd) {
         fwrite(STDOUT, "  rotate-audit-key --nouvelle-cle <fichier>\n");
         fwrite(STDOUT, "                                 re-signe le journal sous une nouvelle clé, sans le casser\n");
         fwrite(STDOUT, "  reset-shell --confirm          coquille vide (passphrase perdue) : révoque les admins\n");
-        fwrite(STDOUT, "  reset-db --confirm             compromission : supprime TOUS les comptes et le secret SU\n\n");
+        fwrite(STDOUT, "  reset-db --confirm             compromission : supprime TOUS les comptes et le secret SU\n");
+        fwrite(STDOUT, "    … --forcer                   base perdue, ou clé que la base ne confirme plus : fige sans vérifier\n\n");
         fwrite(STDOUT, "`add-admin` est retiré : le premier admin passe par `first-admin`, les suivants par une demande.\n");
         fwrite(STDOUT, "État hors site servi : SELFRECOVER_STATE_DIR. Secret du journal : SELFRECOVER_SU_AUDIT_SECRET.\n");
         break;

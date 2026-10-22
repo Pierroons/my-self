@@ -33,6 +33,7 @@ if ($voirUsername !== null) {
         $stmt = $pdo->prepare('SELECT id FROM accounts WHERE username = ?');
         $stmt->execute([strtolower($vue['username'])]);
         $memberId = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
         $rep = Moderate::getReputation($pdo, $memberId);
         $repScore = $rep['reputation'];
         $repPct = (int) round($repScore / Moderate::config()->reputationMax * 100);
@@ -84,6 +85,7 @@ if ($voirUsername !== null) {
           <?php endif; ?>
         </div>
         <div class="card">
+          <?php if ($vue['illisible']): ?><p class="muted" style="margin-top:0"><?= h(t('prf.illisible.vue')) ?></p><?php endif; ?>
           <p style="margin-top:0"><strong>Bio</strong><br><?= h($p['bio']) ?: '<span class="muted">—</span>' ?></p>
           <p><strong>Localisation</strong><br><?= h($p['localisation']) ?: '<span class="muted">—</span>' ?></p>
           <p><strong>Lien</strong><br><?php
@@ -120,7 +122,9 @@ if (!$account) {
     header('Location: /login.php');
     exit;
 }
-$p = Profile::get($pdo, (int) $account['id']);
+$lu = Profile::lire($pdo, (int) $account['id']);
+$p = $lu['champs'];
+$profilIllisible = $lu['illisible'];
 $myId = (int) $account['id'];
 
 // Mon état de modération
@@ -156,6 +160,7 @@ $nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND
 $sPass = $pdo->prepare('SELECT pass_emise_le FROM accounts WHERE id = ?');
 $sPass->execute([$myId]);
 $passEmiseLe = $sPass->fetchColumn();
+$sPass->closeCursor();
 $passEmiseLe = ($passEmiseLe === false || $passEmiseLe === null) ? null : (int) $passEmiseLe;
 $passAgeJours = $passEmiseLe === null ? null : intdiv(max(0, time() - $passEmiseLe), 86400);
 
@@ -263,6 +268,10 @@ render_header(t('prf.title'), $account);
 <div class="card" style="max-width:560px">
   <div id="msg"></div>
   <?php if ($rep['banned']): ?><p class="muted" style="margin-top:0;color:#d96459"><?= h(sprintf(t('prf.edit.banni'), date('d/m/Y H:i', $rep['banned_until']))) ?></p><?php endif; ?>
+  <?php if ($profilIllisible): ?>
+    <p style="color:var(--danger)"><?= h(t('prf.illisible')) ?></p>
+    <label class="muted"><input type="checkbox" id="remplacer-illisible"> <?= h(t('prf.illisible.remplacer')) ?></label>
+  <?php endif; ?>
   <div class="field"><label>Bio</label><textarea id="bio" rows="3"<?= $gele ?>><?= h($p['bio']) ?></textarea></div>
   <div class="field"><label>Localisation</label><input id="localisation" value="<?= h($p['localisation']) ?>"<?= $gele ?>></div>
   <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>" placeholder="https://…"<?= $gele ?>></div>
@@ -313,10 +322,12 @@ render_header(t('prf.title'), $account);
 // la première à en avoir besoin échouait sur « PRF is not defined ».
 const PRF = <?= $prfJs ?>;
 function enregistrer(){
+  const casseIllisible = document.getElementById('remplacer-illisible');
   labPost('/api/profile_save.php',{
     bio:document.getElementById('bio').value,
     localisation:document.getElementById('localisation').value,
-    lien:document.getElementById('lien').value
+    lien:document.getElementById('lien').value,
+    remplacer_illisible: casseIllisible ? casseIllisible.checked : false
   }).then(d=>{
     document.getElementById('msg').innerHTML = d.ok
       ? '<div class="toast ok">'+PRF.saved+'</div>'

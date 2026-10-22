@@ -158,7 +158,7 @@ return [
     'profil chiffré at-rest' => 'profile encrypted at rest',
     'L\'attaquant exfiltre la base et lit les tables dm + profiles'
         => 'The attacker exfiltrates the database and reads the dm and profiles tables',
-    'il n\'obtient que des blobs SDG2. illisibles' => 'all they get are unreadable SDG2. blobs',
+    'il n\'obtient que des blobs illisibles, chacun scellé sous la ligne où il a été écrit' => 'all they get are unreadable blobs, each sealed to the row it was written in',
     'Dump SQL brut (ce que voit l\'attaquant)' => 'Raw SQL dump (what the attacker sees)',
     'Alice connectée (ce que conserve le propriétaire)' => 'Alice logged in (what the owner still holds)',
     'neutralisé' => 'neutralised',

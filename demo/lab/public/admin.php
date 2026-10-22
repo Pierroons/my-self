@@ -385,7 +385,10 @@ function voirProfil(id,btn){
     const memoLigne = d.profile.memo_e2e
       ? '🎯 mémo : 🔒 chiffré E2E — illisible même pour l\'admin (aucune clé côté serveur)'
       : '🎯 mémo : (pas de coffre E2E)';
-    box.innerHTML='<div class="reveal">'+memoLigne+'\nbio : '+(esc(p.bio)||'—')+'\nloc : '+(esc(p.localisation)||'—')+'\nlien : '+(esc(p.lien)||'—')+'</div>';
+    const illisible = d.profile.profil_illisible
+      ? '⚠️ profil illisible : il existe, mais le serveur ne sait pas l\'ouvrir — les champs ci-dessous sont vides pour cette raison\n'
+      : '';
+    box.innerHTML='<div class="reveal">'+illisible+memoLigne+'\nbio : '+(esc(p.bio)||'—')+'\nloc : '+(esc(p.localisation)||'—')+'\nlien : '+(esc(p.lien)||'—')+'</div>';
   });
 }
 function voirRapport(id,btn){

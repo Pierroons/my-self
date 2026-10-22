@@ -43,6 +43,9 @@ final class Redteam
 
     /**
      * Enregistre un rapport (corps chiffré). Retourne ['ok'=>bool, 'message'=>?, 'id'=>?].
+     *
+     * ⚠️ Le frein par adresse compte, puis écrit, sans verrou entre les deux : des dépôts
+     * simultanés d'une même adresse en font passer un peu plus que le plafond.
      */
     public static function submit(PDO $pdo, array $champs, ?string $ip): array
     {
@@ -87,7 +90,9 @@ final class Redteam
 
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM redteam_reports WHERE ip_hash = ? AND created_at >= ?');
         $stmt->execute([$ipHash, $since]);
-        if ((int) $stmt->fetchColumn() >= self::RL_MAX) {
+        $recents = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($recents >= self::RL_MAX) {
             return ['ok' => false, 'message' => tc('Trop de soumissions récentes. Réessaie dans une heure.')];
         }
 
@@ -106,7 +111,7 @@ final class Redteam
         // condition de succès : un canal muet ne doit pas perdre un rapport.
         Notify::nouveauRapport($id, $severity);
 
-        return ['ok' => true, 'id' => $id, 'suivi' => self::jetonSuivi($id)];
+        return ['ok' => true, 'id' => $id, 'suivi' => self::jetonSuivi($id, DataGuard::graine($pdo, 'redteam_reports', $id))];
     }
 
     /**
@@ -116,10 +121,17 @@ final class Redteam
      * une colonne a voler. Et il est indispensable — sans lui, /api/report_status
      * laisserait enumerer les rapports des autres en comptant de 1 a n.
      */
-    public static function jetonSuivi(int $id): string
+    public static function jetonSuivi(int $id, string $graine): string
     {
-        return substr(DataGuard::hmac((string) $id, 'report-track'), 0, 32);
+        // Le numéro de la base avec celui du rapport : recréée, la base repart de 1, et
+        // le jeton du rapport n° 1 d'une saison ouvrait le suivi du n° 1 de la suivante.
+        // Et la graine du rapport : restaurée d'une sauvegarde, la base rend son numéro au
+        // rapport suivant, et le jeton d'un rapport perdu ouvrait le suivi de celui-là.
+        return substr(DataGuard::hmac(Db::generation() . ':' . $id . ':' . $graine, 'report-track'), 0, 32);
     }
+
+    /** La graine d'un rapport inconnu : le jeton se calcule aussi, pour que la durée ne dise rien. */
+    private const GRAINE_ABSENTE = '00000000000000000000000000000000';
 
     /**
      * L'etat d'un rapport, pour celui qui tient son jeton.
@@ -131,16 +143,33 @@ final class Redteam
      */
     public static function etat(PDO $pdo, int $id, string $jeton): array
     {
-        if ($id <= 0 || !hash_equals(self::jetonSuivi($id), trim($jeton))) {
-            // Un numero inconnu et un jeton faux rendent le meme refus : sinon
-            // la difference dirait combien de rapports ont ete deposes.
-            return ['ok' => false, 'message' => tc('Numero ou jeton de suivi invalide.')];
-        }
+        // Un numero inconnu et un jeton faux rendent le meme refus : sinon la
+        // difference dirait combien de rapports ont ete deposes. Tout se calcule donc
+        // dans les deux cas, pour que la duree ne le dise pas non plus : une branche qui
+        // n'interrogeait la base que pour un numero connu la faisait durer 4 µs de plus, et
+        // une lecture restee ouverte sur le rapport trouve epargnait 2 µs a la requete
+        // suivante — d'ou le curseur ferme avant le calcul. ⚠️ Il reste l'ecart d'une recherche qui trouve sa
+        // ligne ou non, moins d'une microseconde mesuree : la derivation Argon2id que chaque
+        // requete paie ici varie de plusieurs millisecondes.
+        $numero  = max(1, $id);
+        $jeton   = trim($jeton);
+        $neeLe   = Db::generationNeeLe();
+        // Un rapport deposé avant le numero de base a recu un jeton sans lui : il reste
+        // valable pour tout rapport d'avant le numero, et pour aucun de ceux qui suivent.
+        // ⚠️ Y compris le rapport de meme numero d'une base passee sous la meme cle : c'est
+        // la collision que le numero ferme pour la suite, et que ce chemin garde pour le passe.
+        $ancien  = hash_equals(substr(DataGuard::hmac((string) $numero, 'report-track'), 0, 32), $jeton);
 
-        $stmt = $pdo->prepare('SELECT severity, status, created_at FROM redteam_reports WHERE id = ?');
-        $stmt->execute([$id]);
+        $stmt = $pdo->prepare('SELECT severity, status, created_at, graine FROM redteam_reports WHERE id = ?');
+        $stmt->execute([max(0, $id)]);
         $r = $stmt->fetch();
-        if (!$r) {
+        $stmt->closeCursor();
+        // La graine se lit avec le rapport ; un numéro inconnu calcule le même jeton sur une
+        // graine factice, et les deux chemins paient le même calcul.
+        $graine  = $r !== false && is_string($r['graine']) ? $r['graine'] : self::GRAINE_ABSENTE;
+        $courant = hash_equals(self::jetonSuivi($numero, $graine), $jeton);
+        $avant = $r !== false && (int) $r['created_at'] < $neeLe;
+        if ($id <= 0 || $r === false || !($courant || ($ancien && $avant))) {
             return ['ok' => false, 'message' => tc('Numero ou jeton de suivi invalide.')];
         }
 
