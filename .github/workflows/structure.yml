@@ -1771,8 +1771,8 @@ jobs:
           # rougit, y compris le chemin normal. C'est le contexte qui doit cesser de
           # distinguer, pas une de ses deux faces.
           canari demo/lab/lib/dataguard.php \
-            "return Aad::of('dm', Db::generation(), (string) \$expediteur, (string) \$destinataire);" \
-            "return Aad::of('dm-fixe'); // canari" \
+            "            'dm'," \
+            "            'dm-fixe'); return Aad::of('dm', // canari" \
             demo/lab/tests/sanity_dataguard.php \
             "✗ ⭐ le blob d'un message privé entre deux autres comptes"
 
@@ -1842,7 +1842,7 @@ jobs:
           # 19. Un fichier vide passe pour une base existante : le schéma s'y pose sous la clé
           #     de la base qu'il remplace.
           canari demo/lab/lib/db.php \
-            '            $neuve = $tables === [];' \
+            '            $neuve = !self::estBaseDuLab($tables);' \
             '            $neuve = !file_exists($chemin); // canari' \
             demo/lab/tests/sanity_dataguard.php \
             "✗ ⭐ une base vidée à zéro octet sous une clé qui a servi n'est pas remplie"
