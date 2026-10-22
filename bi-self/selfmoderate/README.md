@@ -174,9 +174,9 @@ the measurement retaken, the code restored. One of them measured nothing at its
 first mutation — it computed its expectation from the very constant it watched,
 and drifted along with it; it now reads a literal value. The five reason rules are exercised **separately**,
 each case breaking only one: otherwise defence in depth catches the hole, the
-check stays green, and nobody knows which rule still measures anything. They
-still live on the lab side because they need a database schema; they will move
-to `tests/` once the module carries one.
+check stays green, and nobody knows which rule still measures anything. The
+engine bench still lives on the lab side because it needs a database schema; it
+will move to `tests/` once the module carries one.
 
 ## License
 

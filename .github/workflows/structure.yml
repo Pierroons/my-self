@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 101/101 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 101 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 102/102 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 102 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2498,20 +2498,23 @@ jobs:
         run: |
           # @plante
           # Trois promesses sans chiffre : la détection lit le contenu des
-          # messages privés ; les motifs sortent dans leur ordre d'arrivée ; ils
-          # sont datés au mois. Chacune retirée tour à tour, le banc doit rougir
-          # sur son cas.
+          # messages privés, nommé ou par `SELECT *` ; les motifs sortent dans leur
+          # ordre d'arrivée ; ils sont datés au mois, ou portent leur horodatage
+          # sous un autre nom. Chaque défaut planté tour à tour, le banc doit
+          # rougir sur son cas.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in contenu ordre mois; do
+          for cas in contenu tout ordre mois horodatage; do
             cp "$M" /tmp/moderate.promesse.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'contenu': ('SELECT DISTINCT sender_id, recipient_id FROM dm', 'SELECT DISTINCT sender_id, recipient_id, ciphertext FROM dm'),
-              'ordre':   ('ORDER BY jour DESC, reason ASC', 'ORDER BY created_at DESC'),
-              'mois':    ("strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour", "strftime('%Y-%m', created_at, 'unixepoch') AS jour"),
+              'contenu':    ('SELECT DISTINCT sender_id, recipient_id FROM dm', 'SELECT DISTINCT sender_id, recipient_id, ciphertext FROM dm'),
+              'tout':       ('SELECT DISTINCT sender_id, recipient_id FROM dm', 'SELECT DISTINCT * FROM dm'),
+              'ordre':      ('ORDER BY jour DESC, reason ASC', 'ORDER BY created_at DESC'),
+              'mois':       ("strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour", "strftime('%Y-%m', created_at, 'unixepoch') AS jour"),
+              'horodatage': ("strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour", "strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour, created_at AS ts"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -2526,10 +2529,59 @@ jobs:
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              contenu) attendu='✗ la détection lit le contenu des messages privés' ;;
-              *)       attendu='✗ motifs mal datés ou rangés dans leur ordre d.arrivée' ;;
+              contenu|tout) attendu='✗ la détection lit le contenu des messages privés' ;;
+              *)            attendu='✗ motifs mal datés ou rangés dans leur ordre d.arrivée' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate compte une fenêtre dans la mauvaise unité, ou avance l'horloge de convalescence d'un autre pas
+        run: |
+          # @plante
+          # Des défauts qu'un seuil lu au bon endroit laisse passer : une fenêtre
+          # en jours comptée en heures — pour l'échange qui lie une meute, pour
+          # ses votes, pour le farming — et l'horloge de convalescence avancée au
+          # pas de la démonstration plutôt qu'à celui de la config. Le banc vise
+          # chaque fenêtre des deux côtés de sa borne, et doit rougir sur son cas.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in lien votes farming horloge; do
+            cp "$M" /tmp/moderate.unite.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          cas = os.environ['CAS']
+          avant, apres, n = {
+              'lien':    ('[time() - self::config()->fenetreMeuteJours * 86400], $voters, $voters',
+                          '[time() - self::config()->fenetreMeuteJours * 3600], $voters, $voters', 1),
+              'votes':   ('$sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 86400;',
+                          '$sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 3600;', 1),
+              'farming': ('time() - self::config()->fenetreFarmingJours * 86400',
+                          'time() - self::config()->fenetreFarmingJours * 3600', 3),
+              'horloge': ('$last + $gagnes * self::config()->intervalleConvalescenceSecondes',
+                          '$last + $gagnes * Config::demo()->intervalleConvalescenceSecondes', 1),
+          }[cas]
+          assert s.count(avant) == n, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.unite.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.unite.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.unite.intact "$M"
+            cmp -s /tmp/moderate.unite.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              lien)    attendu='✗ seuil sourd à la config (fenetreMeuteJours) : lien' ;;
+              votes)   attendu='✗ seuil sourd à la config (fenetreMeuteJours) : votes' ;;
+              farming) attendu='✗ seuil sourd à la config (fenetreFarmingJours)' ;;
+              horloge) attendu='✗ convalescence sourde à la config' ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -2592,54 +2644,61 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 29/29 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 29 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 41/41 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 41 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
           # @plante
-          # Chaque valeur que le README annonce est changée dans une copie de
-          # `Config`, une à la fois : le banc des promesses doit rougir sur CE
-          # champ, et dans le bon jeu. Les seuils dont le README ne donne pas la
-          # valeur n'y figurent pas — le banc les déclare non promis.
+          # Dans une copie du module, une chose à la fois. Chaque valeur que le
+          # README annonce est changée dans `Config` : le banc des promesses doit
+          # rougir sur CE champ, et dans le bon jeu. Puis deux retouches du README :
+          # un qualificatif ajouté après une valeur, et un chiffre glissé dans la
+          # phrase d'un champ déclaré non promis.
           for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
                      meuteLiensMin meuteVotantsMax meuteEpisodeCooldown fenetreFarmingJours \
                      farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
                      ageMinPourVoterSecondes dureesBan plancherFraction \
-                     prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan; do
+                     prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
+                     readme:qualificatif readme:sans-chiffre; do
             PLANTE=$(mktemp -d)
-            cp -r bi-self/selfmoderate/src "$PLANTE/src"
+            cp -r bi-self/selfmoderate "$PLANTE/m"
             CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
           import os, pathlib, re
-          p = pathlib.Path(os.environ['PLANTE']) / 'src/Config.php'
-          t = p.read_text(encoding='utf-8')
+          m = pathlib.Path(os.environ['PLANTE']) / 'm'
           cas = os.environ['CAS']
+          fichier = m / ('README.fr.md' if cas.startswith('readme:') else 'src/Config.php')
+          t = fichier.read_text(encoding='utf-8')
           speciaux = {
               'dureesBan':                    ('$dureesBan = [120, 600, 1800]', '$dureesBan = [120, 600, 3600]'),
               'plancherFraction':             ('$plancherFraction = 1 / 3', '$plancherFraction = 1 / 2'),
               'prod:fenetreSalveSecondes':    ('fenetreSalveSecondes: 300,', 'fenetreSalveSecondes: 600,'),
               'prod:ageMinPourVoterSecondes': ('ageMinPourVoterSecondes: 86400,', 'ageMinPourVoterSecondes: 3600,'),
               'prod:dureesBan':               ('dureesBan: [86400, 604800, 2592000]', 'dureesBan: [86400, 604800, 1296000]'),
+              'readme:qualificatif':          ('Score plafonné à **30** (`Config`)', 'Score plafonné à **30** en démonstration, **50** en service (`Config`)'),
+              'readme:sans-chiffre':          ('la remontée passive en rend un par intervalle de calme', 'la remontée passive en rend un par jour de calme'),
           }
           if cas in speciaux:
               avant, apres = speciaux[cas]
           else:
-              m = re.search(r'public readonly int \$' + cas + r' = (\d+),', t)
-              assert m, "la plantation n'a pas pris — ce canari ne prouve rien"
-              avant, apres = m.group(0), m.group(0)[:-len(m.group(1)) - 1] + str(int(m.group(1)) + 1) + ','
+              r = re.search(r'public readonly int \$' + cas + r' = (\d+),', t)
+              assert r, "la plantation n'a pas pris — ce canari ne prouve rien"
+              avant, apres = r.group(0), r.group(0)[:-len(r.group(1)) - 1] + str(int(r.group(1)) + 1) + ','
           assert t.count(avant) == 1, "la plantation n'a pas pris — ce canari ne prouve rien"
-          p.write_text(t.replace(avant, apres), encoding='utf-8')
+          fichier.write_text(t.replace(avant, apres), encoding='utf-8')
           PY
-            if sortie=$(SM_SRC="$PLANTE/src" php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1); then
+            if sortie=$(php "$PLANTE/m/tests/sanity_promesses.php" 2>&1); then
               echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
             fi
             if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              prod:*)    attendu="✗ ${cas#prod:} (prod)" ;;
-              dureesBan) attendu='✗ dureesBan (demo)' ;;
-              *)         attendu="✗ $cas (" ;;
+              prod:*)              attendu="✗ ${cas#prod:} (prod)" ;;
+              dureesBan)           attendu='✗ dureesBan (demo)' ;;
+              readme:qualificatif) attendu='✗ README.fr.md : la phrase porteuse est introuvable' ;;
+              readme:sans-chiffre) attendu='✗ intervalleConvalescenceSecondes (non promis)' ;;
+              *)                   attendu="✗ $cas (" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

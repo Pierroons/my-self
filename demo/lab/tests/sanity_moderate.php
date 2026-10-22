@@ -403,17 +403,18 @@ $bloques10 = (int) $pdo->query(
     : nok('lien reconnu à sens unique : bloqués=' . $bloques10 . ' rep=' . reputation($pdo, $viseSolo));
 
 // ── 10bis. La détection ne lit jamais le contenu des messages privés ────────
-// Une table temporaire du même nom masque la vraie le temps du cas, et ne porte
-// que l'expéditeur, le destinataire et la date : un moteur qui lirait le contenu
-// échouerait sur la colonne absente au lieu de reconnaître la meute.
+// Une vue du même nom masque la vraie table le temps du cas. Elle rend
+// l'expéditeur, le destinataire et la date ; son contenu lève une erreur dès
+// qu'une requête le lit — nommé, filtré ou par `SELECT *`.
 $viseSansContenu = membre($pdo, 'vise-sans-contenu');
 poserReputation($pdo, $viseSansContenu, 20);
 $lieA = membre($pdo, 'lie-sans-contenu-a');
 $lieB = membre($pdo, 'lie-sans-contenu-b');
-$pdo->exec('CREATE TEMP TABLE dm (id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL, recipient_id INTEGER NOT NULL, created_at INTEGER NOT NULL)');
+$pdo->exec('CREATE TEMP TABLE dm_echanges (id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL, recipient_id INTEGER NOT NULL, created_at INTEGER NOT NULL)');
+$pdo->exec("CREATE TEMP VIEW dm AS SELECT id, sender_id, recipient_id, created_at, json('contenu illisible') AS ciphertext FROM dm_echanges");
 try {
     foreach ([[$lieA, $lieB], [$lieB, $lieA]] as [$de, $vers]) {
-        $pdo->prepare('INSERT INTO temp.dm (sender_id, recipient_id, created_at) VALUES (?, ?, ?)')
+        $pdo->prepare('INSERT INTO temp.dm_echanges (sender_id, recipient_id, created_at) VALUES (?, ?, ?)')
             ->execute([$de, $vers, time() - 3600]);
     }
     Moderate::applyVote($pdo, $lieA, 'member', $viseSansContenu, -1, motif(), 'agressif');
@@ -422,7 +423,8 @@ try {
 } catch (Throwable $t) {
     $sansContenu = $t->getMessage();
 } finally {
-    $pdo->exec('DROP TABLE IF EXISTS temp.dm');
+    $pdo->exec('DROP VIEW IF EXISTS temp.dm');
+    $pdo->exec('DROP TABLE IF EXISTS temp.dm_echanges');
 }
 $sansContenu === 'bloqués=1'
     ? ok('la meute se reconnaît sur des messages privés réduits à qui, à qui et quand')
@@ -638,11 +640,14 @@ foreach ($poses as $k => $texte) {
     )->execute([membre($pdo, "date-motif-$k"), 'post', $postDate, $recoit, $texte, 'hors_sujet', $midi + 60 * $k]);
 }
 $datesRecues = Moderate::reasonsFor($pdo, $recoit);
+$colonnesRecues = $datesRecues ? array_keys($datesRecues[0]) : [];
+sort($colonnesRecues);
 array_column($datesRecues, 'reason') === [$poses[1], $poses[0], $poses[2]]
     && array_unique(array_column($datesRecues, 'jour')) === [gmdate('Y-m-d', $midi)]
-    ? ok('les motifs d\'un même jour sortent datés au jour, dans l\'ordre alphabétique et non d\'arrivée')
-    : nok('motifs mal datés ou rangés dans leur ordre d\'arrivée : ' . json_encode(array_map(
-        static fn (array $m): array => [$m['jour'], mb_substr($m['reason'], 0, 1)], $datesRecues), JSON_UNESCAPED_UNICODE));
+    && $colonnesRecues === ['jour', 'reason', 'reason_code', 'value']
+    ? ok('les motifs d\'un même jour sortent datés au jour et rien de plus fin, dans l\'ordre alphabétique et non d\'arrivée')
+    : nok('motifs mal datés ou rangés dans leur ordre d\'arrivée : ' . json_encode([array_map(
+        static fn (array $m): array => [$m['jour'], mb_substr($m['reason'], 0, 1)], $datesRecues), $colonnesRecues], JSON_UNESCAPED_UNICODE));
 
 // ── 17. Premier épisode : le groupe pèse un membre seul, et personne ne paie ─
 // Le lien par message privé ne distingue ni deux amis de bonne foi, ni un lien
@@ -847,19 +852,47 @@ Moderate::setConfig(null);
     ? ok('l\'anti-Sybil suit la config et dit l\'attente restante : « ' . $attente . ' »')
     : nok('anti-Sybil sourd à la config : refus=' . var_export(!$refuse, true) . ' « ' . $attente . ' » démo=' . var_export($accepteEnDemo, true));
 
+// Les points rendus ET l'horloge qui les compte : avancée d'un autre pas que
+// l'intervalle, elle rendrait les points suivants plus tôt ou plus tard.
 $lent = membre($pdo, 'convalescent-config');
 poserReputation($pdo, $lent, 2);
+$departRegen = time() - 600;
 $pdo->prepare('UPDATE member_moderation SET convalescent = 1, last_regen_at = ? WHERE account_id = ?')
-    ->execute([time() - 600, $lent]);
+    ->execute([$departRegen, $lent]);
 Moderate::setConfig(new Config(intervalleConvalescenceSecondes: 60));
 $remonte = reputation($pdo, $lent);
 Moderate::setConfig(null);
-$remonte === 12
-    ? ok('la convalescence suit l\'intervalle de la config (+10 en 10 intervalles)')
-    : nok('convalescence sourde à la config : ' . $remonte . ' au lieu de 12');
+$horlogeRegen = (int) etatBan($pdo, $lent)['last_regen_at'] - $departRegen;
+$remonte === 12 && $horlogeRegen === 600
+    ? ok('la convalescence suit l\'intervalle de la config : +10 en 10 intervalles, horloge avancée d\'autant')
+    : nok('convalescence sourde à la config : ' . $remonte . ' au lieu de 12, horloge avancée de ' . $horlogeRegen . ' s au lieu de 600');
 
 // Chaque seuil, réglé autrement que par défaut, et sa borne visée à la valeur
-// réglée : un moteur qui lirait ailleurs garderait la borne par défaut.
+// réglée — des deux côtés pour une fenêtre de temps, où une unité fausse
+// passerait d'un seul côté. Un moteur dont aucun lecteur ne suit la config
+// garderait la borne par défaut ; un seuil lu à plusieurs endroits est gardé
+// dans son ensemble, pas lecteur par lecteur.
+//
+// Le balayage passe en premier : sa tranche neuve rejuge tout le site sous les
+// autres seuils par défaut, et rejugerait les cas qui suivent.
+$tranchesAvant = $pdo->query('SELECT slot FROM mod_sweeps')->fetchAll(PDO::FETCH_COLUMN);
+$pdo->exec('DELETE FROM mod_sweeps');
+try {
+    $balaye = sousConfig(new Config(balayagePeriodeSecondes: 7), static function () use ($pdo): array {
+        $avantVote = intdiv(time(), 7);
+        Moderate::applyVote($pdo, membre($pdo, 'balaie-config'), 'member', membre($pdo, 'balayee-config'), -1, motif(), 'agressif');
+        return [$avantVote, (int) $pdo->query('SELECT MAX(slot) FROM mod_sweeps')->fetchColumn(), intdiv(time(), 7)];
+    });
+} finally {
+    $pdo->exec('DELETE FROM mod_sweeps');
+    foreach ($tranchesAvant as $slot) {
+        $pdo->prepare('INSERT INTO mod_sweeps (slot) VALUES (?)')->execute([$slot]);
+    }
+}
+$balaye[1] >= $balaye[0] && $balaye[1] <= $balaye[2]
+    ? ok('la tranche de balayage se découpe selon la période de la config')
+    : nok('seuil sourd à la config (balayagePeriodeSecondes) : tranche ' . $balaye[1] . ' hors de ' . $balaye[0] . '…' . $balaye[2]);
+
 $neuf = sousConfig(new Config(reputationInitiale: 13), static fn (): int => reputation($pdo, membre($pdo, 'neuf-config')));
 $neuf === 13
     ? ok('un compte neuf démarre à la réputation de la config')
@@ -896,19 +929,23 @@ $auPlancher['reputation'] === 3 && $auPlancher['review_reason'] === 'reputation_
     ? ok('la réputation s\'arrête au plancher de la config, et le signalement y tombe')
     : nok('seuil sourd à la config (banA) : ' . json_encode($auPlancher));
 
-$salveLente = membre($pdo, 'salve-lente-config');
-$etatSalveLente = sousConfig(new Config(fenetreSalveSecondes: 600), static function () use ($pdo, $salveLente): array {
-    $premiers = [membre($pdo, 'salve-lente-a'), membre($pdo, 'salve-lente-b')];
-    foreach ($premiers as $v) {
-        Moderate::applyVote($pdo, $v, 'member', $salveLente, -1, motif(), 'agressif');
+// Trois votes, les deux premiers 570 ou 630 secondes avant le troisième.
+$salveFenetre = sousConfig(new Config(fenetreSalveSecondes: 600), static function () use ($pdo): array {
+    $raisons = [];
+    foreach (['dedans' => 570, 'dehors' => 630] as $cote => $ecart) {
+        $cible = membre($pdo, "salve-$cote-config");
+        foreach ([membre($pdo, "salve-$cote-a"), membre($pdo, "salve-$cote-b")] as $v) {
+            Moderate::applyVote($pdo, $v, 'member', $cible, -1, motif(), 'agressif');
+        }
+        $pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - $ecart) . ' WHERE target_author = ' . $cible);
+        Moderate::applyVote($pdo, membre($pdo, "salve-$cote-c"), 'member', $cible, -1, motif(), 'agressif');
+        $raisons[$cote] = Moderate::getReputation($pdo, $cible)['review_reason'];
     }
-    $pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - 300) . ' WHERE target_author = ' . $salveLente);
-    Moderate::applyVote($pdo, membre($pdo, 'salve-lente-c'), 'member', $salveLente, -1, motif(), 'agressif');
-    return Moderate::getReputation($pdo, $salveLente);
+    return $raisons;
 });
-$etatSalveLente['review_reason'] === 'salve_rapide'
-    ? ok('la salve se mesure sur la fenêtre de la config : trois votes en cinq minutes font une salve')
-    : nok('seuil sourd à la config (fenetreSalveSecondes) : ' . json_encode($etatSalveLente['review_reason']));
+$salveFenetre === ['dedans' => 'salve_rapide', 'dehors' => null]
+    ? ok('la salve se mesure sur la fenêtre de la config, des deux côtés de la borne')
+    : nok('seuil sourd à la config (fenetreSalveSecondes) : ' . json_encode($salveFenetre));
 
 $salveCourte = membre($pdo, 'salve-courte-config');
 $etatSalveCourte = sousConfig(new Config(salveVotantsMin: 2), static function () use ($pdo, $salveCourte): array {
@@ -921,20 +958,44 @@ $etatSalveCourte['review_reason'] === 'salve_rapide'
     ? ok('la salve compte ses votants selon la config : deux suffisent quand elle le dit')
     : nok('seuil sourd à la config (salveVotantsMin) : ' . json_encode($etatSalveCourte['review_reason']));
 
-$lienAncien = membre($pdo, 'lien-ancien-config');
-$bloquesAncien = sousConfig(new Config(fenetreMeuteJours: 3), static function () use ($pdo, $lienAncien): int {
-    [$x, $y] = [membre($pdo, 'lien-ancien-a'), membre($pdo, 'lien-ancien-b')];
-    foreach ([[$x, $y], [$y, $x]] as [$de, $vers]) {
-        $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)')
-            ->execute([$de, $vers, 'chiffre', time() - 5 * 86400]);
+// La fenêtre de meute borne deux choses : l'âge de l'échange qui lie, et l'âge
+// des votes que la détection rapproche. Une heure de part et d'autre de trois jours.
+$cotesMeute = ['dedans' => 3 * 86400 - 3600, 'dehors' => 3 * 86400 + 3600];
+$lienFenetre = sousConfig(new Config(fenetreMeuteJours: 3), static function () use ($pdo, $cotesMeute): array {
+    $bloques = [];
+    foreach ($cotesMeute as $cote => $age) {
+        $cible = membre($pdo, "lien-$cote-config");
+        [$x, $y] = [membre($pdo, "lien-$cote-a"), membre($pdo, "lien-$cote-b")];
+        foreach ([[$x, $y], [$y, $x]] as [$de, $vers]) {
+            $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)')
+                ->execute([$de, $vers, 'chiffre', time() - $age]);
+        }
+        Moderate::applyVote($pdo, $x, 'member', $cible, -1, motif(), 'agressif');
+        Moderate::applyVote($pdo, $y, 'member', $cible, -1, motif(), 'agressif');
+        $bloques[$cote] = bloquesMeute($pdo, $cible);
     }
-    Moderate::applyVote($pdo, $x, 'member', $lienAncien, -1, motif(), 'agressif');
-    Moderate::applyVote($pdo, $y, 'member', $lienAncien, -1, motif(), 'agressif');
-    return bloquesMeute($pdo, $lienAncien);
+    return $bloques;
 });
-$bloquesAncien === 0
-    ? ok('un échange plus vieux que la fenêtre de meute de la config ne lie plus deux votants')
-    : nok("seuil sourd à la config (fenetreMeuteJours) : $bloquesAncien vote(s) annulé(s) au lieu de 0");
+$lienFenetre === ['dedans' => 1, 'dehors' => 0]
+    ? ok('un échange lie deux votants tant qu\'il tient dans la fenêtre de meute de la config')
+    : nok('seuil sourd à la config (fenetreMeuteJours) : lien ' . json_encode($lienFenetre));
+
+$votesFenetre = sousConfig(new Config(fenetreMeuteJours: 3), static function () use ($pdo, $cotesMeute): array {
+    $bloques = [];
+    foreach ($cotesMeute as $cote => $age) {
+        $cible = membre($pdo, "votes-$cote-config");
+        [$x, $y] = [membre($pdo, "votes-$cote-a"), membre($pdo, "votes-$cote-b")];
+        echangePrive($pdo, $x, $y);
+        Moderate::applyVote($pdo, $x, 'member', $cible, -1, motif(), 'agressif');
+        $pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - $age) . ' WHERE voter_id = ' . $x . ' AND target_author = ' . $cible);
+        Moderate::applyVote($pdo, $y, 'member', $cible, -1, motif(), 'agressif');
+        $bloques[$cote] = bloquesMeute($pdo, $cible);
+    }
+    return $bloques;
+});
+$votesFenetre === ['dedans' => 1, 'dehors' => 0]
+    ? ok('la détection ne rapproche que les votes que la fenêtre de meute de la config contient')
+    : nok('seuil sourd à la config (fenetreMeuteJours) : votes ' . json_encode($votesFenetre));
 
 $duoSeul = membre($pdo, 'duo-seul-config');
 $bloquesDuo = sousConfig(new Config(meuteLiensMin: 3), static function () use ($pdo, $duoSeul): int {
@@ -948,44 +1009,40 @@ $bloquesDuo === 0
     ? ok('la taille minimale d\'une meute suit la config : un duo n\'en est plus une à trois')
     : nok("seuil sourd à la config (meuteLiensMin) : $bloquesDuo vote(s) annulé(s) au lieu de 0");
 
-$tranchesAvant = $pdo->query('SELECT slot FROM mod_sweeps')->fetchAll(PDO::FETCH_COLUMN);
-$pdo->exec('DELETE FROM mod_sweeps');
-$balaye = sousConfig(new Config(balayagePeriodeSecondes: 7), static function () use ($pdo): array {
-    $avantVote = intdiv(time(), 7);
-    Moderate::applyVote($pdo, membre($pdo, 'balaie-config'), 'member', membre($pdo, 'balayee-config'), -1, motif(), 'agressif');
-    return [$avantVote, (int) $pdo->query('SELECT MAX(slot) FROM mod_sweeps')->fetchColumn(), intdiv(time(), 7)];
-});
-$pdo->exec('DELETE FROM mod_sweeps');
-foreach ($tranchesAvant as $slot) {
-    $pdo->prepare('INSERT INTO mod_sweeps (slot) VALUES (?)')->execute([$slot]);
-}
-$balaye[1] >= $balaye[0] && $balaye[1] <= $balaye[2]
-    ? ok('la tranche de balayage se découpe selon la période de la config')
-    : nok('seuil sourd à la config (balayagePeriodeSecondes) : tranche ' . $balaye[1] . ' hors de ' . $balaye[0] . '…' . $balaye[2]);
-
-[$recidA, $recidB] = [membre($pdo, 'recidive-config-a'), membre($pdo, 'recidive-config-b')];
-$rangRecidive = sousConfig(new Config(meuteEpisodeCooldown: 3600), static function () use ($pdo, $recidA, $recidB): int {
-    episodeMeute($pdo, [$recidA, $recidB], 'recidive-config-1');
-    vieillirSanctions($pdo, [$recidA, $recidB], 7200);
-    episodeMeute($pdo, [$recidA, $recidB], 'recidive-config-2');
-    return Moderate::rangDe($pdo, $recidA);
-});
-$rangRecidive === 2
-    ? ok('un épisode de meute dure ce que dit la config : deux heures après, le rang monte')
-    : nok("seuil sourd à la config (meuteEpisodeCooldown) : rang $rangRecidive au lieu de 2");
-
-$fidele = membre($pdo, 'fidele-config');
-$pouceDeRetour = sousConfig(new Config(fenetreFarmingJours: 7), static function () use ($pdo, $fidele): array {
-    $fan = membre($pdo, 'fan-config');
-    for ($k = 1; $k <= Moderate::config()->farmingUpvotesMax; $k++) {
-        Moderate::applyVote($pdo, $fan, 'post', message($pdo, $fidele, "fil-fidele-$k"), 1);
+// Le second épisode, une minute avant ou après la fin d'un épisode d'une heure.
+$rangsRecidive = sousConfig(new Config(meuteEpisodeCooldown: 3600), static function () use ($pdo): array {
+    $rangs = [];
+    foreach (['dedans' => 3540, 'dehors' => 3660] as $cote => $recul) {
+        $duo = [membre($pdo, "recidive-$cote-a"), membre($pdo, "recidive-$cote-b")];
+        episodeMeute($pdo, $duo, "recidive-$cote-1");
+        vieillirSanctions($pdo, $duo, $recul);
+        episodeMeute($pdo, $duo, "recidive-$cote-2");
+        $rangs[$cote] = Moderate::rangDe($pdo, $duo[0]);
     }
-    $pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - 10 * 86400) . ' WHERE voter_id = ' . $fan);
-    return Moderate::applyVote($pdo, $fan, 'post', message($pdo, $fidele, 'fil-fidele-retour'), 1);
+    return $rangs;
 });
-($pouceDeRetour['ok'] ?? false) && empty($pouceDeRetour['blocked'])
-    ? ok('la fenêtre du farming suit la config : des pouces vieux de dix jours ne comptent plus sur sept')
-    : nok('seuil sourd à la config (fenetreFarmingJours) : ' . json_encode($pouceDeRetour));
+$rangsRecidive === ['dedans' => 1, 'dehors' => 2]
+    ? ok('un épisode de meute dure ce que dit la config : le rang monte après, pas avant')
+    : nok('seuil sourd à la config (meuteEpisodeCooldown) : rangs ' . json_encode($rangsRecidive));
+
+// Les pouces déjà donnés, une heure de part et d'autre de sept jours.
+$farmingFenetre = sousConfig(new Config(fenetreFarmingJours: 7), static function () use ($pdo): array {
+    $bloque = [];
+    foreach (['dedans' => 7 * 86400 - 3600, 'dehors' => 7 * 86400 + 3600] as $cote => $age) {
+        $fidele = membre($pdo, "fidele-$cote-config");
+        $fan = membre($pdo, "fan-$cote-config");
+        for ($k = 1; $k <= Moderate::config()->farmingUpvotesMax; $k++) {
+            Moderate::applyVote($pdo, $fan, 'post', message($pdo, $fidele, "fil-fidele-$cote-$k"), 1);
+        }
+        $pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - $age) . ' WHERE voter_id = ' . $fan);
+        $r = Moderate::applyVote($pdo, $fan, 'post', message($pdo, $fidele, "fil-fidele-$cote-retour"), 1);
+        $bloque[$cote] = !empty($r['blocked']);
+    }
+    return $bloque;
+});
+$farmingFenetre === ['dedans' => true, 'dehors' => false]
+    ? ok('la fenêtre du farming suit la config, des deux côtés de la borne')
+    : nok('seuil sourd à la config (fenetreFarmingJours) : bloqué ' . json_encode($farmingFenetre));
 
 $choye = membre($pdo, 'choye-config');
 $repChoye = sousConfig(new Config(farmingUpvotesMax: 1), static function () use ($pdo, $choye): int {

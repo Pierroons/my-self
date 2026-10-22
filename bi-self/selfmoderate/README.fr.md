@@ -176,8 +176,8 @@ il calculait son attendu depuis la constante qu'il surveillait, et se décalait
 donc avec elle ; il lit maintenant une valeur en clair. Les cinq règles du motif sont éprouvées **séparément**, chaque
 cas n'en violant qu'une : sinon la défense en profondeur rattrape le trou, le
 contrôle reste vert, et on ne sait plus laquelle mesure encore quelque chose.
-Ils vivent encore côté lab parce qu'ils ont besoin d'un schéma de base ; ils
-rejoindront `tests/` quand le module portera le sien.
+Le banc du moteur vit encore côté lab parce qu'il a besoin d'un schéma de base ; il
+rejoindra `tests/` quand le module portera le sien.
 
 ## Licence
 
