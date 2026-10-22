@@ -72,12 +72,29 @@ final class Db
         return $morceaux === [] ? null : implode(', ', $morceaux);
     }
 
-    /** @return list<string> les tables de la base, lues sans l'ouvrir pour écrire ; aucune si elle est absente */
+    /**
+     * Une base est celle du lab si elle porte la table des comptes — pas parce qu'elle a des tables.
+     *
+     * @param list<string>|null $tables celles qu'on a déjà lues, ou `null` pour les lire
+     */
+    public static function estBaseDuLab(?array $tables = null): bool
+    {
+        return in_array('accounts', $tables ?? self::tables(), true);
+    }
+
+    /**
+     * @return list<string> les tables de la base, lues sans l'ouvrir pour écrire ; aucune si elle est
+     *                      absente. Les tables internes de SQLite n'en sont pas : `sqlite_sequence`
+     *                      survit à la suppression de toutes les autres, et une base vidée ainsi
+     *                      passait pour une base existante.
+     */
     public static function tables(): array
     {
         $pdo = self::lectureSeule();
 
-        return $pdo === null ? [] : $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(PDO::FETCH_COLUMN);
+        return $pdo === null ? [] : $pdo->query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+        )->fetchAll(PDO::FETCH_COLUMN);
     }
 
     /** La base ouverte en lecture seule — sans la créer, sans schéma ni migration ; `null` si elle est absente. */
@@ -159,11 +176,12 @@ final class Db
         if (self::$pdo === null) {
             $chemin = self::path();
             self::exigerAcces($chemin);
-            // Lues avant le schéma, qui les crée. Un fichier sans table — vidé, tronqué à zéro,
-            // pré-créé par l'exploitation — est une base neuve : SQLite l'ouvre sans un mot, et
-            // le schéma s'y posait sous la clé de la base qu'il remplace.
+            // Lues avant le schéma, qui les crée. Un fichier sans la table des comptes — vidé,
+            // tronqué à zéro, pré-créé par l'exploitation, une autre base SQLite restaurée à sa
+            // place — est une base neuve : SQLite l'ouvre sans un mot, et le schéma s'y posait
+            // sous la clé de la base qu'il remplace.
             $tables = self::tables();
-            $neuve = $tables === [];
+            $neuve = !self::estBaseDuLab($tables);
             if ($neuve) {
                 self::exigerCleNeuve($chemin);
             }
@@ -213,8 +231,9 @@ final class Db
         [$cle, $temoin] = DataGuard::fichiersDeLaCle();
         if (is_file($cle) || is_file($temoin)) {
             throw new \RuntimeException(
-                "Base du lab absente ou vide ({$chemin}) alors que la clé de ses chiffrés a servi ici ({$cle}) : une "
-                . 'base neuve sous cette clé rouvrirait, à qui y écrit, les chiffrés de l\'ancienne. Restaurer la '
+                "Base du lab absente ou vide ({$chemin} ne porte pas la table des comptes) alors que la clé de ses "
+                . "chiffrés a servi ici ({$cle}) : une base neuve sous cette clé rouvrirait, à qui y écrit, les chiffrés "
+                . 'de l\'ancienne. Restaurer la '
                 . 'base ; pour repartir à vide, `selfrecover-su reset-db --confirm --forcer`, qui fige la clé et ses '
                 . 'deux témoins — ce qu\'elle a chiffré ne se relira plus.'
             );
@@ -435,6 +454,20 @@ final class Db
             }
         }
 
+        // 🔑 La graine d'un compte et d'un rapport, tirée à leur création, entre dans le contexte
+        // de leurs chiffrés et dans le jeton de suivi. Une sauvegarde restaurée rend au prochain
+        // inscrit le numéro d'un compte créé depuis, sous la même clé et le même numéro de base :
+        // sous le seul numéro, le chiffré du compte disparu s'ouvrait pour lui. Une base neuve la
+        // tire par le défaut de sa colonne ; une base plus ancienne la reçoit ici une fois, puis
+        // par un déclencheur — `ALTER TABLE` n'accepte pas de défaut calculé.
+        foreach (['accounts', 'redteam_reports'] as $table) {
+            $colonnes = self::$pdo->query("PRAGMA table_info($table)")->fetchAll(PDO::FETCH_COLUMN, 1);
+            if (!in_array('graine', $colonnes, true)) {
+                self::$pdo->exec("ALTER TABLE $table ADD COLUMN graine TEXT");
+                self::$pdo->exec("UPDATE $table SET graine = lower(hex(randomblob(16))) WHERE graine IS NULL");
+            }
+        }
+
         // Colonnes du niveau 3 remonté dans la bibliothèque le 07/09/2026. La
         // décision et son auteur n'étaient nulle part : un dossier tranché ne
         // disait ni quand ni par qui, et le comptage des refus dans une fenêtre
@@ -604,6 +637,18 @@ final class Db
              AND (SELECT reset_en_cours FROM garde_admin WHERE id = 1) = 0
             BEGIN
                 SELECT RAISE(ABORT, 'dernier administrateur : la base en garde toujours un');
+            END",
+        'accounts_graine' => "CREATE TRIGGER accounts_graine
+            AFTER INSERT ON accounts
+            WHEN NEW.graine IS NULL
+            BEGIN
+                UPDATE accounts SET graine = lower(hex(randomblob(16))) WHERE id = NEW.id;
+            END",
+        'redteam_graine' => "CREATE TRIGGER redteam_graine
+            AFTER INSERT ON redteam_reports
+            WHEN NEW.graine IS NULL
+            BEGIN
+                UPDATE redteam_reports SET graine = lower(hex(randomblob(16))) WHERE id = NEW.id;
             END",
     ];
 

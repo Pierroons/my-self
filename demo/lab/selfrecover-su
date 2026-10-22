@@ -1060,39 +1060,51 @@ switch ($cmd) {
         $forcer = in_array('--forcer', $argv, true);
         [$cle, $temoin] = DataGuard::fichiersDeLaCle();
         $bilan = ['comptes' => 0, 'admins' => 0, 'sessions' => 0, 'litiges' => 0];
-        if (Db::tables() === []) {
-            if (!is_file($cle) && !is_file($temoin)) {
-                su_fail("Reset-db refusé, rien n'a bougé : ni base (" . Db::path() . ") ni clé ({$cle}) ici.\n"
-                    . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
-                    . "   elle ne voit ni la même base ni la même clé.");
+        // Une base que SQLite n'ouvre pas — abîmée, ou d'une autre forme — se refuse en le disant ;
+        // `--forcer` la fige telle quelle.
+        try {
+            if (!Db::estBaseDuLab()) {
+                if (!is_file($cle) && !is_file($temoin)) {
+                    su_fail("Reset-db refusé, rien n'a bougé : ni base (" . Db::path() . ") ni clé ({$cle}) ici.\n"
+                        . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
+                        . "   elle ne voit ni la même base ni la même clé.");
+                }
+                if (!$forcer) {
+                    su_fail("Reset-db refusé, rien n'a bougé : la base est absente ou vide (" . Db::path() . "\n"
+                        . "   ne porte pas la table des comptes), et sa clé a servi ({$cle}).\n"
+                        . "   Si la console porte les prises du site, la base est perdue : `reset-db --confirm --forcer`\n"
+                        . "   fige la clé et ses témoins, et ce qu'elle a chiffré ne se relira plus. Sinon, relance la\n"
+                        . "   console avec les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…).");
+                }
+            } else {
+                $db    = Db::pdo();
+                $bilan = [
+                    'comptes'  => (int) $db->query('SELECT COUNT(*) FROM accounts')->fetchColumn(),
+                    'admins'   => su_nb_admins($db),
+                    'sessions' => (int) $db->query('SELECT COUNT(*) FROM app_sessions')->fetchColumn(),
+                    'litiges'  => (int) $db->query('SELECT COUNT(*) FROM disputes')->fetchColumn(),
+                ];
+                // La clé qu'on va figer doit être celle de cette base : figer une autre clé, ou n'en
+                // trouver aucune, laissait celle du site en place sous la base suivante.
+                $refus = DataGuard::cleDeCetteBase($db);
+                if ($refus !== null && !$forcer) {
+                    su_fail("Reset-db refusé, rien n'a bougé : {$refus}.\n"
+                        . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
+                        . "   elle ne voit ni la même base ni la même clé. Si elle les porte, la base a pu être abîmée ou\n"
+                        . "   son numéro réécrit : `reset-db --confirm --forcer` fige la base et la clé que la console voit,\n"
+                        . "   sans les vérifier.");
+                }
+                if ($refus !== null) {
+                    fwrite(STDOUT, "⚠️  --forcer : la clé figée n'est pas vérifiée — {$refus}.\n");
+                }
             }
+        } catch (\Throwable $e) {
+            Db::fermer();
             if (!$forcer) {
-                su_fail("Reset-db refusé, rien n'a bougé : la base est absente ou vide (" . Db::path() . "), et sa clé a\n"
-                    . "   servi ({$cle}). Si la console porte les prises du site, la base est perdue : `reset-db --confirm\n"
-                    . "   --forcer` fige la clé et ses témoins, et ce qu'elle a chiffré ne se relira plus. Sinon, relance\n"
-                    . "   la console avec les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…).");
+                su_fail("Reset-db refusé, rien n'a bougé : la base ne s'ouvre pas (" . Db::path() . ") — {$e->getMessage()}.\n"
+                    . "   `reset-db --confirm --forcer` la fige telle quelle, avec la clé que la console voit.");
             }
-        } else {
-            $db    = Db::pdo();
-            $bilan = [
-                'comptes'  => (int) $db->query('SELECT COUNT(*) FROM accounts')->fetchColumn(),
-                'admins'   => su_nb_admins($db),
-                'sessions' => (int) $db->query('SELECT COUNT(*) FROM app_sessions')->fetchColumn(),
-                'litiges'  => (int) $db->query('SELECT COUNT(*) FROM disputes')->fetchColumn(),
-            ];
-            // La clé qu'on va figer doit être celle de cette base : figer une autre clé, ou n'en
-            // trouver aucune, laissait celle du site en place sous la base suivante.
-            $refus = DataGuard::cleDeCetteBase($db);
-            if ($refus !== null && !$forcer) {
-                su_fail("Reset-db refusé, rien n'a bougé : {$refus}.\n"
-                    . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
-                    . "   elle ne voit ni la même base ni la même clé. Si elle les porte, la base a pu être abîmée ou\n"
-                    . "   son numéro réécrit : `reset-db --confirm --forcer` fige la base et la clé que la console voit,\n"
-                    . "   sans les vérifier.");
-            }
-            if ($refus !== null) {
-                fwrite(STDOUT, "⚠️  --forcer : la clé figée n'est pas vérifiée — {$refus}.\n");
-            }
+            fwrite(STDOUT, "⚠️  --forcer : la base ne s'ouvre pas, elle est figée telle quelle — {$e->getMessage()}.\n");
         }
         if (!in_array('--confirm', $argv, true)) {
             fwrite(STDOUT, "⚠️  RESET-DB (compromission) — tout ce qui suit est SUPPRIMÉ du service :\n");
@@ -1141,6 +1153,7 @@ switch ($cmd) {
 
         su_ok("Reset-db : {$bilan['comptes']} compte(s) supprimé(s), journal gardé. La base neuve et sa clé neuve "
             . 'naissent à la première requête du site.');
+        fwrite(STDOUT, '   Base         → ' . Db::path() . "\n");
         fwrite(STDOUT, '   Base figée   → ' . ($baseFigee ? basename($baseFigee) : '(aucune)') . "\n");
         fwrite(STDOUT, '   Secret figé  → ' . ($secretFige ? basename($secretFige) : '(aucun fichier)') . "\n");
         fwrite(STDOUT, '   Clé figée    → ' . ($clesFigees !== [] ? implode(', ', $clesFigees) : '(aucune : rien n\'en dépendait)') . "\n");

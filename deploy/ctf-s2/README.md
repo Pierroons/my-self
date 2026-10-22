@@ -29,7 +29,8 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
     d'arbitrage, qui écrivent en base, et devant les routes qui dérivent une clé ;
     plus un `429` au lieu du `503` par défaut, qu'un chercheur rapporterait comme un
     déni de service qu'il aurait provoqué. ⚠️ Les files comptent par adresse : en
-    IPv6, chaque adresse d'un même `/64` a la sienne ;
+    IPv6, chaque adresse d'un même `/64` a la sienne. Elles bornent un débit, pas un
+    volume : rien ne plafonne le nombre de messages qu'un compte envoie ;
   - puis la racine, le routage PHP et l'inclusion des deux snippets.
 - **`lab-deny-backups.conf`** — 46 extensions qui ne doivent jamais être
   servies. ⚠️ Ni `txt` ni `asc` : `security.txt` et la clé PGP du canal de
@@ -71,7 +72,9 @@ autres chemins de secrets) : sans elles, elle ne voit ni la même base ni la mê
 `selfrecover-su reset-db` vérifie qu'il voit la base, et que la clé qu'il voit ouvre un
 de ses chiffrés ; il refuse sinon, sans rien figer. Il fige ensuite `.blindkey` et ses
 deux témoins avec la base, sous le même horodatage, et ne recrée rien : la base neuve
-et sa clé neuve naissent à la première requête du site. Sous une autre identité que le
+et sa clé neuve naissent à la première requête du site. Pour compter ce qu'il supprime,
+il ouvre la base, et la migration du code en place s'y applique avant le gel : une base
+d'un schéma plus ancien n'est pas figée octet pour octet. Sous une autre identité que le
 site, la console ne lit pas `.blindkey`, qui naît en `0600`, et `reset-db` le dit.
 
 `reset-db --confirm --forcer` fige sans vérifier : quand la base est perdue ou vidée —
@@ -83,7 +86,9 @@ sous les noms d'origine.
 Le numéro de la base (table `lab_generation`) se restaure avec elle : perdu, il n'est pas
 remplacé tant que la table, la trace de son tirage ou des blobs scellés en dépendent ;
 réécrit, il ne correspond plus à l'empreinte de sa trace. Dans les deux cas, le site
-refuse de chiffrer et de déchiffrer en nommant la table.
+refuse de chiffrer et de déchiffrer en nommant la table. ⚠️ Sans sa trace, ou sans
+l'empreinte qu'elle porte — perdue, ou retirée par le tirage d'un numéro neuf que le refus
+propose —, un numéro réécrit ne se voit plus : tout devient illisible, sans refus nommé.
 
 À chaque mise à jour du code, après la bascule : **poser les témoins d'existence**
 pour les secrets présents, avec l'identité qui possède `data/` — celle qui sert le
@@ -92,3 +97,6 @@ site ne l'écrit pas forcément, et un témoin manquant se signale au journal du
 ```
 for s in .blindkey .sitesalt .serversecret .modaudit; do [ -f "data/$s" ] && touch "data/$s.existe"; done
 ```
+
+Elle se lance depuis `demo/lab/` et vise `data/` : un secret dérouté par sa prise
+(`LAB_BLINDKEY_PATH`, `LAB_SITESALT_PATH`…) reçoit son témoin à son propre chemin.

@@ -274,16 +274,19 @@ if ($argv[1] === "profil") {
 }
 if ($argv[1] === "graine") {
     Dm::send($pdo, 1, "bob", "SECRET-DE-LA-BASE-FIGEE");
-    echo json_encode([Db::generation(), $pdo->query("SELECT ciphertext FROM dm ORDER BY id DESC LIMIT 1")->fetchColumn()]);
+    echo json_encode([Db::generation(), $pdo->query("SELECT ciphertext FROM dm ORDER BY id DESC LIMIT 1")->fetchColumn(),
+        $pdo->query("SELECT graine FROM accounts WHERE id = 1")->fetchColumn(), $pdo->query("SELECT graine FROM accounts WHERE id = 2")->fetchColumn()]);
     exit;
 }
-// Le rejeu de la huitième passe d\'audit : la base neuve reçoit sa première requête, puis
-// l\'écriture recopie l\'ancien numéro — avec l\'empreinte de sa trace, que qui écrit
-// partout recalcule — et l\'ancien blob ; et le destinataire n° 2 lit.
+// Le rejeu de qui écrit partout : la base neuve reçoit sa première requête, puis l\'écriture
+// recopie l\'ancien numéro — avec l\'empreinte de sa trace, qu\'il recalcule —, les graines
+// des deux anciens comptes et l\'ancien blob ; et le destinataire n° 2 lit.
 DataGuard::exigerCle();
 $pdo->exec("INSERT OR IGNORE INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (1, \'r1\', \'x\', \'x\', \'x\', 0), (2, \'r2\', \'x\', \'x\', \'x\', 0)");
 $pdo->prepare("UPDATE lab_generation SET valeur = ?")->execute([$argv[2]]);
 $pdo->prepare("UPDATE lab_migrations SET valeur = ? WHERE nom = \'numero-de-base\'")->execute([hash("sha256", $argv[2])]);
+$pdo->prepare("UPDATE accounts SET graine = ? WHERE id = 1")->execute([$argv[4]]);
+$pdo->prepare("UPDATE accounts SET graine = ? WHERE id = 2")->execute([$argv[5]]);
 $pdo->prepare("INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, 0)")->execute([$argv[3]]);
 Db::fermer();
 echo Dm::inbox(Db::pdo(), 2)[0]["message"] ?? "(rien)";
@@ -302,7 +305,7 @@ function lab(string $base, string $cle, string ...$args): string
     return $out;
 }
 $cle = $env['LAB_BLINDKEY_PATH'];
-[$numeroAncien, $blobAncien] = json_decode(lab($base, $cle, 'graine'), true) ?? [null, null];
+[$numeroAncien, $blobAncien, $graine1, $graine2] = json_decode(lab($base, $cle, 'graine'), true) ?? [null, null, null, null];
 touch("$cle.scelle");   // le témoin d'une passe de migration faite : il part aussi
 
 // ── 10 a. La console ne crée jamais la base, et `--forcer` est un geste explicite ──
@@ -389,6 +392,28 @@ $c !== 0 && str_contains($o, 'illisible')
     ? ok('une clé illisible pour la console se dit illisible, et rien ne bouge')
     : nok("clé illisible : le refus devait le dire (code $c) : " . trim(substr($o, 0, 200)));
 
+// Une base scellée dont les chiffrés essayés ne portent pas de liaison — abîmés, ou d'avant la
+// passe : sous une lecture fermée, aucun ne peut confirmer la clé, et le refus le dit.
+$cloner(true, true);
+touch("$cote/.blindkey.scelle");
+base("$cote/lab.db")->exec("UPDATE dm SET ciphertext = 'AAAA' || ciphertext; DELETE FROM profiles");
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, 'ne portent pas de liaison') && glob("$cote/*.frozen-*") === []
+    ? ok('des chiffrés sans liaison sous une lecture fermée : refus qui le dit, rien de figé')
+    : nok("chiffrés sans liaison : reset-db devait refuser en le disant (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base que SQLite n'ouvre pas : un refus qui le dit, et `--forcer` la fige telle quelle.
+$cloner(false, true);
+file_put_contents("$cote/lab.db", random_bytes(4096));
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, "ne s'ouvre pas") && is_file("$cote/lab.db") && is_file("$cote/.blindkey")
+    ? ok('une base que SQLite n\'ouvre pas fait refuser reset-db, en le disant')
+    : nok("base illisible : reset-db devait refuser en le disant (code $c) : " . trim(substr($o, 0, 200)));
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c === 0 && count(glob("$cote/lab.db.frozen-*") ?: []) === 1 && count(glob("$cote/.blindkey.frozen-*") ?: []) === 1 && !is_file("$cote/lab.db")
+    ? ok('et --forcer la fige telle quelle, avec sa clé')
+    : nok("base illisible : reset-db --forcer devait la figer (code $c) : " . trim(substr($o, 0, 200)));
+
 // Une base sans aucun chiffré, une console sous une clé étrangère : elle passe, mais ne
 // recrée plus la base suivante sous la clé du site — c'est le site qui refuse, à voix haute.
 $cloner(true, true);
@@ -447,12 +472,12 @@ is_string($blobAncien) && !is_file($cle) && !is_file("$cle.existe") && !is_file(
 
 // La base neuve se copie : le rejeu ne doit rien laisser dans celle que la suite emploie.
 copy($base, "$dir/rejeu.db");
-$lu = lab("$dir/rejeu.db", $cle, 'rejeu', (string) $numeroAncien, (string) $blobAncien);
+$lu = lab("$dir/rejeu.db", $cle, 'rejeu', (string) $numeroAncien, (string) $blobAncien, (string) $graine1, (string) $graine2);
 !str_contains($lu, 'SECRET-DE-LA-BASE-FIGEE') && str_contains($lu, 'illisible')
     ? ok('⭐ le message de la base figée, replanté avec son numéro dans la base neuve, ne s\'ouvre pas')
     : nok('après reset-db, l\'ancien blob et l\'ancien numéro replantés devaient rester illisibles : ' . trim($lu));
 copy($base, "$dir/rejeu-temoin.db");
-str_contains(lab("$dir/rejeu-temoin.db", $cleFigee, 'rejeu', (string) $numeroAncien, (string) $blobAncien), 'SECRET-DE-LA-BASE-FIGEE')
+str_contains(lab("$dir/rejeu-temoin.db", $cleFigee, 'rejeu', (string) $numeroAncien, (string) $blobAncien, (string) $graine1, (string) $graine2), 'SECRET-DE-LA-BASE-FIGEE')
     ? ok('contre-témoin : sous la clé figée, le même rejeu rend le clair — seule la rotation l\'arrête')
     : nok('contre-témoin : sous la clé figée, le rejeu devait rendre le clair, sinon le cas ne mesure rien');
 

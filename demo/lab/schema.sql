@@ -29,7 +29,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     -- compte vivait, sans rien révéler de ses secrets.
     last_login_at INTEGER,
     login_count   INTEGER NOT NULL DEFAULT 0,
-    banned_until  INTEGER
+    banned_until  INTEGER,
+    -- 🔑 Tirée au hasard à la création du compte, elle entre dans le contexte de ses
+    -- chiffrés : un numéro de compte se réattribue, une graine non.
+    graine        TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))
 );
 
 -- Sessions applicatives (token cookie)
@@ -196,7 +199,8 @@ CREATE TABLE IF NOT EXISTS redteam_reports (
     ciphertext  TEXT NOT NULL,                     -- message PGP armuré, chiffré côté client — jamais le rapport en clair
     status      TEXT NOT NULL DEFAULT 'nouveau',   -- nouveau|valide|rejete
     ip_hash     TEXT,                              -- HMAC-SHA256 de l'IP (rate-limit), jamais l'IP en clair
-    created_at  INTEGER NOT NULL
+    created_at  INTEGER NOT NULL,
+    graine      TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))  -- entre dans le jeton de suivi, comme celle d'un compte
 );
 CREATE INDEX IF NOT EXISTS idx_redteam_status ON redteam_reports(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_redteam_iphash ON redteam_reports(ip_hash, created_at);

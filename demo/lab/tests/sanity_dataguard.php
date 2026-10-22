@@ -26,12 +26,7 @@ require __DIR__ . '/instance_isolee.inc';
 
 $dir = sys_get_temp_dir() . '/sanity_dataguard_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
-register_shutdown_function(static function () use ($dir): void {
-    foreach (glob("$dir/{,.}[!.]*", GLOB_BRACE) ?: [] as $f) {
-        unlink($f);
-    }
-    @rmdir($dir);
-});
+register_shutdown_function(static fn () => effacer_arbre($dir));
 putenv('LAB_DB_PATH=' . $dir . '/lab.db');
 putenv('LAB_STATE_DIR=' . $dir);
 putenv('LAB_BLINDKEY_PATH=' . $dir . '/.blindkey');   // sans quoi le banc lit le secret réel de l'instance locale
@@ -152,7 +147,7 @@ $blobDm = (string) $pdo->query('SELECT ciphertext FROM dm WHERE id = 1')->fetchC
 //    privé à `json_decode`, qui rejette un non-JSON et rend un profil vide. La page
 //    paraît donc sûre même quand le déchiffrement a réussi — un vert qui ne mesure
 //    rien. C'est au wrapper qu'il faut poser la question.
-$deplace = clairOuRefus(static fn() => DataGuard::decrypt($blobDm, DataGuard::contexteProfil(2)));
+$deplace = clairOuRefus(static fn() => DataGuard::decrypt($blobDm, DataGuard::contexteProfil($pdo, 2)));
 ok(
     '⭐ un blob présenté sous le contexte d\'un profil est refusé',
     $deplace === null,
@@ -274,7 +269,7 @@ ok(
     (Profile::get($pdo, 4)['bio'] ?? '') === 'dave avant la migration'
         && clairOuRefus(static fn() => DataGuard::decrypt(
             (string) $pdo->query('SELECT ciphertext FROM profiles WHERE account_id = 4')->fetchColumn(),
-            DataGuard::contexteProfil(3)
+            DataGuard::contexteProfil($pdo, 3)
         )) === null
 );
 
@@ -295,7 +290,7 @@ ok(
 $blobMigre = (string) $pdo->query('SELECT ciphertext FROM dm WHERE id = 20')->fetchColumn();
 ok(
     '⭐ et il n\'est plus déplaçable : présenté sous un autre contexte, il est refusé',
-    clairOuRefus(static fn() => DataGuard::decrypt($blobMigre, DataGuard::contexteDm(1, 3))) === null
+    clairOuRefus(static fn() => DataGuard::decrypt($blobMigre, DataGuard::contexteDm($pdo, 1, 3))) === null
 );
 
 [$sortie, $rc] = $migrer();
@@ -325,7 +320,7 @@ $replante = clairOuRefus(static function () use ($pdo) {
 ok(
     '⭐ un blob nu gardé d\'avant la passe ne se relit plus, où qu\'on le replante',
     $replante !== 'message d\'avant la migration'
-        && clairOuRefus(static fn() => DataGuard::decrypt($ancien, DataGuard::contexteDm(1, 3))) === null,
+        && clairOuRefus(static fn() => DataGuard::decrypt($ancien, DataGuard::contexteDm($pdo, 1, 3))) === null,
     'clair obtenu = ' . var_export($replante, true)
 );
 [$sortie, $rc] = $migrer();
@@ -496,7 +491,7 @@ try {
     if ($geste === "inbox")  { DM::inbox(Db::pdo(), 1); echo "OK"; }
     if ($geste === "sent")   { DM::sent(Db::pdo(), 1);  echo "OK"; }
     if ($geste === "hmac")   { DataGuard::hmac("x", "drapeau"); echo "OK"; }
-    if ($geste === "chiffrer") { DataGuard::encrypt("premier message", DataGuard::contexteDm(1, 2)); echo "OK"; }
+    if ($geste === "chiffrer") { DataGuard::encrypt("premier message", DataGuard::contexteDm(Db::pdo(), 1, 2)); echo "OK"; }
     if ($geste === "profil") { Pierroons\MySelfLab\Profile::get(Db::pdo(), 1); echo "OK"; }
 } catch (\Throwable $e) { echo "LEVE:" . $e->getMessage(); }
 ');
@@ -517,6 +512,7 @@ $cleNeuve = $dir . '/.blindkey-neuve';
 $pdoNeuve = new PDO('sqlite:' . $neuve);
 $pdoNeuve->exec(file_get_contents(__DIR__ . '/../schema.sql'));
 $pdoNeuve->exec("INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, '" . bin2hex(random_bytes(16)) . "', $t)");
+$pdoNeuve->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (1, 'alice', 'h', 'h', 'h', $t), (2, 'bob', 'h', 'h', 'h', $t)");
 $pdoNeuve = null;
 ok(
     'une instance neuve, sans rien de chiffré, ouvre sa messagerie sans secret',
@@ -626,7 +622,7 @@ copy(getenv('LAB_DB_PATH'), $sousAutreCle);
 $pAutre = new PDO('sqlite:' . $sousAutreCle);
 $pAutre->exec('DELETE FROM dm; DELETE FROM profiles');
 $pAutre->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, ?)')
-    ->execute([DataGuard::encrypt('message lié de la base', DataGuard::contexteDm(1, 2)), $t]);
+    ->execute([DataGuard::encrypt('message lié de la base', DataGuard::contexteDm($pAutre, 1, 2)), $t]);
 $pAutre = null;
 $autreCle = $dir . '/.blindkey-autre';
 file_put_contents($autreCle, bin2hex(random_bytes(48)));
@@ -786,6 +782,35 @@ ok(
         && (int) (new PDO('sqlite:' . $sansTable))->query("SELECT COUNT(*) FROM sqlite_master")->fetchColumn() === 0,
     'taille = ' . $tailleSansTable . ' · ' . ($refus === '' ? 'schéma posé' : $refus)
 );
+// Une autre base SQLite, non vide, restaurée au chemin de celle du lab : elle a des tables,
+// mais pas la sienne.
+$autreBase = $dir . '/autre-base.db';
+(new PDO('sqlite:' . $autreBase))->exec("CREATE TABLE notes (texte TEXT); INSERT INTO notes VALUES ('note')");
+$refus = $refusVide($autreBase);
+ok(
+    '⭐ une autre base SQLite, non vide, au chemin de celle du lab n\'est pas prise pour elle',
+    str_contains($refus, 'absente ou vide')
+        && (new PDO('sqlite:' . $autreBase))->query("SELECT group_concat(name) FROM sqlite_master WHERE type = 'table'")->fetchColumn() === 'notes',
+    $refus === '' ? 'schéma posé' : $refus
+);
+// Toutes les tables supprimées, le fichier gardé : SQLite y laisse `sqlite_sequence`, qui
+// faisait passer la base pour existante.
+$sansLab = $dir . '/tables-supprimees.db';
+$pS = new PDO('sqlite:' . $sansLab);
+$pS->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+$pS->exec("INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES ('alice', 'h', 'h', 'h', $t)");
+$pS->exec('PRAGMA foreign_keys = OFF');
+foreach ($pS->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\_%' ESCAPE '\'")->fetchAll(PDO::FETCH_COLUMN) as $table) {
+    $pS->exec('DROP TABLE "' . $table . '"');
+}
+$restantes = $pS->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(PDO::FETCH_COLUMN);
+$pS = null;
+$refus = $refusVide($sansLab);
+ok(
+    '⭐ une base dont on a supprimé toutes les tables n\'est pas remplie sous la clé qui a servi',
+    $restantes === ['sqlite_sequence'] && str_contains($refus, 'absente ou vide'),
+    'restantes = ' . json_encode($restantes) . ' · ' . ($refus === '' ? 'schéma posé' : $refus)
+);
 // La clé retirée à la main, son témoin resté : c'est encore une clé qui a servi.
 $cleDuBanc = getenv('LAB_BLINDKEY_PATH');
 $temoinSeul = $dir . '/temoin-seul/.blindkey';
@@ -827,7 +852,7 @@ ok(
     'mallory lit : ' . json_encode($profilB, JSON_UNESCAPED_UNICODE)
 );
 $rapportB = (int) $pdoB->query("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', " . ($t + 1) . ') RETURNING id')->fetchColumn();
-$jetonB = Redteam::jetonSuivi($rapportB);
+$jetonB = Redteam::jetonSuivi($rapportB, DataGuard::graine($pdoB, 'redteam_reports', $rapportB));
 Db::fermer();
 putenv('LAB_DB_PATH=' . $restauree);
 $pdoR = Db::pdo();
@@ -851,7 +876,7 @@ ok(
 ok(
     '⭐ et pour aucun rapport déposé après — le jeton d\'aujourd\'hui porte le numéro de la base',
     (Redteam::etat($pdo, $neufRapport, $jetonSans($neufRapport))['ok'] ?? true) === false
-        && (Redteam::etat($pdo, $neufRapport, Redteam::jetonSuivi($neufRapport))['ok'] ?? false) === true
+        && (Redteam::etat($pdo, $neufRapport, Redteam::jetonSuivi($neufRapport, DataGuard::graine($pdo, 'redteam_reports', $neufRapport)))['ok'] ?? false) === true
 );
 // À la seconde même du numéro, la base le portait déjà : le rapport a reçu le jeton
 // d'aujourd'hui, et seul ce qui précède strictement relève de l'ancien.
@@ -1041,6 +1066,115 @@ ok(
     'et « --fermer » le pose, en nommant ce qui devient illisible',
     is_file($cleInachevee . '.scelle') && str_contains($sortie, 'deviennent illisibles'),
     'rc=' . $rc . ' · ' . substr(trim($sortie), -160)
+);
+
+echo "\n# Une sauvegarde restaurée ne rend pas les chiffrés d'un compte disparu à qui reprend son numéro\n";
+
+// La base revient de la veille, sous la même clé et le même numéro : le prochain inscrit
+// reçoit le numéro d'un compte créé depuis. Qui garde une copie d'avant la restauration et
+// écrit la colonne d'un chiffré de SA ligne y remettait celui du disparu, et le lisait.
+$restau = $dir . '/restauration';
+mkdir($restau, 0700);
+$etapeRestau = $restau . '/etape.php';
+file_put_contents($etapeRestau, '<?php
+require ' . var_export(__DIR__ . '/../vendor/autoload.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/db.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/dm.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/profile.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/redteam.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/notify.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/i18n.php', true) . ';
+use Pierroons\MySelfLab\{Db, DM, Profile, Redteam};
+$p = Db::pdo();
+$inscrire = static function (string $nom) use ($p): int {
+    $p->prepare("INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, \'h\', \'h\', \'h\', ?)")->execute([$nom, time()]);
+    return (int) $p->lastInsertId();
+};
+switch ($argv[1]) {
+    case "graine":
+        echo json_encode([$inscrire("alice"), $inscrire("bob")]);
+        break;
+    case "disparu":
+        $c = $inscrire("carol");
+        DM::send($p, $c, "alice", "SECRET DU COMPTE DISPARU");
+        Profile::save($p, $c, ["bio" => "BIO DU COMPTE DISPARU", "localisation" => "", "lien" => ""]);
+        $r = Redteam::submit($p, ["pgp" => "-----BEGIN PGP MESSAGE-----\nx\n-----END PGP MESSAGE-----", "severity" => "info", "target" => "autre"], "198.51.100.7");
+        echo json_encode([$c, $r["id"] ?? null, $r["suivi"] ?? null]);
+        break;
+    case "repreneur":
+        $m = $inscrire("mallory");
+        DM::send($p, $m, "alice", "bonjour");
+        Profile::save($p, $m, ["bio" => "bio de mallory", "localisation" => "", "lien" => ""]);
+        $r = Redteam::submit($p, ["pgp" => "-----BEGIN PGP MESSAGE-----\ny\n-----END PGP MESSAGE-----", "severity" => "info", "target" => "autre"], "198.51.100.8");
+        echo json_encode([$m, $r["id"] ?? null]);
+        break;
+    case "lire":
+        $m = (int) $argv[2];
+        echo json_encode([
+            array_column(DM::sent($p, $m), "message"),
+            Profile::lire($p, $m)["champs"]["bio"] ?? "",
+            Redteam::etat($p, (int) $argv[3], (string) $argv[4])["ok"] ?? null,
+        ], JSON_UNESCAPED_UNICODE);
+        break;
+}
+');
+$envRestau = ['PATH' => getenv('PATH') ?: '/usr/bin:/bin', 'LAB_DB_PATH' => "$restau/lab.db", 'LAB_BLINDKEY_PATH' => "$restau/.blindkey",
+    'LAB_SITESALT_PATH' => "$restau/.sitesalt", 'LAB_SERVERSECRET_PATH' => "$restau/.serversecret", 'LAB_MODAUDIT_PATH' => "$restau/.modaudit",
+    'LAB_MODERATION_LOG' => "$restau/moderation.log"];
+// Sa sortie standard seule : le journal du site, sur la sortie d'erreur, se collerait au JSON.
+$etape = static function (string ...$args) use ($etapeRestau, $envRestau): string {
+    $p = proc_open(array_merge([PHP_BINARY, $etapeRestau], $args), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $tuyaux, null, $envRestau);
+    $o = stream_get_contents($tuyaux[1]);
+    stream_get_contents($tuyaux[2]);
+    fclose($tuyaux[1]);
+    fclose($tuyaux[2]);
+    proc_close($p);
+
+    return trim($o);
+};
+$etape('graine');
+copy("$restau/lab.db", "$restau/sauvegarde.db");
+$sortieDisparu = $etape('disparu');
+[$disparu, $rapportDisparu, $jetonDisparu] = json_decode($sortieDisparu, true) ?? [null, null, null];
+copy("$restau/lab.db", "$restau/copie-d-apres.db");
+copy("$restau/sauvegarde.db", "$restau/lab.db");
+$sortieRepreneur = $etape('repreneur');
+[$repreneur, $rapportRepreneur] = json_decode($sortieRepreneur, true) ?? [null, null];
+// L'écriture de qui reprend le numéro : la colonne du chiffré, dans SES lignes seulement.
+$apres = new PDO('sqlite:' . "$restau/copie-d-apres.db");
+$ici = new PDO('sqlite:' . "$restau/lab.db");
+$lireApres = static function (string $sql) use ($apres, $disparu): string {
+    $st = $apres->prepare($sql);
+    $st->execute([(int) $disparu]);
+
+    return (string) $st->fetchColumn();
+};
+$ici->prepare('UPDATE dm SET ciphertext = ? WHERE sender_id = ?')
+    ->execute([$lireApres('SELECT ciphertext FROM dm WHERE sender_id = ?'), $repreneur]);
+$ici->prepare('UPDATE profiles SET ciphertext = ? WHERE account_id = ?')
+    ->execute([$lireApres('SELECT ciphertext FROM profiles WHERE account_id = ?'), $repreneur]);
+$apres = $ici = $lireApres = null;
+$sortieLecture = $etape('lire', (string) $repreneur, (string) $rapportRepreneur, (string) $jetonDisparu);
+$lecture = json_decode($sortieLecture, true, 512, JSON_INVALID_UTF8_SUBSTITUTE);
+[$envoyes, $bio, $suivi] = is_array($lecture) && count($lecture) === 3 ? $lecture : [[], '', null];
+// Le cas ne mesure rien si la reprise n'a pas eu lieu, ou si la lecture n'a rien rendu.
+$reprise = $disparu !== null && $repreneur === $disparu && $rapportRepreneur === $rapportDisparu
+    && is_array($lecture) && count($lecture) === 3;
+ok(
+    '⭐ restaurée d\'une sauvegarde, la base rend le numéro d\'un compte disparu — et son message, replanté dans la ligne du repreneur, ne s\'ouvre pas',
+    $reprise && $envoyes !== [] && !in_array('SECRET DU COMPTE DISPARU', $envoyes, true),
+    'disparu #' . var_export($disparu, true) . ', repreneur #' . var_export($repreneur, true) . ' · lu : ' . json_encode($envoyes, JSON_UNESCAPED_UNICODE)
+        . ($reprise ? '' : ' · ' . substr($sortieDisparu . ' | ' . $sortieRepreneur . ' | ' . $sortieLecture, 0, 400))
+);
+ok(
+    '⭐ ni son profil',
+    $reprise && $bio !== 'BIO DU COMPTE DISPARU',
+    'bio lue : ' . var_export($bio, true)
+);
+ok(
+    '⭐ ni le suivi de son rapport : le jeton du rapport perdu ne vaut pas pour celui qui reprend son numéro',
+    $reprise && $suivi === false,
+    'rapport #' . var_export($rapportRepreneur, true) . ' · suivi accepté = ' . var_export($suivi, true)
 );
 
 echo "\n# Ce que le visiteur reçoit — par HTTP, comme lui\n";

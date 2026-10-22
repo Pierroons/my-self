@@ -39,7 +39,7 @@ final class DM
             return ['ok' => false, 'error' => 'self', 'message' => 'Tu ne peux pas t\'écrire à toi-même.'];
         }
 
-        $ciphertext = DataGuard::encrypt($message, DataGuard::contexteDm($senderId, (int) $recipientId));
+        $ciphertext = DataGuard::encrypt($message, DataGuard::contexteDm($pdo, $senderId, (int) $recipientId));
         $pdo->prepare(
             'INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)'
         )->execute([$senderId, (int) $recipientId, $ciphertext, time()]);
@@ -119,7 +119,7 @@ final class DM
         $out = [];
         $illisibles = 0;
         foreach ($lignes as $row) {
-            $clair = self::clair($row['ciphertext'], DataGuard::contexteDm((int) $row['sender_id'], $accountId));
+            $clair = self::clair($row['ciphertext'], DataGuard::contexteDm($pdo, (int) $row['sender_id'], $accountId));
             $illisibles += $clair === null ? 1 : 0;
             $out[] = [
                 'id'         => (int) $row['id'],
@@ -151,7 +151,7 @@ final class DM
         }
         $out = [];
         foreach ($lignes as $row) {
-            $clair = self::clair($row['ciphertext'], DataGuard::contexteDm($accountId, (int) $row['recipient_id']));
+            $clair = self::clair($row['ciphertext'], DataGuard::contexteDm($pdo, $accountId, (int) $row['recipient_id']));
             $out[] = [
                 'id'           => (int) $row['id'],
                 'destinataire' => $row['destinataire'],

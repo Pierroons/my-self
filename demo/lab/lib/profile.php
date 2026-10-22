@@ -88,11 +88,11 @@ final class Profile
         // Un blob est là : la clé qui l'a scellé doit exister, et non être posée
         // à l'instant par la lecture. Cette ligne est atteignable sans session.
         DataGuard::exigerCle();
-        // Le contexte aussi, hors du `catch` : un numéro de base absent ou altéré est une
-        // panne de l'instance, pas un profil abîmé. Calculé dedans, il se déguisait en
+        // Le contexte aussi, hors du `catch` : un numéro de base ou une graine de compte
+        // absents ou altérés sont une panne de l'instance, pas un profil abîmé. Calculé dedans, il se déguisait en
         // profil illisible et invitait son titulaire à le remplacer (mesuré par la
         // huitième passe d'audit).
-        $contexte = DataGuard::contexteProfil($accountId);
+        $contexte = DataGuard::contexteProfil($pdo, $accountId);
         try {
             return [true, DataGuard::decrypt((string) $blob, $contexte)];
         } catch (\Throwable $e) {
@@ -155,7 +155,7 @@ final class Profile
             error_log(sprintf('profil #%d illisible remplacé par son titulaire — l\'ancien chiffré est perdu', $accountId));
         }
 
-        $ciphertext = DataGuard::encrypt(json_encode($clean, JSON_UNESCAPED_UNICODE), DataGuard::contexteProfil($accountId));
+        $ciphertext = DataGuard::encrypt(json_encode($clean, JSON_UNESCAPED_UNICODE), DataGuard::contexteProfil($pdo, $accountId));
         $pdo->prepare(
             'INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (?, ?, ?)
              ON CONFLICT(account_id) DO UPDATE SET ciphertext = excluded.ciphertext, updated_at = excluded.updated_at'

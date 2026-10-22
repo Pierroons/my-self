@@ -117,9 +117,9 @@ final class DataGuard
                 if (!self::estLie($blob)) {
                     self::decryptSansContexte($blob);
                 } elseif ($ligne['account_id'] !== null) {
-                    self::decrypt($blob, self::contexteProfil((int) $ligne['account_id']));
+                    self::decrypt($blob, self::contexteProfil($pdo, (int) $ligne['account_id']));
                 } else {
-                    self::decrypt($blob, self::contexteDm((int) $ligne['sender_id'], (int) $ligne['recipient_id']));
+                    self::decrypt($blob, self::contexteDm($pdo, (int) $ligne['sender_id'], (int) $ligne['recipient_id']));
                 }
 
                 return null;
@@ -134,8 +134,8 @@ final class DataGuard
 
         return $concluants === 0
             ? sprintf(
-                'les %d chiffrés essayés datent d\'avant la passe de migration, et la lecture sans contexte est fermée '
-                . '(%s) : aucun ne peut confirmer la clé de %s',
+                'les %d chiffrés essayés ne portent pas de liaison — d\'avant la passe de migration, ou abîmés — et la '
+                . 'lecture sans contexte est fermée (%s) : aucun ne peut confirmer la clé de %s',
                 count($essais),
                 self::temoinScelle(),
                 $cle
@@ -342,15 +342,46 @@ final class DataGuard
      * les deux ne doivent pas partager un contexte. Le numéro de la base les précède :
      * un identifiant de compte n'est unique que dans une base (`Db::generation()`).
      */
-    public static function contexteDm(int $expediteur, int $destinataire): Aad
+    public static function contexteDm(PDO $pdo, int $expediteur, int $destinataire): Aad
     {
-        return Aad::of('dm', Db::generation(), (string) $expediteur, (string) $destinataire);
+        return Aad::of(
+            'dm',
+            Db::generation(),
+            (string) $expediteur,
+            self::graine($pdo, 'accounts', $expediteur),
+            (string) $destinataire,
+            self::graine($pdo, 'accounts', $destinataire)
+        );
     }
 
     /** Le contexte d'un profil : le compte dont il décrit le titulaire, dans cette base. */
-    public static function contexteProfil(int $compte): Aad
+    public static function contexteProfil(PDO $pdo, int $compte): Aad
     {
-        return Aad::of('profil', Db::generation(), (string) $compte);
+        return Aad::of('profil', Db::generation(), (string) $compte, self::graine($pdo, 'accounts', $compte));
+    }
+
+    /**
+     * La graine qu'une ligne a reçue à sa création, lue dans la base qui porte la donnée.
+     *
+     * 🔑 Un numéro de compte ou de rapport se réattribue : une sauvegarde restaurée rend au
+     * prochain inscrit celui d'un compte créé depuis, sous la même clé et le même numéro de
+     * base. Sa graine, tirée au hasard, ne se réattribue pas. Absente ou altérée, elle ne se
+     * remplace pas : aucun contexte ne se construit sans elle.
+     */
+    public static function graine(PDO $pdo, string $table, int $id): string
+    {
+        if (!in_array($table, ['accounts', 'redteam_reports'], true)) {
+            throw new \LogicException("Aucune graine dans la table {$table}.");
+        }
+        $st = $pdo->prepare("SELECT graine FROM {$table} WHERE id = ?");
+        $st->execute([$id]);
+        $graine = $st->fetchColumn();
+        $st->closeCursor();
+        if (!is_string($graine) || preg_match('/^[0-9a-f]{32}$/', $graine) !== 1) {
+            throw new \RuntimeException("Graine absente ou altérée ({$table} #{$id}) : aucun contexte ne se construit sans elle.");
+        }
+
+        return $graine;
     }
 
     /**

@@ -235,8 +235,8 @@ $passe = static function (string $table, string $cle, callable $contexteDe) use 
     }
 };
 
-$passe('dm', 'id', static fn(array $l) => DataGuard::contexteDm((int) $l['sender_id'], (int) $l['recipient_id']));
-$passe('profiles', 'account_id', static fn(array $l) => DataGuard::contexteProfil((int) $l['account_id']));
+$passe('dm', 'id', static fn(array $l) => DataGuard::contexteDm($pdo, (int) $l['sender_id'], (int) $l['recipient_id']));
+$passe('profiles', 'account_id', static fn(array $l) => DataGuard::contexteProfil($pdo, (int) $l['account_id']));
 
 $restants = count($nues('dm')) + count($nues('profiles'));
 
@@ -253,8 +253,9 @@ if ($forcer && !$fini) {
     ));
 }
 printf(
-    "%s %d blob(s) relié(s) · %d recopié(s) laissé(s) à examiner · %d apparu(s) après la fermeture, à examiner · %d illisible(s) · %d sans contexte après cette passe · lecture sans contexte %s\n",
+    "%s %s : %d blob(s) relié(s) · %d recopié(s) laissé(s) à examiner · %d apparu(s) après la fermeture, à examiner · %d illisible(s) · %d sans contexte après cette passe · lecture sans contexte %s\n",
     $aBlanc ? '[à blanc]' : ($fini ? '✅' : '⚠️'),
+    $base,
     $relie,
     $deplace,
     $apres,

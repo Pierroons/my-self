@@ -1634,8 +1634,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 78/78 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 78 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 83/83 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 83 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1664,7 +1664,7 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les vingt et une gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les vingt-deux gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
@@ -1862,6 +1862,15 @@ jobs:
             '        // canari' \
             demo/lab/tests/sanity_ecritures_simultanees.php \
             "✗ ⭐ deux envois de messages simultanés : aucun n'est perdu"
+
+          # 22. Le contexte d'un message ne porte plus la graine des comptes : restaurée d'une
+          #     sauvegarde, la base rend son numéro au prochain inscrit, et le message du compte
+          #     disparu s'ouvre pour lui.
+          canari demo/lab/lib/dataguard.php \
+            "            self::graine(\$pdo, 'accounts', \$expediteur)," \
+            "            // canari" \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ restaurée d'une sauvegarde, la base rend le numéro d'un compte disparu"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
@@ -2496,8 +2505,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE 'OK — 46/46 ' \
-            || { echo "::error::le banc first-admin n'a pas joué ses 46 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 49/49 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 49 cas"; exit 1; }
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |
