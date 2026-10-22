@@ -172,7 +172,7 @@ final class Primitives
 
     /**
      * Authenticated encryption with XChaCha20-Poly1305 (IETF) and a fresh random
-     * nonce. Always writes a v2 blob.
+     * nonce.
      *
      * libsodium computes it in software, in constant time, on every CPU. AES-256-GCM
      * does not travel that well: libsodium serves it only with hardware support,
