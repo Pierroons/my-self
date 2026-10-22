@@ -86,7 +86,7 @@ Chaque récupération SelfRecover remplace des secrets. Le coffre suit si l'int�
 | Niveau 1 — passphrase | l'ancienne passphrase | `recover($user, Lock::Passphrase, $ancienne, $nouveauMdp, $nouvellePassphrase)` |
 | Niveau 2 — code + mot mémorisé | l'empreinte du mot | `recover($user, Lock::Memorized, $empreinte, $nouveauMdp, $nouvellePassphrase)` |
 | Niveau 2 — appareil enrôlé | une signature, rien qui ouvre le coffre | au prochain secret donné : `recover($user, $serrure, $secret, $motDePasseActuel)`, freiné comme la connexion |
-| Niveau 3 — escalade humaine | aucun ancien secret | `reEnroll($user, $mdp, $empreinte, $passphrase)` : l'ancien coffre est **archivé** |
+| Niveau 3 — escalade humaine | aucun ancien secret | `reEnroll($dg->generationOf($user), $mdp, $empreinte, $passphrase)` : l'ancien coffre est **archivé** |
 
 `recover()` ouvre et re-scelle en une seule écriture conditionnelle. Le même appel rattrape un coffre dont l'enveloppe du mot de passe a pris du retard. Appelé seul, c'est un oracle Argon2id sans frein : appelle-le juste après une récupération acceptée par SelfRecover, derrière ses compteurs, et freine le rattrapage du niveau 2 par appareil comme la connexion.
 
@@ -194,7 +194,7 @@ $fields  = $dg->getFields($session);  // ['email' => 'a@b.c', 'iban' => 'FR76...
 $session = $dg->recover('alice', Lock::Passphrase, $anciennePassphrase, $nouveauMdp, $nouvellePassphrase);
 
 // Niveau 3 : l'ancien coffre est archivé, un neuf est créé
-['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('alice', $mdp, $empreinte, $passphrase);
+['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll($dg->generationOf('alice'), $mdp, $empreinte, $passphrase);
 
 // Recherche par champ indexé, sans déchiffrer aucun row
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' ou null

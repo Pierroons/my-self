@@ -12,13 +12,18 @@ namespace Pierroons\SelfDataGuard\Vault;
  * handed to a write path by hand, the generation check refuses it, since the
  * live vault has another salt.
  *
+ * It also keeps the generation of the current vault it was opened from: the
+ * archive is deleted under that generation, so a vault replaced since cannot
+ * delete it.
+ *
  * NEVER serialize, log, or persist this object.
  */
 final class UnlockedArchive
 {
     public function __construct(
         public readonly ArchivedVault $archive,
-        private readonly UnlockedVault $session
+        private readonly UnlockedVault $session,
+        public readonly VaultGeneration $openedFrom
     ) {
     }
 

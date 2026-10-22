@@ -86,7 +86,7 @@ Every SelfRecover recovery replaces secrets. The vault follows if the integrator
 | Level 1 — passphrase | the old passphrase | `recover($user, Lock::Passphrase, $old, $newPassword, $newPassphrase)` |
 | Level 2 — code + memorized word | the word's digest | `recover($user, Lock::Memorized, $digest, $newPassword, $newPassphrase)` |
 | Level 2 — enrolled device | a signature, nothing that opens the vault | at the next secret given: `recover($user, $lock, $secret, $currentPassword)`, rate-limited like the login |
-| Level 3 — human escalation | no old secret | `reEnroll($user, $password, $digest, $passphrase)`: the old vault is **archived** |
+| Level 3 — human escalation | no old secret | `reEnroll($dg->generationOf($user), $password, $digest, $passphrase)`: the old vault is **archived** |
 
 `recover()` opens and re-seals in a single conditional write. The same call catches up a vault whose password wrap has fallen behind. Called on its own, it is an Argon2id oracle with no rate limit: call it right after a recovery SelfRecover has accepted, behind its counters, and rate-limit the level-2 device catch-up like the login.
 
@@ -194,7 +194,7 @@ $fields  = $dg->getFields($session);  // ['email' => 'a@b.c', 'iban' => 'FR76...
 $session = $dg->recover('alice', Lock::Passphrase, $oldPassphrase, $newPassword, $newPassphrase);
 
 // Level 3: the old vault is archived, a new one created
-['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('alice', $password, $digest, $passphrase);
+['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll($dg->generationOf('alice'), $password, $digest, $passphrase);
 
 // Indexed lookup, no plaintext required
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' or null

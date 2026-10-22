@@ -30,7 +30,7 @@ try {
         'mode'      => $mode,
         'private'   => $dataGuard->getFields($session),
         'escrow'    => $dataGuard->getEscrowFieldsAsUser($session),
-        'hasEscrow' => $dataGuard->hasEscrow($userId),
+        'hasEscrow' => $dataGuard->hasEscrow($session),
     ]);
 } catch (RuntimeException $e) {
     fail('Authentication failed', 401);

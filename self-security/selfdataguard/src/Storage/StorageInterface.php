@@ -7,6 +7,7 @@ namespace Pierroons\SelfDataGuard\Storage;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 
 /**
@@ -21,6 +22,16 @@ use Pierroons\SelfDataGuard\Vault\VaultRecord;
  *   - archives : vaults set aside by a re-enrolment, still encrypted, any
  *                number per user
  *
+ * 🔑 Every write to a live vault names the generation it is meant for
+ * (VaultGeneration: userId + user_salt). The implementation compares it inside
+ * the write's own transaction, or in the same statement, and throws
+ * VaultNotFoundException when the userId has no live vault, StaleVaultException
+ * when it has another one. A generation received and not compared breaks
+ * nothing visible: the write lands in a vault whose key cannot read it.
+ *
+ * userIds compare byte for byte: a case-insensitive collation on the user_id
+ * column hands one account's vault to another spelling of its name.
+ *
  * Implementations are responsible for SQL safety (prepared statements),
  * transaction atomicity (batch field updates), and schema bootstrapping.
  */
@@ -28,8 +39,8 @@ interface StorageInterface
 {
     /**
      * Insert a brand-new vault, Argon2id profile included (kdfOpslimit,
-     * kdfMemlimit): its envelopes open under that profile only. Throws if the
-     * userId already exists.
+     * kdfMemlimit): its envelopes open under that profile only. Never an
+     * upsert: throws VaultExistsException if the userId has a live vault.
      */
     public function saveVault(VaultRecord $record): void;
 
@@ -40,8 +51,10 @@ interface StorageInterface
      * the record's, and bumps the revision. Throws StaleVaultException if the
      * vault was replaced or updated since the record was read,
      * VaultNotFoundException if the userId holds none.
+     *
+     * @return int the revision now stored, the record's plus one
      */
-    public function updateVault(VaultRecord $record): void;
+    public function updateVault(VaultRecord $record): int;
 
     /**
      * Load a vault. Throws VaultNotFoundException if not found.
@@ -56,28 +69,24 @@ interface StorageInterface
     public function vaultExists(string $userId): bool;
 
     /**
-     * Delete a vault and ALL its associated fields atomically.
+     * Delete the live vault of this generation and ALL its fields and escrow,
+     * atomically.
      *
      * Archives of the userId are left alone. Removing them is a separate,
-     * explicit decision (purgeArchives): otherwise whoever holds the current
+     * explicit decision (eraseAccount): otherwise whoever holds the current
      * vault — after a fraudulent re-enrolment, say — could erase the old
      * ones by deleting the account.
      */
-    public function deleteVault(string $userId): void;
+    public function deleteVault(VaultGeneration $generation): void;
 
     /**
-     * Insert or update a batch of encrypted fields for a user. Optional
-     * blindIndex per field for lookup support.
+     * Insert or update a batch of encrypted fields of the vault $generation
+     * names. Optional blindIndex per field for lookup support.
      *
-     * @param string                                       $userId
      * @param array<string, array{ciphertext: string, blindIndex?: ?string}> $fields
      *        Map field_name => ['ciphertext' => base64, 'blindIndex' => ?base64]
-     * @param string|null $vaultSalt If given, the write happens only if the live
-     *        vault still has this user_salt, checked inside the write's own
-     *        transaction (StaleVaultException otherwise). The same parameter
-     *        guards saveEscrow(), saveEscrowFields() and deleteArchive().
      */
-    public function saveFields(string $userId, array $fields, ?string $vaultSalt = null): void;
+    public function saveFields(VaultGeneration $generation, array $fields): void;
 
     /**
      * Load encrypted fields for a user.
@@ -97,9 +106,10 @@ interface StorageInterface
     // -- Escrow compartment (recovery-escrow sub-vault) -----------------------
 
     /**
-     * Insert or replace the escrow envelope (wrap_user + wrap_admin) for a user.
+     * Insert or replace the escrow envelope (wrap_user + wrap_admin) of the
+     * vault $generation names. $record->userId must be $generation's.
      */
-    public function saveEscrow(EscrowRecord $record, ?string $vaultSalt = null): void;
+    public function saveEscrow(VaultGeneration $generation, EscrowRecord $record): void;
 
     /**
      * Load the escrow envelope for a user, or null if none.
@@ -107,11 +117,12 @@ interface StorageInterface
     public function loadEscrow(string $userId): ?EscrowRecord;
 
     /**
-     * Insert or update a batch of escrow field ciphertexts for a user.
+     * Insert or update a batch of escrow field ciphertexts of the vault
+     * $generation names.
      *
      * @param array<string, string> $fields field_name => ciphertext (base64)
      */
-    public function saveEscrowFields(string $userId, array $fields, ?string $vaultSalt = null): void;
+    public function saveEscrowFields(VaultGeneration $generation, array $fields): void;
 
     /**
      * Load escrow field ciphertexts for a user.
@@ -124,15 +135,19 @@ interface StorageInterface
     // -- Archives (vaults set aside by a re-enrolment) ------------------------
 
     /**
-     * Atomically set the live vault of $new->userId aside as an archive —
+     * Atomically set the live vault of $replacing aside as an archive —
      * envelopes, fields and escrow, still encrypted — then insert $new in its
      * place. Blind indexes are not archived. Nothing changes if any step
      * fails.
      *
-     * @return string|null the archive id, or null if the userId had no live
-     *                     vault (then $new is simply inserted)
+     * The vault archived is exactly the one $replacing names: a second call
+     * with the same generation finds the vault the first one inserted and
+     * throws StaleVaultException, instead of archiving it in turn.
+     * $new->userId must be $replacing's.
+     *
+     * @return string the archive id
      */
-    public function replaceWithArchive(VaultRecord $new): ?string;
+    public function replaceWithArchive(VaultGeneration $replacing, VaultRecord $new): string;
 
     /**
      * @return list<array{id: string, archivedAt: \DateTimeImmutable, locks: list<Lock>}> oldest first
@@ -145,12 +160,17 @@ interface StorageInterface
     public function loadArchive(string $userId, string $archiveId): ?ArchivedVault;
 
     /**
-     * Delete one archive. False if it does not exist or belongs to another userId.
+     * Delete one archive, while the live vault is still the one $generation
+     * names. False if it does not exist or belongs to another userId.
      */
-    public function deleteArchive(string $userId, string $archiveId, ?string $vaultSalt = null): bool;
+    public function deleteArchive(VaultGeneration $generation, string $archiveId): bool;
 
     /**
-     * Delete every archive of $userId. Returns how many were deleted.
+     * Erase the account: the live vault, its fields and escrow, and every
+     * archive of the userId, in one transaction. Works on a userId that has
+     * archives and no live vault.
+     *
+     * @return int how many vaults were erased, live and archived
      */
-    public function purgeArchives(string $userId): int;
+    public function eraseAccount(string $userId): int;
 }

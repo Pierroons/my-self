@@ -6,6 +6,7 @@ namespace Pierroons\SelfDataGuard\Storage;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use InvalidArgumentException;
 use PDO;
 use PDOException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
@@ -14,6 +15,8 @@ use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use RuntimeException;
@@ -108,7 +111,7 @@ final class SqliteAdapter implements StorageInterface
             $stmt->execute($this->vaultToParamsForInsert($record));
         } catch (PDOException $e) {
             if (str_contains($e->getMessage(), 'UNIQUE') || str_contains($e->getMessage(), 'PRIMARY KEY')) {
-                throw new RuntimeException("Vault already exists for userId '{$record->userId}'", 0, $e);
+                throw new VaultExistsException("Vault already exists for userId '{$record->userId}'", 0, $e);
             }
             throw $e;
         }
@@ -125,7 +128,7 @@ final class SqliteAdapter implements StorageInterface
      *   password change landing after a passphrase removal puts the revoked
      *   passphrase back.
      */
-    public function updateVault(VaultRecord $record): void
+    public function updateVault(VaultRecord $record): int
     {
         $stmt = $this->pdo->prepare(
             'UPDATE selfdataguard_vaults
@@ -146,6 +149,7 @@ final class SqliteAdapter implements StorageInterface
             }
             throw new VaultNotFoundException("Vault not found for userId '{$record->userId}'");
         }
+        return $record->revision + 1;
     }
 
     public function loadVault(string $userId): VaultRecord
@@ -172,12 +176,15 @@ final class SqliteAdapter implements StorageInterface
         return $stmt->fetchColumn() !== false;
     }
 
-    public function deleteVault(string $userId): void
+    public function deleteVault(VaultGeneration $generation): void
     {
-        $this->atomic(fn () => $this->purgeLive($userId));
+        $this->atomic(function () use ($generation): void {
+            $this->assertGeneration($generation);
+            $this->purgeLive($generation->userId);
+        });
     }
 
-    public function saveFields(string $userId, array $fields, ?string $vaultSalt = null): void
+    public function saveFields(VaultGeneration $generation, array $fields): void
     {
         if ($fields === []) {
             return;
@@ -192,14 +199,14 @@ final class SqliteAdapter implements StorageInterface
                updated_at  = excluded.updated_at'
         );
 
-        $this->atomic(function () use ($stmt, $userId, $fields, $now, $vaultSalt): void {
-            $this->assertGeneration($userId, $vaultSalt);
+        $this->atomic(function () use ($stmt, $generation, $fields, $now): void {
+            $this->assertGeneration($generation);
             foreach ($fields as $fieldName => $data) {
                 if (!isset($data['ciphertext'])) {
                     throw new RuntimeException("Missing ciphertext for field '{$fieldName}'");
                 }
                 $stmt->execute([
-                    ':uid' => $userId,
+                    ':uid' => $generation->userId,
                     ':fn'  => $fieldName,
                     ':ct'  => $data['ciphertext'],
                     ':bi'  => $data['blindIndex'] ?? null,
@@ -245,8 +252,11 @@ final class SqliteAdapter implements StorageInterface
 
     // -- Escrow compartment ---------------------------------------------------
 
-    public function saveEscrow(EscrowRecord $record, ?string $vaultSalt = null): void
+    public function saveEscrow(VaultGeneration $generation, EscrowRecord $record): void
     {
+        if ($record->userId !== $generation->userId) {
+            throw new InvalidArgumentException('The escrow record belongs to another userId than the generation');
+        }
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
              VALUES (:uid, :wu, :wa, :ca, :ua)
@@ -255,8 +265,8 @@ final class SqliteAdapter implements StorageInterface
                wrap_admin = excluded.wrap_admin,
                updated_at = excluded.updated_at'
         );
-        $this->atomic(function () use ($stmt, $record, $vaultSalt): void {
-            $this->assertGeneration($record->userId, $vaultSalt);
+        $this->atomic(function () use ($stmt, $record, $generation): void {
+            $this->assertGeneration($generation);
             $stmt->execute([
                 ':uid' => $record->userId,
                 ':wu'  => $record->wrapUser->toBase64(),
@@ -278,7 +288,7 @@ final class SqliteAdapter implements StorageInterface
         return $row === false ? null : $this->rowToEscrow($row);
     }
 
-    public function saveEscrowFields(string $userId, array $fields, ?string $vaultSalt = null): void
+    public function saveEscrowFields(VaultGeneration $generation, array $fields): void
     {
         if ($fields === []) {
             return;
@@ -291,11 +301,11 @@ final class SqliteAdapter implements StorageInterface
                ciphertext = excluded.ciphertext,
                updated_at = excluded.updated_at'
         );
-        $this->atomic(function () use ($stmt, $userId, $fields, $now, $vaultSalt): void {
-            $this->assertGeneration($userId, $vaultSalt);
+        $this->atomic(function () use ($stmt, $generation, $fields, $now): void {
+            $this->assertGeneration($generation);
             foreach ($fields as $fieldName => $ciphertext) {
                 $stmt->execute([
-                    ':uid' => $userId,
+                    ':uid' => $generation->userId,
                     ':fn'  => $fieldName,
                     ':ct'  => $ciphertext,
                     ':ua'  => $now,
@@ -328,25 +338,26 @@ final class SqliteAdapter implements StorageInterface
 
     // -- Archives ---------------------------------------------------------------
 
-    public function replaceWithArchive(VaultRecord $new): ?string
+    public function replaceWithArchive(VaultGeneration $replacing, VaultRecord $new): string
     {
-        return $this->atomic(function () use ($new): ?string {
-            $archiveId = null;
+        if ($new->userId !== $replacing->userId) {
+            throw new InvalidArgumentException('The new vault belongs to another userId than the one it replaces');
+        }
+        return $this->atomic(function () use ($replacing, $new): string {
+            $this->assertGeneration($replacing);
             $live = $this->fetchVaultRow($new->userId);
-            if ($live !== null) {
-                $archiveId = bin2hex(random_bytes(16));
-                $this->pdo->prepare(
-                    'INSERT INTO selfdataguard_archives (archive_id, user_id, archived_at, locks, package)
-                     VALUES (:id, :uid, :at, :locks, :pkg)'
-                )->execute([
-                    ':id'    => $archiveId,
-                    ':uid'   => $new->userId,
-                    ':at'    => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
-                    ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
-                    ':pkg'   => $this->archivePackage($live),
-                ]);
-                $this->purgeLive($new->userId);
-            }
+            $archiveId = bin2hex(random_bytes(16));
+            $this->pdo->prepare(
+                'INSERT INTO selfdataguard_archives (archive_id, user_id, archived_at, locks, package)
+                 VALUES (:id, :uid, :at, :locks, :pkg)'
+            )->execute([
+                ':id'    => $archiveId,
+                ':uid'   => $new->userId,
+                ':at'    => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
+                ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
+                ':pkg'   => $this->archivePackage($live),
+            ]);
+            $this->purgeLive($new->userId);
             $this->saveVault($new);
             return $archiveId;
         });
@@ -405,45 +416,48 @@ final class SqliteAdapter implements StorageInterface
         );
     }
 
-    public function deleteArchive(string $userId, string $archiveId, ?string $vaultSalt = null): bool
+    public function deleteArchive(VaultGeneration $generation, string $archiveId): bool
     {
-        return $this->atomic(function () use ($userId, $archiveId, $vaultSalt): bool {
-            $this->assertGeneration($userId, $vaultSalt);
+        return $this->atomic(function () use ($generation, $archiveId): bool {
+            $this->assertGeneration($generation);
             $stmt = $this->pdo->prepare(
                 'DELETE FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
             );
-            $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+            $stmt->execute([':uid' => $generation->userId, ':id' => $archiveId]);
             return $stmt->rowCount() > 0;
         });
     }
 
-    public function purgeArchives(string $userId): int
+    public function eraseAccount(string $userId): int
     {
-        $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid');
-        $stmt->execute([':uid' => $userId]);
-        return $stmt->rowCount();
+        return $this->atomic(function () use ($userId): int {
+            $live = $this->fetchVaultRow($userId) !== null ? 1 : 0;
+            $this->purgeLive($userId);
+            $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid');
+            $stmt->execute([':uid' => $userId]);
+            return $live + $stmt->rowCount();
+        });
     }
 
     // -------------------------------------------------------------------------
 
     /**
      * Inside the write's own transaction, the live vault must still be the one
-     * $vaultSalt identifies. Checked beforehand only, a re-enrolment committed
-     * in between would let an old session write under the old master key into
-     * the new vault. Null skips the check (callers without a session).
+     * $generation names. Checked beforehand only, a re-enrolment committed in
+     * between would let an old session write under the old master key into
+     * the new vault.
      */
-    private function assertGeneration(string $userId, ?string $vaultSalt): void
+    private function assertGeneration(VaultGeneration $generation): void
     {
-        if ($vaultSalt === null) {
-            return;
+        $stmt = $this->pdo->prepare('SELECT user_salt FROM selfdataguard_vaults WHERE user_id = :uid');
+        $stmt->execute([':uid' => $generation->userId]);
+        $salt = $stmt->fetchColumn();
+        if ($salt === false) {
+            throw new VaultNotFoundException("Vault not found for userId '{$generation->userId}'");
         }
-        $stmt = $this->pdo->prepare(
-            'SELECT 1 FROM selfdataguard_vaults WHERE user_id = :uid AND user_salt = :salt'
-        );
-        $stmt->execute([':uid' => $userId, ':salt' => base64_encode($vaultSalt)]);
-        if ($stmt->fetchColumn() === false) {
+        if (!hash_equals(base64_encode($generation->userSalt), (string) $salt)) {
             throw new StaleVaultException(
-                "The live vault of '{$userId}' is not the one this session was opened on — unlock the current one"
+                "The live vault of '{$generation->userId}' is not the one this write names — load the current one"
             );
         }
     }

@@ -102,8 +102,8 @@ $dg->setFields($session, ['notes' => 'note privée', 'mots_de_passe' => 'forum:h
 // Escrow zone (consented, admin-recoverable)
 $dg->setEscrowFields($session, $admin['publicKey'], ESCROW_PLAINTEXT);
 
-$dg->hasEscrow('alice') ? ok('hasEscrow() true after enrollment') : ko('hasEscrow should be true');
-$dg->hasEscrow('inconnu') ? ko('hasEscrow(inconnu) should be false') : ok('hasEscrow(unknown) false');
+$dg->hasEscrow($session) ? ok('hasEscrow() true after enrollment') : ko('hasEscrow should be true');
+$dg->hasEscrow($dg->register('sans-sequestre', 'motdepasse-sans-01')) ? ko('hasEscrow() should be false without escrow') : ok('hasEscrow() false on a vault without escrow');
 
 $asUser = $dg->getEscrowFieldsAsUser($session, ['contact_secours', 'indice_recup']);
 $asUser['contact_secours'] === ESCROW_PLAINTEXT['contact_secours'] ? ok('user reads own escrow (contact_secours)') : ko('user escrow read wrong');
@@ -303,7 +303,7 @@ $ancien  = new EscrowRecord(
     wrapAdmin: sodium_crypto_box_seal($neuf['unlocked']->getEscrowKey(), base64_decode($admin['publicKey'])),
     createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt
 );
-$storage->saveEscrow($ancien, $carol->vaultSalt);
+$storage->saveEscrow($carol->generation(), $ancien);
 !EscrowVault::isAccountBound($storage->loadEscrow('carol'))
     ? ok('fixture: a pre-0.6.0 wrap_admin is told apart by its length')
     : ko('fixture: the pre-0.6.0 wrap_admin reads as bound');
@@ -330,7 +330,7 @@ sodium_memzero($skLien);
 
 section('Delete cascade removes escrow');
 
-$dg->delete('alice');
+$dg->delete($dg->generationOf('alice'));
 $storage->loadEscrow('alice') === null ? ok('deleteVault() cascades to escrow envelope') : ko('escrow envelope survived delete');
 $storage->loadEscrowFields('alice') === [] ? ok('deleteVault() cascades to escrow fields') : ko('escrow fields survived delete');
 

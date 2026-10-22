@@ -200,7 +200,7 @@ $r = $esc->reEnroler((string) $o['numero'], $sesame, $MDP3, $MOT3, str_repeat('d
 verifier('SelfRecover reprend le compte et émet une passphrase',
     ($r['ok'] ?? false) === true && isset($r['passphrase']), (string) ($r['message'] ?? ''));
 
-$l3 = $dg->reEnroll('alice', $MDP3, $MOT3, $r['passphrase']);
+$l3 = $dg->reEnroll($dg->generationOf('alice'), $MDP3, $MOT3, $r['passphrase']);
 verifier('le coffre neuf est vide, l\'ancien est archivé',
     $dg->getFields($l3['unlocked']) === [] && is_string($l3['archiveId']));
 $ouverte = $dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Passphrase, $PHR);

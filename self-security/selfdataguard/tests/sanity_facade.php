@@ -24,6 +24,8 @@ use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
+use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
@@ -251,7 +253,7 @@ $plain4 = $dg->getFields($sessionPwdAfter);
 
 section('Delete user');
 
-$dg->delete('user-cosmo');
+$dg->delete($sessionPwdAfter->generation());
 !$dg->userExists('user-cosmo') ? ok('delete removes vault') : ko('delete failed');
 
 try {
@@ -321,8 +323,8 @@ section('Generation — a session from a replaced vault is refused everywhere');
 $admin = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the facade bench');
 $stale = $dg->register('user-gen', 'gen-password-0001', 'gen-memorized');
 $dg->setFields($stale, ['a' => '1']);
-$dg->delete('user-gen');
-$dg->register('user-gen', 'gen-password-0002', 'gen-memorized');
+$dg->delete($stale->generation());
+$fresh = $dg->register('user-gen', 'gen-password-0002', 'gen-memorized');
 
 $guarded = [
     'setFields'              => static fn () => $dg->setFields($stale, ['a' => '2']),
@@ -331,6 +333,8 @@ $guarded = [
     'getEscrowFieldsAsUser'  => static fn () => $dg->getEscrowFieldsAsUser($stale),
     'changePassword'         => static fn () => $dg->changePassword($stale, 'gen-password-0003'),
     'changePassphrase'       => static fn () => $dg->changePassphrase($stale, $PH1),
+    'hasEscrow'              => static fn () => $dg->hasEscrow($stale),
+    'listArchives'           => static fn () => $dg->listArchives($stale),
 ];
 $refused = [];
 foreach ($guarded as $name => $call) {
@@ -343,7 +347,7 @@ foreach ($guarded as $name => $call) {
 $refused === array_keys($guarded)
     ? ok('StaleVaultException on ' . implode(', ', $refused))
     : ko('a stale session went through', implode(', ', array_diff(array_keys($guarded), $refused)));
-!$dg->hasEscrow('user-gen')
+!$dg->hasEscrow($fresh)
     ? ok('no escrow was created under the old master key')
     : ko('an escrow was sealed with a stale session');
 
@@ -356,15 +360,22 @@ $l3old = $dg->register('user-l3', 'l3-password-0001', 'l3-memorized', $PH1);
 $dg->setFields($l3old, ['email' => $EMAIL, 'note' => 'ancienne note'], indexed: ['email']);
 $dg->setEscrowFields($l3old, $admin['publicKey'], ['contact' => 'contact de secours']);
 
-$l3 = $dg->reEnroll('user-l3', 'l3-password-0002', 'l3-memorized-new', $PH2);
+$replaced = $dg->generationOf('user-l3');
+$l3 = $dg->reEnroll($replaced, 'l3-password-0002', 'l3-memorized-new', $PH2);
 $current = $l3['unlocked'];
 $archiveId = $l3['archiveId'];
 is_string($archiveId) && $dg->getFields($current) === []
     ? ok('reEnroll() returns the archive id and an empty new vault')
     : ko('reEnroll() did not set the old vault aside');
-($dg->listArchives('user-l3')[0]['id'] ?? null) === $archiveId
-    ? ok('listArchives() lists it')
-    : ko('the archive is not listed');
+try {
+    $dg->reEnroll($replaced, 'l3-password-0009');
+    ko('a second reEnroll() naming the replaced vault archived the new one');
+} catch (StaleVaultException) {
+    ok('a second reEnroll() naming the same generation is refused — no second archive, the new vault stays');
+}
+array_column($dg->listArchives($current), 'id') === [$archiveId]
+    ? ok('listArchives() lists it, from a session on the current vault')
+    : ko('the archive is not listed, or a second one was made');
 
 // -----------------------------------------------------------------------------
 
@@ -459,19 +470,25 @@ $dg->getArchiveEscrowFieldsAsAdmin('user-l3', $archiveId, $sk, $admin['publicKey
     : ko('the admin cannot reach the archived escrow');
 sodium_memzero($sk);
 
+$openedBefore = $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+$again = $dg->reEnroll($current->generation(), 'l3-password-0003');
 try {
-    $dg->deleteArchive($l3old, $archiveId);
-    ko('a session on the replaced vault deleted the archive');
+    $dg->deleteArchive($openedBefore);
+    ko('an archive opened under a vault replaced since was deleted');
 } catch (StaleVaultException) {
-    ok('deleteArchive() refuses a session on the replaced vault');
+    ok('deleteArchive() refuses an archive opened under a vault replaced since');
 }
-$dg->delete('user-l3');
-count($dg->listArchives('user-l3')) === 1
+$reopened = $dg->openArchive($again['unlocked'], $archiveId, Lock::Passphrase, $PH1);
+$dg->deleteArchive($reopened) && array_column($storage->listArchives('user-l3'), 'id') === [$again['archiveId']]
+    ? ok('deleteArchive() deletes the archive it was given, opened with one of its old locks')
+    : ko('deleteArchive() did not delete that archive, or deleted another');
+$dg->delete($again['unlocked']->generation());
+count($storage->listArchives('user-l3')) === 1
     ? ok('delete() leaves the archive')
     : ko('delete() took the archive with it');
-$dg->purgeArchives('user-l3') === 1 && $dg->listArchives('user-l3') === []
-    ? ok('purgeArchives() is the explicit erasure')
-    : ko('purgeArchives() did not erase it');
+$dg->eraseAccount('user-l3') === 1 && $storage->listArchives('user-l3') === []
+    ? ok('eraseAccount() is the explicit erasure, with no live vault left')
+    : ko('eraseAccount() did not erase it');
 
 // -----------------------------------------------------------------------------
 
@@ -482,31 +499,31 @@ abstract class DelegatingStorage implements StorageInterface
 {
     public function __construct(protected readonly StorageInterface $inner) {}
     public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r); }
-    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r); }
+    public function updateVault(VaultRecord $r): int { return $this->inner->updateVault($r); }
     public function loadVault(string $u): VaultRecord { return $this->inner->loadVault($u); }
     public function findVault(string $u): ?VaultRecord { return $this->inner->findVault($u); }
     public function vaultExists(string $u): bool { return $this->inner->vaultExists($u); }
-    public function deleteVault(string $u): void { $this->inner->deleteVault($u); }
-    public function saveFields(string $u, array $f, ?string $s = null): void { $this->inner->saveFields($u, $f, $s); }
+    public function deleteVault(VaultGeneration $g): void { $this->inner->deleteVault($g); }
+    public function saveFields(VaultGeneration $g, array $f): void { $this->inner->saveFields($g, $f); }
     public function loadFields(string $u, array $n = []): array { return $this->inner->loadFields($u, $n); }
     public function findUserIdByBlindIndex(string $f, string $b): ?string { return $this->inner->findUserIdByBlindIndex($f, $b); }
-    public function saveEscrow(EscrowRecord $r, ?string $s = null): void { $this->inner->saveEscrow($r, $s); }
+    public function saveEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->saveEscrow($g, $r); }
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
-    public function saveEscrowFields(string $u, array $f, ?string $s = null): void { $this->inner->saveEscrowFields($u, $f, $s); }
+    public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($g, $f); }
     public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
-    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r); }
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($g, $r); }
     public function listArchives(string $u): array { return $this->inner->listArchives($u); }
     public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
-    public function deleteArchive(string $u, string $id, ?string $s = null): bool { return $this->inner->deleteArchive($u, $id, $s); }
-    public function purgeArchives(string $u): int { return $this->inner->purgeArchives($u); }
+    public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
+    public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
 }
 
 /** A StorageInterface implementation that drops wrap_phrase on every write. */
 final class ForgetfulStorage extends DelegatingStorage
 {
     public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r->withWrapPhrase(null, $r->updatedAt)); }
-    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
-    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function updateVault(VaultRecord $r): int { return $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($g, $r->withWrapPhrase(null, $r->updatedAt)); }
 }
 
 $forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey);
@@ -570,19 +587,83 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('The read-back compares the salt, the revision and every wrap; the userId is echoed');
+
+/** A storage with a case-insensitive user_id: asked for 'USER-CI', it answers with 'user-ci'. */
+final class CaseFoldingStorage extends DelegatingStorage
+{
+    public function loadVault(string $u): VaultRecord { return $this->inner->loadVault(strtolower($u)); }
+}
+
+$folding = new SelfDataGuard(new CaseFoldingStorage($storage), $blindKey);
+$folding->register('user-ci', 'case-password-0001');
+try {
+    $folding->loginWithPassword('USER-CI', 'case-password-0001');
+    ko('another spelling of the userId opened its vault');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'another userId than the one asked for')
+        ? ok('a vault returned for another userId than the one asked for is refused')
+        : ko('wrong failure', $e->getMessage());
+}
+
+/** An insert that another insert overwrites before the first one is read back — an upsert under a race. */
+final class OverwrittenInsertStorage extends DelegatingStorage
+{
+    public ?VaultRecord $overwriteWith = null;
+    public function saveVault(VaultRecord $r): void
+    {
+        $this->inner->saveVault($r);
+        if ($this->overwriteWith !== null) {
+            $this->inner->deleteVault($r->generation());
+            $this->inner->saveVault($this->overwriteWith);
+            $this->overwriteWith = null;
+        }
+    }
+}
+
+$overwritten = new OverwrittenInsertStorage($storage);
+$overwritten->overwriteWith = (new UserVault())->register('user-upsert', 'other-insert-0001')['record'];
+try {
+    (new SelfDataGuard($overwritten, $blindKey))->register('user-upsert', 'first-insert-0001');
+    ko('register() reported a vault the storage no longer holds');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'holds another vault than the one written')
+        ? ok('register(): an insert overwritten before its read-back is detected by its salt')
+        : ko('wrong failure', $e->getMessage());
+}
+
+/** An update that reports the next revision and writes nothing. */
+final class UpdateDroppingStorage extends DelegatingStorage
+{
+    public function updateVault(VaultRecord $r): int { return $r->revision + 1; }
+}
+
+$dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey);
+$droppedSession = $dropping->register('user-dropped', 'dropped-password-01');
+try {
+    $dropping->changePassword($droppedSession, 'dropped-password-02');
+    ko('a password change the storage never wrote was reported as stored');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'did not persist revision 1')
+        ? ok('changePassword(): an update reported but never written is detected by its revision')
+        : ko('wrong failure', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
 section('A re-enrolment landing between the check and the write');
 
 /** Runs one re-enrolment of the userId right before the next field write reaches the storage. */
 final class RacingStorage extends DelegatingStorage
 {
     public ?Closure $before = null;
-    public function saveFields(string $u, array $f, ?string $s = null): void
+    public function saveFields(VaultGeneration $g, array $f): void
     {
         if ($this->before !== null) {
             ($this->before)();
             $this->before = null;
         }
-        $this->inner->saveFields($u, $f, $s);
+        $this->inner->saveFields($g, $f);
     }
 }
 
@@ -591,7 +672,7 @@ $dgRace = new SelfDataGuard($racing, $blindKey);
 $oldSession = $dgRace->register('user-race', 'race-password-0001', 'race-memorized');
 $newSession = null;
 $racing->before = static function () use ($dgRace, &$newSession): void {
-    $newSession = $dgRace->reEnroll('user-race', 'race-password-0002', 'race-memorized-2')['unlocked'];
+    $newSession = $dgRace->reEnroll($dgRace->generationOf('user-race'), 'race-password-0002', 'race-memorized-2')['unlocked'];
 };
 try {
     $dgRace->setFields($oldSession, ['note' => 'written with the old key']);
@@ -667,7 +748,7 @@ try {
     ko('getFields() refused the whole account for one reserved row', $e->getMessage());
 }
 try {
-    ['unlocked' => $neuf, 'archiveId' => $idReserve] = $dg->reEnroll('reserved-name', 'mot de passe réservé 2');
+    ['unlocked' => $neuf, 'archiveId' => $idReserve] = $dg->reEnroll($dg->generationOf('reserved-name'), 'mot de passe réservé 2');
     $lu = $dg->readArchive($dg->openArchive($neuf, $idReserve, Lock::Password, 'mot de passe réservé'));
     $lu['private'] === ['note' => 'une note']
         ? ok('an archive holding the reserved row still restores the other fields')

@@ -2592,8 +2592,8 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=26 [sanity_audit]=23 [sanity_ceremony]=22 [sanity_escrow]=37
-            [sanity_facade]=70 [sanity_fields]=26 [sanity_migration]=15 [sanity_primitives]=56
-            [sanity_storage]=60 [sanity_vault]=58 [sanity_vecteurs]=9
+            [sanity_facade]=75 [sanity_fields]=26 [sanity_migration]=15 [sanity_primitives]=56
+            [sanity_storage]=64 [sanity_vault]=58 [sanity_vecteurs]=9
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do

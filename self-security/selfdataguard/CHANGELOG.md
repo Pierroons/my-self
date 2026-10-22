@@ -9,8 +9,14 @@ The AAD becomes a required argument, and a ciphertext bound to nothing says so. 
 by construction, not the fix of an exploitable flaw: the uses that shared a flat AAD were sealed under
 different keys, and the only same-key case, a field named `escrow`, was already refused by name.
 
-The façade's signatures do not change. Code that calls `Primitives` or builds an `EncryptedBlob`
-directly does.
+Every write to a live vault now names the vault it is meant for. The check was optional: a storage
+implementation could leave it out, and a write from a replaced vault then landed in the new one, under
+a key that cannot read it. It is now a required parameter of the contract, and the façade reads back
+the salt, the revision and every wrap it wrote.
+
+Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInterface`, or calls
+`reEnroll()`, `delete()`, `listArchives()`, `deleteArchive()`, `purgeArchives()` or `hasEscrow()`
+changes.
 
 ### Changed
 
@@ -26,6 +32,28 @@ directly does.
 - Each use binds its own domain: `vault-wrap`, `escrow-wrap`, `field`, `escrow-field`, and the sealed
   admin key. Each segment is prefixed with its length, so `(alice, escrow|email)` and
   `(alice, escrow, email)` no longer give the same bytes.
+- **BREAKING** — `StorageInterface`: every write to a live vault takes a `VaultGeneration` first
+  (`saveFields`, `saveEscrow`, `saveEscrowFields`, `deleteVault`, `deleteArchive`), compared inside the
+  write's own transaction. It was `?string $vaultSalt = null`, and `null` skipped the check.
+  `replaceWithArchive(VaultGeneration $replacing, VaultRecord $new): string` archives exactly that
+  generation: two re-enrolments that read the same vault no longer both succeed, each archiving what
+  the other made. `updateVault()` returns the revision it stored; `saveVault()` throws
+  `VaultExistsException`, never an upsert.
+- **BREAKING** — `reEnroll(VaultGeneration $replacing, …)`: the generation comes from
+  `generationOf($userId)`. A userId with no live vault goes through `register()`, and the archive id is
+  never null.
+- **BREAKING** — `delete(VaultGeneration $generation)`: the holder passes `$session->generation()`, an
+  operator `generationOf($userId)`.
+- **BREAKING** — `listArchives(UnlockedVault $current)` and `hasEscrow(UnlockedVault $session)` need a
+  session on the current vault. Without one, they told anyone how many times an account had been
+  re-enrolled, which locks open each archive, and whether it holds an escrow.
+- **BREAKING** — `deleteArchive(UnlockedArchive $opened)`: the archive must be opened with one of its old
+  locks. A session on the current vault was enough, and after a fraudulent level 3 that session is the
+  fraudster's.
+- The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
+  `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
+  `changeMemorized()` were not read back. A vault returned for another userId than the one asked for
+  is refused: a case-insensitive collation on `user_id` opens it under another spelling.
 
 ### Added
 
@@ -39,11 +67,22 @@ directly does.
 - `EncryptedBlob::bindsItsContext()`, true for a format v3 blob, whose AAD carries a domain.
 - `FieldCrypter::aadFor()`, `EscrowFieldCrypter::aadFor()` and `EscrowVault::wrapAad()` are public, for
   tools that read or migrate stored blobs.
+- `VaultGeneration` (userId + user_salt), from `UnlockedVault::generation()`, `VaultRecord::generation()`
+  or `SelfDataGuard::generationOf()` — the last one for an operator or a level-3 flow, never for a
+  route a visitor reaches.
+- `eraseAccount(string $userId): int` erases the live vault and every archive in one transaction, and
+  works on a userId left with archives only.
+
+### Removed
+
+- **BREAKING** — `purgeArchives()`: `eraseAccount()` replaces it.
 
 ### Tests
 
-- 402 checks across the eleven suites on PHP 8.4 (was 388): primitives 46 → 56, escrow 36 → 37,
-  facade 67 → 70. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
+- 411 checks across the eleven suites on PHP 8.4 (was 388): primitives 46 → 56, escrow 36 → 37,
+  facade 67 → 75, storage 60 → 64. Three storages written wrong on purpose — a case-insensitive
+  `user_id`, an insert overwritten before its read-back, an update reported and never written — are
+  each refused by the façade. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
   also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
   because `reEnroll()` draws a new master key. Five canaries were seen failing, each on its own case.
 - The libsodium/OpenSSL cross-check in `sanity_primitives` gives each read its own `try`: a regression
@@ -66,6 +105,13 @@ misread. Do not roll back after a write.
 
 - Code that calls `Primitives` directly passes an `Aad::of(...)` for every new write. Data written
   before 0.7.0 is read with `decryptAcrossFormats()` and the flat string used before.
+- A `StorageInterface` implementation of your own takes the new signatures, and compares the
+  generation inside each write's transaction — throwing `VaultNotFoundException` when the userId has
+  no live vault, `StaleVaultException` when it has another. A generation received and not compared
+  breaks nothing visible.
+- Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
+  `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
+  `eraseAccount($id)` for `purgeArchives($id)`.
 
 ## [v0.6.2] — 2026-10-15
 

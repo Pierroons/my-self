@@ -16,6 +16,8 @@ use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use RuntimeException;
@@ -40,7 +42,8 @@ use RuntimeException;
  *     $session = $dg->recover('user-1', Lock::Passphrase, $old, $newPassword, $newPassphrase);
  *
  *     // Level 3, no old secret left: the vault is archived, a new one created.
- *     ['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('user-1', $pwd, $memorized, $passphrase);
+ *     $live = $dg->generationOf('user-1');
+ *     ['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll($live, $pwd, $memorized, $passphrase);
  *
  *     // Find a user by an indexed field (no plaintext lookup needed)
  *     $userId = $dg->findUserByField('email', 'a@b.c');
@@ -81,7 +84,7 @@ final class SelfDataGuard
         #[\SensitiveParameter] ?string $passphrase = null
     ): UnlockedVault {
         if ($this->storage->vaultExists($userId)) {
-            throw new RuntimeException("User '{$userId}' already exists");
+            throw new VaultExistsException("User '{$userId}' already exists");
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
         $this->storage->saveVault($result['record']);
@@ -97,7 +100,7 @@ final class SelfDataGuard
      */
     public function loginWithPassword(string $userId, #[\SensitiveParameter] string $password): UnlockedVault
     {
-        $record = $this->storage->loadVault($userId);
+        $record = $this->load($userId);
         return $this->vault->unlockWithPassword($record, $password);
     }
 
@@ -110,7 +113,7 @@ final class SelfDataGuard
      */
     public function loginWithMemorized(string $userId, #[\SensitiveParameter] string $memorized): UnlockedVault
     {
-        $record = $this->storage->loadVault($userId);
+        $record = $this->load($userId);
         return $this->vault->unlockWithMemorized($record, $memorized);
     }
 
@@ -140,14 +143,13 @@ final class SelfDataGuard
         #[\SensitiveParameter] string $newPassword,
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): UnlockedVault {
-        $record  = $this->storage->loadVault($userId);
+        $record  = $this->load($userId);
         $session = $this->vault->unlock($record, $lock, $secret);
         $record  = $this->vault->changePassword($record, $session, $newPassword);
         if ($newPassphrase !== null) {
             $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
         }
-        $this->storage->updateVault($record);
-        $this->assertVaultPersisted($record, $record->revision + 1);
+        $this->persist($record);
         return $session;
     }
 
@@ -175,7 +177,7 @@ final class SelfDataGuard
                     : null,
             ];
         }
-        $this->storage->saveFields($session->userId, $payload, $session->vaultSalt);
+        $this->storage->saveFields($session->generation(), $payload);
     }
 
     /**
@@ -215,8 +217,7 @@ final class SelfDataGuard
      */
     public function changePassword(UnlockedVault $session, #[\SensitiveParameter] string $newPassword): void
     {
-        $rotated = $this->vault->changePassword($this->currentRecord($session), $session, $newPassword);
-        $this->storage->updateVault($rotated);
+        $this->persist($this->vault->changePassword($this->currentRecord($session), $session, $newPassword));
     }
 
     /**
@@ -224,8 +225,7 @@ final class SelfDataGuard
      */
     public function changeMemorized(UnlockedVault $session, #[\SensitiveParameter] ?string $newMemorized): void
     {
-        $rotated = $this->vault->changeMemorized($this->currentRecord($session), $session, $newMemorized);
-        $this->storage->updateVault($rotated);
+        $this->persist($this->vault->changeMemorized($this->currentRecord($session), $session, $newMemorized));
     }
 
     /**
@@ -234,50 +234,71 @@ final class SelfDataGuard
      */
     public function changePassphrase(UnlockedVault $session, #[\SensitiveParameter] string $newPassphrase): void
     {
-        $rotated = $this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase);
-        $this->storage->updateVault($rotated);
-        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
+        $this->persist($this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase));
     }
 
     public function removePassphrase(UnlockedVault $session): void
     {
-        $rotated = $this->vault->removePassphrase($this->currentRecord($session), $session);
-        $this->storage->updateVault($rotated);
-        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
+        $this->persist($this->vault->removePassphrase($this->currentRecord($session), $session));
     }
 
     // -- Re-enrolment and archives ---------------------------------------------
 
     /**
-     * Give the userId a new vault and set the current one aside as an archive
-     * — SelfRecover's level 3, where no old secret is left to re-seal with.
-     * Every Argon2id runs first, then one transaction archives and inserts:
-     * a failure leaves the old vault live. With no live vault, it simply
-     * creates one.
+     * Which vault the userId holds now, read without any secret — for an
+     * operator or a level-3 flow, never for a route a visitor reaches. Null
+     * when the userId has no live vault.
+     */
+    public function generationOf(string $userId): ?VaultGeneration
+    {
+        $record = $this->storage->findVault($userId);
+        if ($record === null) {
+            return null;
+        }
+        $this->assertSameUser($userId, $record->userId);
+        return $record->generation();
+    }
+
+    /**
+     * Give the userId a new vault and set the one $replacing names aside as an
+     * archive — SelfRecover's level 3, where no old secret is left to re-seal
+     * with. Every Argon2id runs first, then one transaction archives and
+     * inserts: a failure leaves the old vault live.
+     *
+     * Only the vault $replacing names is archived. A second call with the same
+     * generation — a retry, or a concurrent request — throws
+     * StaleVaultException instead of archiving the vault the first call made.
+     * After a StaleVaultException, read the generation again before retrying:
+     * the userId may already hold the vault that was meant.
      *
      * The new vault starts empty; the old data comes back through
-     * openArchive().
+     * openArchive(). A userId with no live vault goes through register().
      *
-     * @return array{unlocked: UnlockedVault, archiveId: ?string}
+     * @return array{unlocked: UnlockedVault, archiveId: string}
      */
     public function reEnroll(
-        string $userId,
+        VaultGeneration $replacing,
         #[\SensitiveParameter] string $newPassword,
         #[\SensitiveParameter] ?string $newMemorized = null,
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): array {
-        $result    = $this->vault->register($userId, $newPassword, $newMemorized, $newPassphrase);
-        $archiveId = $this->storage->replaceWithArchive($result['record']);
+        $result    = $this->vault->register($replacing->userId, $newPassword, $newMemorized, $newPassphrase);
+        $archiveId = $this->storage->replaceWithArchive($replacing, $result['record']);
         $this->assertVaultPersisted($result['record'], 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
 
     /**
+     * The archives of the account, from a session on its current vault: how
+     * many times it was re-enrolled, and which locks open each archive, are
+     * the holder's to know.
+     *
      * @return list<array{id: string, archivedAt: \DateTimeImmutable, locks: list<Lock>}> oldest first
      */
-    public function listArchives(string $userId): array
+    public function listArchives(UnlockedVault $current): array
     {
-        return $this->storage->listArchives($userId);
+        $this->currentRecord($current);
+        return $this->storage->listArchives($current->userId);
     }
 
     /**
@@ -304,6 +325,7 @@ final class SelfDataGuard
         $this->currentRecord($current);
         $archive = $this->storage->loadArchive($current->userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
+        $this->assertSameUser($current->userId, $archive->record->userId);
         $session = $this->vault->unlock(
             $archive->record,
             $lock,
@@ -311,7 +333,7 @@ final class SelfDataGuard
             $archive->kdfOpslimit,
             $archive->kdfMemlimit
         );
-        return new UnlockedArchive($archive, $session);
+        return new UnlockedArchive($archive, $session, $current->generation());
     }
 
     /**
@@ -342,34 +364,38 @@ final class SelfDataGuard
     }
 
     /**
-     * Delete one archive, from a session on the current vault.
+     * Delete one archive, opened with one of its old locks. A session on the
+     * current vault is not enough: after a fraudulent level 3, that session is
+     * the fraudster's, and the archives hold the real holder's data.
      */
-    public function deleteArchive(UnlockedVault $current, string $archiveId): bool
+    public function deleteArchive(UnlockedArchive $opened): bool
     {
-        $this->currentRecord($current);
-        return $this->storage->deleteArchive($current->userId, $archiveId, $current->vaultSalt);
+        return $this->storage->deleteArchive($opened->openedFrom, $opened->archive->archiveId);
     }
 
     /**
-     * Delete every archive of the userId, without a session — account erasure.
+     * Erase the account — its live vault and every archive — without a
+     * session. Works on a userId left with archives only.
      *
-     * delete() leaves archives on purpose, and erasing an account calls both.
      * Whoever exposes this decides who may call it: after a level-3 recovery,
      * the holder of the account is not necessarily the person the archives
      * belong to.
+     *
+     * @return int how many vaults were erased, live and archived
      */
-    public function purgeArchives(string $userId): int
+    public function eraseAccount(string $userId): int
     {
-        return $this->storage->purgeArchives($userId);
+        return $this->storage->eraseAccount($userId);
     }
 
     /**
-     * Delete the user's live vault and all its encrypted fields. Archives stay:
-     * see purgeArchives().
+     * Delete the live vault $generation names and all its encrypted fields.
+     * Archives stay: see eraseAccount(). The holder passes
+     * $session->generation(), an operator generationOf().
      */
-    public function delete(string $userId): void
+    public function delete(VaultGeneration $generation): void
     {
-        $this->storage->deleteVault($userId);
+        $this->storage->deleteVault($generation);
     }
 
     public function userExists(string $userId): bool
@@ -404,9 +430,10 @@ final class SelfDataGuard
         return AdminKey::unseal($sealedSecret, $passphrase);
     }
 
-    public function hasEscrow(string $userId): bool
+    public function hasEscrow(UnlockedVault $session): bool
     {
-        return $this->storage->loadEscrow($userId) !== null;
+        $this->currentRecord($session);
+        return $this->storage->loadEscrow($session->userId) !== null;
     }
 
     /**
@@ -432,13 +459,13 @@ final class SelfDataGuard
             $created  = $this->escrow->create($session, $adminPublicKey);
             $record   = $created['record'];
             $unlocked = $created['unlocked'];
-            $this->storage->saveEscrow($record, $session->vaultSalt);
+            $this->storage->saveEscrow($session->generation(), $record);
         } else {
             $unlocked = $this->escrow->unlockAsUser($record, $session);
         }
 
         $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);
-        $this->storage->saveEscrowFields($session->userId, $ciphertexts, $session->vaultSalt);
+        $this->storage->saveEscrowFields($session->generation(), $ciphertexts);
         $unlocked->lock();
     }
 
@@ -461,7 +488,7 @@ final class SelfDataGuard
         $unlocked = $this->escrow->unlockAsUser($record, $session);
         $rebound  = $this->escrow->rebindAdmin($record, $unlocked, $adminPublicKey);
         $unlocked->lock();
-        $this->storage->saveEscrow($rebound, $session->vaultSalt);
+        $this->storage->saveEscrow($session->generation(), $rebound);
         return true;
     }
 
@@ -530,6 +557,7 @@ final class SelfDataGuard
     ): array {
         $archive = $this->storage->loadArchive($userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for user '{$userId}'");
+        $this->assertSameUser($userId, $archive->record->userId);
         if ($archive->escrow === null) {
             throw new RuntimeException("No escrow compartment in archive '{$archiveId}'");
         }
@@ -555,7 +583,7 @@ final class SelfDataGuard
      */
     private function currentRecord(UnlockedVault $session): VaultRecord
     {
-        $record = $this->storage->loadVault($session->userId);
+        $record = $this->load($session->userId);
         if (!hash_equals($record->userSalt, $session->vaultSalt)) {
             throw new StaleVaultException(
                 'This session was opened on a vault that has since been replaced — unlock the current one'
@@ -565,19 +593,73 @@ final class SelfDataGuard
     }
 
     /**
+     * The live vault of $userId — refused if the storage answers with another
+     * account's. A case-insensitive collation on user_id finds 'alice' when
+     * asked for 'ALICE', and the vault would open for that other spelling.
+     */
+    private function load(string $userId): VaultRecord
+    {
+        $record = $this->storage->loadVault($userId);
+        $this->assertSameUser($userId, $record->userId);
+        return $record;
+    }
+
+    private function assertSameUser(string $asked, string $returned): void
+    {
+        if ($returned !== $asked) {
+            throw new RuntimeException(
+                'The storage returned the vault of another userId than the one asked for — '
+                . 'does it compare user_id byte for byte?'
+            );
+        }
+    }
+
+    /**
+     * Store an updated record, then read it back.
+     */
+    private function persist(VaultRecord $updated): void
+    {
+        $this->assertVaultPersisted($updated, $this->storage->updateVault($updated));
+    }
+
+    /**
      * A StorageInterface implementation can drop a column without a word — an
      * update that does not name it, say. Without wrap_phrase, the passphrase
      * SelfRecover just consumed would keep opening the vault, or the new one
      * would not; without the Argon2id profile, the vault would be read under the
      * current constants and stop opening the day they change. Read it back once.
-     * A higher revision than $expectedRevision means a later write landed in
-     * between: then there is nothing left to compare.
+     *
+     * The salt is compared first, whatever the revision: another salt means the
+     * storage holds another vault than the one written — an insert that
+     * overwrote, an archive of the wrong generation. A higher revision than
+     * $expectedRevision means a later write landed in between: then the salt is
+     * all there is left to compare.
      */
     private function assertVaultPersisted(VaultRecord $written, int $expectedRevision): void
     {
-        $stored = $this->storage->loadVault($written->userId);
+        $stored = $this->load($written->userId);
+        if (!hash_equals($written->userSalt, $stored->userSalt)) {
+            throw new RuntimeException(
+                'The storage holds another vault than the one written — does its saveVault() refuse '
+                . 'an existing userId, and its replaceWithArchive() archive the generation it is given?'
+            );
+        }
         if ($stored->revision > $expectedRevision) {
             return;
+        }
+        if ($stored->revision < $expectedRevision) {
+            throw new RuntimeException(
+                "The storage did not persist revision {$expectedRevision} — does its updateVault() bump it?"
+            );
+        }
+        $wraps = [
+            'wrap_pwd'   => [$written->wrapPwd, $stored->wrapPwd],
+            'wrap_recov' => [$written->wrapRecov, $stored->wrapRecov],
+        ];
+        foreach ($wraps as $column => [$asWritten, $asStored]) {
+            if ($asStored?->toBase64() !== $asWritten?->toBase64()) {
+                throw new RuntimeException("The storage did not persist {$column} as written");
+            }
         }
         if ($stored->wrapPhrase?->toBase64() !== $written->wrapPhrase?->toBase64()) {
             throw new RuntimeException(

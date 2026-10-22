@@ -57,6 +57,15 @@ final class UnlockedVault
         return $this->masterKey;
     }
 
+    /**
+     * The vault this session was opened on. Writes made through it are refused
+     * once the userId has been given another vault.
+     */
+    public function generation(): VaultGeneration
+    {
+        return new VaultGeneration($this->userId, $this->vaultSalt);
+    }
+
     public function isLocked(): bool
     {
         return $this->locked;

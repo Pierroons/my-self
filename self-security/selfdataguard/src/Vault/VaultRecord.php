@@ -123,6 +123,11 @@ final class VaultRecord
         );
     }
 
+    public function generation(): VaultGeneration
+    {
+        return new VaultGeneration($this->userId, $this->userSalt);
+    }
+
     public function hasMemorizedRecovery(): bool
     {
         return $this->wrapRecov !== null;
