@@ -129,6 +129,20 @@ $aDechiffrer = static fn(): bool => (bool) $pdo->query(
 if ($aDechiffrer()) {
     DataGuard::exigerCle();
 }
+// La clé qu'elle voit doit être celle de la base. Sous une autre — lancée sans la prise du
+// site, à côté d'une ancienne clé au chemin par défaut —, elle posait le témoin de fermeture
+// près de la mauvaise, et annonçait fermée une lecture restée ouverte sur le site. Lecture
+// déjà fermée, la passe ne scelle rien : la question ne se pose pas.
+if (!DataGuard::lectureSansContexteFermee()) {
+    $cleRefusee = DataGuard::cleDeCetteBase($pdo);
+    if ($cleRefusee !== null) {
+        fwrite(STDERR, sprintf(
+            "Passe refusée, rien n'a bougé : %s. Lance-la avec les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…).\n",
+            $cleRefusee
+        ));
+        exit(2);
+    }
+}
 
 // 🔑 **Toute la passe sous un seul verrou d'écriture, pris avant l'inventaire.**
 // L'inventaire des copies et les lignes qu'il juge doivent être la même base : sans

@@ -1583,6 +1583,17 @@ jobs:
           echo "$sortie" | grep -qE '^OK — 5/5 ' \
             || { echo "::error::le banc du chargement n'a pas joué ses 5 contrôles"; exit 1; }
 
+      # Une lecture d'une ligne garde son curseur ouvert : la requête qui écrivait ensuite
+      # perdait son écriture dès qu'une autre écrivait en même temps — un message en 500 par
+      # paire d'envois, une connexion par paire de connexions.
+      - name: Garde-fou — deux requêtes qui écrivent en même temps ne se perdent pas
+        run: |
+          sortie=$(php demo/lab/tests/sanity_ecritures_simultanees.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::deux écritures simultanées du lab se sont perdues"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 4/4 ' \
+            || { echo "::error::le banc des écritures simultanées n'a pas joué ses 4 contrôles"; exit 1; }
+
       - name: Canari — le banc du simulateur rougit quand un scénario perd sa dépendance
         run: |
           # @plante
@@ -1623,8 +1634,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 74/74 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 74 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 78/78 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 78 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1653,7 +1664,7 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les dix-huit gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les vingt et une gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
@@ -1827,6 +1838,30 @@ jobs:
             'false && !hash_equals($ligne' \
             demo/lab/tests/sanity_dataguard.php \
             "✗ ⭐ un numéro réécrit : la boîte refuse en le nommant"
+
+          # 19. Un fichier vide passe pour une base existante : le schéma s'y pose sous la clé
+          #     de la base qu'il remplace.
+          canari demo/lab/lib/db.php \
+            '            $neuve = $tables === [];' \
+            '            $neuve = !file_exists($chemin); // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ une base vidée à zéro octet sous une clé qui a servi n'est pas remplie"
+
+          # 20. `reset-db` rouvre la base après le gel : la console fait naître la suivante,
+          #     sous la clé qu'elle voit, avant toute requête du site.
+          canari demo/lab/selfrecover-su \
+            "        \$restants = in_array('accounts', Db::tables(), true)" \
+            "        \$restants = Db::pdo() && in_array('accounts', Db::tables(), true) // canari" \
+            demo/lab/tests/sanity_first_admin.php \
+            "✗ reset-db sous une clé étrangère ne devait pas recréer la base"
+
+          # 21. L'envoi d'un message garde ouverte la lecture de son destinataire : deux envois
+          #     simultanés en perdent un.
+          canari demo/lab/lib/dm.php \
+            '        $stmt->closeCursor();' \
+            '        // canari' \
+            demo/lab/tests/sanity_ecritures_simultanees.php \
+            "✗ ⭐ deux envois de messages simultanés : aucun n'est perdu"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
@@ -2461,8 +2496,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE 'OK — 36/36 ' \
-            || { echo "::error::le banc first-admin n'a pas joué ses 36 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 46/46 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 46 cas"; exit 1; }
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |

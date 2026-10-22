@@ -1,11 +1,12 @@
 <?php
 /**
- * MySelf-Lab — wrapper SelfDataGuard pour chiffrement at-rest des DM.
+ * MySelf-Lab — wrapper SelfDataGuard pour chiffrement at-rest des DM et des profils.
  *
  * Démontre la résistance à l'exfiltration de la base : le contenu des messages
- * privés est chiffré XChaCha20-Poly1305 avec une clé dérivée d'un secret serveur
- * (blind key) stocké HORS de la base et hors du webroot. Un dump SQL de la
- * table `dm` ne révèle que des blobs base64 illisibles.
+ * privés et des profils est chiffré XChaCha20-Poly1305 avec une clé dérivée d'un
+ * secret serveur (blind key) stocké HORS de la base et hors du webroot. Un dump SQL
+ * ne rend pas ce contenu ; il rend en clair ce qui l'entoure — qui écrit à qui,
+ * quand, si c'est lu — et la longueur de chaque message, que rien ne bourre.
  *
  * NB (V1) : chiffrement at-rest serveur, pas E2E inter-utilisateurs. Le E2E
  * (clés asymétriques par membre) est prévu en V2.
@@ -91,14 +92,28 @@ final class DataGuard
         if (!is_file($cle)) {
             return "la base porte {$enDepend}, et aucune clé n'est à {$cle} (LAB_BLINDKEY_PATH)";
         }
+        // Une clé illisible ou trop courte se dit telle : avalée par l'essai des chiffrés,
+        // elle passait pour une clé étrangère.
+        try {
+            self::exigerCle();
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
         $essais = $pdo->query(
             'SELECT * FROM (SELECT ciphertext, sender_id, recipient_id, NULL AS account_id FROM dm LIMIT 20)
              UNION ALL
              SELECT * FROM (SELECT ciphertext, NULL, NULL, account_id FROM profiles LIMIT 20)'
         )->fetchAll(PDO::FETCH_ASSOC);
+        // Sous une lecture fermée, un blob nu ne s'ouvre sous aucune clé : il ne dit rien d'elle.
+        $fermee = self::lectureSansContexteFermee();
+        $concluants = 0;
         foreach ($essais as $ligne) {
+            $blob = (string) $ligne['ciphertext'];
+            if ($fermee && !self::estLie($blob)) {
+                continue;
+            }
+            $concluants++;
             try {
-                $blob = (string) $ligne['ciphertext'];
                 if (!self::estLie($blob)) {
                     self::decryptSansContexte($blob);
                 } elseif ($ligne['account_id'] !== null) {
@@ -113,12 +128,22 @@ final class DataGuard
             }
         }
 
-        return $essais === []
-            ? null
+        if ($essais === []) {
+            return null;
+        }
+
+        return $concluants === 0
+            ? sprintf(
+                'les %d chiffrés essayés datent d\'avant la passe de migration, et la lecture sans contexte est fermée '
+                . '(%s) : aucun ne peut confirmer la clé de %s',
+                count($essais),
+                self::temoinScelle(),
+                $cle
+            )
             : sprintf(
                 'aucun des %d chiffrés essayés de la base ne s\'ouvre sous la clé de %s : ce n\'est pas celle qui l\'a '
-                . 'scellée, ou le numéro de la base a changé',
-                count($essais),
+                . 'scellée, le numéro de la base a changé, ou ces chiffrés sont abîmés',
+                $concluants,
                 $cle
             );
     }

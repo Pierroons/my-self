@@ -148,7 +148,9 @@ final class Auth
 
         $stmt = $pdo->prepare('SELECT 1 FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
-        if ($stmt->fetchColumn()) {
+        $pris = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($pris) {
             // LAB-05 : une sonde d'existence consomme le quota IP au même titre qu'une création,
             // pour casser l'énumération de masse (les usernames restent publics par nature sur un forum).
             if ($ip !== null) {
@@ -281,6 +283,7 @@ final class Auth
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
+        $stmt->closeCursor();
         // LAB-02 : toujours exécuter un Argon2id (hash factice si le compte n'existe pas) pour que
         // le temps de réponse ne trahisse pas l'existence du compte.
         $ok = password_verify($password, $acc ? $acc['pw_hash'] : Hashing::dummyHash()) && (bool) $acc;
@@ -444,6 +447,7 @@ final class Auth
             );
             $st->execute([self::protocole($pdo)->indexRecherche($code)]);
             $trouve = $st->fetchColumn();
+            $st->closeCursor();
             if ($trouve !== false && $trouve !== '') {
                 return (string) $trouve;
             }
@@ -472,6 +476,7 @@ final class Auth
         );
         $stmt->execute([Db::empreinteJeton($token)]);
         $row = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$row) {
             return null;
         }

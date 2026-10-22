@@ -159,7 +159,11 @@ final class Db
         if (self::$pdo === null) {
             $chemin = self::path();
             self::exigerAcces($chemin);
-            $neuve = !file_exists($chemin);
+            // Lues avant le schéma, qui les crée. Un fichier sans table — vidé, tronqué à zéro,
+            // pré-créé par l'exploitation — est une base neuve : SQLite l'ouvre sans un mot, et
+            // le schéma s'y posait sous la clé de la base qu'il remplace.
+            $tables = self::tables();
+            $neuve = $tables === [];
             if ($neuve) {
                 self::exigerCleNeuve($chemin);
             }
@@ -167,16 +171,20 @@ final class Db
             self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             self::$pdo->exec('PRAGMA foreign_keys = ON');
-            // Lu avant le schéma, qui crée la table : une base qui l'avait déjà a déjà tiré un numéro.
-            self::$numeroDejaTire = !$neuve && self::$pdo
-                ->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lab_generation'")
-                ->fetchColumn() !== false;
+            // 🔑 Une lecture d'une ligne garde son curseur, donc sa transaction de lecture, tant que
+            // la requête vit : une écriture qui la suit sur la même connexion rend alors « database
+            // is locked » sans attendre dès qu'une autre connexion a écrit entre-temps — SQLite le
+            // refuse pour ne pas s'interbloquer, et le délai d'attente n'y peut rien. Après un
+            // `fetch()` unique suivi d'une écriture : `closeCursor()`.
+
+            // Une base qui avait déjà la table du numéro a déjà tiré un numéro.
+            self::$numeroDejaTire = in_array('lab_generation', $tables, true);
             // Schema idempotent (CREATE TABLE/INDEX IF NOT EXISTS) — exécuté à chaque
             // démarrage pour appliquer les nouvelles tables sans migration manuelle.
             self::initSchema();
             // 🔑 Deux identités peuvent écrire cette base : le site et `selfrecover-su`.
-            // Née sous le masque par défaut, elle serait en 0644 : un `reset-db` de la
-            // console la recréerait au nom de l'opérateur, fermée en écriture au site.
+            // Née sous le masque par défaut, elle serait en 0644 : une commande de la
+            // console qui la crée la poserait au nom de l'opérateur, fermée en écriture au site.
             // 0660 la laisse au groupe que l'exploitation pose sur `data/` (bit
             // setgid) quand la console tourne sous une autre identité, et la ferme
             // aux autres comptes.
@@ -190,13 +198,14 @@ final class Db
     /**
      * Une base ne naît pas sous une clé qui a déjà servi.
      *
-     * 🔑 Une base disparue — effacée à la main, déplacée, un chemin changé — se recréait
-     * sans un mot sous la clé de l'ancienne : un forum vide qui renumérote ses comptes
-     * depuis 1 et, pour qui détient une copie de l'ancienne et écrit dans la nouvelle,
-     * ses chiffrés rouverts en y recopiant son numéro (mesuré par la neuvième passe
-     * d'audit). `selfrecover-su reset-db` fige la clé avec la base, et la suivante naît
-     * sous une clé neuve. Aucune route ne lit la clé avant d'ouvrir la base : sur une
-     * instance neuve, la base naît donc toujours la première.
+     * 🔑 Une base disparue ou vide — effacée à la main, déplacée, tronquée, un chemin
+     * changé — se recréait sans un mot sous la clé de l'ancienne : un forum vide qui
+     * renumérote ses comptes depuis 1 et, pour qui détient une copie de l'ancienne et
+     * écrit dans la nouvelle, ses chiffrés rouverts en y recopiant son numéro.
+     * `selfrecover-su reset-db` fige la clé avec la base, et la suivante naît sous une clé
+     * neuve. Aucune route ne lit la clé avant d'ouvrir la base : sur une instance neuve,
+     * la base naît la première. Une clé posée à la main avant la première requête bloque
+     * donc l'instance, et `reset-db --confirm --forcer` la fige.
      */
     private static function exigerCleNeuve(string $chemin): void
     {
@@ -204,10 +213,10 @@ final class Db
         [$cle, $temoin] = DataGuard::fichiersDeLaCle();
         if (is_file($cle) || is_file($temoin)) {
             throw new \RuntimeException(
-                "Base du lab absente ({$chemin}) alors que la clé de ses chiffrés a servi ici ({$cle}) : une base "
-                . 'neuve sous cette clé rouvrirait, à qui y écrit, les chiffrés de l\'ancienne. Restaurer la base ; '
-                . 'pour repartir à vide, `selfrecover-su reset-db`, ou retirer aussi la clé et ses deux témoins '
-                . '— ce qu\'elle a chiffré sera perdu.'
+                "Base du lab absente ou vide ({$chemin}) alors que la clé de ses chiffrés a servi ici ({$cle}) : une "
+                . 'base neuve sous cette clé rouvrirait, à qui y écrit, les chiffrés de l\'ancienne. Restaurer la '
+                . 'base ; pour repartir à vide, `selfrecover-su reset-db --confirm --forcer`, qui fige la clé et ses '
+                . 'deux témoins — ce qu\'elle a chiffré ne se relira plus.'
             );
         }
     }

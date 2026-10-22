@@ -24,11 +24,12 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
   - la `map` qui **tronque l'adresse source** (`/24` et `/48`) avant de l'écrire.
     Ce serveur est fait pour être attaqué : ses journaux sont ce que quelqu'un
     lira s'il obtient un accès, et ils ne doivent désigner personne ;
-  - les trois zones de lissage — 10 req/s sur l'authentification, et **2 req/s en
+  - les quatre zones de lissage — 10 req/s sur l'authentification, et **2 req/s en
     file** (sans `nodelay`) devant les portes du niveau 3 et les consoles
-    d'arbitrage, qui écrivent en base ; plus un `429` au lieu du
-    `503` par défaut, qu'un chercheur rapporterait comme un déni de service
-    qu'il aurait provoqué ;
+    d'arbitrage, qui écrivent en base, et devant les routes qui dérivent une clé ;
+    plus un `429` au lieu du `503` par défaut, qu'un chercheur rapporterait comme un
+    déni de service qu'il aurait provoqué. ⚠️ Les files comptent par adresse : en
+    IPv6, chaque adresse d'un même `/64` a la sienne ;
   - puis la racine, le routage PHP et l'inclusion des deux snippets.
 - **`lab-deny-backups.conf`** — 46 extensions qui ne doivent jamais être
   servies. ⚠️ Ni `txt` ni `asc` : `security.txt` et la clé PGP du canal de
@@ -48,19 +49,37 @@ chiffrée sur le NAS ; c'est leur seule copie hors machine.
 Les secrets d'instance (`data/.blindkey`, `.sitesalt`, `.serversecret`, `.modaudit`) ne
 quittent jamais le serveur autrement que dans cette archive chiffrée. Deux sortes de
 témoins vivent à côté d'eux et voyagent avec eux : `<secret>.existe`, qui empêche un
-secret disparu d'être remplacé en silence, et `.blindkey.scelle`, que la passe
-`tools/migrer-aad.php` pose quand elle a fini. ⚠️ Une restauration qui perdrait
-`.blindkey.scelle` rouvrirait la lecture des blobs sans contexte : l'archive doit
-le reprendre, et sa présence se vérifie après restauration.
+secret disparu d'être remplacé en silence, et `.blindkey.scelle`, qui ferme la lecture
+des blobs sans contexte. ⚠️ Une restauration qui perdrait `.blindkey.scelle`
+rouvrirait cette lecture : l'archive doit le reprendre, et sa présence se vérifie
+après restauration.
+
+**La clé naît à la première requête**, scellée. Posée à la main avant elle, elle
+bloque l'instance : le site refuse de créer une base sous une clé qui a pu servir.
+Posée après, elle ne naît pas scellée, et la passe de migration pose le témoin.
+
+**Une base antérieure à la liaison des chiffrés** passe par
+`demo/lab/tools/migrer-aad.php`, qui relie les blobs déjà écrits à leur contexte. Elle
+vérifie que sa clé est celle de la base, refuse les blobs qu'elle trouve recopiés —
+les sceller risquerait de les certifier pour qui les a déplacés —, et ne s'annonce
+finie que lorsqu'il n'en reste aucun de nu : elle pose alors `.blindkey.scelle`.
+Jusque-là, un blob ancien se lit encore sans contexte. Une base restaurée d'avant la
+passe se relit en retirant ce témoin, puis en relançant la passe.
 
 **La console porte les prises du site** (`LAB_DB_PATH`, `LAB_BLINDKEY_PATH`, et les
 autres chemins de secrets) : sans elles, elle ne voit ni la même base ni la même clé.
-`selfrecover-su reset-db` le vérifie — la clé qu'il voit doit ouvrir un chiffré de la
-base — et refuse sinon, sans rien figer. Il fige ensuite `.blindkey` et ses deux témoins
-avec la base, sous le même horodatage : la base neuve reçoit une clé neuve à sa première
-requête, et cette clé naît scellée (`.blindkey.scelle`). Une base absente ne se recrée
-pas sous une clé qui a déjà servi : restaurer la base, ou passer par `reset-db`.
-Restaurer une base figée, c'est restaurer aussi sa clé figée, sous les noms d'origine.
+`selfrecover-su reset-db` vérifie qu'il voit la base, et que la clé qu'il voit ouvre un
+de ses chiffrés ; il refuse sinon, sans rien figer. Il fige ensuite `.blindkey` et ses
+deux témoins avec la base, sous le même horodatage, et ne recrée rien : la base neuve
+et sa clé neuve naissent à la première requête du site. Sous une autre identité que le
+site, la console ne lit pas `.blindkey`, qui naît en `0600`, et `reset-db` le dit.
+
+`reset-db --confirm --forcer` fige sans vérifier : quand la base est perdue ou vidée —
+le site refuse alors d'en recréer une sous la clé qui a servi —, ou quand la
+vérification échoue sur une base abîmée ou dont le numéro a été réécrit. Ces cas ont la
+forme d'une console mal prise, et le code ne peut pas les départager : c'est une
+décision d'opérateur. Restaurer une base figée, c'est restaurer aussi sa clé figée,
+sous les noms d'origine.
 Le numéro de la base (table `lab_generation`) se restaure avec elle : perdu, il n'est pas
 remplacé tant que la table, la trace de son tirage ou des blobs scellés en dépendent ;
 réécrit, il ne correspond plus à l'empreinte de sa trace. Dans les deux cas, le site

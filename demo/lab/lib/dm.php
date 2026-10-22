@@ -31,6 +31,7 @@ final class DM
         $stmt = $pdo->prepare('SELECT id FROM accounts WHERE username = ?');
         $stmt->execute([$recipientUsername]);
         $recipientId = $stmt->fetchColumn();
+        $stmt->closeCursor();
         if ($recipientId === false) {
             return ['ok' => false, 'error' => 'destinataire_inconnu', 'message' => 'Destinataire introuvable.'];
         }
@@ -80,9 +81,11 @@ final class DM
      *
      * 🔑 **C'est la troisième panne de clé, et la seule que rien ne refuse.** Un
      * secret absent ou trop court est rejeté par `DataGuard::exigerCle()` ; un
-     * secret *remplacé* se dérive sans erreur et rend chaque ligne illisible. Un
-     * blob déplacé touche une ligne ou deux, une boîte entière désigne la clé — et
-     * l'exploitant n'avait aucune trace pour faire la différence.
+     * secret *remplacé* se dérive sans erreur et rend chaque ligne illisible.
+     *
+     * ⚠️ C'est un indice, pas une détection : qui écrit la colonne `ciphertext` d'une
+     * boîte entière la fait écrire au journal, et une clé réellement remplacée ne la
+     * déclenche pas sur une boîte d'un seul message, ni par `sent()`.
      */
     private static function signalerSiToutIllisible(int $accountId, int $total, int $illisibles): void
     {

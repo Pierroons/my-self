@@ -81,6 +81,7 @@ final class Profile
         $stmt = $pdo->prepare('SELECT ciphertext FROM profiles WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $blob = $stmt->fetchColumn();
+        $stmt->closeCursor();
         if ($blob === false) {
             return [false, null];
         }

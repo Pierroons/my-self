@@ -199,6 +199,7 @@ final class SuConsole
         $st = $pdo->prepare('SELECT is_admin FROM accounts WHERE username = ?');
         $st->execute([$user]);
         $v = $st->fetchColumn();
+        $st->closeCursor();
         return $v === false ? null : (int) $v === 1;
     }
 

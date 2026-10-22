@@ -261,8 +261,17 @@ $lab = "$dir/lab.php";
 file_put_contents($lab, '<?php
 require ' . var_export(__DIR__ . '/../vendor/autoload.php', true) . ';
 require_once ' . var_export(__DIR__ . '/../lib/dm.php', true) . ';
-use Pierroons\MySelfLab\{Db, DataGuard, Dm};
+require_once ' . var_export(__DIR__ . '/../lib/profile.php', true) . ';
+use Pierroons\MySelfLab\{Db, DataGuard, Dm, Profile};
 $pdo = Db::pdo();
+if ($argv[1] === "ouvre") {
+    echo "ouverte";
+    exit;
+}
+if ($argv[1] === "profil") {
+    echo json_encode(Profile::save($pdo, 1, ["bio" => "PROFIL-SEUL", "localisation" => "", "lien" => ""]));
+    exit;
+}
 if ($argv[1] === "graine") {
     Dm::send($pdo, 1, "bob", "SECRET-DE-LA-BASE-FIGEE");
     echo json_encode([Db::generation(), $pdo->query("SELECT ciphertext FROM dm ORDER BY id DESC LIMIT 1")->fetchColumn()]);
@@ -296,6 +305,100 @@ $cle = $env['LAB_BLINDKEY_PATH'];
 [$numeroAncien, $blobAncien] = json_decode(lab($base, $cle, 'graine'), true) ?? [null, null];
 touch("$cle.scelle");   // le témoin d'une passe de migration faite : il part aussi
 
+// ── 10 a. La console ne crée jamais la base, et `--forcer` est un geste explicite ──
+// Sur une instance à côté, son propre dossier d'état : chaque reset y fige le secret SU,
+// que la suite du banc emploie.
+$cote = chemin_isole('cote');
+mkdir($cote, 0700);
+$enCote = ['LAB_DB_PATH' => "$cote/lab.db", 'LAB_BLINDKEY_PATH' => "$cote/.blindkey", 'SELFRECOVER_STATE_DIR' => $cote];
+$suCote = static fn (array $args, array $plus = []): array => su($args, $plus + $enCote);
+/** Remet l'instance à côté à l'état voulu : un secret SU, une copie de la base du banc, sa clé et ses témoins. */
+$cloner = static function (bool $avecBase, bool $avecCle) use ($cote, $base, $cle, $passphrase): void {
+    foreach (glob("$cote/{,.}*", GLOB_BRACE) ?: [] as $f) {
+        if (is_file($f)) {
+            unlink($f);
+        }
+    }
+    file_put_contents("$cote/su-secret", password_hash($passphrase, PASSWORD_ARGON2ID, Hashing::ARGON2));
+    if ($avecBase) {
+        copy($base, "$cote/lab.db");
+    }
+    if ($avecCle) {
+        copy($cle, "$cote/.blindkey");
+        touch("$cote/.blindkey.existe");
+    }
+};
+
+// Une console qui ne voit ni base ni clé — lancée sans les prises du site — fabriquait une
+// base au chemin qu'elle voyait, la figeait, et annonçait un succès : la base compromise
+// restait servie.
+$cloner(false, false);
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c !== 0 && str_contains($o, 'ni base') && !is_file("$cote/lab.db") && glob("$cote/*.frozen-*") === []
+    ? ok('⭐ une console qui ne voit ni base ni clé refuse, même forcée, et ne crée rien')
+    : nok("sans base ni clé, reset-db devait refuser sans rien créer (code $c) : " . trim(substr($o, 0, 200)));
+
+// Base perdue, clé présente : le remède nommé par le refus du site mourait sur ce refus.
+$cloner(false, true);
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, 'absente ou vide') && str_contains($o, '--forcer') && is_file("$cote/.blindkey")
+    ? ok('⭐ base absente sous une clé qui a servi : refus nommé, qui dit le geste, et rien de figé')
+    : nok("base absente : reset-db devait refuser en nommant --forcer (code $c) : " . trim(substr($o, 0, 200)));
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c === 0 && !is_file("$cote/.blindkey") && !is_file("$cote/.blindkey.existe")
+    && count(glob("$cote/.blindkey.frozen-*") ?: []) === 1 && !is_file("$cote/lab.db")
+    ? ok('⭐ --forcer fige la clé et son témoin, et ne crée pas de base')
+    : nok("reset-db --forcer devait figer la clé sans créer de base (code $c) : " . trim(substr($o, 0, 200)));
+$ouverte = lab("$cote/lab.db", "$cote/.blindkey", 'ouvre');
+str_contains($ouverte, 'ouverte') && is_file("$cote/lab.db")
+    ? ok('après --forcer, la requête suivante du site fait naître la base')
+    : nok('le site devait recréer la base après --forcer : ' . trim(substr($ouverte, 0, 200)));
+
+// Numéro et trace réécrits par qui écrit : la vérification échoue, et `--forcer` passe outre.
+$cloner(true, true);
+$numeroFaux = bin2hex(random_bytes(16));
+base("$cote/lab.db")->prepare('UPDATE lab_generation SET valeur = ?')->execute([$numeroFaux]);
+base("$cote/lab.db")->prepare("UPDATE lab_migrations SET valeur = ? WHERE nom = 'numero-de-base'")
+    ->execute([hash('sha256', $numeroFaux)]);
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+$c === 1 && str_contains($o, '--forcer') && glob("$cote/*.frozen-*") === [] && glob("$cote/.*.frozen-*") === []
+    ? ok('une base dont le numéro est réécrit fait refuser reset-db, qui nomme le passage forcé')
+    : nok("numéro réécrit : reset-db devait refuser et nommer --forcer (code $c) : " . trim(substr($o, 0, 200)));
+[$c, $o] = $suCote(['reset-db', '--confirm', '--forcer']);
+$c === 0 && count(glob("$cote/lab.db.frozen-*") ?: []) === 1 && count(glob("$cote/.blindkey.frozen-*") ?: []) === 1
+    && !is_file("$cote/lab.db") && str_contains($o, "n'est pas vérifiée")
+    ? ok('⭐ et --forcer fige la base et la clé, en disant qu\'elle n\'est pas vérifiée : qui écrit ne bloque plus le remède')
+    : nok("reset-db --forcer devait figer base et clé (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base dont les membres n'ont rempli que leur profil : la vérification essaie aussi les profils.
+$cloner(true, true);
+$profil = lab("$cote/lab.db", "$cote/.blindkey", 'profil');
+base("$cote/lab.db")->exec('DELETE FROM dm');
+file_put_contents("$cote/.blindkey-etrangere", bin2hex(random_bytes(48)));
+[$c, $o] = $suCote(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => "$cote/.blindkey-etrangere"]);
+str_contains($profil, '"ok":true') && $c !== 0 && str_contains($o, "ne s'ouvre sous la clé")
+    ? ok('⭐ une base qui ne porte qu\'un profil, sous une clé étrangère : refus')
+    : nok("profil seul sous une clé étrangère : reset-db devait refuser (code $c) : " . trim(substr($profil . ' | ' . $o, 0, 220)));
+
+// Une clé que la console ne peut pas lire se dit illisible, pas étrangère.
+$cloner(true, true);
+chmod("$cote/.blindkey", 0000);
+[$c, $o] = $suCote(['reset-db', '--confirm']);
+chmod("$cote/.blindkey", 0600);
+$c !== 0 && str_contains($o, 'illisible')
+    ? ok('une clé illisible pour la console se dit illisible, et rien ne bouge')
+    : nok("clé illisible : le refus devait le dire (code $c) : " . trim(substr($o, 0, 200)));
+
+// Une base sans aucun chiffré, une console sous une clé étrangère : elle passe, mais ne
+// recrée plus la base suivante sous la clé du site — c'est le site qui refuse, à voix haute.
+$cloner(true, true);
+base("$cote/lab.db")->exec('DELETE FROM dm; DELETE FROM profiles');
+[$c, $o] = $suCote(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => "$cote/.blindkey-etrangere"]);
+$apres = lab("$cote/lab.db", "$cote/.blindkey", 'ouvre');
+$c === 0 && !is_file("$cote/lab.db") && str_contains($apres, 'absente ou vide')
+    ? ok('⭐ une console mal prise ne fait plus naître la base suivante sous la clé du site : le site refuse')
+    : nok("reset-db sous une clé étrangère ne devait pas recréer la base (code $c) : " . trim(substr($o . ' | ' . $apres, 0, 220)));
+
 // 🔑 Le reset ne fige que la clé de CETTE base. Une console qui ne porte pas la prise
 // du site la cherchait ailleurs, ne la trouvait pas, et répondait « rien n'avait été
 // chiffré » : la clé du site restait (mesuré par la neuvième passe d'audit).
@@ -321,9 +424,13 @@ $c === 1 && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() 
 
 [$c] = su(['reset-db', '--confirm']);
 $figees = glob("$base.frozen-*") ?: [];
-$c === 0 && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === 0
-    ? ok('reset-db --confirm : zéro compte')
-    : nok("reset-db devait vider les comptes (code $c)");
+$c === 0 && !is_file($base)
+    ? ok('reset-db --confirm : la base part, et la console n\'en recrée aucune')
+    : nok("reset-db devait figer la base sans en recréer (code $c)");
+$neuveOuverte = lab($base, $cle, 'ouvre');
+str_contains($neuveOuverte, 'ouverte') && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === 0
+    ? ok('la requête suivante du site fait naître une base sans compte')
+    : nok('le site devait faire naître la base neuve : ' . trim(substr($neuveOuverte, 0, 200)));
 count($figees) === 1 && (int) base($figees[0])->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $comptes
     ? ok('la base figée garde les ' . $comptes . ' comptes — pièce à conviction')
     : nok('base figée absente ou vide : ' . json_encode($figees));

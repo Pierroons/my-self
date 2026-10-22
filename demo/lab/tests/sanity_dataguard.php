@@ -617,6 +617,25 @@ $etrangere = $dir . '/etrangere.db';
 [$sortie, $rc] = $migrerSur($etrangere, $dir . '/.blindkey-etrangere');
 $tablesApres = (int) (new PDO('sqlite:' . $etrangere))->query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'")->fetchColumn();
 ok('⭐ une base étrangère est refusée, et garde ses seules tables', $rc === 2 && $tablesApres === 1, 'rc=' . $rc . ' · tables = ' . $tablesApres);
+// Sous une clé qui n'est pas celle de la base, la passe posait le témoin de fermeture à
+// côté de la mauvaise, et annonçait fermée une lecture restée ouverte sur le site.
+// Une base qui ne porte qu'un message déjà lié, sans copie : sous la mauvaise clé, rien ne
+// retenait la passe d'aller au bout et de poser son témoin.
+$sousAutreCle = $dir . '/passe-autre-cle.db';
+copy(getenv('LAB_DB_PATH'), $sousAutreCle);
+$pAutre = new PDO('sqlite:' . $sousAutreCle);
+$pAutre->exec('DELETE FROM dm; DELETE FROM profiles');
+$pAutre->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, ?)')
+    ->execute([DataGuard::encrypt('message lié de la base', DataGuard::contexteDm(1, 2)), $t]);
+$pAutre = null;
+$autreCle = $dir . '/.blindkey-autre';
+file_put_contents($autreCle, bin2hex(random_bytes(48)));
+[$sortie, $rc] = $migrerSur($sousAutreCle, $autreCle);
+ok(
+    '⭐ la passe sous une clé qui n\'est pas celle de la base refuse, et ne pose aucun témoin',
+    $rc === 2 && str_contains($sortie, 'Passe refusée') && !is_file($autreCle . '.scelle'),
+    'rc=' . $rc . ' · ' . substr(trim($sortie), 0, 200)
+);
 
 echo "\n# Une copie écrite PENDANT la passe n'est pas scellée pour qui l'a faite\n";
 
@@ -735,6 +754,53 @@ ok(
     str_contains($refusNeuve, 'Base du lab absente') && !is_file($baseB),
     $refusNeuve === '' ? 'base créée' : $refusNeuve
 );
+// Un fichier présent mais sans table — vidé, tronqué à zéro, pré-créé par l'exploitation —
+// est une base neuve : SQLite l'ouvre sans un mot, et le schéma s'y posait sous la clé.
+$refusVide = static function (string $f): string {
+    Db::fermer();
+    putenv('LAB_DB_PATH=' . $f);
+    try {
+        Db::pdo();
+        return '';
+    } catch (\RuntimeException $e) {
+        return $e->getMessage();
+    }
+};
+$aZero = $dir . '/videe.db';
+file_put_contents($aZero, '');
+$refus = $refusVide($aZero);
+clearstatcache();
+ok(
+    '⭐ une base vidée à zéro octet sous une clé qui a servi n\'est pas remplie, et le refus le dit',
+    str_contains($refus, 'absente ou vide') && filesize($aZero) === 0,
+    $refus === '' ? 'schéma posé' : $refus
+);
+$sansTable = $dir . '/sans-table.db';
+(new PDO('sqlite:' . $sansTable))->exec('PRAGMA user_version = 7');
+clearstatcache();
+$tailleSansTable = filesize($sansTable);
+$refus = $refusVide($sansTable);
+ok(
+    'un fichier SQLite sans table, non vide, est refusé de même',
+    $tailleSansTable > 0 && str_contains($refus, 'absente ou vide')
+        && (int) (new PDO('sqlite:' . $sansTable))->query("SELECT COUNT(*) FROM sqlite_master")->fetchColumn() === 0,
+    'taille = ' . $tailleSansTable . ' · ' . ($refus === '' ? 'schéma posé' : $refus)
+);
+// La clé retirée à la main, son témoin resté : c'est encore une clé qui a servi.
+$cleDuBanc = getenv('LAB_BLINDKEY_PATH');
+$temoinSeul = $dir . '/temoin-seul/.blindkey';
+mkdir(dirname($temoinSeul), 0700);
+touch($temoinSeul . '.existe');
+putenv('LAB_BLINDKEY_PATH=' . $temoinSeul);
+$refus = $refusVide($dir . '/sous-temoin.db');
+putenv('LAB_BLINDKEY_PATH=' . $cleDuBanc);
+ok(
+    '⭐ la clé retirée, son témoin resté : la base absente n\'est pas recréée non plus',
+    str_contains($refus, 'absente ou vide') && !is_file($dir . '/sous-temoin.db') && !is_file($temoinSeul),
+    $refus === '' ? 'base créée' : $refus
+);
+Db::fermer();
+putenv('LAB_DB_PATH=' . $baseB);
 // La base suivante se bâtit donc à la main, comme la bâtirait qui écrit sur le disque :
 // le numéro reste ce qui l'empêche de rouvrir les blobs de l'ancienne.
 $pb = new PDO('sqlite:' . $baseB);

@@ -5,7 +5,20 @@ Forum vitrine de l'écosystème **MySelf** — terrain de démonstration et de t
 Un forum réaliste sur le thème de la **souveraineté numérique**, qui intègre les modules MySelf entre eux dans une application concrète :
 
 - **Authentification sans email** via [SelfRecover](../../bi-self/selfrecover/) — l'utilisateur choisit un mot de récupération, le serveur génère mot de passe + passphrase diceware. Dérivation `HMAC(clé = mot_récup, message = nom d'hôte + "|v2" + sel du compte)`, le nom d'hôte étant lu par le navigateur : la clé stockée diffère d'une adresse à l'autre.
-- **Messages privés chiffrés at-rest** via [SelfDataGuard](../../self-security/selfdataguard/) — XChaCha20-Poly1305, clé serveur (blind key) hors base. Une exfiltration de la base ne révèle que des blobs illisibles. Chaque blob est en outre scellé sous le contexte qui a le droit de le relire — la paire d'un message, le compte d'un profil, et le numéro tiré au hasard de la base qui les porte, puisqu'une base recréée renumérote ses comptes depuis 1 — par le format v3 de SelfDataGuard, qui porte lui-même sa liaison : une **écriture** dans la base ne suffit donc pas à faire ouvrir un blob ailleurs que là où il a été écrit. Le numéro vit dans la base, donc une écriture peut le réécrire : ce qui empêche le blob d'une base effacée de rouvrir dans la suivante, c'est que la suivante naît sous une clé neuve — `selfrecover-su reset-db` fige la clé avec la base, et une base absente ne se recrée pas sous une clé qui a déjà servi. ⚠️ Une écriture peut en revanche remettre dans sa propre ligne une version plus ancienne d'un chiffré, gardée d'une sauvegarde : un profil retrouve ce que son titulaire en avait retiré, un message revient dans sa conversation — rien dans la base ne date un chiffré qu'une écriture ne puisse dater aussi. Et un jeton de suivi remis avant le numéro reste valable sans lui, pour tout rapport antérieur au numéro : sous une clé qui a servi à une base passée, il ouvre aussi le suivi du rapport de même numéro. La liaison ne protège pas d'une écriture qui usurpe un compte : qui écrit partout fabrique un hachage de mot de passe, et lit alors comme le destinataire. Une base antérieure demande une passe — `php tools/migrer-aad.php` — qui relie les blobs déjà écrits ; elle ne s'annonce finie que lorsqu'il n'en reste aucun, et elle refuse ceux qu'elle trouve recopiés, qu'elle ne peut pas sceller sans risquer de les certifier pour qui les a déplacés. Jusqu'à cette passe, un blob ancien se lit encore sans contexte ; finie, elle pose un témoin à côté du secret, et plus aucun ne se lit : un blob gardé d'avant elle, dans un dump ou une sauvegarde, ne rouvre plus son clair. Une base restaurée d'avant la passe se relit en retirant ce témoin, puis en relançant la passe.
+- **Messages privés et profils chiffrés au repos** via [SelfDataGuard](../../self-security/selfdataguard/) — XChaCha20-Poly1305, clé serveur (blind key) hors base. Chaque chiffré est scellé sous le contexte qui a le droit de le relire : la paire d'un message ou le compte d'un profil, et le numéro tiré au hasard de la base qui le porte.
+  - **Ce qui est tenu** :
+    - une copie de la base ne rend le contenu d'aucun message ni d'aucun profil ;
+    - une écriture dans la base ne fait pas ouvrir un chiffré ailleurs que là où il a été écrit — une autre conversation, un autre compte, une autre table, une autre base ;
+    - le chiffré d'une base remise à zéro (`selfrecover-su reset-db`), perdue ou vidée ne rouvre pas dans la suivante, qui naît sous une clé neuve.
+  - **Ce qui ne l'est pas** :
+    - ce qui entoure le contenu : qui écrit à qui, quand, si c'est lu, et la longueur de chaque message, que rien ne bourre ;
+    - une version plus ancienne d'un chiffré, gardée d'une sauvegarde, qu'une écriture remet dans sa propre ligne — rien dans la base ne date un chiffré qu'une écriture ne puisse dater aussi ;
+    - un compte usurpé par qui écrit partout : il fabrique un hachage de mot de passe, et lit comme le titulaire ;
+    - le serveur, qui détient la clé et lit tout (voir *Hors V1*) ;
+    - sur une base antérieure à la liaison, tant que sa passe de migration n'est pas finie : un chiffré ancien s'y lit sans contexte ;
+    - un jeton de suivi de rapport remis avant le numéro de la base : il reste valable sans lui et, sous une clé qui a servi à une base passée, il ouvre aussi le suivi du rapport de même numéro.
+
+  La passe de migration, les témoins de la clé et la remise à zéro s'opèrent comme le décrit le [README de déploiement](../../deploy/ctf-s2/README.md).
 - **Modération par réputation** via [SelfModerate](../../bi-self/selfmoderate/) — réputation, anti-Sybil, anti pack-voting, sanctions graduées. Servie sur `/moderation.php`.
 - **Mémo personnel de bout en bout** — la clé se forme dans le navigateur (Argon2id, puis HKDF et AES-GCM) et ne touche jamais le serveur. Deux enveloppes ouvrent la même clé de coffre.
 
@@ -40,7 +53,7 @@ demo/lab/
 
 | Adversaire | Sans MySelf | Avec MySelf-Lab |
 |---|---|---|
-| Dump de la base | Données + DM en clair | DM chiffrés XChaCha20-Poly1305 (clé hors base) ; les sessions n'y sont rangées que sous l'empreinte de leur jeton, qui n'ouvre rien |
+| Dump de la base | Données + DM en clair | Contenu des DM et des profils chiffré XChaCha20-Poly1305 (clé hors base) — expéditeur, destinataire, date et longueur restent lisibles ; les sessions n'y sont rangées que sous l'empreinte de leur jeton, qui n'ouvre rien |
 | Bruteforce login | Illimité | Rate-limit 5 échecs / 15 min |
 | Phishing reset email | Vecteur classique | Pas d'email — aucun lien de réinitialisation à imiter |
 | Secrets en base | Souvent en clair | Argon2id partout, m=64 Mio — t=4/p=2 pour les empreintes SelfRecover (`Hashing::ARGON2`), t=3/p=1 pour la clé des messages et le coffre mémo (profil de SelfDataGuard, repris par le script de dérivation) ; blind key en `0600` hors webroot |

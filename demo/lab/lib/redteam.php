@@ -87,7 +87,9 @@ final class Redteam
 
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM redteam_reports WHERE ip_hash = ? AND created_at >= ?');
         $stmt->execute([$ipHash, $since]);
-        if ((int) $stmt->fetchColumn() >= self::RL_MAX) {
+        $recents = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($recents >= self::RL_MAX) {
             return ['ok' => false, 'message' => tc('Trop de soumissions récentes. Réessaie dans une heure.')];
         }
 
