@@ -168,14 +168,15 @@ without incident — plus two half-kept, all marked in the lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
 for the engine through the lab, [`tests/sanity_motif.php`](tests/sanity_motif.php) for the reason
-rule alone, without a database — run by CI, each seen failing first: the mechanism is disabled,
+rule alone, [`tests/sanity_promesses.php`](tests/sanity_promesses.php) for the thresholds this README
+announces, compared with those `Config` applies — these two without a database —, run by CI, each seen failing first: the mechanism is disabled,
 the measurement retaken, the code restored. One of them measured nothing at its
 first mutation — it computed its expectation from the very constant it watched,
 and drifted along with it; it now reads a literal value. The five reason rules are exercised **separately**,
 each case breaking only one: otherwise defence in depth catches the hole, the
-check stays green, and nobody knows which rule still measures anything. They
-still live on the lab side because they need a database schema; they will move
-to `tests/` once the module carries one.
+check stays green, and nobody knows which rule still measures anything. The
+engine bench still lives on the lab side because it needs a database schema; it
+will move to `tests/` once the module carries one.
 
 ## License
 

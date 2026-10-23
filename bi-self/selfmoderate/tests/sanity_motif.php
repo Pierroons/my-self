@@ -125,6 +125,19 @@ $recuMax && !$recuTrop && str_contains($pourquoiTrop, (string) $borne)
     ? ok("un motif de $borne caractères passe, un de plus est refusé, et le refus dit la borne")
     : nok('borne haute du motif : ' . json_encode([$recuMax, $recuTrop, $pourquoiTrop ?? null], JSON_UNESCAPED_UNICODE));
 
+// ── 6. Un motif a une longueur minimale, et le refus la dit ─────────────────
+// La même phrase des deux côtés de la borne : elle passe les quatre autres
+// règles, seule la longueur la juge. Le refus est comparé en entier — il doit
+// venir de cette règle-là, et dire ce qui manque.
+$plancher = 40;
+$phrase = 'Propos racistes répétés dans le fil hier';
+[$recuMin]                    = Moderate::validateReason($phrase);
+[$recuCourt, $pourquoiCourt]  = Moderate::validateReason(mb_substr($phrase, 0, $plancher - 1));
+mb_strlen($phrase) === $plancher && $recuMin && !$recuCourt
+    && $pourquoiCourt === "Explique en $plancher caractères au moins : il en manque 1."
+    ? ok("un motif de $plancher caractères passe, un de moins est refusé par la règle de longueur, et le refus dit ce qui manque")
+    : nok('borne basse du motif : ' . json_encode([mb_strlen($phrase), $recuMin, $recuCourt, $pourquoiCourt ?? null], JSON_UNESCAPED_UNICODE));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"
