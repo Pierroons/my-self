@@ -151,8 +151,9 @@ final class UserVault
      * The Argon2id profile is the record's own. An archive passes the profile its
      * package recorded.
      *
-     * @throws MissingEnvelopeException if the vault was never sealed for $lock
-     * @throws WrongSecretException     if the secret does not open the envelope
+     * @throws WrongSecretException     if the secret does not open the envelope — or
+     *                                  the vault was never sealed for $lock
+     *                                  (MissingEnvelopeException, same message)
      * @throws VaultTamperedException   if the profile is out of bounds — before any derivation
      * @throws LegacyCipherUnavailableException if the envelope is an AES blob
      *         this machine cannot decrypt — the secret may well be right
@@ -168,14 +169,6 @@ final class UserVault
             throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
         }
         $wrap = self::wrapOf($record, $lock);
-        if ($wrap === null) {
-            throw new MissingEnvelopeException(match ($lock) {
-                Lock::Password   => 'Vault has no password wrap',
-                Lock::Memorized  => 'Vault has no recovery wrap — memorized secret was not configured',
-                Lock::Passphrase => 'Vault has no passphrase wrap — passphrase was not configured',
-            });
-        }
-
         $ops = $opslimit ?? $record->kdfOpslimit;
         $mem = $memlimit ?? $record->kdfMemlimit;
         if (!Primitives::profileIsWithinBounds($ops, $mem)) {
@@ -185,6 +178,12 @@ final class UserVault
             );
         }
         $key = self::keyFor($lock, $secret, $record->userSalt, $ops, $mem);
+        if ($wrap === null) {
+            // After the derivation, under the same message: an absent lock
+            // answers as a wrong secret does, in content and in time.
+            Primitives::zeroize($key);
+            throw new MissingEnvelopeException(self::wrongSecret($lock));
+        }
         try {
             $masterKey = Primitives::decryptAcrossFormats(
                 $wrap,
@@ -211,10 +210,7 @@ final class UserVault
                     previous: $e
                 );
             }
-            throw new WrongSecretException(
-                'Invalid ' . self::secretName($lock) . ' — could not unwrap vault',
-                previous: $e
-            );
+            throw new WrongSecretException(self::wrongSecret($lock), previous: $e);
         } finally {
             Primitives::zeroize($key);
         }
@@ -239,7 +235,6 @@ final class UserVault
     /**
      * Unwrap data_master_key using the user's memorized secret (recovery flow).
      *
-     * @throws MissingEnvelopeException if the vault has no recovery wrap
      * @throws WrongSecretException     on wrong memorized secret
      */
     public function unlockWithMemorized(VaultRecord $record, #[\SensitiveParameter] string $memorized): UnlockedVault
@@ -250,7 +245,6 @@ final class UserVault
     /**
      * Unwrap data_master_key using the SelfRecover passphrase.
      *
-     * @throws MissingEnvelopeException if the vault has no passphrase wrap
      * @throws WrongSecretException     on wrong passphrase
      */
     public function unlockWithPassphrase(VaultRecord $record, #[\SensitiveParameter] string $passphrase): UnlockedVault
@@ -411,6 +405,11 @@ final class UserVault
             Lock::Memorized  => $record->wrapRecov,
             Lock::Passphrase => $record->wrapPhrase,
         };
+    }
+
+    private static function wrongSecret(Lock $lock): string
+    {
+        return 'Invalid ' . self::secretName($lock) . ' — could not unwrap vault';
     }
 
     private static function secretName(Lock $lock): string

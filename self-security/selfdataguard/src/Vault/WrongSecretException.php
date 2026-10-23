@@ -7,8 +7,9 @@ namespace Pierroons\SelfDataGuard\Vault;
 use RuntimeException;
 
 /**
- * The envelope exists, and the secret given does not open it.
+ * The secret given does not open the vault by this lock — or the vault has no
+ * such lock: MissingEnvelopeException, a subclass with the same message.
  */
-final class WrongSecretException extends RuntimeException
+class WrongSecretException extends RuntimeException
 {
 }

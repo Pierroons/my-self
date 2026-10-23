@@ -597,7 +597,7 @@ $dg->removeLock($locks, Lock::Passphrase) === true && $revision() === $before + 
 try {
     $dg->recover('user-locks', Lock::Passphrase, $PH2, 'locks-password-0003');
     ko('a removed passphrase still opens the vault');
-} catch (WrongSecretException | Pierroons\SelfDataGuard\Vault\MissingEnvelopeException) {
+} catch (WrongSecretException) {
     ok('the removed passphrase no longer opens the vault');
 }
 try {

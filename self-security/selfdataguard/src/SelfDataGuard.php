@@ -133,7 +133,6 @@ final class SelfDataGuard
      * Authenticate by memorized secret (recovery flow).
      *
      * @throws Vault\WrongSecretException     on wrong secret
-     * @throws Vault\MissingEnvelopeException on a vault without recovery wrap
      * @throws Vault\VaultNotFoundException   on missing user
      */
     public function loginWithMemorized(string $userId, #[\SensitiveParameter] string $memorized): UnlockedVault

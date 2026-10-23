@@ -356,12 +356,26 @@ try {
     ok('a wrong passphrase raises WrongSecretException');
 }
 
-try {
-    $vault->unlockWithPassphrase($result['record'], $PHRASE);
-    ko('a vault without passphrase wrap opened by passphrase');
-} catch (MissingEnvelopeException) {
-    ok('no passphrase wrap raises MissingEnvelopeException, not a wrong-secret error');
-}
+$answer = static function (VaultRecord $record, string $phrase) use ($vault): array {
+    $t0 = microtime(true);
+    try {
+        $vault->unlockWithPassphrase($record, $phrase);
+        return ['opened', '', 0.0];
+    } catch (WrongSecretException $e) {
+        return [get_class($e), $e->getMessage(), microtime(true) - $t0];
+    }
+};
+[$wrongClass, $wrongMessage, $wrongTime] = $answer($rec3, 'cheval agrafe batterie correct moulin ivoiree');
+[$missingClass, $missingMessage, $missingTime] = $answer($result['record'], $PHRASE);
+$missingClass === MissingEnvelopeException::class
+    ? ok('no passphrase wrap: MissingEnvelopeException, a WrongSecretException — the integrator\'s log can tell')
+    : ko('a vault without passphrase wrap answered otherwise', $missingClass);
+$missingMessage === $wrongMessage
+    ? ok('the same message, byte for byte, as a wrong passphrase')
+    : ko('the message tells an absent lock from a wrong secret', "{$missingMessage} | {$wrongMessage}");
+$missingTime >= 0.5 * $wrongTime
+    ? ok(sprintf('the same derivation runs first: %.0f ms against %.0f ms for a wrong passphrase', $missingTime * 1000, $wrongTime * 1000))
+    : ko('an absent lock answers faster than a wrong secret: the time tells it', sprintf('%.1f ms / %.1f ms', $missingTime * 1000, $wrongTime * 1000));
 
 try {
     $vault->unlockWithPassphrase($rec3, "  \t ");
