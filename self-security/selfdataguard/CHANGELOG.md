@@ -101,6 +101,15 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
   42 ms now). The class still tells them apart for the integrator's own log; a reply that differs on
   it gives the oracle back. Code that caught `MissingEnvelopeException` after `WrongSecretException`
   no longer reaches that branch.
+- **BREAKING** — `AuditLog::verify(string $anchor)` takes its anchor; `verifyUnanchored()` names the
+  check that cannot see a cut tail. Both report `quarantined`.
+- `AuditLog::append()` puts a tail that is not signed in quarantine — a signed entry, chained on the
+  last verified one, that records how many lines it sets aside and their SHA-256 — then writes its
+  act. Measured before: a JSON line signed with the wrong key, at the end, had the next acts chain on
+  it, and the log stayed broken for good; a line that was not JSON — a write cut short — made every
+  append throw. A signed entry where the chain does not lead is a break in the middle: never
+  quarantined, `append()` refuses, `verify()` says `chain`. Bytes changed after their quarantine
+  break it too. The event key `AuditLog::RESERVED_KEY` is the log's own.
 - `StorageInterface::updateVault()` writes the record's profile and seal as well as its wraps.
 - The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
   `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
@@ -147,8 +156,8 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 
 ### Tests
 
-- 504 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 38, facade 67 → 96, storage 60 → 64, migration 15 → 23, vault 58 → 64, `sanity_keys` (20) —
+- 510 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 38, audit 23 → 29, facade 67 → 96, storage 60 → 64, migration 15 → 23, vault 58 → 64, `sanity_keys` (20) —
   a closed list of the public methods of each key-holding class, each of them called with a known
   key inside and the key looked for in what comes back, and no public method of the object layer
   taking a key but the named admin-key path; seen failing on four planted defects —, and
@@ -206,6 +215,7 @@ misread. Do not roll back after a write.
   `changePassphrase()` and `removePassphrase()` alike.
 - Code that read the master key or the escrow key calls the method that does the operation instead;
   a test that compared keys compares what they open.
+- `AuditLog::verify()` without an anchor → `verifyUnanchored()`.
 - Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
   `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
   `eraseAccount($id)` for `purgeArchives($id)`.

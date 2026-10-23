@@ -55,6 +55,12 @@ final class AuditLog
     }
 
     /**
+     * The key no application event may carry: it marks the entries the log
+     * writes for itself.
+     */
+    public const RESERVED_KEY = '_selfdataguard';
+
+    /**
      * Append a signed, chained entry. Returns the written record.
      *
      * The line is forced to disk before this returns. Two limits: when the sync
@@ -64,11 +70,21 @@ final class AuditLog
      * the very first entry of a new log with it, which only an anchor taken
      * after that entry can reveal.
      *
+     * A tail that is not signed — a line cut short by a crash, or one written
+     * without the secret — is put in quarantine first: a signed entry, chained
+     * on the last verified one, that records how many lines it sets aside and
+     * their SHA-256. The decision is in the chain, and the bytes it covers stay
+     * checkable. A signed entry standing where the chain does not lead is not
+     * a tail: nothing is appended over it.
+     *
      * @param array<string, mixed> $event application-defined payload
      * @return array<string, mixed>
      */
     public function append(array $event): array
     {
+        if (array_key_exists(self::RESERVED_KEY, $event)) {
+            throw new InvalidArgumentException('The event key ' . self::RESERVED_KEY . ' is reserved for the log itself');
+        }
         // 🔑 The chain is read and extended under ONE exclusive lock. Read outside
         // it, two concurrent writers computed the same `seq` and `prev`, and the
         // second entry broke verification for every entry after it.
@@ -80,23 +96,31 @@ final class AuditLog
             if (!flock($handle, LOCK_EX)) {
                 throw new RuntimeException("Cannot lock audit log at {$this->path}");
             }
-            $entries = $this->readAll();
-            $prev    = $entries === [] ? '' : (string) end($entries)['hmac'];
-
-            $signable = [
-                'seq'   => count($entries),
-                'ts'    => (new DateTimeImmutable())->format('c'),
-                'event' => $event,
-                'prev'  => $prev,
-            ];
-            $record = $signable + ['hmac' => $this->hmac($signable)];
-
-            $line = json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if ($line === false) {
-                throw new RuntimeException('Failed to encode audit record');
+            $state = $this->scan($this->readLines());
+            if ($state['broken'] !== null) {
+                throw new RuntimeException(sprintf(
+                    'Audit log %s is broken mid-chain at line %d: nothing is appended over it — it is an incident to examine',
+                    $this->path,
+                    $state['brokenAt']
+                ));
             }
-            $line .= "\n";
-            if (fwrite($handle, $line) !== strlen($line) || !fflush($handle)) {
+            $seq  = count($state['chain']);
+            $prev = $state['chain'] === [] ? '' : (string) end($state['chain'])['hmac'];
+
+            $out = '';
+            if ($state['pending'] !== []) {
+                $quarantine = $this->record($seq++, [
+                    self::RESERVED_KEY => 'quarantine',
+                    'lines'            => count($state['pending']),
+                    'sha256'           => hash('sha256', implode("\n", $state['pending'])),
+                ], $prev);
+                $prev = (string) $quarantine['hmac'];
+                $out .= $this->line($quarantine);
+            }
+            $record = $this->record($seq, $event, $prev);
+            $out   .= $this->line($record);
+
+            if (fwrite($handle, $out) !== strlen($out) || !fflush($handle)) {
                 throw new RuntimeException("Cannot append to audit log at {$this->path}");
             }
             // fflush() hands the line to the kernel, not to the disk: a power cut
@@ -112,57 +136,144 @@ final class AuditLog
     }
 
     /**
-     * Verify the whole chain: each entry's HMAC and its linkage to the previous.
-     *
-     * The chain alone cannot see its own end cut off: a log truncated after entry
-     * N, or deleted outright, is a valid chain of N entries, or of none. The anchor
-     * closes that: a head recorded earlier, outside this machine, as "seq:hmac".
-     * The entry `seq` must still be there with that HMAC.
+     * Verify the chain against an anchor: a head recorded earlier, outside this
+     * machine, as "seq:hmac". The chain alone cannot see its own end cut off — a
+     * log truncated after entry N, or deleted outright, is a valid chain of N
+     * entries, or of none. The entry `seq` must still be there with that HMAC.
      *
      * @return array{ok: bool, count: int, brokenAt: ?int, reason: ?string,
-     *               head: ?array{seq: int, hmac: string}}
+     *               head: ?array{seq: int, hmac: string}, quarantined: int}
+     *         reason: chain, unsigned-tail, truncated or rewritten; quarantined:
+     *         how many lines quarantine entries have set aside
      */
-    public function verify(?string $anchor = null): array
+    public function verify(string $anchor): array
     {
-        $anchorAt = null;
-        if ($anchor !== null) {
-            if (!preg_match('/^(\d+):([0-9a-f]{64})$/', $anchor, $m)) {
-                throw new InvalidArgumentException('Malformed audit anchor (expected "seq:hmac", hmac in hex)');
-            }
-            $anchorAt = ['seq' => (int) $m[1], 'hmac' => $m[2]];
+        if (!preg_match('/^(\d+):([0-9a-f]{64})$/', $anchor, $m)) {
+            throw new InvalidArgumentException('Malformed audit anchor (expected "seq:hmac", hmac in hex)');
         }
+        return $this->check(['seq' => (int) $m[1], 'hmac' => $m[2]]);
+    }
 
-        $entries = $this->readAll();
-        $prev = '';
-        foreach ($entries as $i => $rec) {
-            $signable = [
-                'seq'   => $rec['seq'] ?? null,
-                'ts'    => $rec['ts'] ?? null,
-                'event' => $rec['event'] ?? null,
-                'prev'  => $rec['prev'] ?? null,
-            ];
-            $expected = $this->hmac($signable);
-            $hmacOk   = isset($rec['hmac']) && hash_equals($expected, (string) $rec['hmac']);
-            $linkOk   = ($rec['prev'] ?? null) === $prev && ($rec['seq'] ?? null) === $i;
-            if (!$hmacOk || !$linkOk) {
-                return ['ok' => false, 'count' => count($entries), 'brokenAt' => $i,
-                        'reason' => 'chain', 'head' => null];
-            }
-            $prev = (string) $rec['hmac'];
+    /**
+     * Verify the chain without an anchor — and so without seeing a cut tail or a
+     * deleted log. Named for that: there is no verify() that forgets it.
+     *
+     * @return array{ok: bool, count: int, brokenAt: ?int, reason: ?string,
+     *               head: ?array{seq: int, hmac: string}, quarantined: int}
+     */
+    public function verifyUnanchored(): array
+    {
+        return $this->check(null);
+    }
+
+    /**
+     * @param array{seq: int, hmac: string}|null $anchorAt
+     * @return array{ok: bool, count: int, brokenAt: ?int, reason: ?string,
+     *               head: ?array{seq: int, hmac: string}, quarantined: int}
+     */
+    private function check(?array $anchorAt): array
+    {
+        $state   = $this->scan($this->readLines());
+        $entries = $state['chain'];
+        $report  = ['count' => count($entries), 'quarantined' => $state['quarantined']];
+        if ($state['broken'] !== null) {
+            return $report + ['ok' => false, 'brokenAt' => $state['brokenAt'], 'reason' => 'chain', 'head' => null];
         }
 
         $head = $entries === []
             ? null
             : ['seq' => count($entries) - 1, 'hmac' => (string) end($entries)['hmac']];
 
+        if ($state['pending'] !== []) {
+            return $report + ['ok' => false, 'brokenAt' => $state['brokenAt'], 'reason' => 'unsigned-tail', 'head' => $head];
+        }
         if ($anchorAt !== null) {
             $kept = $entries[$anchorAt['seq']]['hmac'] ?? null;
             if ($kept === null || !hash_equals($anchorAt['hmac'], (string) $kept)) {
-                return ['ok' => false, 'count' => count($entries), 'brokenAt' => $anchorAt['seq'],
+                return $report + ['ok' => false, 'brokenAt' => $anchorAt['seq'],
                         'reason' => $kept === null ? 'truncated' : 'rewritten', 'head' => $head];
             }
         }
-        return ['ok' => true, 'count' => count($entries), 'brokenAt' => null, 'reason' => null, 'head' => $head];
+        return $report + ['ok' => true, 'brokenAt' => null, 'reason' => null, 'head' => $head];
+    }
+
+    /**
+     * Walk the lines once. A signed entry that links extends the chain; a line
+     * that is not signed waits, and only a quarantine entry covering exactly the
+     * lines waiting — their number and their SHA-256 — lets the chain go on past
+     * them. A signed entry anywhere else breaks it.
+     *
+     * @param list<string> $lines
+     * @return array{chain: list<array<string, mixed>>, pending: list<string>, quarantined: int,
+     *               broken: ?int, brokenAt: ?int}
+     *         broken: the line of the signed entry out of place; brokenAt: the first
+     *         line that is not part of the chain
+     */
+    private function scan(array $lines): array
+    {
+        $chain = [];
+        $pending = [];
+        $pendingFrom = null;
+        $quarantined = 0;
+        $prev = '';
+        foreach ($lines as $n => $line) {
+            $rec = json_decode($line, true);
+            $signed = is_array($rec) && is_string($rec['hmac'] ?? null)
+                && hash_equals($this->hmac([
+                    'seq'   => $rec['seq'] ?? null,
+                    'ts'    => $rec['ts'] ?? null,
+                    'event' => $rec['event'] ?? null,
+                    'prev'  => $rec['prev'] ?? null,
+                ]), $rec['hmac']);
+            if (!$signed) {
+                $pendingFrom ??= $n;
+                $pending[] = $line;
+                continue;
+            }
+            $linked = ($rec['prev'] ?? null) === $prev && ($rec['seq'] ?? null) === count($chain);
+            $isQuarantine = (($rec['event'][self::RESERVED_KEY] ?? null) === 'quarantine');
+            $covers = $isQuarantine
+                ? $pending !== []
+                    && ($rec['event']['lines'] ?? null) === count($pending)
+                    && hash_equals(hash('sha256', implode("\n", $pending)), (string) ($rec['event']['sha256'] ?? ''))
+                : $pending === [];
+            if (!$linked || !$covers) {
+                return ['chain' => $chain, 'pending' => $pending, 'quarantined' => $quarantined,
+                        'broken' => $n, 'brokenAt' => $pendingFrom ?? $n];
+            }
+            $quarantined += count($pending);
+            $pending = [];
+            $pendingFrom = null;
+            $chain[] = $rec;
+            $prev = (string) $rec['hmac'];
+        }
+        return ['chain' => $chain, 'pending' => $pending, 'quarantined' => $quarantined,
+                'broken' => null, 'brokenAt' => $pendingFrom];
+    }
+
+    /**
+     * @param array<string, mixed> $event
+     * @return array<string, mixed>
+     */
+    private function record(int $seq, array $event, string $prev): array
+    {
+        $signable = [
+            'seq'   => $seq,
+            'ts'    => (new DateTimeImmutable())->format('c'),
+            'event' => $event,
+            'prev'  => $prev,
+        ];
+        return $signable + ['hmac' => $this->hmac($signable)];
+    }
+
+    /** @param array<string, mixed> $record */
+    private function line(array $record): string
+    {
+        $line = json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($line === false) {
+            throw new RuntimeException('Failed to encode audit record');
+        }
+        return $line . "\n";
     }
 
     /**
@@ -189,6 +300,26 @@ final class AuditLog
      */
     public function readAll(): array
     {
+        $out = [];
+        foreach ($this->readLines() as $line) {
+            $rec = json_decode($line, true);
+            if (!is_array($rec)) {
+                throw new RuntimeException('Corrupted audit log: non-JSON line');
+            }
+            $out[] = $rec;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The raw lines of the log — the same refusal as readAll() when the log, or
+     * the fact of its absence, cannot be read.
+     *
+     * @return list<string>
+     */
+    private function readLines(): array
+    {
         // PHP caches stat results (and resolved paths) for the life of the
         // process: a log this process wrote, whose directory was closed since,
         // would still look present — before PHP 8.4, is_file() then answers
@@ -214,16 +345,7 @@ final class AuditLog
                 $this->path
             ));
         }
-        $out = [];
-        foreach ($lines as $line) {
-            $rec = json_decode($line, true);
-            if (!is_array($rec)) {
-                throw new RuntimeException('Corrupted audit log: non-JSON line');
-            }
-            $out[] = $rec;
-        }
-
-        return $out;
+        return array_values($lines);
     }
 
     /**

@@ -46,7 +46,7 @@ final class JournalModeration implements Journal
     /** @return array{ok: bool, count: int, brokenAt: ?int} */
     public function verifier(): array
     {
-        return $this->log()->verify();
+        return $this->log()->verifyUnanchored();
     }
 
     /** @return list<array<string, mixed>> les entrées, de la plus ancienne à la plus récente */

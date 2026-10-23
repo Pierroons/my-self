@@ -118,7 +118,7 @@ if ($cmd === 'verify-log') {
         }
     }
     try {
-        $r = $auditLog->verify($ancre);
+        $r = $ancre === null ? $auditLog->verifyUnanchored() : $auditLog->verify($ancre);
     } catch (InvalidArgumentException $e) {
         fwrite(STDERR, "❌ ancre illisible : {$e->getMessage()}\n");
         exit(2);
@@ -133,11 +133,15 @@ if ($cmd === 'verify-log') {
         if ($ancre === null) {
             echo "   ⚠️ sans --ancre, une troncature de la fin du journal ne se voit pas.\n";
         }
+        if ($r['quarantined'] > 0) {
+            echo "   ⚠️ {$r['quarantined']} ligne(s) non signée(s) mise(s) en quarantaine par le journal : un incident d'écriture à examiner.\n";
+        }
         exit(0);
     }
     $raison = match ($r['reason']) {
         'truncated' => "TRONQUÉ : l'entrée #{$r['brokenAt']} de l'ancre a disparu",
         'rewritten' => "RÉÉCRIT : l'entrée #{$r['brokenAt']} n'a plus le hmac de l'ancre",
+        'unsigned-tail' => "QUEUE NON SIGNÉE à partir de la ligne #{$r['brokenAt']} : le prochain acte la mettra en quarantaine",
         default     => "ROMPU à l'entrée #{$r['brokenAt']}",
     };
     fwrite(STDERR, "❌ journal d'audit {$raison} (sur {$r['count']})\n");
