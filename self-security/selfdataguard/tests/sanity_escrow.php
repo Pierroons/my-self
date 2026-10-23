@@ -15,11 +15,15 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
+require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\Verdict;
+use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
+use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
@@ -82,12 +86,12 @@ strlen(base64_decode($admin['publicKey'], true) ?: '') === SODIUM_CRYPTO_BOX_PUB
 str_starts_with($admin['sealedSecret'], sprintf('%s:%d:%d:', AdminKey::FORMAT_V2, Primitives::ARGON2_OPSLIMIT, Primitives::ARGON2_MEMLIMIT))
     ? ok('sealed secret records its Argon2id profile (v2:ops:mem:salt:blob)') : ko('sealed secret malformed', $admin['sealedSecret']);
 
-$sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
+$sk = unsealAdminKey($admin['sealedSecret'], ADMIN_PASS);
 strlen($sk) === SODIUM_CRYPTO_BOX_SECRETKEYBYTES ? ok('unseal returns 32-byte secret key') : ko('unseal wrong length');
 sodium_memzero($sk);
 
 try {
-    SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], 'wrong-passphrase');
+    unsealAdminKey($admin['sealedSecret'], 'wrong-passphrase');
     ko('unseal with wrong passphrase → should throw');
 } catch (RuntimeException) {
     ok('unseal with wrong passphrase → throws (cold-seizure resistance)');
@@ -123,10 +127,11 @@ $escViaMem['contact_secours'] === ESCROW_PLAINTEXT['contact_secours']
 
 section('Admin recovery: unseal → open escrow (same data as the user)');
 
-$sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
-$asAdmin = $dg->getEscrowFieldsAsAdmin('alice', $sk, $admin['publicKey'], ['contact_secours']);
+$sk = unsealAdminKey($admin['sealedSecret'], ADMIN_PASS);
+$ceremony = benchCeremony($storage);
+$asAdmin = $ceremony->readEscrow('alice', 'case-alice', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
 $asAdmin['contact_secours'] === ESCROW_PLAINTEXT['contact_secours']
-    ? ok('admin opens escrow with recovery key → same contact_secours') : ko('admin escrow read wrong');
+    ? ok('the admin opens the escrow through the ceremony → same contact_secours') : ko('admin escrow read wrong');
 
 // -----------------------------------------------------------------------------
 
@@ -134,7 +139,7 @@ section('COMPARTMENTALISATION: escrow_key cannot read the private zone');
 
 // Obtain the escrow_key the way the admin does, then try it on a private field.
 $escrowRecord = $storage->loadEscrow('alice');
-$unlockedEscrow = (new EscrowVault())->unlockAsAdmin($escrowRecord, $sk, $admin['publicKey']);
+$unlockedEscrow = openWrapAdmin($escrowRecord, $sk, $admin['publicKey']);
 $escrowKey = heldKey($unlockedEscrow);
 
 $privCipher = $storage->loadFields('alice', ['mots_de_passe'])['mots_de_passe'];
@@ -159,6 +164,60 @@ sodium_memzero($sk);
 
 // -----------------------------------------------------------------------------
 
+section('The ceremony: verdict and intention first, the witness before the unsealing');
+
+/** Keeps what it is handed, or fails, as a witness that cannot reach its server would. */
+final class BenchWitness implements Pierroons\SelfDataGuard\Escrow\HeadWitness
+{
+    public ?array $got = null;
+    public function __construct(private readonly bool $reachable = true) {}
+    public function witness(int $seq, string $hmac): void
+    {
+        if (!$this->reachable) {
+            throw new RuntimeException('witness unreachable');
+        }
+        $this->got = ['seq' => $seq, 'hmac' => $hmac];
+    }
+}
+
+$cLog = sys_get_temp_dir() . '/sdg-ceremony-bench-' . bin2hex(random_bytes(4)) . '.log';
+register_shutdown_function(static fn () => @unlink($cLog));
+$entries = static fn (): array => (new AuditLog($cLog, str_repeat('s', 32)))->readAll();
+
+$seen = new BenchWitness();
+benchCeremony($storage, Verdict::Open, $seen, $cLog)
+    ->readEscrow('alice', 'case-1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+$log = $entries();
+($log[0]['event']['action'] ?? null) === 'escrow-unlock-intent' && $seen->got === ['seq' => $log[0]['seq'], 'hmac' => $log[0]['hmac']]
+    && ($log[1]['event']['action'] ?? null) === 'escrow-unlock'
+    ? ok('the witness is handed the head of the intention — before the act is written')
+    : ko('the witness did not get the intention\'s head', json_encode([$seen->got, $log]));
+
+$blind = benchCeremony($storage, Verdict::Open, new BenchWitness(false), $cLog);
+try {
+    $blind->readEscrow('alice', 'case-2', $admin['sealedSecret'], 'not even the passphrase', $admin['publicKey']);
+    ko('the ceremony went on without its witness');
+} catch (RuntimeException $e) {
+    $log = $entries();
+    str_contains($e->getMessage(), 'nothing is unsealed') && (end($log)['event']['reason'] ?? null) === 'witness-failed'
+        ? ok('a witness that fails stops the ceremony before the unsealing — the wrong passphrase was never tried — and the log says why')
+        : ko('wrong failure', $e->getMessage());
+}
+
+foreach ([Verdict::Closed, Verdict::Expired, Verdict::Unknown, Verdict::Unavailable] as $verdict) {
+    try {
+        benchCeremony($storage, $verdict, null, $cLog)
+            ->readEscrow('alice', 'case-3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+        ko("a {$verdict->value} verdict unsealed the escrow");
+    } catch (EscrowRefusedException $e) {
+        $all  = $entries();
+        $last = end($all);
+        $e->verdict === $verdict && ($last['event']['verdict'] ?? null) === $verdict->value
+            ? ok("verdict {$verdict->value}: refused, and logged as given")
+            : ko("verdict {$verdict->value}: refused, but not logged as given", json_encode($last));
+    }
+}
+
 section('Cold seizure: wrong admin key cannot open the sealed escrow');
 
 $escrowRecord = $storage->loadEscrow('alice');
@@ -166,7 +225,7 @@ $attackerKp   = sodium_crypto_box_keypair();
 $attackerSk   = sodium_crypto_box_secretkey($attackerKp);
 $attackerPk   = base64_encode(sodium_crypto_box_publickey($attackerKp));
 try {
-    (new EscrowVault())->unlockAsAdmin($escrowRecord, $attackerSk, $attackerPk);
+    openWrapAdmin($escrowRecord, $attackerSk, $attackerPk);
     ko('sealed escrow opened with attacker key (CRITICAL)');
 } catch (RuntimeException) {
     ok('sealed escrow refuses any key but the admin recovery key');
@@ -213,7 +272,7 @@ $cleCourt = Primitives::deriveFromPassword($court, $selCourt, Primitives::LEGACY
 $skCourt = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
 $scelleCourt = base64_encode($selCourt) . ':'
     . blobV2($skCourt, $cleCourt, AdminKey::SEAL_AAD)->toBase64();
-AdminKey::unseal($scelleCourt, $court) === $skCourt
+unsealAdminKey($scelleCourt, $court) === $skCourt
     ? ok('a key sealed earlier under a short passphrase still unseals')
     : ko('the floor locked out a key sealed earlier');
 
@@ -227,7 +286,7 @@ $scelleAncien = base64_encode($selAncien) . ':' . blobV2(
     Primitives::deriveFromPassword(ADMIN_PASS, $selAncien, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT),
     AdminKey::SEAL_AAD
 )->toBase64();
-AdminKey::unseal($scelleAncien, ADMIN_PASS) === $skAncien
+unsealAdminKey($scelleAncien, ADMIN_PASS) === $skAncien
     ? ok('a key sealed before 0.6.0 (salt:blob) still unseals')
     : ko('the pre-0.6.0 format no longer unseals');
 
@@ -244,7 +303,7 @@ $scelleAutre = implode(':', [AdminKey::FORMAT_V2, $OPS, $MEM, base64_encode($sel
     $skAutre, Primitives::deriveFromPassword(ADMIN_PASS, $selAutre, $OPS, $MEM), AdminKey::SEAL_AAD
 )->toBase64()]);
 try {
-    AdminKey::unseal($scelleAutre, ADMIN_PASS) === $skAutre
+    unsealAdminKey($scelleAutre, ADMIN_PASS) === $skAutre
         ? ok('a v2 key sealed under another profile unseals by the profile it records')
         : ko('the v2 key opened to another secret key');
 } catch (Throwable $e) {
@@ -253,7 +312,7 @@ try {
 
 $t0 = microtime(true);
 try {
-    AdminKey::unseal('v2:' . Primitives::PROFILE_CEILING_OPSLIMIT . ':' . (Primitives::PROFILE_CEILING_MEMLIMIT * 2) . ':c2FsdA==:YmxvYg==', 'n\'importe quoi');
+    unsealAdminKey('v2:' . Primitives::PROFILE_CEILING_OPSLIMIT . ':' . (Primitives::PROFILE_CEILING_MEMLIMIT * 2) . ':c2FsdA==:YmxvYg==', 'n\'importe quoi');
     ko('an admin key claiming a profile above the ceiling was derived under');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'no version of SelfDataGuard writes') && microtime(true) - $t0 < 0.05
@@ -267,14 +326,14 @@ foreach ([
     'v2:3:' . base64_encode($selAutre) . ':SDG2.x' => 'a v2 key missing a field',
 ] as $scelle => $cas) {
     try {
-        AdminKey::unseal($scelle, ADMIN_PASS);
+        unsealAdminKey($scelle, ADMIN_PASS);
         ko("{$cas} was read");
     } catch (InvalidArgumentException $e) {
         ok("{$cas} is refused before any derivation");
     }
 }
 try {
-    AdminKey::unseal('v3:' . base64_encode($selAutre), ADMIN_PASS);
+    unsealAdminKey('v3:' . base64_encode($selAutre), ADMIN_PASS);
     ko('a two-field v3 key was read');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'newer')
@@ -284,7 +343,7 @@ try {
 
 section('wrap_admin names its account');
 
-$skLien = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
+$skLien = unsealAdminKey($admin['sealedSecret'], ADMIN_PASS);
 $ev = new EscrowVault();
 EscrowVault::isAccountBound($storage->loadEscrow('alice'))
     ? ok('a new escrow seals wrap_admin with its account')
@@ -299,7 +358,7 @@ $echange  = new EscrowRecord(
     createdAt: $recBob->createdAt, updatedAt: $recBob->updatedAt
 );
 try {
-    $ev->unlockAsAdmin($echange, $skLien, $admin['publicKey']);
+    openWrapAdmin($echange, $skLien, $admin['publicKey']);
     ko("alice's wrap_admin, moved into bob's record, opened as bob's");
 } catch (RuntimeException $e) {
     str_contains($e->getMessage(), 'another account')
@@ -319,23 +378,23 @@ $storage->saveEscrow($carol->generation(), $ancien);
 !EscrowVault::isAccountBound($storage->loadEscrow('carol'))
     ? ok('fixture: a pre-0.6.0 wrap_admin is told apart by its length')
     : ko('fixture: the pre-0.6.0 wrap_admin reads as bound');
-heldKey($ev->unlockAsAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])) === heldKey($neuf['unlocked'])
+heldKey(openWrapAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])) === heldKey($neuf['unlocked'])
     ? ok('a pre-0.6.0 wrap_admin still opens')
     : ko('a pre-0.6.0 wrap_admin opened to another key');
 
 $autreAdmin = SelfDataGuard::generateAdminRecoveryKey('une autre passphrase admin assez longue');
 $dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
 !EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
     ? ok('an escrow write leaves an existing wrap_admin as it is, whatever public key it is given')
     : ko('an escrow write re-sealed or lost the existing wrap_admin');
 $dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     && EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
     ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account, and the admin still reads it')
     : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens');
 !$dg->rebindEscrowAdmin($carol, $autreAdmin['publicKey'])
-    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
     ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
     : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
 sodium_memzero($skLien);

@@ -13,7 +13,8 @@ declare(strict_types=1);
  * list, so that a new one fails here until someone reads it. Each of them is
  * called with a known key inside, and the key is looked for in what comes
  * back, raw, base64 and hex. And no public method of the object layer takes a
- * key, save the admin-key path named below, which leaves with the ceremony.
+ * key: the admin key is unsealed and used inside EscrowCeremony, in private
+ * methods.
  * Primitives is the raw layer and is left out by name: deriving and opening
  * keys is what it is for.
  */
@@ -22,6 +23,8 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
@@ -194,16 +197,10 @@ foreach ([
 
 section('No public method of the object layer takes a key');
 
-// Leaves with the ceremony: the admin key is unsealed, then passed, on these
-// paths alone. A new entry here is a decision, not a fix.
-$adminKeyPath = [
-    'EscrowVault::unlockAsAdmin($adminSecretKey)',
-    'SelfDataGuard::getArchiveEscrowFieldsAsAdmin($adminSecretKey)',
-    'SelfDataGuard::getEscrowFieldsAsAdmin($adminSecretKey)',
-];
+
 $found = [];
-foreach ([UnlockedVault::class, UnlockedEscrow::class, UnlockedArchive::class, UserVault::class,
-          EscrowVault::class, FieldCrypter::class, EscrowFieldCrypter::class, SelfDataGuard::class] as $class) {
+foreach ([UnlockedVault::class, UnlockedEscrow::class, UnlockedArchive::class, UserVault::class, EscrowVault::class,
+          EscrowCeremony::class, AdminKey::class, FieldCrypter::class, EscrowFieldCrypter::class, SelfDataGuard::class] as $class) {
     foreach ((new ReflectionClass($class))->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
         if ($method->isConstructor()) {
             continue;
@@ -217,9 +214,9 @@ foreach ([UnlockedVault::class, UnlockedEscrow::class, UnlockedArchive::class, U
     }
 }
 sort($found);
-$found === $adminKeyPath
-    ? ok('only the admin-key path takes a key, and it is named: ' . count($adminKeyPath) . ' methods')
-    : ko('a public method takes a key outside the named admin-key path', implode(', ', array_diff($found, $adminKeyPath)) ?: 'the path shrank — update the list');
+$found === []
+    ? ok('none does — the admin key is unsealed and used inside EscrowCeremony, in private methods')
+    : ko('a public method takes a key', implode(', ', $found));
 
 // -----------------------------------------------------------------------------
 

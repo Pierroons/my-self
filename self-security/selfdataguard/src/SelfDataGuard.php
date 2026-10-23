@@ -532,15 +532,6 @@ final class SelfDataGuard
         return AdminKey::generate($passphrase);
     }
 
-    /**
-     * Unseal the admin recovery secret key with the passphrase. Returns the raw
-     * 32-byte secret key — caller MUST sodium_memzero() it after use. Meant for
-     * the recovery-ceremony CLI, not for web request paths.
-     */
-    public static function unsealAdminRecoveryKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase): string
-    {
-        return AdminKey::unseal($sealedSecret, $passphrase);
-    }
 
     public function hasEscrow(UnlockedVault $session): bool
     {
@@ -624,63 +615,7 @@ final class SelfDataGuard
         return $plain;
     }
 
-    /**
-     * Decrypt escrow fields as the ADMIN during a recovery ceremony, using the
-     * recovery secret key (from unsealAdminRecoveryKey) + public key.
-     *
-     * SCOPE: yields ONLY escrow fields, never the private zone. The caller
-     * (adapter/CLI) is responsible for the POLICY gates — an open litige and
-     * writing the SU audit log. This method performs no policy check itself.
-     *
-     * @param array<string> $fieldNames Empty = all escrow fields
-     * @return array<string, string>    field_name => plaintext
-     */
-    public function getEscrowFieldsAsAdmin(
-        string $userId,
-        #[\SensitiveParameter] string $adminSecretKey,
-        string $adminPublicKey,
-        array $fieldNames = []
-    ): array {
-        $record = $this->storage->loadEscrow($userId);
-        if ($record === null) {
-            throw new RuntimeException("No escrow compartment for user '{$userId}'");
-        }
-        $unlocked    = $this->escrow->unlockAsAdmin($record, $adminSecretKey, $adminPublicKey);
-        $ciphertexts = $this->storage->loadEscrowFields($userId, $fieldNames);
-        $plain       = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
-        $unlocked->lock();
-        return $plain;
-    }
 
-    /**
-     * getEscrowFieldsAsAdmin() for an archived vault. A user who lost every
-     * secret is the one the backup memo exists for, and level 3 is when that
-     * happens. Same scope, same policy duty for the caller.
-     *
-     * @param array<string> $fieldNames Empty = all escrow fields
-     * @return array<string, string>    field_name => plaintext
-     */
-    public function getArchiveEscrowFieldsAsAdmin(
-        string $userId,
-        string $archiveId,
-        #[\SensitiveParameter] string $adminSecretKey,
-        string $adminPublicKey,
-        array $fieldNames = []
-    ): array {
-        $archive = $this->storage->loadArchive($userId, $archiveId)
-            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for user '{$userId}'");
-        $this->assertSameUser($userId, $archive->record->userId);
-        if ($archive->escrow === null) {
-            throw new RuntimeException("No escrow compartment in archive '{$archiveId}'");
-        }
-        $ciphertexts = $fieldNames === []
-            ? $archive->escrowFields
-            : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
-        $unlocked = $this->escrow->unlockAsAdmin($archive->escrow, $adminSecretKey, $adminPublicKey);
-        $plain    = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
-        $unlocked->lock();
-        return $plain;
-    }
 
     // -------------------------------------------------------------------------
 

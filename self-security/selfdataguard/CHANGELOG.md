@@ -89,6 +89,22 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
   method that did would hand the key out in two calls. `FieldCrypter` and `EscrowFieldCrypter` keep
   their signatures and delegate. The admin key is still unsealed and passed by three methods: it
   leaves with the escrow ceremony.
+- **BREAKING** — `EscrowCeremony` is the only path of the library to an escrow on the administrator's
+  side. The admin key is unsealed there, in private methods, after the arbiter's verdict, after the
+  intention is written to the audit log and forced to disk, and after the head witness took that
+  head out of the machine. `SelfDataGuard::unsealAdminRecoveryKey()`, `getEscrowFieldsAsAdmin()`,
+  `getArchiveEscrowFieldsAsAdmin()`, `EscrowVault::unlockAsAdmin()` and `AdminKey::unseal()` are
+  gone. Its pieces: `EscrowArbiter` (a named `Verdict` — open, closed, expired, unknown,
+  unavailable; only open unseals), of which SelfDataGuard ships none: an arbiter written for every
+  deployment would say yes to all of them; `HeadWitness`, required, `NoHeadWitness` naming its
+  absence; `EscrowRefusedException`. The arbiter's class, its verdict and the witness's class are in
+  the log. Against the administrator alone — the sealed file and its passphrase — it holds nothing:
+  a second secret is a later lot.
+- **BREAKING** — `bin/escrow-ceremony.php` takes the arbiter and the witness from files the operator
+  names (`DATAGUARD_ARBITER_FILE`, `DATAGUARD_WITNESS_FILE`), and builds no façade: the blind-index
+  key of zeros it fell back on is gone with it. It read a `litiges` table SelfRecover never had —
+  every ceremony against a real SelfRecover database was refused. New commands: `archives <user>
+  <case>` and `unlock-archive <user> <archive> <case>`, arbitrated and logged like a read.
 - **BREAKING** — two gestures on a lock, in place of five methods that did not mirror one another:
   `setLock(UnlockedVault, Lock, string $secret)` seals a lock or replaces it, and
   `removeLock(UnlockedVault, Lock): bool` takes it off — never the password, and without a write when
@@ -156,8 +172,8 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 
 ### Tests
 
-- 510 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 38, audit 23 → 29, facade 67 → 96, storage 60 → 64, migration 15 → 23, vault 58 → 64, `sanity_keys` (20) —
+- 522 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 44, audit 23 → 29, ceremony 22 → 28, facade 67 → 96, storage 60 → 64, migration 15 → 23, vault 58 → 64, `sanity_keys` (20) —
   a closed list of the public methods of each key-holding class, each of them called with a known
   key inside and the key looked for in what comes back, and no public method of the object layer
   taking a key but the named admin-key path; seen failing on four planted defects —, and
@@ -216,6 +232,9 @@ misread. Do not roll back after a write.
 - Code that read the master key or the escrow key calls the method that does the operation instead;
   a test that compared keys compares what they open.
 - `AuditLog::verify()` without an anchor → `verifyUnanchored()`.
+- An admin read goes through `new EscrowCeremony($storage, $log, $arbiter, $witness, $operator)` and
+  its `readEscrow()` / `readArchiveEscrow()` / `listArchives()`; the CLI needs
+  `DATAGUARD_ARBITER_FILE` and `DATAGUARD_WITNESS_FILE`, and no longer reads `DATAGUARD_BLINDKEY_FILE`.
 - Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
   `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
   `eraseAccount($id)` for `purgeArchives($id)`.

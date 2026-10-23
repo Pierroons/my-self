@@ -2591,7 +2591,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=26 [sanity_audit]=29 [sanity_ceremony]=22 [sanity_conformance]=37 [sanity_escrow]=38
+            [sanity_archive]=26 [sanity_audit]=29 [sanity_ceremony]=28 [sanity_conformance]=37 [sanity_escrow]=44
             [sanity_facade]=96 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -2760,12 +2760,12 @@ jobs:
             $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
           canari $D/src/Vault/UserVault.php '$ops = $opslimit ?? $record->kdfOpslimit;' '$ops = $opslimit ?? Primitives::ARGON2_OPSLIMIT;' \
             $D/tests/sanity_vault.php 'a vault sealed under another profile no longer opens'
-          canari $D/src/Escrow/AdminKey.php '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
+          canari $D/src/Escrow/EscrowCeremony.php '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
             '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt);' \
             $D/tests/sanity_escrow.php 'a v2 key sealed under another profile no longer unseals'
           canari $D/src/SelfDataGuard.php 'if ($stored->kdfOpslimit !== $written->kdfOpslimit' 'if (false && $stored->kdfOpslimit !== $written->kdfOpslimit' \
             $D/tests/sanity_facade.php 'a vault read back under another Argon2id profile was reported as stored'
-          canari $D/src/Escrow/EscrowVault.php '$head = self::adminHead($record->userId);' \
+          canari $D/src/Escrow/EscrowCeremony.php '$head = EscrowVault::adminHead($record->userId);' \
             '$head = substr($plain, 0, strlen($plain) - Primitives::KEY_LEN);' \
             $D/tests/sanity_escrow.php "alice's wrap_admin, moved into bob's record, opened as bob's"
           canari $D/src/SelfDataGuard.php 'if ($record === null || EscrowVault::isAccountBound($record)) {' 'if (true) {' \

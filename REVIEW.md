@@ -86,9 +86,9 @@ d'une opération — un coffre ouvert, un texte chiffré —, pas une clé maît
 > Depuis SelfDataGuard 0.7.0, `UnlockedVault`, `UnlockedEscrow` et `UnlockedArchive` font
 > l'opération elles-mêmes — chiffrer un champ, ouvrir le séquestre, resceller une serrure — et
 > `self-security/selfdataguard/tests/sanity_keys.php` rougit si une méthode publique de la couche
-> objet rend ou reçoit une clé. Reste la clé admin : descellée par
-> `SelfDataGuard::unsealAdminRecoveryKey()`, puis passée à trois méthodes que ce banc nomme. C'est
-> une dette connue, qui part avec la cérémonie de séquestre ; une quatrième méthode est un constat.
+> objet rend ou reçoit une clé. La clé admin n'est descellée que dans `EscrowCeremony`, par des
+> méthodes privées, après l'arbitre, le journal et le témoin de tête : une méthode publique qui la
+> rendrait ou la recevrait est un constat.
 
 **2. Une dérivation porte un contexte nommé, propre à son usage.** Chaque chaîne de séparation de
 domaine est une constante, et deux usages ne partagent pas une chaîne par coïncidence.

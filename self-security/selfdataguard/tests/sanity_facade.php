@@ -16,6 +16,7 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
+require __DIR__ . '/ceremony_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
@@ -480,11 +481,11 @@ $dg->readArchive($dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1))
 
 section('The admin reaches the archived escrow; deletion is explicit');
 
-$sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], 'admin passphrase for the facade bench');
-$dg->getArchiveEscrowFieldsAsAdmin('user-l3', $archiveId, $sk, $admin['publicKey']) === ['contact' => 'contact de secours']
-    ? ok('getArchiveEscrowFieldsAsAdmin() reads the backup memo of the archive')
+benchCeremony($storage)->readArchiveEscrow(
+    'user-l3', $archiveId, 'case-l3', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
+) === ['contact' => 'contact de secours']
+    ? ok('the ceremony reads the backup memo of the archive')
     : ko('the admin cannot reach the archived escrow');
-sodium_memzero($sk);
 
 $openedBefore = $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
 $again = $dg->reEnroll($current->generation(), 'l3-password-0003');

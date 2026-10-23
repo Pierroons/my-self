@@ -5,27 +5,32 @@ declare(strict_types=1);
 /**
  * escrow-ceremony — CLI de récupération escrow (couche déploiement de l'application appelante).
  *
- * Déverrouille les champs escrow d'un user EN CAS DE RÉCUP, sous conditions
- * cumulées, façon `su-cli` de SelfRecover :
- *   1. un LITIGE OUVERT existe pour ce user (garde anti-curieux) ;
- *   2. la PASSPHRASE ADMIN déscelle la clé privée de récupération.
- * Chaque acte (succès OU refus) est écrit dans un LOG D'AUDIT chaîné + signé
- * (une réécriture de ce qui précède l'ancre se voit ; qui détient le secret peut
- * réécrire ce qui la suit). L'admin obtient escrow_key — jamais le master_key.
+ * Lit les champs escrow d'un compte EN CAS DE RÉCUP, par EscrowCeremony, la seule
+ * voie de la bibliothèque : l'arbitre dit si le dossier autorise la lecture,
+ * l'intention part au journal d'audit chaîné et signé puis chez le témoin de
+ * tête, et la passphrase admin ne descelle la clé privée de récupération
+ * qu'ensuite. Chaque acte — accordé, refusé ou échoué — est au journal. L'admin
+ * obtient les champs escrow, jamais le master_key.
  *
- * La lib DataGuard ignore litiges et audit : c'est CETTE couche qui les pose.
+ * L'arbitre et le témoin sont à l'exploitant : SelfDataGuard n'en livre aucun
+ * qui réponde « oui » par défaut. Chacun vit dans un fichier PHP qui charge son
+ * autoloader et RENVOIE l'objet (un EscrowArbiter, un HeadWitness ; sans témoin,
+ * `return new NoHeadWitness();`, choisi par son nom).
  *
  * Usage :
- *   php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]
+ *   php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]
+ *   php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]
+ *   php bin/escrow-ceremony.php archives <user> <dossier>
  *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
  *
  * Config (env) :
- *   DATAGUARD_DB                base sqlite (vaults + escrow + litiges)
+ *   DATAGUARD_DB                base sqlite (coffres + escrow)
  *   DATAGUARD_ADMIN_PUBKEY_FILE fichier clé publique admin (base64)
  *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (v2:ops:mem:salt:blob ; salt:blob avant 0.6.0)
  *   DATAGUARD_AUDIT_LOG         chemin du journal d'audit
  *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal
- *   DATAGUARD_BLINDKEY_FILE     (optionnel) blindKey — non utilisé côté escrow
+ *   DATAGUARD_ARBITER_FILE      fichier PHP qui renvoie l'EscrowArbiter
+ *   DATAGUARD_WITNESS_FILE      fichier PHP qui renvoie le HeadWitness
  *   DATAGUARD_OPERATOR          (optionnel) identité opérateur pour le forensic
  */
 
@@ -33,8 +38,12 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
-use Pierroons\SelfDataGuard\SelfDataGuard;
+use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
+use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
+use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
+use Pierroons\SelfDataGuard\Escrow\HeadWitness;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 function envOrDie(string $key): string
 {
@@ -83,16 +92,16 @@ function readPassphrase(string $prompt): string
     return rtrim((string) $line, "\r\n");
 }
 
-function litigeIsOpen(PDO $pdo, string $litigeId, string $userId): bool
+/** L'objet que renvoie le fichier nommé par $key, qui doit être un $interface. */
+function objectFrom(string $key, string $interface): object
 {
-    try {
-        $st = $pdo->prepare('SELECT status, user_id FROM litiges WHERE id = ?');
-        $st->execute([$litigeId]);
-        $row = $st->fetch(PDO::FETCH_ASSOC);
-    } catch (PDOException) {
-        return false; // table absente = aucun litige
+    $path   = envOrDie($key);
+    $object = is_file($path) ? require $path : null;
+    if (!$object instanceof $interface) {
+        fwrite(STDERR, "{$key} doit nommer un fichier PHP qui renvoie un {$interface} : {$path}\n");
+        exit(3);
     }
-    return $row && $row['status'] === 'open' && $row['user_id'] === $userId;
+    return $object;
 }
 
 // -----------------------------------------------------------------------------
@@ -148,64 +157,68 @@ if ($cmd === 'verify-log') {
     exit(1);
 }
 
-if ($cmd !== 'unlock' || !isset($argv[2], $argv[3])) {
-    fwrite(STDERR, "Usage:\n  php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]\n  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n");
+$arites = ['unlock' => 2, 'unlock-archive' => 3, 'archives' => 2];
+if (!isset($arites[$cmd]) || count($argv) < 2 + $arites[$cmd]) {
+    fwrite(STDERR, "Usage:\n"
+        . "  php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]\n"
+        . "  php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]\n"
+        . "  php bin/escrow-ceremony.php archives <user> <dossier>\n"
+        . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n");
     exit(3);
 }
 
-$user      = $argv[2];
-$litigeId  = $argv[3];
-$fields    = array_slice($argv, 4);           // vide = tous les champs escrow
-$ctx       = operatorContext() + ['target' => $user, 'litige' => $litigeId];
-
-$dbPath = envOrDie('DATAGUARD_DB');
-$pdo    = new PDO('sqlite:' . $dbPath);
+$user    = $argv[2];
+$archive = $cmd === 'unlock-archive' ? $argv[3] : null;
+$dossier = $argv[$cmd === 'unlock-archive' ? 4 : 3];
+$fields  = array_slice($argv, $cmd === 'unlock-archive' ? 5 : 4);   // vide = tous les champs escrow
+$ctx     = operatorContext();
+$pdo     = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-function denyAndExit(AuditLog $log, array $ctx, string $reason, string $human): never
-{
-    $log->append(['action' => 'escrow-unlock-denied', 'reason' => $reason] + $ctx);
-    fwrite(STDERR, "⛔ Refusé — {$human}\n");
+$ceremony = new EscrowCeremony(
+    new SqliteAdapter($pdo),
+    $auditLog,
+    objectFrom('DATAGUARD_ARBITER_FILE', EscrowArbiter::class),
+    objectFrom('DATAGUARD_WITNESS_FILE', HeadWitness::class),
+    $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '')
+);
+
+$passphrase = '';
+try {
+    if ($cmd === 'archives') {
+        echo "📦 Archives de « {$user} » (dossier {$dossier})\n";
+        foreach ($ceremony->listArchives($user, $dossier) as $a) {
+            echo "   {$a['id']}  {$a['archivedAt']->format('c')}  serrures : "
+                . implode(', ', array_map(static fn ($l) => $l->value, $a['locks'])) . "\n";
+        }
+        exit(0);
+    }
+    $passphrase = readPassphrase("Passphrase admin de récupération : ");
+    $sealed     = fileEnv('DATAGUARD_ADMIN_SEALED_FILE');
+    $adminPub   = fileEnv('DATAGUARD_ADMIN_PUBKEY_FILE');
+    $plain = $archive === null
+        ? $ceremony->readEscrow($user, $dossier, $sealed, $passphrase, $adminPub, $fields)
+        : $ceremony->readArchiveEscrow($user, $archive, $dossier, $sealed, $passphrase, $adminPub, $fields);
+} catch (EscrowRefusedException $e) {
+    fwrite(STDERR, "⛔ Refusé — le dossier « {$dossier} » n'autorise pas la lecture pour « {$user} » ({$e->verdict->value}).\n");
     exit(2);
-}
-
-// (1) Garde anti-curieux : litige ouvert ?
-if (!litigeIsOpen($pdo, $litigeId, $user)) {
-    denyAndExit($auditLog, $ctx, 'no-open-litige', "aucun litige ouvert « {$litigeId} » pour « {$user} ».");
-}
-
-// (2) Cérémonie : passphrase → clé privée en RAM.
-$passphrase = readPassphrase("Passphrase admin de récupération : ");
-try {
-    $sk = SelfDataGuard::unsealAdminRecoveryKey(fileEnv('DATAGUARD_ADMIN_SEALED_FILE'), $passphrase);
+} catch (WrongSecretException) {
+    fwrite(STDERR, "⛔ Refusé — passphrase admin invalide.\n");
+    exit(2);
 } catch (LegacyCipherUnavailableException $e) {
-    sodium_memzero($passphrase);
-    denyAndExit($auditLog, $ctx, 'legacy-cipher-unavailable', $e->getMessage());
+    fwrite(STDERR, "⛔ Refusé — {$e->getMessage()}\n");
+    exit(2);
 } catch (InvalidArgumentException $e) {
-    sodium_memzero($passphrase);
-    denyAndExit($auditLog, $ctx, 'sealed-key-unreadable', "fichier de clé scellée illisible : {$e->getMessage()}");
-} catch (\Throwable) {
-    sodium_memzero($passphrase);
-    denyAndExit($auditLog, $ctx, 'bad-passphrase', 'passphrase admin invalide.');
-}
-sodium_memzero($passphrase);
-
-$adminPub = fileEnv('DATAGUARD_ADMIN_PUBKEY_FILE');
-$blindKey = getenv('DATAGUARD_BLINDKEY_FILE') ? fileEnv('DATAGUARD_BLINDKEY_FILE') : str_repeat("\0", 32);
-$dg = new SelfDataGuard(new SqliteAdapter($pdo), $blindKey);
-
-try {
-    $plain = $dg->getEscrowFieldsAsAdmin($user, $sk, $adminPub, $fields);
+    fwrite(STDERR, "⛔ Refusé — fichier de clé scellée illisible : {$e->getMessage()}\n");
+    exit(2);
 } catch (\Throwable $e) {
-    sodium_memzero($sk);
-    denyAndExit($auditLog, $ctx, 'no-escrow-or-open-failed', $e->getMessage());
+    fwrite(STDERR, "⛔ Refusé — {$e->getMessage()}\n");
+    exit(2);
+} finally {
+    sodium_memzero($passphrase);
 }
-sodium_memzero($sk);
 
-// Trace de l'acte (succès), signée + chaînée.
-$auditLog->append(['action' => 'escrow-unlock', 'fields' => array_keys($plain)] + $ctx);
-
-echo "🔓 Escrow déverrouillé pour « {$user} » (litige {$litigeId})\n";
+echo "🔓 Escrow déverrouillé pour « {$user} »" . ($archive !== null ? " (archive {$archive})" : '') . " — dossier {$dossier}\n";
 echo "   opérateur : {$ctx['operator']}" . ($ctx['ip'] ? " · IP {$ctx['ip']}" : '') . "\n";
 echo "   ─────────────────────────────────────────────\n";
 foreach ($plain as $name => $value) {
