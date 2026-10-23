@@ -142,6 +142,23 @@ class Moderate
         return self::$journal;
     }
 
+    /**
+     * Une peine échue dont le journal a refusé la fin attend sa clôture
+     * (`journal_en_panne`) : `banned_until` la garde, alors que `banned` la dit
+     * finie. Ni un ban ni une grâce ne passe par-dessus — le ban la
+     * recouvrirait, la grâce la refermerait sans que sa fin soit écrite nulle
+     * part. Le ban automatique tient la même règle.
+     *
+     * @param array{banned: bool, banned_until: int} $etat
+     * @return array{ok: false, message: string}|null
+     */
+    private static function refusFinEnAttente(array $etat): ?array
+    {
+        return $etat['banned_until'] > 0 && !$etat['banned']
+            ? ['ok' => false, 'message' => static::t('La peine précédente attend que le journal inscrive sa fin : aucun geste ne passe avant.')]
+            : null;
+    }
+
     /** Le bannissement automatique est-il armé sur ce déploiement ? */
     public static function banAutomatiqueArme(): bool
     {
@@ -627,7 +644,11 @@ class Moderate
      * ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même — d'où
      * le marqueur `$transactionOuverteSur`. Dans une transaction déjà ouverte,
      * celle de l'hôte ou la nôtre, un point de reprise : l'écriture s'y défait
-     * seule, sans décider pour la transaction qui la contient.
+     * seule, sans décider pour la transaction qui la contient. Un point de
+     * reprise ne prend aucun verrou, et la transaction d'un hôte est souvent
+     * différée : une écriture qui ne touche rien le prend, avant toute lecture
+     * qui décide et tout acte au journal. Si une autre connexion le tient,
+     * SQLite refuse aussitôt, et rien n'est inscrit.
      *
      * @template T
      * @param callable(): T $ecriture
@@ -642,6 +663,9 @@ class Moderate
             self::$transactionOuverteSur = $pdo;
         }
         try {
+            if (!$propre) {
+                self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');
+            }
             $resultat = $ecriture();
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
 
@@ -1548,6 +1572,10 @@ class Moderate
                     date('d/m/Y H:i', $etat['banned_until'])
                 )];
             }
+            $enAttente = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
 
             $maintenant = time();
             $jusqua     = $maintenant + $seconds;
@@ -1607,6 +1635,10 @@ class Moderate
 
         return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
             $etat       = self::getReputation($pdo, $accountId);
+            $enAttente  = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
             $maintenant = time();
             $anticipee  = false;
             $rangEfface = self::rangDe($pdo, $accountId);

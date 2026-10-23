@@ -2193,6 +2193,180 @@ $echec54 && $pendant54 === [0, 0] && bloquesMeute($pdo, $cible54) === 1 && $rang
         'annules' => bloquesMeute($pdo, $cible54), 'rangs' => $rangs54,
     ]));
 
+// ── 55. Dans la transaction différée d'un hôte, rien ne s'inscrit sans le verrou ─
+// Un point de reprise ne prend aucun verrou, et l'hôte ouvre souvent en
+// différé, puis lit. Une autre connexion qui écrit alors refuse aussitôt le
+// verrou au geste comme au balayage : ni l'un ni l'autre ne doit avoir inscrit
+// son acte avant de le demander.
+$journalAvant55 = Moderate::journal();
+$journal55 = new JournalDeBanc();
+Moderate::setJournal($journal55);
+$banni55 = membre($pdo, 'banni-hote-55');
+poserReputation($pdo, $banni55, 15);
+Moderate::adminBan($pdo, $banni55, 'arbitre-banc', motif());
+$echu55 = membre($pdo, 'echu-hote-55');
+Moderate::ensureRow($pdo, $echu55);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'auto', ban_motif = 'reputation_zero'
+                WHERE account_id = ?")->execute([time() - 10, time() - 130, $echu55]);
+$journal55->actes = [];
+$autre55 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$autre55->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$hote55 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$hote55->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$hote55->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$hote55->exec('PRAGMA busy_timeout = 100');
+$issues55 = [];
+foreach (['grace' => static fn (): mixed => Moderate::adminPardon($hote55, $banni55, 'arbitre-banc', motif()),
+          'balayage' => static fn (): mixed => Moderate::balayerBansEchus($hote55)] as $geste => $faire55) {
+    $hote55->beginTransaction();
+    $hote55->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+    $autre55->exec('BEGIN IMMEDIATE');
+    $autre55->exec('UPDATE member_moderation SET updated_at = updated_at WHERE account_id = ' . $banni55);
+    try {
+        $faire55();
+        $issues55[$geste] = 'passé';
+    } catch (PDOException) {
+        $issues55[$geste] = 'refusé';
+    }
+    $autre55->exec('ROLLBACK');
+    if ($hote55->inTransaction()) {
+        $hote55->rollBack();
+    }
+}
+$actes55 = count($journal55->actes);
+Moderate::setJournal($journalAvant55);
+$issues55 === ['grace' => 'refusé', 'balayage' => 'refusé'] && $actes55 === 0
+    ? ok('dans la transaction différée d\'un hôte, un geste et le balayage refusés faute de verrou n\'ont rien inscrit')
+    : nok('un acte s\'inscrit dans la transaction d\'un hôte sans le verrou : ' . json_encode(['issues' => $issues55, 'actes' => $actes55]));
+
+// ── 56. Une peine qui attend sa fin au journal arrête le ban et la grâce ────
+// Le journal a refusé la fin d'une peine échue : elle attend sa clôture
+// (`journal_en_panne`). Un journal peut refuser un acte et accepter le suivant ;
+// un ban posé par-dessus la recouvrirait, une grâce la refermerait sans que sa
+// fin soit écrite nulle part, et effacerait le seul signal qui en reste.
+$journalAvant56 = Moderate::journal();
+$journal56 = new class implements \Pierroons\SelfModerate\Journal {
+    public array $actes = [];
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'ban_fin') {
+            throw new RuntimeException('fin refusée');
+        }
+        $this->actes[] = $acte['acte'];
+    }
+};
+Moderate::setJournal($journal56);
+$fautes56 = [];
+foreach (['ban', 'grace'] as $geste) {
+    $attente56 = membre($pdo, "attente-$geste-56");
+    Moderate::ensureRow($pdo, $attente56);
+    $pdo->prepare("UPDATE member_moderation
+                      SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                          ban_origine = 'auto', ban_motif = 'reputation_zero'
+                    WHERE account_id = ?")->execute([time() - 10, time() - 130, $attente56]);
+    Moderate::getReputation($pdo, $attente56);
+    $journal56->actes = [];
+    $r56 = $geste === 'ban'
+        ? Moderate::adminBan($pdo, $attente56, 'arbitre-banc', motif())
+        : Moderate::adminPardon($pdo, $attente56, 'arbitre-banc', motif());
+    $e56 = etatBan($pdo, $attente56);
+    if (($r56['ok'] ?? true) || $journal56->actes !== [] || $e56['review_reason'] !== 'journal_en_panne' || (int) $e56['banned_until'] === 0) {
+        $fautes56[$geste] = [$r56, $journal56->actes, $e56['review_reason'], (int) $e56['banned_until']];
+    }
+}
+Moderate::setJournal($journalAvant56);
+$fautes56 === []
+    ? ok('une peine qui attend sa fin au journal arrête le ban et la grâce, et son signal reste')
+    : nok('un geste passe par-dessus une peine qui attend sa fin : ' . json_encode($fautes56, JSON_UNESCAPED_UNICODE));
+
+// ── 57. Un geste décide sur l'état relu sous le verrou ───────────────────────
+// Le n° 51 tient le verrou puis le rend : l'état n'a pas changé entre la
+// lecture d'avant le verrou et celle d'après. Ici, une connexion à point d'arrêt
+// laisse un autre arbitre agir juste avant que le geste prenne son verrou : un
+// geste qui déciderait sur la première lecture banirait deux fois, ou lèverait
+// deux fois le même ban.
+final class PdoAPointDArret extends PDO
+{
+    public ?Closure $avantLeVerrou = null;
+
+    public function exec(string $statement): int|false
+    {
+        if ($statement === 'BEGIN IMMEDIATE' && $this->avantLeVerrou !== null) {
+            $interlude = $this->avantLeVerrou;
+            $this->avantLeVerrou = null;
+            $interlude();
+        }
+
+        return parent::exec($statement);
+    }
+}
+$journalAvant57 = Moderate::journal();
+$journal57 = new JournalDeBanc();
+Moderate::setJournal($journal57);
+$c57 = new PdoAPointDArret('sqlite:' . getenv('LAB_DB_PATH'));
+$c57->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$c57->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$visee57 = membre($pdo, 'visee-57');
+poserReputation($pdo, $visee57, 15);
+$c57->avantLeVerrou = static function () use ($pdo, $visee57): void {
+    Moderate::adminBan($pdo, $visee57, 'arbitre-un', motif());
+};
+$ban57 = Moderate::adminBan($c57, $visee57, 'arbitre-deux', motif());
+$graciee57 = membre($pdo, 'graciee-57');
+poserReputation($pdo, $graciee57, 15);
+Moderate::adminBan($pdo, $graciee57, 'arbitre-un', motif());
+$c57->avantLeVerrou = static function () use ($pdo, $graciee57): void {
+    Moderate::adminPardon($pdo, $graciee57, 'arbitre-un', motif());
+};
+Moderate::adminPardon($c57, $graciee57, 'arbitre-deux', motif());
+$debuts57 = count($journal57->de($visee57, 'ban_debut'));
+$leves57 = count($journal57->de($graciee57, 'ban_leve'));
+Moderate::setJournal($journalAvant57);
+!$ban57['ok'] && $debuts57 === 1 && $leves57 === 1
+    ? ok('un geste devancé par un autre arbitre décide sur l\'état relu sous le verrou : un seul ban, une seule levée')
+    : nok('un geste décide sur l\'état lu avant le verrou : ' . json_encode(['ban' => $ban57, 'ban_debut' => $debuts57, 'ban_leve' => $leves57], JSON_UNESCAPED_UNICODE));
+
+// ── 58. Une meute qui a causé un ban n'en écrit pas la levée si ses rangs échouent ─
+// Le pendant du n° 54, sur une cible que la meute a fait bannir : sa
+// restitution inscrit au journal la levée du ban. Les rangs passent avant :
+// s'ils échouent, tout se défait avant que la levée soit inscrite. Dans l'autre
+// ordre, le journal dirait le ban levé sur une base qui le garde.
+$journalAvant58 = Moderate::journal();
+$journal58 = new JournalDeBanc();
+Moderate::setJournal($journal58);
+$cible58 = membre($pdo, 'cible-58');
+$post58 = message($pdo, $cible58, 'fil-58');
+[$lieA58, $lieB58] = [membre($pdo, 'meute-a-58'), membre($pdo, 'meute-b-58')];
+echangePrive($pdo, $lieA58, $lieB58);
+voteBrut($pdo, $lieA58, $post58, $cible58);
+voteBrut($pdo, $lieB58, $post58, $cible58);
+$pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - 100) . ' WHERE target_author = ' . $cible58);
+Moderate::ensureRow($pdo, $cible58);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'auto', ban_motif = 'reputation_zero'
+                WHERE account_id = ?")->execute([time() + 3600, time() - 50, $cible58]);
+$pdo->exec("CREATE TEMP TRIGGER rangs_refuses_58 BEFORE INSERT ON main.mod_pack_flags
+            BEGIN SELECT RAISE(ABORT, 'rangs refusés'); END");
+try {
+    Moderate::detectPackVoting($pdo, $cible58);
+} catch (PDOException) {
+} finally {
+    $pdo->exec('DROP TRIGGER IF EXISTS temp.rangs_refuses_58');
+}
+$levees58 = count($journal58->de($cible58, 'ban_leve'));
+$encoreBanni58 = Moderate::getReputation($pdo, $cible58)['banned'];
+Moderate::detectPackVoting($pdo, $cible58);
+$apres58 = [count($journal58->de($cible58, 'ban_leve')), Moderate::getReputation($pdo, $cible58)['banned']];
+Moderate::setJournal($journalAvant58);
+$levees58 === 0 && $encoreBanni58 && $apres58 === [1, false]
+    ? ok('une meute dont les rangs échouent n\'inscrit pas la levée du ban qu\'elle a causé ; au passage suivant, la levée s\'inscrit et tombe')
+    : nok('une levée de ban s\'inscrit pour une meute défaite : ' . json_encode([
+        'levees_apres_echec' => $levees58, 'encore_banni' => $encoreBanni58, 'apres' => $apres58,
+    ]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"
