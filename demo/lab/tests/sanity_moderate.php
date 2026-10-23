@@ -2043,6 +2043,63 @@ try {
     Moderate::setJournal($journal50);
 }
 
+// ── 51. Un geste d'arbitre qui ne peut pas prendre le verrou n'écrit rien ───
+// Le pendant du n° 49 pour les quatre gestes : la décision se prend et
+// s'inscrit sous le verrou d'écriture, pris d'emblée. Sans cela, un geste
+// inscrit son acte puis échoue sur la base — un journal qui annonce un ban, ou
+// une grâce, que la base n'a jamais vu. Deux connexions : A tient le verrou,
+// B agit ; B n'attend le verrou que 100 ms.
+$journalAvant51 = Moderate::journal();
+$journal51 = new class implements \Pierroons\SelfModerate\Journal {
+    public array $actes = [];
+    public function inscrire(array $acte): void
+    {
+        $this->actes[] = $acte['acte'];
+    }
+};
+Moderate::setJournal($journal51);
+$cible51 = [];
+foreach (['ban', 'pardon', 'maintenir', 'classer'] as $geste) {
+    $cible51[$geste] = membre($pdo, "verrou-$geste-51");
+    poserReputation($pdo, $cible51[$geste], 15);
+}
+Moderate::adminBan($pdo, $cible51['pardon'], 'arbitre-banc', motif());
+Moderate::adminBan($pdo, $cible51['maintenir'], 'arbitre-banc', motif());
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")
+    ->execute([$cible51['classer']]);
+$a51 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$a51->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b51 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$b51->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b51->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$b51->exec('PRAGMA busy_timeout = 100');
+$gestes51 = [
+    'ban'       => static fn (): array => Moderate::adminBan($b51, $cible51['ban'], 'arbitre-banc', motif()),
+    'pardon'    => static fn (): array => Moderate::adminPardon($b51, $cible51['pardon'], 'arbitre-banc', motif()),
+    'maintenir' => static fn (): array => Moderate::adminMaintenir($b51, $cible51['maintenir'], 'arbitre-banc', motif()),
+    'classer'   => static fn (): array => Moderate::adminClasser($b51, $cible51['classer'], 'arbitre-banc', motif()),
+];
+$fautes51 = [];
+foreach ($gestes51 as $geste => $faire51) {
+    $a51->exec('BEGIN IMMEDIATE');
+    $a51->exec('UPDATE member_moderation SET updated_at = updated_at WHERE account_id = ' . $cible51[$geste]);
+    $avant51 = count($journal51->actes);
+    try {
+        $faire51();
+    } catch (PDOException) {
+    }
+    $pendant51 = count($journal51->actes) - $avant51;
+    $a51->exec('ROLLBACK');
+    $apres51 = $faire51();
+    if ($pendant51 !== 0 || !($apres51['ok'] ?? false)) {
+        $fautes51[$geste] = ['actes_pendant_le_verrou' => $pendant51, 'apres' => $apres51];
+    }
+}
+Moderate::setJournal($journalAvant51);
+$fautes51 === []
+    ? ok('aucun geste d\'arbitre n\'inscrit d\'acte sans tenir le verrou ; le verrou rendu, chacun passe')
+    : nok('un geste d\'arbitre inscrit son acte avant de tenir le verrou : ' . json_encode($fautes51, JSON_UNESCAPED_UNICODE));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

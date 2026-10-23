@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 106/106 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 106 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 107/107 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 107 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2595,9 +2595,10 @@ jobs:
           # Les gardes des gestes d'arbitre, retirées tour à tour : le refus
           # quand aucun journal n'est branché — avec l'appel qui tolère un
           # journal absent, sans quoi le geste échouerait au lieu de passer en
-          # silence. Le banc doit rougir sur son cas.
+          # silence ; la transaction des quatre gestes. Le banc doit rougir sur
+          # son cas.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in journal; do
+          for cas in journal gestes; do
             cp "$M" /tmp/moderate.arbitrage.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2606,6 +2607,8 @@ jobs:
           remplacements = {
               'journal': [('        $sansTrace = self::refusSansJournal();\n', '        $sansTrace = null;\n', 4),
                           ('self::$journal->inscrire(', 'self::$journal?->inscrire(', None)],
+              'gestes':  [('return self::transaction($pdo, static function () use (', 'return (static function () use (', 4),
+                          ('        });\n    }\n', '        })();\n    }\n', 4)],
           }[os.environ['CAS']]
           for avant, apres, n in remplacements:
               assert s.count(avant) == n if n is not None else s.count(avant) > 0, 'plantation impossible'
@@ -2623,6 +2626,7 @@ jobs:
             fi
             case $cas in
               journal) attendu='passe sans journal' ;;
+              gestes)  attendu='inscrit son acte avant de tenir le verrou' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

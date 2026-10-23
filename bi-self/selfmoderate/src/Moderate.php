@@ -1513,36 +1513,43 @@ class Moderate
         if ($seconds <= 0) {
             return ['ok' => false, 'message' => static::t('Durée de ban invalide.')];
         }
-        $etat = self::getReputation($pdo, $accountId);
-        if ($etat['banned']) {
-            return ['ok' => false, 'message' => sprintf(
-                static::t('Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'),
-                date('d/m/Y H:i', $etat['banned_until'])
-            )];
-        }
+        // Une peine échue se referme avant le verrou, comme au vote. Sous lui,
+        // l'état se relit : la décision se prend sur ce qu'il est, pas sur ce
+        // qu'il était avant qu'un autre geste passe.
+        self::getReputation($pdo, $accountId);
 
-        $maintenant = time();
-        $jusqua     = $maintenant + $seconds;
-        $episode    = $etat['strikes'] + 1;
-        self::$journal->inscrire([
-            'acte'    => 'ban_debut',
-            'compte'  => $accountId,
-            'origine' => 'admin',
-            'episode' => $episode,
-            'duree'   => $seconds,
-            'debut'   => $maintenant,
-            'jusqu_a' => $jusqua,
-            'motif'   => trim($motif),
-            'arbitre' => $arbitre,
-        ]);
-        $pdo->prepare(
-            "UPDATE member_moderation
-                SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,
-                    voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?
-              WHERE account_id = ?"
-        )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {
+            $etat = self::getReputation($pdo, $accountId);
+            if ($etat['banned']) {
+                return ['ok' => false, 'message' => sprintf(
+                    static::t('Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'),
+                    date('d/m/Y H:i', $etat['banned_until'])
+                )];
+            }
 
-        return ['ok' => true, 'message' => sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
+            $maintenant = time();
+            $jusqua     = $maintenant + $seconds;
+            $episode    = $etat['strikes'] + 1;
+            self::$journal->inscrire([
+                'acte'    => 'ban_debut',
+                'compte'  => $accountId,
+                'origine' => 'admin',
+                'episode' => $episode,
+                'duree'   => $seconds,
+                'debut'   => $maintenant,
+                'jusqu_a' => $jusqua,
+                'motif'   => trim($motif),
+                'arbitre' => $arbitre,
+            ]);
+            $pdo->prepare(
+                "UPDATE member_moderation
+                    SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,
+                        voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?
+                  WHERE account_id = ?"
+            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
+
+            return ['ok' => true, 'message' => sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
+        });
     }
 
     /**
@@ -1573,67 +1580,71 @@ class Moderate
                 return ['ok' => false, 'message' => $pourquoi];
             }
         }
-        $etat       = self::getReputation($pdo, $accountId);
-        $maintenant = time();
-        $anticipee  = false;
-        $rangEfface = self::rangDe($pdo, $accountId);
+        self::getReputation($pdo, $accountId);
 
-        if ($etat['banned']) {
-            $plancher  = $etat['ban_debut'] > 0
-                ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until'])
-                : null;
-            $anticipee = $plancher !== null && $maintenant < $plancher;
-            if ($anticipee && $motif === '') {
-                return ['ok' => false, 'message' => sprintf(
-                    static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'),
-                    date('d/m/Y H:i', $plancher)
-                )];
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+            $etat       = self::getReputation($pdo, $accountId);
+            $maintenant = time();
+            $anticipee  = false;
+            $rangEfface = self::rangDe($pdo, $accountId);
+
+            if ($etat['banned']) {
+                $plancher  = $etat['ban_debut'] > 0
+                    ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until'])
+                    : null;
+                $anticipee = $plancher !== null && $maintenant < $plancher;
+                if ($anticipee && $motif === '') {
+                    return ['ok' => false, 'message' => sprintf(
+                        static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'),
+                        date('d/m/Y H:i', $plancher)
+                    )];
+                }
+                self::$journal->inscrire([
+                    'acte'      => 'ban_leve',
+                    'compte'    => $accountId,
+                    'origine'   => $etat['ban_origine'],
+                    'arbitre'   => $arbitre,
+                    'motif'     => $motif !== '' ? $motif : null,
+                    'cause'     => 'grace',
+                    'anticipee' => $anticipee,
+                    'reste'     => $etat['banned_until'] - $maintenant,
+                    'plancher'  => $plancher,
+                    'rang_efface'      => $rangEfface,
+                    'suspension_levee' => $etat['vote_muted'],
+                ]);
+            } else {
+                self::$journal->inscrire([
+                    'acte'       => 'grace',
+                    'compte'     => $accountId,
+                    'arbitre'    => $arbitre,
+                    'motif'      => $motif !== '' ? $motif : null,
+                    'reputation' => $etat['reputation'],
+                    'rang_efface'      => $rangEfface,
+                    'suspension_levee' => $etat['vote_muted'],
+                ]);
             }
-            self::$journal->inscrire([
-                'acte'      => 'ban_leve',
-                'compte'    => $accountId,
-                'origine'   => $etat['ban_origine'],
-                'arbitre'   => $arbitre,
-                'motif'     => $motif !== '' ? $motif : null,
-                'cause'     => 'grace',
-                'anticipee' => $anticipee,
-                'reste'     => $etat['banned_until'] - $maintenant,
-                'plancher'  => $plancher,
-                'rang_efface'      => $rangEfface,
-                'suspension_levee' => $etat['vote_muted'],
-            ]);
-        } else {
-            self::$journal->inscrire([
-                'acte'       => 'grace',
-                'compte'     => $accountId,
-                'arbitre'    => $arbitre,
-                'motif'      => $motif !== '' ? $motif : null,
-                'reputation' => $etat['reputation'],
-                'rang_efface'      => $rangEfface,
-                'suspension_levee' => $etat['vote_muted'],
-            ]);
-        }
 
-        $pdo->prepare(
-            'UPDATE member_moderation
-                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
-                    voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
-                    convalescent = 0, vote_muted_until = 0, updated_at = ?
-              WHERE account_id = ?'
-        )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
-        self::effacerEffets($pdo, $accountId);
-        if ($rangEfface > 0) {
             $pdo->prepare(
-                "INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
-                 VALUES (?, ?, 0, 'grace', NULL, ?)"
-            )->execute([$accountId, $accountId, $maintenant]);
-        }
+                'UPDATE member_moderation
+                    SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
+                        voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
+                        convalescent = 0, vote_muted_until = 0, updated_at = ?
+                  WHERE account_id = ?'
+            )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
+            self::effacerEffets($pdo, $accountId);
+            if ($rangEfface > 0) {
+                $pdo->prepare(
+                    "INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
+                     VALUES (?, ?, 0, 'grace', NULL, ?)"
+                )->execute([$accountId, $accountId, $maintenant]);
+            }
 
-        return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
-            $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),
-            $etat['banned'] => static::t('Ban levé.'),
-            default         => static::t('Réputation remise au point de départ.'),
-        }];
+            return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
+                $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),
+                $etat['banned'] => static::t('Ban levé.'),
+                default         => static::t('Réputation remise au point de départ.'),
+            }];
+        });
     }
 
     /**
@@ -1653,22 +1664,26 @@ class Moderate
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
-        $etat = self::getReputation($pdo, $accountId);
-        if (!$etat['banned']) {
-            return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
-        }
-        self::$journal->inscrire([
-            'acte'    => 'ban_maintenu',
-            'compte'  => $accountId,
-            'origine' => $etat['ban_origine'],
-            'arbitre' => $arbitre,
-            'motif'   => trim($motif),
-            'jusqu_a' => $etat['banned_until'],
-        ]);
-        $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
-            ->execute([time(), $accountId]);
+        self::getReputation($pdo, $accountId);
 
-        return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+            $etat = self::getReputation($pdo, $accountId);
+            if (!$etat['banned']) {
+                return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
+            }
+            self::$journal->inscrire([
+                'acte'    => 'ban_maintenu',
+                'compte'  => $accountId,
+                'origine' => $etat['ban_origine'],
+                'arbitre' => $arbitre,
+                'motif'   => trim($motif),
+                'jusqu_a' => $etat['banned_until'],
+            ]);
+            $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
+                ->execute([time(), $accountId]);
+
+            return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
+        });
     }
 
     /**
@@ -1689,21 +1704,25 @@ class Moderate
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
-        $etat = self::getReputation($pdo, $accountId);
-        if (!$etat['needs_review']) {
-            return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
-        }
-        self::$journal->inscrire([
-            'acte'    => 'revue_classee',
-            'compte'  => $accountId,
-            'arbitre' => $arbitre,
-            'motif'   => trim($motif),
-            'raison'  => $etat['review_reason'],
-        ]);
-        $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
-            ->execute([time(), $accountId]);
+        self::getReputation($pdo, $accountId);
 
-        return ['ok' => true, 'message' => static::t('Signalement classé.')];
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+            $etat = self::getReputation($pdo, $accountId);
+            if (!$etat['needs_review']) {
+                return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
+            }
+            self::$journal->inscrire([
+                'acte'    => 'revue_classee',
+                'compte'  => $accountId,
+                'arbitre' => $arbitre,
+                'motif'   => trim($motif),
+                'raison'  => $etat['review_reason'],
+            ]);
+            $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
+                ->execute([time(), $accountId]);
+
+            return ['ok' => true, 'message' => static::t('Signalement classé.')];
+        });
     }
 
     /** Le compte purge-t-il un ban ? Pour l'hôte qui décide ce qu'un ban bloque au-delà du vote. */
