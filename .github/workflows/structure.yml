@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 102/102 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 102 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 106/106 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 106 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2583,6 +2583,46 @@ jobs:
               votes)   attendu='✗ seuil sourd à la config (fenetreMeuteJours) : votes' ;;
               farming) attendu='✗ seuil sourd à la config (fenetreFarmingJours)' ;;
               horloge) attendu='✗ convalescence sourde à la config' ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate arbitre sans verrou ni trace
+        run: |
+          # @plante
+          # Les gardes des gestes d'arbitre, retirées tour à tour : le refus
+          # quand aucun journal n'est branché — avec l'appel qui tolère un
+          # journal absent, sans quoi le geste échouerait au lieu de passer en
+          # silence. Le banc doit rougir sur son cas.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in journal; do
+            cp "$M" /tmp/moderate.arbitrage.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          remplacements = {
+              'journal': [('        $sansTrace = self::refusSansJournal();\n', '        $sansTrace = null;\n', 4),
+                          ('self::$journal->inscrire(', 'self::$journal?->inscrire(', None)],
+          }[os.environ['CAS']]
+          for avant, apres, n in remplacements:
+              assert s.count(avant) == n if n is not None else s.count(avant) > 0, 'plantation impossible'
+              s = s.replace(avant, apres)
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.arbitrage.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.arbitrage.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.arbitrage.intact "$M"
+            cmp -s /tmp/moderate.arbitrage.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              journal) attendu='passe sans journal' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

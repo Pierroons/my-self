@@ -1574,6 +1574,8 @@ $journalSite->actes === [] && Moderate::journal() === $journalSite
 Moderate::setJournal(null);
 
 // ── 37. Dans le lab, un ban coupe la publication, pas la connexion ──────────
+// Un geste d'arbitre exige un journal (n° 50) : celui du banc, le temps de 37 et 37bis.
+Moderate::setJournal(new JournalDeBanc());
 require_once __DIR__ . '/../lib/forum.php';
 $muet = membre($pdo, 'banni-forum');
 Moderate::adminBan($pdo, $muet, 'arbitre-banc', motif());
@@ -1598,6 +1600,7 @@ $accepteProfil = Pierroons\MySelfLab\Profile::save($pdo, $gele, $champsProfil);
 ($refusProfil['error'] ?? '') === 'compte_banni' && ($accepteProfil['ok'] ?? false)
     ? ok('⭐ un compte banni ne modifie pas son profil public, et le modifie de nouveau une fois le ban levé')
     : nok('⭐ profil public pendant un ban : ' . json_encode([$refusProfil, $accepteProfil]));
+Moderate::setJournal(null);
 
 // ── 38. Les textes du lab ne portent aucun seuil à eux ──────────────────────
 // Les pages annonçaient « 24 h → 7 j → 30 j → définitive » pendant que le
@@ -2003,6 +2006,42 @@ $refuse49 && $pendantLeVerrou49 === 0 && $journal49->actes === ['ban_fin'] && !$
     : nok('une fin de peine s\'inscrit avant que le verrou soit pris : ' . json_encode([
         'refuse' => $refuse49, 'pendant_le_verrou' => $pendantLeVerrou49, 'actes' => $journal49->actes, 'apres' => $apres49,
     ]));
+
+// ── 50. Sans journal branché, aucun geste d'arbitre ─────────────────────────
+// Le moteur refuse déjà de bannir seul sans trace ; un arbitre non plus. Le
+// geste qui passerait sans journal est celui qui efface : une grâce remet la
+// réputation au départ et les strikes à zéro.
+$journal50 = Moderate::journal();
+$aBannir50 = membre($pdo, 'a-bannir-50');
+poserReputation($pdo, $aBannir50, 15);
+[$gracie50, $maintenu50] = [membre($pdo, 'gracie-50'), membre($pdo, 'maintenu-50')];
+foreach ([$gracie50, $maintenu50] as $id50) {
+    poserReputation($pdo, $id50, 15);
+    Moderate::adminBan($pdo, $id50, 'arbitre-banc', motif());
+}
+$enRevue50 = membre($pdo, 'en-revue-50');
+poserReputation($pdo, $enRevue50, 15);
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")
+    ->execute([$enRevue50]);
+$gestes50 = [
+    'adminBan'       => [$aBannir50, static fn (): array => Moderate::adminBan($pdo, $aBannir50, 'arbitre-banc', motif())],
+    'adminPardon'    => [$gracie50, static fn (): array => Moderate::adminPardon($pdo, $gracie50, 'arbitre-banc', motif())],
+    'adminMaintenir' => [$maintenu50, static fn (): array => Moderate::adminMaintenir($pdo, $maintenu50, 'arbitre-banc', motif())],
+    'adminClasser'   => [$enRevue50, static fn (): array => Moderate::adminClasser($pdo, $enRevue50, 'arbitre-banc', motif())],
+];
+Moderate::setJournal(null);
+try {
+    foreach ($gestes50 as $geste => [$compte50, $faire50]) {
+        $avant50 = etatBan($pdo, $compte50);
+        $r50 = $faire50();
+        $intact50 = etatBan($pdo, $compte50) === $avant50;
+        !$r50['ok'] && str_contains($r50['message'], 'journal') && $intact50
+            ? ok("sans journal, $geste refuse et ne touche à rien")
+            : nok("$geste passe sans journal : " . json_encode([$r50, 'base_intacte' => $intact50], JSON_UNESCAPED_UNICODE));
+    }
+} finally {
+    Moderate::setJournal($journal50);
+}
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0

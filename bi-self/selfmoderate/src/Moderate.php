@@ -122,14 +122,14 @@ class Moderate
     }
 
     /**
-     * Branche le journal, et avec lui le bannissement automatique.
+     * Branche le journal, et avec lui le bannissement automatique et les gestes
+     * d'arbitre.
      *
-     * 🔑 **C'est ce branchement qui arme la sanction automatique**, et rien
-     * d'autre. Un déploiement qui ne journalise pas garde le comportement
-     * d'avant : la réputation à zéro lève un signalement, un arbitre tranche.
-     * Le choix n'est pas une précaution de style — une peine prononcée sans
-     * humain et sans trace ne laisse personne pour en répondre, ni rien pour
-     * la contester.
+     * 🔑 **C'est ce branchement qui arme la sanction**, et rien d'autre. Un
+     * déploiement qui ne journalise pas signale la réputation à zéro, et aucun
+     * geste d'arbitre n'y passe (`refusSansJournal()`). Le choix n'est pas une
+     * précaution de style — une peine prononcée ou levée sans trace ne laisse
+     * personne pour en répondre, ni rien pour la contester.
      */
     public static function setJournal(?Journal $journal): void
     {
@@ -146,6 +146,22 @@ class Moderate
     public static function banAutomatiqueArme(): bool
     {
         return self::$journal !== null;
+    }
+
+    /**
+     * Le refus commun aux quatre gestes d'arbitre quand aucun journal n'est
+     * branché. Un geste d'arbitre porte un nom et s'écrit au journal, comme le
+     * ban que la machine prononce seule ; celui qui passerait sans trace est
+     * celui qui efface — une grâce remet la réputation au départ et les strikes
+     * à zéro.
+     *
+     * @return array{ok: false, message: string}|null
+     */
+    private static function refusSansJournal(): ?array
+    {
+        return self::$journal === null
+            ? ['ok' => false, 'message' => static::t('Aucun journal de modération n\'est branché : un geste d\'arbitre ne se fait pas sans trace.')]
+            : null;
     }
 
     /** Crée la ligne de modération si absente. */
@@ -1485,6 +1501,10 @@ class Moderate
      */
     public static function adminBan(PDO $pdo, int $accountId, string $arbitre, string $motif, ?int $seconds = null): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -1504,7 +1524,7 @@ class Moderate
         $maintenant = time();
         $jusqua     = $maintenant + $seconds;
         $episode    = $etat['strikes'] + 1;
-        self::$journal?->inscrire([
+        self::$journal->inscrire([
             'acte'    => 'ban_debut',
             'compte'  => $accountId,
             'origine' => 'admin',
@@ -1542,6 +1562,10 @@ class Moderate
      */
     public static function adminPardon(PDO $pdo, int $accountId, string $arbitre, ?string $motif = null): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
         $motif = $motif !== null ? trim($motif) : '';
         if ($motif !== '') {
             [$motifOk, $pourquoi] = self::validateReason($motif);
@@ -1565,7 +1589,7 @@ class Moderate
                     date('d/m/Y H:i', $plancher)
                 )];
             }
-            self::$journal?->inscrire([
+            self::$journal->inscrire([
                 'acte'      => 'ban_leve',
                 'compte'    => $accountId,
                 'origine'   => $etat['ban_origine'],
@@ -1579,7 +1603,7 @@ class Moderate
                 'suspension_levee' => $etat['vote_muted'],
             ]);
         } else {
-            self::$journal?->inscrire([
+            self::$journal->inscrire([
                 'acte'       => 'grace',
                 'compte'     => $accountId,
                 'arbitre'    => $arbitre,
@@ -1621,6 +1645,10 @@ class Moderate
      */
     public static function adminMaintenir(PDO $pdo, int $accountId, string $arbitre, string $motif): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -1629,7 +1657,7 @@ class Moderate
         if (!$etat['banned']) {
             return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
         }
-        self::$journal?->inscrire([
+        self::$journal->inscrire([
             'acte'    => 'ban_maintenu',
             'compte'  => $accountId,
             'origine' => $etat['ban_origine'],
@@ -1653,6 +1681,10 @@ class Moderate
      */
     public static function adminClasser(PDO $pdo, int $accountId, string $arbitre, string $motif): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -1661,7 +1693,7 @@ class Moderate
         if (!$etat['needs_review']) {
             return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
         }
-        self::$journal?->inscrire([
+        self::$journal->inscrire([
             'acte'    => 'revue_classee',
             'compte'  => $accountId,
             'arbitre' => $arbitre,
