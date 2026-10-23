@@ -2267,13 +2267,19 @@ foreach (['ban', 'grace', 'classement'] as $geste) {
                       SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
                           ban_origine = 'auto', ban_motif = 'reputation_zero'
                     WHERE account_id = ?")->execute([time() - 10, time() - 130, $attente56]);
-    Moderate::getReputation($pdo, $attente56);
-    $journal56->actes = [];
-    $r56 = match ($geste) {
-        'ban'        => Moderate::adminBan($pdo, $attente56, 'arbitre-banc', motif()),
-        'grace'      => Moderate::adminPardon($pdo, $attente56, 'arbitre-banc', motif()),
-        'classement' => Moderate::adminClasser($pdo, $attente56, 'arbitre-banc', motif()),
-    };
+    // Une lecture qui ne contiendrait plus le refus du journal le lèverait ici :
+    // le cas rougit alors sur son signal absent, au lieu d'arrêter le banc.
+    try {
+        Moderate::getReputation($pdo, $attente56);
+        $journal56->actes = [];
+        $r56 = match ($geste) {
+            'ban'        => Moderate::adminBan($pdo, $attente56, 'arbitre-banc', motif()),
+            'grace'      => Moderate::adminPardon($pdo, $attente56, 'arbitre-banc', motif()),
+            'classement' => Moderate::adminClasser($pdo, $attente56, 'arbitre-banc', motif()),
+        };
+    } catch (Throwable $t56) {
+        $r56 = ['ok' => false, 'exception' => $t56->getMessage()];
+    }
     $e56 = etatBan($pdo, $attente56);
     if (($r56['ok'] ?? true) || $journal56->actes !== [] || $e56['review_reason'] !== 'journal_en_panne' || (int) $e56['banned_until'] === 0) {
         $fautes56[$geste] = [$r56, $journal56->actes, $e56['review_reason'], (int) $e56['banned_until']];
