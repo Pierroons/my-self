@@ -170,7 +170,7 @@ class Moderate
         $row    = self::ligne($pdo, $accountId);
         $jusqua = $row === null ? 0 : (int) $row['banned_until'];
         if ($row === null || (int) $row['convalescent'] || ($jusqua > 0 && $jusqua <= time())) {
-            self::sousVerrou($pdo, static function () use ($pdo, $accountId): void {
+            self::transaction($pdo, static function () use ($pdo, $accountId): void {
                 $row = self::ligne($pdo, $accountId);
                 if ($row === null) {
                     self::ensureRow($pdo, $accountId);
@@ -237,7 +237,7 @@ class Moderate
      *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
      * rend l'inscription unique, parce que la clôture se décide sous le verrou
-     * d'écriture (`sousVerrou()`) — un seul lecteur la voit à faire. Défaite
+     * d'écriture (`transaction()`) — un seul lecteur la voit à faire. Défaite
      * avec la transaction qui la porte, elle se refait au passage suivant, et
      * le journal porte alors deux fins pour une peine, que `debut` et `jusqu_a`
      * identifient : `applyVote()` referme donc les peines échues du votant et
@@ -577,24 +577,52 @@ class Moderate
             return $refus;
         }
 
-        // `BEGIN IMMEDIATE`, et non `BEGIN` : un vote lit avant d'écrire, et
-        // SQLite refuse sans attendre à une transaction en lecture de passer en
-        // écriture pendant qu'une autre écrit — deux votes simultanés rendraient
-        // « database is locked ». Le verrou pris d'emblée fait attendre, dans le
-        // délai que PDO accorde. Les ordres passent en SQL, jamais par
-        // `commit()` : toutes les versions de PDO ne voient pas une transaction
-        // ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même —
-        // d'où le marqueur `$transactionOuverteSur`. Dans la transaction de
-        // l'hôte, un point de reprise : le vote s'y défait seul, sans décider
-        // pour lui.
+        return self::transaction($pdo, static fn (): array =>
+            self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode));
+    }
+
+    /** Un nom par point de reprise posé dans la transaction d'un hôte. */
+    private static int $pointsDeReprise = 0;
+
+    /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
+    private static ?PDO $transactionOuverteSur = null;
+
+    /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
+    private static function enTransaction(PDO $pdo): bool
+    {
+        return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
+    }
+
+    /**
+     * Une écriture tenue d'un bloc, sous le verrou d'écriture : la seule forme
+     * de transaction du moteur.
+     *
+     * `BEGIN IMMEDIATE`, et non `BEGIN` : on lit avant d'écrire, et SQLite
+     * refuse sans attendre à une transaction en lecture de passer en écriture
+     * pendant qu'une autre écrit — deux écritures simultanées rendraient
+     * « database is locked ». Le verrou pris d'emblée fait attendre, dans le
+     * délai que PDO accorde, et l'état se relit sous lui avant toute décision
+     * et toute écriture au journal. Les ordres passent en SQL, jamais par
+     * `commit()` : toutes les versions de PDO ne voient pas une transaction
+     * ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même — d'où
+     * le marqueur `$transactionOuverteSur`. Dans une transaction déjà ouverte,
+     * celle de l'hôte ou la nôtre, un point de reprise : l'écriture s'y défait
+     * seule, sans décider pour la transaction qui la contient.
+     *
+     * @template T
+     * @param callable(): T $ecriture
+     * @return T
+     */
+    private static function transaction(PDO $pdo, callable $ecriture): mixed
+    {
         $propre = !self::enTransaction($pdo);
-        $point  = $propre ? null : 'selfmoderate_vote_' . ++self::$pointsDeReprise;
+        $point  = $propre ? null : 'selfmoderate_' . ++self::$pointsDeReprise;
         self::ordonner($pdo, $propre ? 'BEGIN IMMEDIATE' : 'SAVEPOINT ' . $point);
         if ($propre) {
             self::$transactionOuverteSur = $pdo;
         }
         try {
-            $resultat = self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode);
+            $resultat = $ecriture();
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
 
             return $resultat;
@@ -611,50 +639,6 @@ class Moderate
             if ($propre) {
                 self::$transactionOuverteSur = null;
             }
-        }
-    }
-
-    /** Un nom par point de reprise posé dans la transaction d'un hôte. */
-    private static int $pointsDeReprise = 0;
-
-    /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
-    private static ?PDO $transactionOuverteSur = null;
-
-    /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
-    private static function enTransaction(PDO $pdo): bool
-    {
-        return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
-    }
-
-    /**
-     * Une écriture que décide une lecture, sous le verrou d'écriture : pris
-     * d'emblée (`BEGIN IMMEDIATE`), pour que des lecteurs simultanés attendent
-     * leur tour au lieu d'échouer en voulant promouvoir un verrou de lecture,
-     * et pour que l'état se relise sous lui avant toute écriture au journal.
-     * Dans une transaction déjà ouverte, par le vote ou par l'hôte, l'écriture
-     * passe telle quelle.
-     */
-    private static function sousVerrou(PDO $pdo, callable $ecriture): void
-    {
-        if (self::enTransaction($pdo)) {
-            $ecriture();
-
-            return;
-        }
-        self::ordonner($pdo, 'BEGIN IMMEDIATE');
-        self::$transactionOuverteSur = $pdo;
-        try {
-            $ecriture();
-            self::ordonner($pdo, 'COMMIT');
-        } catch (\Throwable $e) {
-            try {
-                self::ordonner($pdo, 'ROLLBACK');
-            } catch (\Throwable) {
-                // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
-            }
-            throw $e;
-        } finally {
-            self::$transactionOuverteSur = null;
         }
     }
 
