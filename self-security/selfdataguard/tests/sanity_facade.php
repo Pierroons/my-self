@@ -798,7 +798,7 @@ try {
     ko('a password change the storage never wrote was reported as stored');
 } catch (RuntimeException $e) {
     str_contains($e->getMessage(), 'did not persist revision 1')
-        ? ok('changePassword(): an update reported but never written is detected by its revision')
+        ? ok('setLock(): an update reported but never written is detected by its revision')
         : ko('wrong failure', $e->getMessage());
 }
 

@@ -206,7 +206,7 @@ hash_equals(heldKey($unlockedNewMem), $masterKey1)
 
 // Remove memorized recovery entirely
 $noMem = $vault->removeLock($record, $unlocked2, Lock::Memorized);
-$noMem->wrapRecov === null ? ok('changeMemorized(null) clears recovery wrap') : ko('null did not clear');
+$noMem->wrapRecov === null ? ok('removeLock(Memorized) clears the recovery wrap') : ko('null did not clear');
 
 // -----------------------------------------------------------------------------
 
@@ -414,7 +414,7 @@ section('Passphrase — rotation, removal, and the other wraps keep it');
 $afterPwd = $vault->setLock($rec3, $byPhrase, Lock::Password, 'phrase-password-0002');
 $afterMem = $vault->setLock($afterPwd, $byPhrase, Lock::Memorized, 'dawn-lake-copper');
 $afterMem->wrapPhrase?->toBase64() === $rec3->wrapPhrase->toBase64()
-    ? ok('changePassword() and changeMemorized() keep wrap_phrase')
+    ? ok('setLock() on the password and on the memorized word keeps wrap_phrase')
     : ko('a rotation of another wrap dropped or altered wrap_phrase');
 
 $NEW_PHRASE = 'tapis girafe lundi orage piment velours';
@@ -423,7 +423,7 @@ try {
     $vault->unlockWithPassphrase($rotated, $PHRASE);
     ko('the consumed passphrase still opens the vault');
 } catch (WrongSecretException) {
-    ok('after changePassphrase(), the old passphrase no longer opens');
+    ok('after setLock(Passphrase), the old passphrase no longer opens');
 }
 hash_equals(heldKey($three['unlocked']), heldKey($vault->unlockWithPassphrase($rotated, $NEW_PHRASE)))
     ? ok('the new passphrase opens the same master key')
@@ -431,8 +431,8 @@ hash_equals(heldKey($three['unlocked']), heldKey($vault->unlockWithPassphrase($r
 
 $removed = $vault->removeLock($rotated, $byPhrase, Lock::Passphrase);
 !$removed->hasPassphrase() && $removed->wrapRecov !== null
-    ? ok('removePassphrase() drops wrap_phrase only')
-    : ko('removePassphrase() touched another wrap');
+    ? ok('removeLock(Passphrase) drops wrap_phrase only')
+    : ko('removeLock(Passphrase) touched another wrap');
 
 try {
     $vault->setLock($rotated, $byPhrase, Lock::Passphrase, ' trop  court ');
@@ -451,13 +451,13 @@ try {
     $vault->setLock($new['record'], $old['unlocked'], Lock::Password, 'gen-password-0003');
     ko('a session from the old vault re-sealed the new one');
 } catch (StaleVaultException) {
-    ok('changePassword() with a session from another vault of the same userId raises StaleVaultException');
+    ok('setLock() with a session from another vault of the same userId raises StaleVaultException');
 }
 try {
     $vault->setLock($new['record'], $old['unlocked'], Lock::Passphrase, $NEW_PHRASE);
     ko('a session from the old vault sealed a passphrase on the new one');
 } catch (StaleVaultException) {
-    ok('changePassphrase() is guarded the same way');
+    ok('setLock(Passphrase) is guarded the same way');
 }
 
 // -----------------------------------------------------------------------------

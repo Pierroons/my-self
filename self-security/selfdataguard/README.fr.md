@@ -90,14 +90,14 @@ Chaque récupération SelfRecover remplace des secrets. Le coffre suit si l'int�
 
 `recover()` ouvre et re-scelle en une seule écriture conditionnelle. Le même appel rattrape un coffre dont l'enveloppe du mot de passe a pris du retard. Appelé seul, c'est un oracle Argon2id sans frein : appelle-le juste après une récupération acceptée par SelfRecover, derrière ses compteurs, et freine le rattrapage du niveau 2 par appareil comme la connexion.
 
-**Au niveau 3, l'ancien coffre est archivé.** `reEnroll()` le met de côté, scellé sous ses anciennes serrures, sans péremption, et crée un coffre neuf. Si l'utilisateur retrouve plus tard une ancienne serrure, `openArchive($session, $id, Lock::Passphrase, $ancienne)` puis `readArchive()` lui rendent ses données. La session doit être celle du coffre actuel : par le service, une ancienne serrure seule n'ouvre rien, parce que ces secrets sont justement ceux qui ont pu fuir. Avec un dump de la base, elle ouvre l'archive hors ligne. Une archive ne se détruit que par `deleteArchive()` ou `purgeArchives()`, et `delete()` la laisse.
+**Au niveau 3, l'ancien coffre est archivé.** `reEnroll()` le met de côté, scellé sous ses anciennes serrures, sans péremption, et crée un coffre neuf. Si l'utilisateur retrouve plus tard une ancienne serrure, `openArchive($session, $id, Lock::Passphrase, $ancienne)` puis `readArchive()` lui rendent ses données. La session doit être celle du coffre actuel : par le service, une ancienne serrure seule n'ouvre rien, parce que ces secrets sont justement ceux qui ont pu fuir. Avec un dump de la base, elle ouvre l'archive hors ligne. Restaure les champs par `setFields()` avec les champs que ton application indexe — `readArchive()` ne rend aucune liste d'index, puisque qui écrit la base pourrait l'étendre ; une `DuplicateIndexException` nomme une valeur qu'un autre compte a prise depuis. Une archive ne se détruit que par `deleteArchive()`, qui la demande ouverte par une de ses anciennes serrures, ou par `eraseAccount()` ; `delete()` la laisse.
 
 > ⚠️ **Un coffre scellé par le seul mot de passe ne survit pas à une récupération SelfRecover.** Les niveaux 1 et 2 remplacent le mot de passe du compte (`Recovery::parPassphrase()`, `Recovery::parCode()`). Un coffre créé par `register($user, $password)` seul n'a qu'une enveloppe, scellée sur l'ancien mot de passe : après la récupération, plus personne ne l'ouvre, et aucune des deux bibliothèques ne le dit. Quand les deux modules partagent un compte :
 > - passe `$memorized` et `$passphrase` à `register()` ;
 > - après chaque récupération acceptée, appelle `recover()` comme dans le tableau ci-dessus ;
 > - au niveau 3, appelle `reEnroll()`. La serrure « mot mémorisé » de l'archive dépend du sel SelfRecover de l'époque, que le niveau 3 remplace : range-le, par exemple comme champ du coffre neuf, si cette serrure doit rester utilisable.
 
-Les récupérations ne sont pas les seuls chemins qui changent un secret : quand ton service change le mot de passe ou renouvelle le mot mémorisé, appelle aussi `changePassword()` ou `changeMemorized()`, **après** l'écriture de SelfRecover. Un chemin oublié laisse une serrure sur un secret que SelfRecover a déjà remplacé.
+Les récupérations ne sont pas les seuls chemins qui changent un secret : quand ton service change le mot de passe ou renouvelle le mot mémorisé, appelle aussi `setLock()`, **après** l'écriture de SelfRecover. Un chemin oublié laisse une serrure sur un secret que SelfRecover a déjà remplacé.
 
 > ⚠️ **`userId` est comparé octet pour octet.** Il entre dans l'AAD de chaque enveloppe et sert de clé en base : « Alice » et « alice » sont deux coffres. Si tes comptes ignorent la casse, ramène le nom à celui du compte avant chaque appel ; sinon, un coffre créé sous une graphie échappe aux rescellements appelés sous l'autre, et rien ne le signale.
 
@@ -115,12 +115,13 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 
 Un déploiement qui installe la v0.6.2 est donc en **Lite**, quel que soit le mode visé : les deux autres sont décrits au whitepaper (§4.2, §4.3) comme une cible, et aucun paramètre de l'API ne les choisit.
 
-Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** (`src/Escrow/`), compartiment à clé propre qu'un administrateur rouvre sous cérémonie — dossier ouvert, passphrase de séquestre, journal signé. Il ne rend que ce compartiment, jamais le coffre privé, et il n'est pas le mode Hybrid : rien n'y est déchiffré au fil de l'eau. Le séquestre d'un coffre archivé part avec l'archive, et l'administrateur le rouvre de la même façon (`getArchiveEscrowFieldsAsAdmin()`).
+Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** (`src/Escrow/`), compartiment à clé propre qu'un administrateur ne rouvre que par `EscrowCeremony` — le verdict d'un arbitre que tu écris, l'intention dans un journal signé, la tête du journal sortie de la machine par un témoin, et seulement ensuite la passphrase de séquestre. Il ne rend que ce compartiment, jamais le coffre privé, et il n'est pas le mode Hybrid : rien n'y est déchiffré au fil de l'eau. Le séquestre d'un coffre archivé part avec l'archive, et l'administrateur le rouvre de la même façon (`readArchiveEscrow()`).
 
-Ce que le séquestre tient depuis la 0.6.0 :
+Ce que le séquestre tient :
+- **aucun arbitre n'est livré** : `EscrowArbiter` rend un `Verdict` nommé, et seul `Open` descelle. Un arbitre écrit pour tous les déploiements répondrait oui à tous ; celui de SelfRecover arrive avec sa fenêtre d'après le niveau 3. La classe de l'arbitre, son verdict et celle du témoin vont au journal. `HeadWitness` est obligatoire : `NoHeadWitness` dit par son nom que la tête reste sur cette machine. Contre l'administrateur seul — le fichier de clé scellée et sa passphrase —, rien de tout cela ne tient : il ouvre le séquestre hors de la bibliothèque ;
 - **le scellé administrateur nomme son compte** : recopié dans la ligne d'un autre compte, il est refusé. Il n'authentifie pas pour autant le contenu du séquestre : qui écrit en base peut, avec la clé publique, sceller et remplir un compartiment neuf. Un scellé d'avant la 0.6.0 s'ouvre encore ; `rebindEscrowAdmin($session, $clePublique)` le rescelle, vers la clé que tu lui passes — passe celle avec laquelle le séquestre a été créé, rien ne peut le vérifier sans la clé secrète ;
 - **la passphrase admin compte au moins 12 octets** au scellement (`UserVault::PASSWORD_MIN_LEN`) ; une clé scellée plus tôt sous une passphrase plus courte s'ouvre encore. La clé scellée porte son profil Argon2id (`v2:…`) ;
-- **le journal de la cérémonie peut s'ancrer hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué avant l'ancre ou réécrit jusqu'à elle. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal. Le secret du journal vit sur la machine de la cérémonie, et qui le détient peut réécrire ce qui suit la dernière ancre : ancre le journal après chaque cérémonie ;
+- **le journal de la cérémonie peut s'ancrer hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué avant l'ancre ou réécrit jusqu'à elle. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal. Le secret du journal vit sur la machine de la cérémonie, et qui le détient peut réécrire ce qui suit la dernière ancre : le témoin sort la tête à chaque cérémonie. Une fin de journal non signée — une écriture coupée — est mise en quarantaine par l'entrée suivante, qui la consigne ; une entrée signée hors de sa place est une rupture sur laquelle rien ne s'écrit ;
 - **le nom de champ `escrow` est réservé** : c'est le contexte de l'enveloppe du séquestre. `setFields()` le refuse ; `getFields()` le refuse quand on le demande par son nom, et le laisse de côté, sans le déchiffrer, dans une lecture de tous les champs.
 
 ---
@@ -129,7 +130,7 @@ Ce que le séquestre tient depuis la 0.6.0 :
 
 | Adversaire | Sans SelfDataGuard | Avec SelfDataGuard |
 |------------|---------------------|---------------------|
-| SQL injection / IDOR / dump DB | Données personnelles en clair exposées | Valeurs chiffrées. Lisibles : noms des champs, dates de modification, longueurs, comptes qui partagent une valeur indexée |
+| SQL injection / IDOR / dump DB | Données personnelles en clair exposées | Valeurs chiffrées. Lisibles : noms des champs, dates de modification, longueurs, comptes qui partagent une valeur d'un champ déclaré partagé |
 | Bande de sauvegarde volée | Données personnelles en clair exposées | Idem, tant que la sauvegarde ne contient pas la clé du blind index (un secret du serveur, commun à tous les comptes). Avec elle, les valeurs indexées qui s'énumèrent (numéros de téléphone, adresses e-mail) se retrouvent par dictionnaire, pour tous les comptes |
 | DBA malveillant | Lit tout | Comme pour un dump : valeurs chiffrées, rien à déballer sans un des secrets d'un utilisateur ; noms des champs, dates de modification et longueurs lisibles |
 | Compromission root applicative (RCE) | Lit tout | En mode Lite, le seul en service : lit les coffres des sessions ouvertes pendant la compromission, et garde leurs clés, qui ne tournent pas ensuite. Avec la clé du blind index, retrouve par dictionnaire les valeurs indexées qui s'énumèrent, pour tous les comptes |
@@ -200,27 +201,31 @@ $session = $dg->recover('alice', Lock::Passphrase, $anciennePassphrase, $nouveau
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' ou null
 ```
 
-Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus). Chaque échec a son type d'exception : `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (une session ouverte sur un coffre remplacé depuis).
+Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus). Une implémentation de `StorageInterface` à toi est conforme quand `php bin/storage-conformance.php <connexion.php>` passe contre elle, et pas autrement : un stockage peut respecter chaque signature et perdre un coffre sans un mot. Chaque échec a son type d'exception : `WrongSecretException` (et `MissingEnvelopeException`, au même message : une serrure absente répond comme un secret faux), `VaultTamperedException` (un profil qui ne correspond pas à son sceau, ou sans sceau), `VaultNotFoundException`, `StaleVaultException` (une session ouverte sur un coffre remplacé depuis), `DuplicateIndexException`, `AmbiguousLookupException`.
+
+> ⚠️ **Après la montée d'une base en 0.7.0, avant de servir** : appelle `sealProfile($userId)` une fois pour chaque compte. Un coffre écrit avant la 0.7.0 n'a pas de sceau de profil, et ne s'ouvre pour personne tant qu'il n'est pas scellé — comme un coffre altéré. Ensuite, n'indexe une valeur qu'une fois que le compte a prouvé qu'il la détient : qui l'indexe le premier la garde.
 
 ---
 
 ## Tests
 
-Onze suites de tests sanity, exécutables directement avec `php` (pas besoin de PHPUnit) :
+Treize suites de tests sanity, exécutables directement avec `php` (pas besoin de PHPUnit) :
 
 ```bash
-php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + vecteur IETF, AES-GCM historique, aléatoire
-php tests/sanity_vault.php        # 58 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération et profil du coffre
+php tests/sanity_primitives.php   # 56 tests — Argon2id, HMAC, XChaCha20-Poly1305 + vecteur IETF, AES-GCM historique, aléatoire, AAD
+php tests/sanity_vault.php        # 64 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération, bornes du profil, serrure absente
 php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind index
-php tests/sanity_storage.php      # 60 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle (génération, révision), test "soupe DB"
-php tests/sanity_migration.php    # 15 tests — bases 0.4.0 et 0.5.x migrées en place, deux migrateurs simultanés
+php tests/sanity_storage.php      # 64 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle (génération, révision), test "soupe DB"
+php tests/sanity_migration.php    # 23 tests — bases 0.4.0 et 0.5.x migrées en place, index aveugle unique, profil scellé par l'exploitant
 php tests/sanity_archive.php      # 26 tests — archive : contenu, cloisonnement, tout-ou-rien, écrivain concurrent attendu
-php tests/sanity_facade.php       # 67 tests — API complète bout en bout, recover(), niveau 3, course à l'écriture, stockage qui perd ou ignore le profil, nom réservé
-php tests/sanity_audit.php        # 23 tests — journal d'audit, ancre contre la troncature, forcé sur disque
-php tests/sanity_ceremony.php     # 22 tests — cérémonie de clés, options de verify-log, fichier scellé illisible
-php tests/sanity_escrow.php       # 36 tests — compartiment escrow, clé admin v2, scellé lié au compte, rescellement explicite
+php tests/sanity_facade.php       # 96 tests — API complète bout en bout, recover(), niveau 3, sceau du profil et réparation, index unique, course à l'écriture
+php tests/sanity_conformance.php  # 37 tests — la suite de conformité du stockage, contre l'adaptateur fourni et quatorze stockages fautifs
+php tests/sanity_keys.php         # 20 tests — aucun objet qui tient une clé ne la rend
+php tests/sanity_audit.php        # 29 tests — journal d'audit, ancre contre la troncature, forcé sur disque, quarantaine d'une fin non signée
+php tests/sanity_ceremony.php     # 28 tests — CLI de cérémonie, arbitre et témoin de l'exploitant, archives, options de verify-log
+php tests/sanity_escrow.php       # 44 tests — compartiment escrow, clé admin v2, scellé lié au compte, ordre de la cérémonie
 php tests/sanity_vecteurs.php     # 9 tests — clés des trois serrures face aux vecteurs figés
-# Total : 388 tests, 0 échec — relevé par exécution le 15/10/2026
+# Total : 522 tests, 0 échec — relevé par exécution le 23/10/2026
 python3 tests/vecteurs_argon2.py  # recalcule les vecteurs par argon2-cffi, seconde implémentation
 ```
 
