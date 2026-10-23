@@ -12,15 +12,14 @@ use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
  * encrypted, exactly as it was when archived.
  *
  * Its envelopes still open with its old secrets: the AADs bind the userId
- * only, and the archive keeps it. They open under the Argon2id profile in
- * force when the archive was made, carried here, because a live vault can
- * be re-sealed after a profile change and an archive cannot — nobody holds
- * its key in between.
+ * only, and the archive keeps it. They open under the Argon2id profile of the
+ * vault it was taken from, carried here, because a live vault can be re-sealed
+ * after a profile change and an archive cannot — nobody holds its key in
+ * between. No derivation runs under a profile outside the floor and the
+ * ceiling.
  *
- * ⚠️ That is the profile of the code at archiving time, not one read from the
- * vault, which stores none. A vault still sealed under an earlier profile at
- * that moment would not open with it: whoever changes the profile re-seals
- * every live vault first.
+ * The record keeps the vault's profile seal, when it had one: an archive taken
+ * before 0.7.0 has none, and nothing vouches for its profile.
  */
 final class ArchivedVault
 {

@@ -42,15 +42,16 @@ interface StorageInterface
 {
     /**
      * Insert a brand-new vault, Argon2id profile included (kdfOpslimit,
-     * kdfMemlimit): its envelopes open under that profile only. Never an
-     * upsert: throws VaultExistsException if the userId has a live vault.
+     * kdfMemlimit): its envelopes open under that profile only — and its
+     * profileSeal, which vouches for it. Never an upsert: throws
+     * VaultExistsException if the userId has a live vault.
      */
     public function saveVault(VaultRecord $record): void;
 
     /**
-     * Update the wraps of an existing vault (e.g. after changePassword /
-     * changeMemorized). user_salt is never rewritten: it identifies the
-     * vault. The write applies only where user_salt AND revision still match
+     * Update an existing vault to the record: its wraps (e.g. after
+     * changePassword / changeMemorized), its profile and its profileSeal.
+     * user_salt is never rewritten: it identifies the vault. The write applies only where user_salt AND revision still match
      * the record's, and bumps the revision. Throws StaleVaultException if the
      * vault was replaced or updated since the record was read,
      * VaultNotFoundException if the userId holds none.

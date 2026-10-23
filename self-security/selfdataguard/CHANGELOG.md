@@ -14,6 +14,9 @@ implementation could leave it out, and a write from a replaced vault then landed
 a key that cannot read it. It is now a required parameter of the contract, and the façade reads back
 the salt, the revision and every wrap it wrote. An indexed value now names one account: a second
 account can no longer take the address of the first, and a lookup no longer picks between them.
+A vault's Argon2id profile is sealed under a server key: changed in the database, it is reported as
+tampering before any derivation, instead of failing every lock as a wrong secret — which sent the
+holder down to level 3.
 
 Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInterface`, or calls
 `reEnroll()`, `delete()`, `listArchives()`, `deleteArchive()`, `purgeArchives()`, `hasEscrow()` or
@@ -63,6 +66,22 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 - **BREAKING** — `readArchive()` no longer returns `indexed`. It came from the archive package, which
   whoever writes the database can extend to a field never meant to be looked up: restore with the
   fields your application indexes.
+- **BREAKING** — a vault's Argon2id profile carries a seal (`profile_seal`, an HMAC over the userId, the
+  salt and the profile, under a key derived from the blind-index key). The façade checks it before any
+  derivation and throws `VaultTamperedException` — not `WrongSecretException` — when it does not hold,
+  or is missing. Measured before: a profile changed within the bounds made password, memorized word
+  and passphrase each fail as a wrong secret, and the archive made at level 3 kept the false profile.
+  **A vault written before 0.7.0 opens to no one until an operator runs `sealProfile()` on it.**
+- **BREAKING** — no derivation runs under a profile outside `Primitives::PROFILE_FLOOR_*` (the lowest
+  profile ever written) and `PROFILE_CEILING_*` (four times the current one): `VaultTamperedException`,
+  or `InvalidArgumentException` for a sealed admin key. A stored profile was unbounded, and its cost
+  escapes PHP's limits: measured, 3 / 256 MiB took the process from 33 to 296 MiB of resident memory
+  under `memory_limit=32M`, and `max_execution_time` only fired once the derivation was over. That
+  profile is the ceiling itself: size the host for it, per concurrent derivation.
+- **BREAKING** — `UnlockedVault` carries the profile it was opened under (`kdfOpslimit`, `kdfMemlimit`,
+  required by its constructor), and a re-seal uses it instead of the profile read from the database
+  at that moment. A record claiming another profile than its session stops the re-seal.
+- `StorageInterface::updateVault()` writes the record's profile and seal as well as its wraps.
 - The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
   `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
   `changeMemorized()` were not read back. A vault returned for another userId than the one asked for
@@ -85,6 +104,11 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
   route a visitor reaches.
 - `eraseAccount(string $userId): int` erases the live vault and every archive in one transaction, and
   works on a userId left with archives only.
+- `sealProfile(string $userId): bool` — the operator's step after upgrading: it seals a vault written
+  before 0.7.0, trusting the row as it stands. `repairProfile(string $userId): bool` puts back the
+  profile a seal vouches for, trying `Primitives::PUBLISHED_PROFILES` — an HMAC each, no Argon2id, no
+  secret of the holder. An archive keeps the seal of its vault; one taken before 0.7.0 has none, and
+  is opened under its recorded profile as before.
 - `Storage\Conformance` and `bin/storage-conformance.php <connection.php>`: the contract played against
   an implementation — 16 cases, three of them racing four processes. An implementation that does not
   pass it is not conformant. It writes under random `conformance-<hex>-…` userIds and erases each of
@@ -103,10 +127,10 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 
 ### Tests
 
-- 457 checks across twelve suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 37, facade 67 → 81, storage 60 → 64, migration 15 → 20, and `sanity_conformance` (35), which
-  plays the suite against the shipped adapter and against twelve storages that each break one
-  clause: each fails on the case that names it. The racing cases catch the two that check, then
+- 477 checks across twelve suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 38, facade 67 → 91, storage 60 → 64, migration 15 → 23, vault 58 → 62, and
+  `sanity_conformance` (37), which plays the suite against the shipped adapter and against fourteen
+  storages that each break one clause: each fails on the case that names it. The racing cases catch the two that check, then
   write in a second statement — they pass every sequential case. Three storages written wrong on purpose — a case-insensitive
   `user_id`, an insert overwritten before its read-back, an update reported and never written — are
   each refused by the façade. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
@@ -136,6 +160,9 @@ misread. Do not roll back after a write.
   generation inside each write's transaction — throwing `VaultNotFoundException` when the userId has
   no live vault, `StaleVaultException` when it has another. A generation received and not compared
   breaks nothing visible: run `bin/storage-conformance.php` against it before it serves anyone.
+- **After upgrading, before serving**: call `sealProfile($userId)` once for every account. Until then
+  its vault opens to no one, as a tampered one would. The call trusts each row as it stands: run it on
+  a database nobody else is writing to.
 - **Before opening a database with 0.7.0**, find the values several accounts hold — the adapter
   refuses to open while any is left:
 

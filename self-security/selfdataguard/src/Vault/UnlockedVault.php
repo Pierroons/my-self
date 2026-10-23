@@ -20,6 +20,10 @@ use RuntimeException;
  * re-created for the same userId has another salt, so a session from the old
  * one cannot write into the new one (StaleVaultException).
  *
+ * And the Argon2id profile it was opened under — proven by the opening, since
+ * the key depends on it. A re-seal uses this one, not the profile read from
+ * the database at that moment, which whoever writes the database can lower.
+ *
  * NEVER serialize, log, or persist this object.
  */
 final class UnlockedVault
@@ -30,7 +34,9 @@ final class UnlockedVault
     public function __construct(
         public readonly string $userId,
         #[\SensitiveParameter] string $masterKey,
-        public readonly string $vaultSalt
+        public readonly string $vaultSalt,
+        public readonly int $kdfOpslimit,
+        public readonly int $kdfMemlimit
     ) {
         if (strlen($masterKey) !== Primitives::KEY_LEN) {
             throw new RuntimeException(

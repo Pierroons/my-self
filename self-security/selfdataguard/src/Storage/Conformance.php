@@ -166,7 +166,9 @@ final class Conformance
         $this->storage->saveVault($vault);
         $read = $this->storage->loadVault($vault->userId);
 
-        $first = $read->withWrapPwd($this->blob(), new DateTimeImmutable());
+        $first = $read->withWrapPwd($this->blob(), new DateTimeImmutable())
+            ->withProfile(self::OPSLIMIT + 1, self::MEMLIMIT + 1)
+            ->withProfileSeal(Primitives::randomBytes(32));
         $this->assert($this->storage->updateVault($first) === 1, 'updateVault() did not return the revision it stored (1)');
         $stored = $this->storage->loadVault($vault->userId);
         $this->assert($stored->revision === 1, "the stored revision is {$stored->revision} after one update, not 1");
@@ -663,7 +665,8 @@ final class Conformance
             wrapPhrase:  $withPhrase ? $this->blob() : null,
             revision:    0,
             kdfOpslimit: self::OPSLIMIT,
-            kdfMemlimit: self::MEMLIMIT
+            kdfMemlimit: self::MEMLIMIT,
+            profileSeal: Primitives::randomBytes(32)
         );
     }
 
@@ -673,7 +676,7 @@ final class Conformance
             userId: $record->userId, userSalt: $salt, wrapPwd: $record->wrapPwd, wrapRecov: $record->wrapRecov,
             wrapAdmin: $record->wrapAdmin, createdAt: $record->createdAt, updatedAt: $record->updatedAt,
             wrapPhrase: $record->wrapPhrase, revision: $record->revision,
-            kdfOpslimit: $record->kdfOpslimit, kdfMemlimit: $record->kdfMemlimit
+            kdfOpslimit: $record->kdfOpslimit, kdfMemlimit: $record->kdfMemlimit, profileSeal: $record->profileSeal
         );
     }
 
@@ -772,6 +775,10 @@ final class Conformance
             'wrap_phrase'  => [$written->wrapPhrase?->toBase64(), $read->wrapPhrase?->toBase64()],
             'kdf_opslimit' => [$written->kdfOpslimit, $read->kdfOpslimit],
             'kdf_memlimit' => [$written->kdfMemlimit, $read->kdfMemlimit],
+            'profile_seal' => [
+                $written->profileSeal === null ? null : base64_encode($written->profileSeal),
+                $read->profileSeal === null ? null : base64_encode($read->profileSeal),
+            ],
         ];
         if (!$ignoreRevision) {
             $columns['revision'] = [$written->revision, $read->revision];

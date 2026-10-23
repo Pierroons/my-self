@@ -139,6 +139,8 @@ $broken = [
     UniqueIndexDroppedStorage::class   => ['blind-index-unique'],
     SharedIndexDroppingStorage::class  => ['blind-index-unique'],
     CheckThenInsertIndexStorage::class => ['concurrent-unique-index'],
+    SealDroppingStorage::class         => ['vault-round-trip', 'update-compare-and-swap'],
+    ProfileFrozenStorage::class        => ['update-compare-and-swap'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file] = connection($work, $class);

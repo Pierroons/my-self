@@ -231,8 +231,9 @@ AdminKey::unseal($scelleAncien, ADMIN_PASS) === $skAncien
     : ko('the pre-0.6.0 format no longer unseals');
 
 // A key sealed under another profile opens by the profile it records.
-$OPS = 2;
-$MEM = 32 * 1024 * 1024;
+// Another profile than the current one, within the floor and the ceiling.
+$OPS = Primitives::ARGON2_OPSLIMIT + 1;
+$MEM = Primitives::ARGON2_MEMLIMIT;
 ($OPS !== Primitives::ARGON2_OPSLIMIT || $MEM !== Primitives::ARGON2_MEMLIMIT)
     ? ok('fixture: the other profile differs from the current constants')
     : ko('fixture: the other profile equals the current constants — the next check proves nothing');
@@ -247,6 +248,16 @@ try {
         : ko('the v2 key opened to another secret key');
 } catch (Throwable $e) {
     ko('a v2 key sealed under another profile no longer unseals', $e->getMessage());
+}
+
+$t0 = microtime(true);
+try {
+    AdminKey::unseal('v2:' . Primitives::PROFILE_CEILING_OPSLIMIT . ':' . (Primitives::PROFILE_CEILING_MEMLIMIT * 2) . ':c2FsdA==:YmxvYg==', 'n\'importe quoi');
+    ko('an admin key claiming a profile above the ceiling was derived under');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'no version of SelfDataGuard writes') && microtime(true) - $t0 < 0.05
+        ? ok('an admin key claiming a profile above the ceiling is refused before any derivation')
+        : ko('wrong refusal, or after a derivation', $e->getMessage());
 }
 
 foreach ([

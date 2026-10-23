@@ -27,7 +27,11 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *                   the revision it was read at
  *   - kdf_opslimit / kdf_memlimit : the Argon2id profile of every envelope,
  *                   fixed at creation (a vault stored before 0.6.0 carries the
- *                   legacy profile, Primitives::LEGACY_*)
+ *                   legacy profile, Primitives::LEGACY_*). A record can carry a
+ *                   profile out of bounds — so that it can be repaired —, but no
+ *                   derivation runs under one (UserVault::unlock())
+ *   - profile_seal : ProfileSeal over the userId, the salt and the profile (null
+ *                   on a vault written before 0.7.0, until an operator seals it)
  *
  * user_salt is also the vault's identity: it is never rotated, and a
  * re-created vault gets a new one. Sessions and conditional writes compare it.
@@ -53,7 +57,8 @@ final class VaultRecord
         // the current constants, and a storage that does not read these columns
         // back would open every vault under them instead of its own profile.
         ?int $kdfOpslimit = null,
-        ?int $kdfMemlimit = null
+        ?int $kdfMemlimit = null,
+        public readonly ?string $profileSeal = null
     ) {
         if ($kdfOpslimit === null || $kdfMemlimit === null) {
             throw new InvalidArgumentException(
@@ -74,53 +79,28 @@ final class VaultRecord
 
     public function withWrapPwd(EncryptedBlob $newWrapPwd, DateTimeImmutable $now): self
     {
-        return new self(
-            userId:    $this->userId,
-            userSalt:  $this->userSalt,
-            wrapPwd:   $newWrapPwd,
-            wrapRecov: $this->wrapRecov,
-            wrapAdmin: $this->wrapAdmin,
-            createdAt: $this->createdAt,
-            updatedAt: $now,
-            wrapPhrase: $this->wrapPhrase,
-            revision:  $this->revision,
-            kdfOpslimit: $this->kdfOpslimit,
-            kdfMemlimit: $this->kdfMemlimit
-        );
+        return $this->with(['wrapPwd' => $newWrapPwd, 'updatedAt' => $now]);
     }
 
     public function withWrapRecov(?EncryptedBlob $newWrapRecov, DateTimeImmutable $now): self
     {
-        return new self(
-            userId:    $this->userId,
-            userSalt:  $this->userSalt,
-            wrapPwd:   $this->wrapPwd,
-            wrapRecov: $newWrapRecov,
-            wrapAdmin: $this->wrapAdmin,
-            createdAt: $this->createdAt,
-            updatedAt: $now,
-            wrapPhrase: $this->wrapPhrase,
-            revision:  $this->revision,
-            kdfOpslimit: $this->kdfOpslimit,
-            kdfMemlimit: $this->kdfMemlimit
-        );
+        return $this->with(['wrapRecov' => $newWrapRecov, 'updatedAt' => $now]);
     }
 
     public function withWrapPhrase(?EncryptedBlob $newWrapPhrase, DateTimeImmutable $now): self
     {
-        return new self(
-            userId:    $this->userId,
-            userSalt:  $this->userSalt,
-            wrapPwd:   $this->wrapPwd,
-            wrapRecov: $this->wrapRecov,
-            wrapAdmin: $this->wrapAdmin,
-            createdAt: $this->createdAt,
-            updatedAt: $now,
-            wrapPhrase: $newWrapPhrase,
-            revision:  $this->revision,
-            kdfOpslimit: $this->kdfOpslimit,
-            kdfMemlimit: $this->kdfMemlimit
-        );
+        return $this->with(['wrapPhrase' => $newWrapPhrase, 'updatedAt' => $now]);
+    }
+
+    public function withProfileSeal(string $seal): self
+    {
+        return $this->with(['profileSeal' => $seal]);
+    }
+
+    /** The same envelopes, read under another profile — for a repair against the seal. */
+    public function withProfile(int $opslimit, int $memlimit): self
+    {
+        return $this->with(['kdfOpslimit' => $opslimit, 'kdfMemlimit' => $memlimit]);
     }
 
     public function generation(): VaultGeneration
@@ -136,5 +116,24 @@ final class VaultRecord
     public function hasPassphrase(): bool
     {
         return $this->wrapPhrase !== null;
+    }
+
+    /** @param array<string, mixed> $changes constructor arguments to replace */
+    private function with(array $changes): self
+    {
+        return new self(...$changes + [
+            'userId'      => $this->userId,
+            'userSalt'    => $this->userSalt,
+            'wrapPwd'     => $this->wrapPwd,
+            'wrapRecov'   => $this->wrapRecov,
+            'wrapAdmin'   => $this->wrapAdmin,
+            'createdAt'   => $this->createdAt,
+            'updatedAt'   => $this->updatedAt,
+            'wrapPhrase'  => $this->wrapPhrase,
+            'revision'    => $this->revision,
+            'kdfOpslimit' => $this->kdfOpslimit,
+            'kdfMemlimit' => $this->kdfMemlimit,
+            'profileSeal' => $this->profileSeal,
+        ]);
     }
 }

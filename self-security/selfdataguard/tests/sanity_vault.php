@@ -20,6 +20,7 @@ use Pierroons\SelfDataGuard\Vault\MissingEnvelopeException;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
@@ -450,8 +451,9 @@ section('Profile — a vault opens under the Argon2id profile its record carries
 
 // A profile other than the current constants: what a vault sealed before a
 // future change of ARGON2_* looks like.
-$OPS = 2;
-$MEM = 32 * 1024 * 1024;
+// Another profile than the current one, within the floor and the ceiling.
+$OPS = Primitives::ARGON2_OPSLIMIT + 1;
+$MEM = Primitives::ARGON2_MEMLIMIT;
 ($OPS !== Primitives::ARGON2_OPSLIMIT || $MEM !== Primitives::ARGON2_MEMLIMIT)
     ? ok('fixture: the other profile differs from the current constants')
     : ko('fixture: the other profile equals the current constants — the section proves nothing');
@@ -501,10 +503,42 @@ try {
     ko('re-sealing a vault under another profile failed', $e->getMessage());
 }
 
+section('Profile — bounded before any derivation, and carried by the session');
+
+$bounded = $vault->register('user-bounds', 'bounds-password-01');
+$claiming = static fn (int $ops, int $mem) => $bounded['record']->withProfile($ops, $mem);
+foreach ([
+    'below the floor'  => [Primitives::PROFILE_FLOOR_OPSLIMIT - 1, Primitives::ARGON2_MEMLIMIT],
+    'above the ceiling' => [Primitives::ARGON2_OPSLIMIT, Primitives::PROFILE_CEILING_MEMLIMIT * 2],
+] as $where => [$ops, $mem]) {
+    $t0 = microtime(true);
+    try {
+        $vault->unlockWithPassword($claiming($ops, $mem), 'bounds-password-01');
+        ko("a profile {$where} was derived under");
+    } catch (VaultTamperedException) {
+        microtime(true) - $t0 < 0.05
+            ? ok("a profile {$where} is refused before any derivation")
+            : ko("a profile {$where} was refused only after a derivation ran");
+    }
+}
+
+$session = $vault->unlockWithPassword($bounded['record'], 'bounds-password-01');
+$session->kdfOpslimit === $bounded['record']->kdfOpslimit && $session->kdfMemlimit === $bounded['record']->kdfMemlimit
+    ? ok('the session carries the profile it was opened under')
+    : ko('the session does not say which profile opened it');
+try {
+    $vault->changePassword($claiming(Primitives::ARGON2_OPSLIMIT + 1, Primitives::ARGON2_MEMLIMIT), $session, 'bounds-password-02');
+    ko('a re-seal went ahead on a record claiming another profile than the session proved');
+} catch (VaultTamperedException) {
+    ok('a record claiming another profile than its session stops the re-seal');
+}
+
 section('An unlocked vault does not hand its key to a debug dump or a clone');
 
 $leakKey = random_bytes(Primitives::KEY_LEN);
-$opened  = new UnlockedVault('user-dump', $leakKey, random_bytes(Primitives::SALT_LEN));
+$opened  = new UnlockedVault(
+    'user-dump', $leakKey, random_bytes(Primitives::SALT_LEN), Primitives::ARGON2_OPSLIMIT, Primitives::ARGON2_MEMLIMIT
+);
 ob_start();
 var_dump($opened);
 $dumped  = (string) ob_get_clean();

@@ -40,6 +40,7 @@ use Throwable;
  *     revision    INTEGER NOT NULL DEFAULT 0  (bumped by every update; added in 0.5.0)
  *     kdf_opslimit / kdf_memlimit  INTEGER NOT NULL  (the vault's Argon2id profile;
  *                 added in 0.6.0, defaulting to the legacy profile of older rows)
+ *     profile_seal TEXT            (base64 ProfileSeal, nullable — added in 0.7.0)
  *
  *   selfdataguard_fields
  *     user_id     TEXT NOT NULL
@@ -106,8 +107,8 @@ final class SqliteAdapter implements StorageInterface
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_vaults
              (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision,
-              kdf_opslimit, kdf_memlimit)
-             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph, :rev, :ops, :mem)'
+              kdf_opslimit, kdf_memlimit, profile_seal)
+             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph, :rev, :ops, :mem, :ps)'
         );
         try {
             $stmt->execute($this->vaultToParamsForInsert($record));
@@ -139,6 +140,9 @@ final class SqliteAdapter implements StorageInterface
                  wrap_admin = :wa,
                  updated_at = :ua,
                  wrap_phrase = :wph,
+                 kdf_opslimit = :ops,
+                 kdf_memlimit = :mem,
+                 profile_seal = :ps,
                  revision = revision + 1
              WHERE user_id = :uid AND user_salt = :salt AND revision = :rev'
         );
@@ -662,7 +666,8 @@ final class SqliteAdapter implements StorageInterface
                 wrap_phrase TEXT,
                 revision    INTEGER NOT NULL DEFAULT 0,
                 kdf_opslimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT . ',
-                kdf_memlimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT . '
+                kdf_memlimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT . ',
+                profile_seal TEXT
             )'
         );
         $this->addMissingColumn('selfdataguard_vaults', 'wrap_phrase', 'TEXT');
@@ -671,6 +676,7 @@ final class SqliteAdapter implements StorageInterface
         // what the default must say, whatever the current constants become.
         $this->addMissingColumn('selfdataguard_vaults', 'kdf_opslimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT);
         $this->addMissingColumn('selfdataguard_vaults', 'kdf_memlimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT);
+        $this->addMissingColumn('selfdataguard_vaults', 'profile_seal', 'TEXT');
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_archives (
                 archive_id  TEXT PRIMARY KEY,
@@ -820,6 +826,7 @@ final class SqliteAdapter implements StorageInterface
             ':rev'  => $record->revision,
             ':ops'  => $record->kdfOpslimit,
             ':mem'  => $record->kdfMemlimit,
+            ':ps'   => $record->profileSeal === null ? null : base64_encode($record->profileSeal),
         ];
     }
 
@@ -840,6 +847,9 @@ final class SqliteAdapter implements StorageInterface
             ':ua'   => $record->updatedAt->format('c'),
             ':wph'  => $record->wrapPhrase?->toBase64(),
             ':rev'  => $record->revision,
+            ':ops'  => $record->kdfOpslimit,
+            ':mem'  => $record->kdfMemlimit,
+            ':ps'   => $record->profileSeal === null ? null : base64_encode($record->profileSeal),
         ];
     }
 
@@ -865,6 +875,7 @@ final class SqliteAdapter implements StorageInterface
             // An archive package written before 0.6.0 carries no profile columns.
             kdfOpslimit: (int) ($row['kdf_opslimit'] ?? Primitives::LEGACY_OPSLIMIT),
             kdfMemlimit: (int) ($row['kdf_memlimit'] ?? Primitives::LEGACY_MEMLIMIT),
+            profileSeal: ($row['profile_seal'] ?? null) === null ? null : (string) base64_decode((string) $row['profile_seal'], true),
         );
     }
 
@@ -893,7 +904,7 @@ final class SqliteAdapter implements StorageInterface
     {
         $stmt = $this->pdo->prepare(
             'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision,
-                    kdf_opslimit, kdf_memlimit
+                    kdf_opslimit, kdf_memlimit, profile_seal
              FROM selfdataguard_vaults WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);

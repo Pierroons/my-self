@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard;
 
 use InvalidArgumentException;
+use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
@@ -13,6 +14,7 @@ use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
@@ -21,6 +23,7 @@ use Pierroons\SelfDataGuard\Vault\VaultExistsException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use RuntimeException;
 
 /**
@@ -62,6 +65,8 @@ final class SelfDataGuard
     /** @var array<string, true> */
     private array $shared = [];
 
+    private readonly string $sealKey;
+
     /**
      * @param list<string> $sharedIndexes the indexed fields several accounts may
      *        hold the same value of (a household phone). Every other indexed
@@ -84,8 +89,9 @@ final class SelfDataGuard
             }
             $this->shared[$fieldName] = true;
         }
-        $this->vault  = new UserVault();
-        $this->escrow = new EscrowVault();
+        $this->sealKey = ProfileSeal::key($blindKey);
+        $this->vault   = new UserVault();
+        $this->escrow  = new EscrowVault();
     }
 
     /**
@@ -105,8 +111,9 @@ final class SelfDataGuard
             throw new VaultExistsException("User '{$userId}' already exists");
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
-        $this->storage->saveVault($result['record']);
-        $this->assertVaultPersisted($result['record'], 0);
+        $record = $this->sealed($result['record']);
+        $this->storage->saveVault($record);
+        $this->assertVaultPersisted($record, 0);
         return $result['unlocked'];
     }
 
@@ -333,8 +340,9 @@ final class SelfDataGuard
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): array {
         $result    = $this->vault->register($replacing->userId, $newPassword, $newMemorized, $newPassphrase);
-        $archiveId = $this->storage->replaceWithArchive($replacing, $result['record']);
-        $this->assertVaultPersisted($result['record'], 0);
+        $record    = $this->sealed($result['record']);
+        $archiveId = $this->storage->replaceWithArchive($replacing, $record);
+        $this->assertVaultPersisted($record, 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
 
@@ -376,6 +384,9 @@ final class SelfDataGuard
         $archive = $this->storage->loadArchive($current->userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
         $this->assertSameUser($current->userId, $archive->record->userId);
+        if ($archive->record->profileSeal !== null) {
+            $this->assertProfileSealed($archive->record, $archive->kdfOpslimit, $archive->kdfMemlimit);
+        }
         $session = $this->vault->unlock(
             $archive->record,
             $lock,
@@ -453,6 +464,61 @@ final class SelfDataGuard
     public function userExists(string $userId): bool
     {
         return $this->storage->vaultExists($userId);
+    }
+
+    /**
+     * Seal the profile of a vault written before 0.7.0 — the operator's step,
+     * once per vault, after upgrading and before serving: until then, the vault
+     * opens to no one. It trusts the row as it stands, so it runs on a database
+     * nobody else is writing to.
+     *
+     * @return bool true if a seal was written; false if the vault already had a
+     *              valid one, or the userId has no live vault
+     * @throws VaultTamperedException if the vault carries a seal that does not hold
+     */
+    public function sealProfile(string $userId): bool
+    {
+        $record = $this->storage->findVault($userId);
+        if ($record === null) {
+            return false;
+        }
+        $this->assertSameUser($userId, $record->userId);
+        if ($record->profileSeal !== null) {
+            $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
+            return false;
+        }
+        $this->persist($this->sealed($record));
+        return true;
+    }
+
+    /**
+     * Put back the profile a vault's seal vouches for, after the database was
+     * made to claim another: each published profile is tried against the seal,
+     * an HMAC apiece — no Argon2id, no secret of the holder. For an operator,
+     * after a VaultTamperedException; the holder's locks open again as they were.
+     *
+     * @return bool true if the true profile was written back; false if the seal already holds
+     * @throws VaultTamperedException if the vault has no seal, or no published profile matches it
+     */
+    public function repairProfile(string $userId): bool
+    {
+        $record = $this->storage->loadVault($userId);
+        $this->assertSameUser($userId, $record->userId);
+        if ($record->profileSeal === null) {
+            throw new VaultTamperedException("The vault of '{$userId}' carries no profile seal to repair against");
+        }
+        if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $userId, $record->userSalt, $record->kdfOpslimit, $record->kdfMemlimit)) {
+            return false;
+        }
+        foreach (Primitives::PUBLISHED_PROFILES as [$opslimit, $memlimit]) {
+            if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $userId, $record->userSalt, $opslimit, $memlimit)) {
+                $this->persist($record->withProfile($opslimit, $memlimit));
+                return true;
+            }
+        }
+        throw new VaultTamperedException(
+            "No published Argon2id profile matches the seal of '{$userId}': the seal itself was changed"
+        );
     }
 
     // -- Escrow compartment (consented, admin-recoverable sub-vault) -----------
@@ -653,7 +719,40 @@ final class SelfDataGuard
     {
         $record = $this->storage->loadVault($userId);
         $this->assertSameUser($userId, $record->userId);
+        $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
         return $record;
+    }
+
+    /**
+     * Before any derivation, the profile is the one the seal vouches for. A
+     * profile changed in the database fails here, as tampering, instead of
+     * failing every lock as a wrong secret.
+     */
+    private function assertProfileSealed(VaultRecord $record, int $opslimit, int $memlimit): void
+    {
+        if ($record->profileSeal === null) {
+            throw new VaultTamperedException(
+                "The vault of '{$record->userId}' carries no profile seal: an operator seals the vaults written "
+                . 'before 0.7.0 with sealProfile(), once, before serving'
+            );
+        }
+        if (!ProfileSeal::holds($this->sealKey, $record->profileSeal, $record->userId, $record->userSalt, $opslimit, $memlimit)) {
+            throw new VaultTamperedException(
+                "The Argon2id profile of '{$record->userId}' does not match its seal: it was changed in the database"
+                . ' — repairProfile() puts back the one the seal vouches for'
+            );
+        }
+    }
+
+    private function sealed(VaultRecord $record): VaultRecord
+    {
+        return $record->withProfileSeal(ProfileSeal::of(
+            $this->sealKey,
+            $record->userId,
+            $record->userSalt,
+            $record->kdfOpslimit,
+            $record->kdfMemlimit
+        ));
     }
 
     private function assertSameUser(string $asked, string $returned): void
@@ -689,7 +788,8 @@ final class SelfDataGuard
      */
     private function assertVaultPersisted(VaultRecord $written, int $expectedRevision): void
     {
-        $stored = $this->load($written->userId);
+        $stored = $this->storage->loadVault($written->userId);
+        $this->assertSameUser($written->userId, $stored->userId);
         if (!hash_equals($written->userSalt, $stored->userSalt)) {
             throw new RuntimeException(
                 'The storage holds another vault than the one written — does its saveVault() refuse '
@@ -725,11 +825,14 @@ final class SelfDataGuard
                 . 'do its saveVault() and replaceWithArchive() write kdf_opslimit and kdf_memlimit?'
             );
         }
+        if ($stored->profileSeal !== $written->profileSeal) {
+            throw new RuntimeException('The storage did not persist profile_seal as written');
+        }
     }
 
-    /** Keep the blind-index key out of var_dump() and print_r(). */
+    /** Keep the blind-index key and the seal key out of var_dump() and print_r(). */
     public function __debugInfo(): array
     {
-        return ['blindKey' => '[redacted]'];
+        return ['blindKey' => '[redacted]', 'sealKey' => '[redacted]'];
     }
 }

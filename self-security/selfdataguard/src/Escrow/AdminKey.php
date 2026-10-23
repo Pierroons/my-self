@@ -147,6 +147,11 @@ final class AdminKey
         if (count($parts) !== 5 || preg_match('/^\d+:\d+\z/', $parts[1] . ':' . $parts[2]) !== 1) {
             throw new InvalidArgumentException('Malformed sealed secret (expected "v2:ops:mem:salt:blob")');
         }
+        if (!Primitives::profileIsWithinBounds((int) $parts[1], (int) $parts[2])) {
+            throw new InvalidArgumentException(
+                "Sealed secret claims an Argon2id profile no version of SelfDataGuard writes ({$parts[1]} / {$parts[2]} bytes)"
+            );
+        }
 
         return [(int) $parts[1], (int) $parts[2], $parts[3], $parts[4]];
     }

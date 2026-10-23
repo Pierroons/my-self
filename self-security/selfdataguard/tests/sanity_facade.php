@@ -27,6 +27,7 @@ use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 $failures = 0;
@@ -452,13 +453,30 @@ $setOps = static fn (int $ops) => $pdoForProfile->prepare(
     'UPDATE selfdataguard_archives SET package = json_set(package, \'$.kdf.opslimit\', :ops) WHERE archive_id = :id'
 )->execute([':ops' => $ops, ':id' => $archiveId]);
 $setOps(Primitives::ARGON2_OPSLIMIT + 1);
+$t0 = microtime(true);
+try {
+    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+    ko('a profile changed in the archive package went unnoticed');
+} catch (VaultTamperedException) {
+    microtime(true) - $t0 < 0.05
+        ? ok('a profile changed in the archive package fails its seal, before any derivation')
+        : ko('the tampered profile was caught only after an Argon2id ran');
+}
+
+// An archive taken before 0.7.0 carries no seal: its profile is still the one used.
+$pdoForProfile->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.vault.profile_seal\', NULL) WHERE archive_id = :id'
+)->execute([':id' => $archiveId]);
 try {
     $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
     ko('the stored profile is ignored — the archive opened under the current one');
 } catch (WrongSecretException) {
-    ok('with another profile recorded, the same secret no longer opens it: the stored profile is the one used');
+    ok('an archive without a seal, with another profile recorded, no longer opens: the stored profile is the one used');
 }
 $setOps(Primitives::ARGON2_OPSLIMIT);
+$dg->readArchive($dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1))['private'] !== []
+    ? ok('the profile put back, the unsealed archive opens again')
+    : ko('the archive did not reopen once its profile was put back');
 
 // -----------------------------------------------------------------------------
 
@@ -562,6 +580,78 @@ try {
 }
 
 // -----------------------------------------------------------------------------
+
+section('A profile changed in the database is tampering, not a wrong secret — and the operator repairs it');
+
+$PW_SEAL = 'seal-password-0001';
+$sealed  = $dg->register('user-seal', $PW_SEAL, 'seal-memorized', $PH1);
+$dg->setFields($sealed, ['note' => 'sous sceau']);
+$pdoSeal = new PDO("sqlite:{$dbPath}");
+$setRow  = static fn (string $set) => $pdoSeal->exec("UPDATE selfdataguard_vaults SET {$set} WHERE user_id = 'user-seal'");
+$refusal = static function (callable $call) {
+    $t0 = microtime(true);
+    try {
+        $call();
+        return 'opened';
+    } catch (VaultTamperedException $e) {
+        return microtime(true) - $t0 < 0.05 ? 'tampered' : 'tampered after a derivation';
+    } catch (Throwable $e) {
+        return get_class($e);
+    }
+};
+$threeLocks = static fn () => [
+    $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)),
+    $refusal(static fn () => $dg->loginWithMemorized('user-seal', 'seal-memorized')),
+    $refusal(static fn () => $dg->recover('user-seal', Lock::Passphrase, $PH1, 'seal-password-0002')),
+];
+
+$setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
+$threeLocks() === ['tampered', 'tampered', 'tampered']
+    ? ok('a profile changed within the bounds: password, memorized word and passphrase each say tampered, before any derivation')
+    : ko('a changed profile was taken for something else', implode(', ', $threeLocks()));
+$dg->repairProfile('user-seal') && !$dg->repairProfile('user-seal')
+    && ($dg->getFields($dg->loginWithPassword('user-seal', $PW_SEAL))['note'] ?? null) === 'sous sceau'
+    ? ok('repairProfile() finds the profile the seal vouches for, without the holder\'s secret: the vault opens as before')
+    : ko('the repair did not bring the vault back');
+
+$setRow('kdf_opslimit = 1');
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered' && $dg->repairProfile('user-seal')
+    ? ok('a profile out of bounds is refused before any derivation, and repaired the same way')
+    : ko('a profile out of bounds was not refused, or not repaired');
+
+$dg->register('user-seal-other', 'seal-other-password-01');
+$otherSeal = (string) $pdoSeal->query("SELECT profile_seal FROM selfdataguard_vaults WHERE user_id = 'user-seal-other'")->fetchColumn();
+$otherSeal !== ''
+    ? ok('fixture: the other account carries a seal to copy')
+    : ko('fixture: no seal to copy — the next check would prove nothing');
+$setRow("profile_seal = '{$otherSeal}'");
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
+    ? ok('a seal copied from another account does not vouch for this one')
+    : ko('a seal copied from another account was accepted');
+$setRow("profile_seal = '" . base64_encode(random_bytes(32)) . "'");
+try {
+    $dg->repairProfile('user-seal');
+    ko('a vault whose seal was changed too was repaired against nothing');
+} catch (VaultTamperedException) {
+    ok('a changed seal matches no published profile: repairProfile() says so instead of guessing');
+}
+
+$setRow('profile_seal = NULL');
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
+    && $dg->sealProfile('user-seal') && !$dg->sealProfile('user-seal')
+    && ($dg->getFields($dg->loginWithPassword('user-seal', $PW_SEAL))['note'] ?? null) === 'sous sceau'
+    ? ok('a vault without a seal opens to no one until sealProfile(); sealed once, it opens, and a second call writes nothing')
+    : ko('an unsealed vault was opened, or sealProfile() did not seal it');
+
+$open = $dg->loginWithPassword('user-seal', $PW_SEAL);
+$setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
+try {
+    $dg->changePassword($open, 'seal-password-0003');
+    ko('a re-seal went ahead on a profile changed under an open session');
+} catch (VaultTamperedException) {
+    ok('a profile changed under an open session stops the re-seal: nothing is sealed under a profile the session never proved');
+}
+$dg->repairProfile('user-seal');
 
 section('An indexed value names one account; a field declared shared names none');
 

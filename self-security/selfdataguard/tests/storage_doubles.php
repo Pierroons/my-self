@@ -51,7 +51,8 @@ function recordWith(VaultRecord $record, ?int $revision = null, ?int $opslimit =
         userId: $record->userId, userSalt: $record->userSalt, wrapPwd: $record->wrapPwd, wrapRecov: $record->wrapRecov,
         wrapAdmin: $record->wrapAdmin, createdAt: $record->createdAt, updatedAt: $record->updatedAt,
         wrapPhrase: $record->wrapPhrase, revision: $revision ?? $record->revision,
-        kdfOpslimit: $opslimit ?? $record->kdfOpslimit, kdfMemlimit: $memlimit ?? $record->kdfMemlimit
+        kdfOpslimit: $opslimit ?? $record->kdfOpslimit, kdfMemlimit: $memlimit ?? $record->kdfMemlimit,
+        profileSeal: $record->profileSeal
     );
 }
 
@@ -135,8 +136,13 @@ final class CheckThenWriteStorage extends DelegatingStorage
             throw new StaleVaultException('stale');
         }
         usleep(200_000);
-        $this->pdo->prepare('UPDATE selfdataguard_vaults SET wrap_pwd = ?, revision = ? WHERE user_id = ?')
-            ->execute([$r->wrapPwd->toBase64(), $r->revision + 1, $r->userId]);
+        $this->pdo->prepare(
+            'UPDATE selfdataguard_vaults SET wrap_pwd = ?, kdf_opslimit = ?, kdf_memlimit = ?, profile_seal = ?, revision = ?
+             WHERE user_id = ?'
+        )->execute([
+            $r->wrapPwd->toBase64(), $r->kdfOpslimit, $r->kdfMemlimit,
+            $r->profileSeal === null ? null : base64_encode($r->profileSeal), $r->revision + 1, $r->userId,
+        ]);
         return $r->revision + 1;
     }
 }
@@ -233,6 +239,32 @@ final class CheckThenInsertIndexStorage extends DelegatingStorage
         }
         usleep(200_000);
         $this->inner->saveFields($g, $f);
+    }
+}
+
+/** Writes every vault without its profile seal. */
+final class SealDroppingStorage extends DelegatingStorage
+{
+    private function unsealed(VaultRecord $r): VaultRecord
+    {
+        return new VaultRecord(
+            userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
+            wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
+            wrapPhrase: $r->wrapPhrase, revision: $r->revision, kdfOpslimit: $r->kdfOpslimit, kdfMemlimit: $r->kdfMemlimit
+        );
+    }
+
+    public function saveVault(VaultRecord $r): void { $this->inner->saveVault($this->unsealed($r)); }
+    public function updateVault(VaultRecord $r): int { return $this->inner->updateVault($this->unsealed($r)); }
+}
+
+/** updateVault() that writes the wraps and leaves the profile as it was. */
+final class ProfileFrozenStorage extends DelegatingStorage
+{
+    public function updateVault(VaultRecord $r): int
+    {
+        $stored = $this->inner->loadVault($r->userId);
+        return $this->inner->updateVault(recordWith($r, opslimit: $stored->kdfOpslimit, memlimit: $stored->kdfMemlimit));
     }
 }
 

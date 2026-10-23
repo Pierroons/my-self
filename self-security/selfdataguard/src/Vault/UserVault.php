@@ -137,7 +137,9 @@ final class UserVault
             kdfMemlimit: $mem
         );
 
-        $unlocked = new UnlockedVault(userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt);
+        $unlocked = new UnlockedVault(
+            userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem
+        );
         Primitives::zeroize($dataMasterKey);
 
         return ['record' => $record, 'unlocked' => $unlocked];
@@ -151,6 +153,7 @@ final class UserVault
      *
      * @throws MissingEnvelopeException if the vault was never sealed for $lock
      * @throws WrongSecretException     if the secret does not open the envelope
+     * @throws VaultTamperedException   if the profile is out of bounds — before any derivation
      * @throws LegacyCipherUnavailableException if the envelope is an AES blob
      *         this machine cannot decrypt — the secret may well be right
      */
@@ -173,13 +176,15 @@ final class UserVault
             });
         }
 
-        $key = self::deriveKey(
-            $lock,
-            $secret,
-            $record->userSalt,
-            $opslimit ?? $record->kdfOpslimit,
-            $memlimit ?? $record->kdfMemlimit
-        );
+        $ops = $opslimit ?? $record->kdfOpslimit;
+        $mem = $memlimit ?? $record->kdfMemlimit;
+        if (!Primitives::profileIsWithinBounds($ops, $mem)) {
+            throw new VaultTamperedException(
+                "The vault of '{$record->userId}' claims an Argon2id profile no version of SelfDataGuard writes "
+                . "({$ops} / {$mem} bytes): nothing is derived under it"
+            );
+        }
+        $key = self::deriveKey($lock, $secret, $record->userSalt, $ops, $mem);
         try {
             $masterKey = Primitives::decryptAcrossFormats(
                 $wrap,
@@ -214,7 +219,9 @@ final class UserVault
             Primitives::zeroize($key);
         }
 
-        $unlocked = new UnlockedVault(userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt);
+        $unlocked = new UnlockedVault(
+            userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem
+        );
         Primitives::zeroize($masterKey);
         return $unlocked;
     }
@@ -369,9 +376,9 @@ final class UserVault
     }
 
     /**
-     * register() passes the current profile; a re-seal passes the vault's own
-     * (resealIn), never the current constants: a vault keeps one profile across
-     * all its envelopes.
+     * register() passes the current profile; a re-seal passes the profile the
+     * session was opened under (resealIn), never the current constants: a vault
+     * keeps one profile across all its envelopes.
      */
     private static function seal(
         Lock $lock,
@@ -414,8 +421,8 @@ final class UserVault
             $vault->userSalt,
             $vault->userId,
             $unlocked->getMasterKey(),
-            $vault->kdfOpslimit,
-            $vault->kdfMemlimit
+            $unlocked->kdfOpslimit,
+            $unlocked->kdfMemlimit
         );
     }
 
@@ -441,6 +448,11 @@ final class UserVault
      * The session must come from this very vault, not merely from this userId:
      * after a re-enrolment the userId holds a new vault, and sealing the old
      * master key into it would make everything written there since unreadable.
+     *
+     * And the vault must still claim the profile the session opened it under. A
+     * record that claims another was changed in the database since: re-sealing
+     * into it would write an envelope beside the others under a profile the
+     * session never proved.
      */
     private static function assertSameVault(VaultRecord $record, UnlockedVault $unlocked): void
     {
@@ -450,6 +462,11 @@ final class UserVault
         if (!hash_equals($record->userSalt, $unlocked->vaultSalt)) {
             throw new StaleVaultException(
                 'This session was opened on a vault that has since been replaced — unlock the current one'
+            );
+        }
+        if ($record->kdfOpslimit !== $unlocked->kdfOpslimit || $record->kdfMemlimit !== $unlocked->kdfMemlimit) {
+            throw new VaultTamperedException(
+                'The vault claims another Argon2id profile than the one this session opened it under'
             );
         }
     }

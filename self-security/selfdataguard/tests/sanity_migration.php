@@ -16,10 +16,12 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 
 $failures = 0;
 $passes = 0;
@@ -245,8 +247,9 @@ try {
 }
 
 // The profile goes through the table and back: a vault sealed under another one.
-$OPS = 2;
-$MEM = 32 * 1024 * 1024;
+// Another profile than the current one, within the floor and the ceiling.
+$OPS = Primitives::ARGON2_OPSLIMIT + 1;
+$MEM = Primitives::ARGON2_MEMLIMIT;
 $base = $uv->register('user-profile', 'profile-password-01');
 $mk   = $base['unlocked']->getMasterKey();
 $wrap = (new ReflectionMethod(UserVault::class, 'seal'))->invoke(
@@ -349,6 +352,25 @@ $storage->loadVault('user-old')->wrapPhrase?->toBase64() === $before->wrapPhrase
 // -----------------------------------------------------------------------------
 
 // -----------------------------------------------------------------------------
+
+section('A vault written before 0.7.0 opens to no one until the operator seals its profile');
+
+$avantSceau = oldDatabase('user-unsealed', 'unsealed-password-01', 'unsealed-memorized');
+$dgAvant = new SelfDataGuard(new SqliteAdapter($avantSceau), random_bytes(32));
+try {
+    $dgAvant->loginWithPassword('user-unsealed', 'unsealed-password-01');
+    ko('a vault without a profile seal was opened');
+} catch (VaultTamperedException $e) {
+    str_contains($e->getMessage(), 'sealProfile()')
+        ? ok('the unsealed vault is refused, and the refusal names the operator\'s step')
+        : ko('wrong refusal', $e->getMessage());
+}
+$dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-never')
+    ? ok('sealProfile(): true once, false after, false for a userId without a vault')
+    : ko('sealProfile() did not seal once and only once');
+$dgAvant->loginWithMemorized('user-unsealed', 'unsealed-memorized')->userId === 'user-unsealed'
+    ? ok('sealed, the vault written before 0.7.0 opens under its legacy profile')
+    : ko('the sealed vault did not open');
 
 section('Blind indexes become unique when a database written before 0.7.0 is opened');
 
