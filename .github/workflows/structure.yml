@@ -2622,7 +2622,7 @@ jobs:
                            ('                });\n                if ($episode === null) {',
                             '                })();\n                if ($episode === null) {', 1)],
               'hote':      [("                self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');\n", '', 1)],
-              'attente':   [('$enAttente = self::refusFinEnAttente($etat);', '$enAttente = null;', 1),
+              'attente':   [('$enAttente = self::refusFinEnAttente($etat);', '$enAttente = null;', 2),
                             ('$enAttente  = self::refusFinEnAttente($etat);', '$enAttente  = null;', 1)],
               'relecture': [('        self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {\n            $etat = self::getReputation($pdo, $accountId);',
                              '        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $etatLu): array {\n            $etat = $etatLu;', 1)],

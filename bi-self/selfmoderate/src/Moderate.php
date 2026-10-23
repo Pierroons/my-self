@@ -145,9 +145,10 @@ class Moderate
     /**
      * Une peine échue dont le journal a refusé la fin attend sa clôture
      * (`journal_en_panne`) : `banned_until` la garde, alors que `banned` la dit
-     * finie. Ni un ban ni une grâce ne passe par-dessus — le ban la
-     * recouvrirait, la grâce la refermerait sans que sa fin soit écrite nulle
-     * part. Le ban automatique tient la même règle.
+     * finie. Ni un ban, ni une grâce, ni un classement ne passe par-dessus — le
+     * ban la recouvrirait, la grâce la refermerait sans que sa fin soit écrite
+     * nulle part, le classement effacerait le seul signal qui en reste. Le ban
+     * automatique tient la même règle.
      *
      * @param array{banned: bool, banned_until: int} $etat
      * @return array{ok: false, message: string}|null
@@ -1763,6 +1764,10 @@ class Moderate
 
         return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
             $etat = self::getReputation($pdo, $accountId);
+            $enAttente = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
             if (!$etat['needs_review']) {
                 return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
             }

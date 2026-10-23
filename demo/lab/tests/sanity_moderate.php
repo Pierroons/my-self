@@ -2241,11 +2241,12 @@ $issues55 === ['grace' => 'refusé', 'balayage' => 'refusé'] && $actes55 === 0
     ? ok('dans la transaction différée d\'un hôte, un geste et le balayage refusés faute de verrou n\'ont rien inscrit')
     : nok('un acte s\'inscrit dans la transaction d\'un hôte sans le verrou : ' . json_encode(['issues' => $issues55, 'actes' => $actes55]));
 
-// ── 56. Une peine qui attend sa fin au journal arrête le ban et la grâce ────
+// ── 56. Une peine qui attend sa fin au journal arrête les gestes d'arbitre ──
 // Le journal a refusé la fin d'une peine échue : elle attend sa clôture
 // (`journal_en_panne`). Un journal peut refuser un acte et accepter le suivant ;
 // un ban posé par-dessus la recouvrirait, une grâce la refermerait sans que sa
-// fin soit écrite nulle part, et effacerait le seul signal qui en reste.
+// fin soit écrite nulle part, un classement effacerait le seul signal qui en
+// reste.
 $journalAvant56 = Moderate::journal();
 $journal56 = new class implements \Pierroons\SelfModerate\Journal {
     public array $actes = [];
@@ -2259,7 +2260,7 @@ $journal56 = new class implements \Pierroons\SelfModerate\Journal {
 };
 Moderate::setJournal($journal56);
 $fautes56 = [];
-foreach (['ban', 'grace'] as $geste) {
+foreach (['ban', 'grace', 'classement'] as $geste) {
     $attente56 = membre($pdo, "attente-$geste-56");
     Moderate::ensureRow($pdo, $attente56);
     $pdo->prepare("UPDATE member_moderation
@@ -2268,9 +2269,11 @@ foreach (['ban', 'grace'] as $geste) {
                     WHERE account_id = ?")->execute([time() - 10, time() - 130, $attente56]);
     Moderate::getReputation($pdo, $attente56);
     $journal56->actes = [];
-    $r56 = $geste === 'ban'
-        ? Moderate::adminBan($pdo, $attente56, 'arbitre-banc', motif())
-        : Moderate::adminPardon($pdo, $attente56, 'arbitre-banc', motif());
+    $r56 = match ($geste) {
+        'ban'        => Moderate::adminBan($pdo, $attente56, 'arbitre-banc', motif()),
+        'grace'      => Moderate::adminPardon($pdo, $attente56, 'arbitre-banc', motif()),
+        'classement' => Moderate::adminClasser($pdo, $attente56, 'arbitre-banc', motif()),
+    };
     $e56 = etatBan($pdo, $attente56);
     if (($r56['ok'] ?? true) || $journal56->actes !== [] || $e56['review_reason'] !== 'journal_en_panne' || (int) $e56['banned_until'] === 0) {
         $fautes56[$geste] = [$r56, $journal56->actes, $e56['review_reason'], (int) $e56['banned_until']];
@@ -2278,7 +2281,7 @@ foreach (['ban', 'grace'] as $geste) {
 }
 Moderate::setJournal($journalAvant56);
 $fautes56 === []
-    ? ok('une peine qui attend sa fin au journal arrête le ban et la grâce, et son signal reste')
+    ? ok('une peine qui attend sa fin au journal arrête le ban, la grâce et le classement, et son signal reste')
     : nok('un geste passe par-dessus une peine qui attend sa fin : ' . json_encode($fautes56, JSON_UNESCAPED_UNICODE));
 
 // ── 57. Un geste décide sur l'état relu sous le verrou ───────────────────────
