@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 109/109 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 109 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 110/110 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 110 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2596,10 +2596,11 @@ jobs:
           # quand aucun journal n'est branché — avec l'appel qui tolère un
           # journal absent, sans quoi le geste échouerait au lieu de passer en
           # silence ; la transaction des quatre gestes ; le ban d'arbitre qui
-          # efface la revue ouverte ; la transaction du balayage. Le banc doit
-          # rougir sur son cas.
+          # efface la revue ouverte ; la transaction du balayage ; celle qui tient
+          # ensemble l'annulation d'une meute et ses rangs. Le banc doit rougir
+          # sur son cas.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in journal gestes revue balayage; do
+          for cas in journal gestes revue balayage meute; do
             cp "$M" /tmp/moderate.arbitrage.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2614,6 +2615,10 @@ jobs:
                            "ban_origine = 'admin', ban_motif = ?,\n                        voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?", 1)],
               'balayage': [("if (self::transaction($pdo, static fn (): bool => self::cloreBanExpire($pdo, (int) $row['account_id']))) {",
                             "if (self::cloreBanExpire($pdo, (int) $row['account_id'])) {", 1)],
+              'meute':    [('$episode = self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {',
+                            '$episode = (static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {', 1),
+                           ('                });\n                if ($episode === null) {',
+                            '                })();\n                if ($episode === null) {', 1)],
           }[os.environ['CAS']]
           for avant, apres, n in remplacements:
               assert s.count(avant) == n if n is not None else s.count(avant) > 0, 'plantation impossible'
@@ -2634,6 +2639,7 @@ jobs:
               gestes)  attendu='inscrit son acte avant de tenir le verrou' ;;
               revue)   attendu="un ban d'arbitre efface la revue" ;;
               balayage) attendu='le balayage inscrit une fin de peine avant de tenir le verrou' ;;
+              meute)    attendu='une meute est neutralisée à moitié' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

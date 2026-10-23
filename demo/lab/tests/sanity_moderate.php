@@ -2160,6 +2160,39 @@ $refuse53 && $pendant53 === 0 && $apres53 === 1 && !Moderate::getReputation($pdo
     : nok('le balayage inscrit une fin de peine avant de tenir le verrou : '
         . json_encode(['refuse' => $refuse53, 'pendant_le_verrou' => $pendant53, 'apres' => $apres53]));
 
+// ── 54. Une meute se neutralise tout ou rien ────────────────────────────────
+// L'hôte appelle la détection hors de tout vote (`api/detect_abuse.php`, le
+// simulateur). Une écriture qui échoue entre l'annulation des votes et leurs
+// rangs ne doit pas laisser des votes annulés et une réputation rendue sans
+// épisode consigné : plus rien ne les rattraperait. Un déclencheur temporaire
+// refuse l'écriture des rangs le temps du premier passage.
+$cible54 = membre($pdo, 'cible-54');
+$post54 = message($pdo, $cible54, 'fil-54');
+[$lieA54, $lieB54] = [membre($pdo, 'meute-a-54'), membre($pdo, 'meute-b-54')];
+echangePrive($pdo, $lieA54, $lieB54);
+voteBrut($pdo, $lieA54, $post54, $cible54);
+voteBrut($pdo, $lieB54, $post54, $cible54);
+$repAvant54 = reputation($pdo, $cible54);
+$pdo->exec("CREATE TEMP TRIGGER rangs_refuses_54 BEFORE INSERT ON main.mod_pack_flags
+            BEGIN SELECT RAISE(ABORT, 'rangs refusés'); END");
+$echec54 = false;
+try {
+    Moderate::detectPackVoting($pdo, $cible54);
+} catch (PDOException) {
+    $echec54 = true;
+} finally {
+    $pdo->exec('DROP TRIGGER IF EXISTS temp.rangs_refuses_54');
+}
+$pendant54 = [bloquesMeute($pdo, $cible54), reputation($pdo, $cible54) - $repAvant54];
+Moderate::detectPackVoting($pdo, $cible54);
+$rangs54 = (int) $pdo->query('SELECT COUNT(*) FROM mod_pack_flags WHERE target_author = ' . $cible54)->fetchColumn();
+$echec54 && $pendant54 === [0, 0] && bloquesMeute($pdo, $cible54) === 1 && $rangs54 === 2
+    ? ok('une meute dont les rangs ne s\'écrivent pas n\'est pas annulée à moitié ; au passage suivant, tout se consigne')
+    : nok('une meute est neutralisée à moitié : ' . json_encode([
+        'echec' => $echec54, 'annules_et_rendus_apres_echec' => $pendant54,
+        'annules' => bloquesMeute($pdo, $cible54), 'rangs' => $rangs54,
+    ]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

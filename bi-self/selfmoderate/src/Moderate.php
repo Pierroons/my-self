@@ -1049,22 +1049,36 @@ class Moderate
                 // Le premier votant garde ses votes : c'est ce qu'un membre seul
                 // aurait obtenu, et le groupe n'obtient rien de plus.
                 $premier = (int) $votes[0]['voter_id'];
-                $voteIds = self::annulerVotes($pdo, array_map('intval', array_column(
+                $aAnnuler = array_map('intval', array_column(
                     array_filter($votes, static fn (array $v): bool =>
                         (int) $v['voter_id'] !== $premier && !(int) $v['blocked']),
                     'id'
-                )));
-                if (!$voteIds) {
+                ));
+                // L'annulation, les rangs qu'elle consigne et ce qu'elle rend
+                // tiennent ensemble : faits à moitié, aucun passage ne les
+                // rattraperait — les votes annulés ne s'annulent plus. Les rangs
+                // passent avant la restitution, qui peut écrire au journal : un
+                // échec sur eux défait tout avant que rien ne soit inscrit.
+                $episode = self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {
+                    $voteIds = self::annulerVotes($pdo, $aAnnuler);
+                    if (!$voteIds) {
+                        return null;
+                    }
+                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);
+                    self::restoreAfterCancel($pdo, $author, $voteIds);
+
+                    return ['votes' => $voteIds, 'rangs' => $rangs];
+                });
+                if ($episode === null) {
                     continue;
                 }
-                self::restoreAfterCancel($pdo, $author, $voteIds);
-                $cancelled += count($voteIds);
+                $cancelled += count($episode['votes']);
                 $packs[] = [
                     'target_author' => $author,
                     'voters'        => $groupe,
                     'premier'       => $premier,
-                    'cancelled'     => count($voteIds),
-                    'rangs'         => self::consignerMeute($pdo, $groupe, $author, $voteIds),
+                    'cancelled'     => count($episode['votes']),
+                    'rangs'         => $episode['rangs'],
                 ];
             }
         }
