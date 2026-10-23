@@ -13,9 +13,16 @@
  * pas être réécrite après coup. Un journal qui perd une entrée rend muette la
  * seule trace d'une sanction prononcée sans humain.
  *
- * Sans journal branché, `Moderate` ne bannit pas tout seul : il signale, et
- * l'arbitre tranche. Une sanction automatique qui ne laisse pas de trace n'est
+ * Sans journal branché, `Moderate` ne bannit pas tout seul — il signale — et
+ * aucun geste d'arbitre ne passe. Une sanction qui ne laisse pas de trace n'est
  * pas une sanction allégée, c'est une sanction dont personne ne répond.
+ *
+ * ⚠️ **Le moteur écrit au journal sous le verrou d'écriture de sa base.** Une
+ * implémentation qui écrirait dans cette même base par une autre connexion
+ * attendrait un verrou que le moteur tient ; une implémentation lente retarde
+ * d'autant les écritures concurrentes. Et le journal ne se défait pas avec la
+ * base : un hôte qui annule sa transaction après un geste réussi laisse l'acte
+ * au journal, sans effet.
  */
 
 declare(strict_types=1);
