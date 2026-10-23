@@ -413,13 +413,10 @@ final class SelfDataGuard
     {
         $archive = $opened->archive;
         $fields  = array_diff_key($archive->privateFields, [EscrowVault::WRAP_AAD_TAG => true]);
-        $private = FieldCrypter::decryptBatch(
-            $opened->session(),
-            array_map(static fn (array $f): string => $f['ciphertext'], $fields)
-        );
-        $escrow = [];
+        $private = $opened->decryptFields(array_map(static fn (array $f): string => $f['ciphertext'], $fields));
+        $escrow  = [];
         if ($archive->escrow !== null) {
-            $unlocked = $this->escrow->unlockAsUser($archive->escrow, $opened->session());
+            $unlocked = $opened->openEscrow($archive->escrow);
             $escrow   = EscrowFieldCrypter::decryptBatch($unlocked, $archive->escrowFields);
             $unlocked->lock();
         }

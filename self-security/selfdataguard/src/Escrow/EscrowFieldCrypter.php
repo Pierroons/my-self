@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard\Escrow;
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
-use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
@@ -26,23 +25,12 @@ final class EscrowFieldCrypter
 
     public static function encrypt(UnlockedEscrow $escrow, string $fieldName, #[\SensitiveParameter] string $plaintext): string
     {
-        $blob = Primitives::encrypt(
-            plaintext: $plaintext,
-            key: $escrow->getEscrowKey(),
-            aad: self::aadFor($escrow->userId, $fieldName)
-        );
-        return $blob->toBase64();
+        return $escrow->encryptField($fieldName, $plaintext)->toBase64();
     }
 
     public static function decrypt(UnlockedEscrow $escrow, string $fieldName, string $serialized): string
     {
-        $blob = EncryptedBlob::fromBase64($serialized);
-        return Primitives::decryptAcrossFormats(
-            $blob,
-            $escrow->getEscrowKey(),
-            self::aadFor($escrow->userId, $fieldName),
-            self::legacyAad($escrow->userId, $fieldName)
-        );
+        return $escrow->decryptField($fieldName, EncryptedBlob::fromBase64($serialized));
     }
 
     /**
@@ -81,7 +69,7 @@ final class EscrowFieldCrypter
     }
 
     /** The flat AAD used before 0.7.0 — for reading those blobs back. */
-    private static function legacyAad(string $userId, string $fieldName): string
+    public static function legacyAadFor(string $userId, string $fieldName): string
     {
         return $userId . '|escrow|' . $fieldName;
     }

@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
@@ -134,7 +135,7 @@ section('COMPARTMENTALISATION: escrow_key cannot read the private zone');
 // Obtain the escrow_key the way the admin does, then try it on a private field.
 $escrowRecord = $storage->loadEscrow('alice');
 $unlockedEscrow = (new EscrowVault())->unlockAsAdmin($escrowRecord, $sk, $admin['publicKey']);
-$escrowKey = $unlockedEscrow->getEscrowKey();
+$escrowKey = heldKey($unlockedEscrow);
 
 $privCipher = $storage->loadFields('alice', ['mots_de_passe'])['mots_de_passe'];
 // The witness first: the same blob, the same AAD, the right key — it opens. So
@@ -311,14 +312,14 @@ $carol   = $dg->register('carol', 'motdepasse-carol-01', 'carol-memorized');
 $neuf    = $ev->create($carol, $admin['publicKey']);
 $ancien  = new EscrowRecord(
     userId: 'carol', wrapUser: $neuf['record']->wrapUser,
-    wrapAdmin: sodium_crypto_box_seal($neuf['unlocked']->getEscrowKey(), base64_decode($admin['publicKey'])),
+    wrapAdmin: sodium_crypto_box_seal(heldKey($neuf['unlocked']), base64_decode($admin['publicKey'])),
     createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt
 );
 $storage->saveEscrow($carol->generation(), $ancien);
 !EscrowVault::isAccountBound($storage->loadEscrow('carol'))
     ? ok('fixture: a pre-0.6.0 wrap_admin is told apart by its length')
     : ko('fixture: the pre-0.6.0 wrap_admin reads as bound');
-$ev->unlockAsAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])->getEscrowKey() === $neuf['unlocked']->getEscrowKey()
+heldKey($ev->unlockAsAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])) === heldKey($neuf['unlocked'])
     ? ok('a pre-0.6.0 wrap_admin still opens')
     : ko('a pre-0.6.0 wrap_admin opened to another key');
 

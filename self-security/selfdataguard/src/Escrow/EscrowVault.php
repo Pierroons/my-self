@@ -6,7 +6,6 @@ namespace Pierroons\SelfDataGuard\Escrow;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
-use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use RuntimeException;
@@ -74,30 +73,7 @@ final class EscrowVault
      */
     public function create(UnlockedVault $session, string $adminPublicKeyB64): array
     {
-        $adminPublicKey = self::decodePublicKey($adminPublicKeyB64);
-
-        $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);
-
-        $wrapUser  = Primitives::encrypt(
-            $escrowKey,
-            $session->getMasterKey(),
-            aad: self::wrapAad($session->userId)
-        );
-        $wrapAdmin = self::sealForAdmin($session->userId, $escrowKey, $adminPublicKey);
-
-        $now = $this->now();
-        $record = new EscrowRecord(
-            userId:    $session->userId,
-            wrapUser:  $wrapUser,
-            wrapAdmin: $wrapAdmin,
-            createdAt: $now,
-            updatedAt: $now
-        );
-
-        $unlocked = new UnlockedEscrow(userId: $session->userId, escrowKey: $escrowKey);
-        Primitives::zeroize($escrowKey);
-
-        return ['record' => $record, 'unlocked' => $unlocked];
+        return $session->createEscrow($adminPublicKeyB64, $this->now());
     }
 
     /**
@@ -107,27 +83,7 @@ final class EscrowVault
      */
     public function unlockAsUser(EscrowRecord $record, UnlockedVault $session): UnlockedEscrow
     {
-        if ($session->userId !== $record->userId) {
-            throw new InvalidArgumentException('Session userId does not match escrow record');
-        }
-
-        try {
-            $escrowKey = Primitives::decryptAcrossFormats(
-                $record->wrapUser,
-                $session->getMasterKey(),
-                self::wrapAad($record->userId),
-                $record->userId . self::WRAP_AAD_SUFFIX
-            );
-        } catch (LegacyCipherUnavailableException $e) {
-            // A RuntimeException too: without this, the next catch hides a machine limit.
-            throw $e;
-        } catch (RuntimeException $e) {
-            throw new RuntimeException('Could not unwrap escrow with user master key', previous: $e);
-        }
-
-        $unlocked = new UnlockedEscrow(userId: $record->userId, escrowKey: $escrowKey);
-        Primitives::zeroize($escrowKey);
-        return $unlocked;
+        return $session->openEscrow($record);
     }
 
     /**
@@ -195,30 +151,20 @@ final class EscrowVault
         return new EscrowRecord(
             userId:    $record->userId,
             wrapUser:  $record->wrapUser,
-            wrapAdmin: self::sealForAdmin(
-                $record->userId,
-                $unlocked->getEscrowKey(),
-                self::decodePublicKey($adminPublicKeyB64)
-            ),
+            wrapAdmin: $unlocked->sealToAdmin($adminPublicKeyB64),
             createdAt: $record->createdAt,
             updatedAt: $this->now()
         );
     }
 
-    private static function sealForAdmin(string $userId, #[\SensitiveParameter] string $escrowKey, string $adminPublicKey): string
-    {
-        $plain  = self::adminHead($userId) . $escrowKey;
-        $sealed = sodium_crypto_box_seal($plain, $adminPublicKey);
-        Primitives::zeroize($plain);
-        return $sealed;
-    }
 
-    private static function adminHead(string $userId): string
+    /** What a wrap_admin's plaintext starts with: the account it was sealed for. */
+    public static function adminHead(string $userId): string
     {
         return self::ADMIN_WRAP_TAG . pack('N', strlen($userId)) . $userId;
     }
 
-    private static function decodePublicKey(string $b64): string
+    public static function decodePublicKey(string $b64): string
     {
         $pk = base64_decode($b64, true);
         if ($pk === false || strlen($pk) !== SODIUM_CRYPTO_BOX_PUBLICKEYBYTES) {

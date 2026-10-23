@@ -2592,7 +2592,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=26 [sanity_audit]=23 [sanity_ceremony]=22 [sanity_conformance]=37 [sanity_escrow]=38
-            [sanity_facade]=91 [sanity_fields]=26 [sanity_migration]=23 [sanity_primitives]=56
+            [sanity_facade]=91 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=62 [sanity_vecteurs]=9
           )
           rc=0

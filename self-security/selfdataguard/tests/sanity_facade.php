@@ -13,6 +13,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
 
@@ -403,12 +404,9 @@ $read = $dg->readArchive($opened);
     ? ok('the old passphrase opens it: private fields and escrow — no index list an SQL writer could extend')
     : ko('readArchive() returned something else', json_encode($read));
 
-try {
-    $dg->setFields($opened->session(), ['x' => 'y']);
-    ko('an archive session wrote into the live vault');
-} catch (StaleVaultException) {
-    ok('an archive session handed to a write path by hand is refused');
-}
+!method_exists($opened, 'session')
+    ? ok('an opened archive hands out no session to write with')
+    : ko('an opened archive still hands out its session');
 
 $dg->setFields($current, $read['private'], indexed: ['email']);
 $dg->findUserByField('email', $EMAIL) === 'user-l3'
@@ -834,7 +832,7 @@ try {
 // still carries: a field row named "escrow" would share it.
 $planted = blobV2(
     'escrow key bytes',
-    $reserve->getMasterKey(),
+    heldKey($reserve),
     'reserved-name' . \Pierroons\SelfDataGuard\Escrow\EscrowVault::WRAP_AAD_SUFFIX
 )->toBase64();
 (new PDO("sqlite:{$dbPath}"))->prepare(
@@ -851,7 +849,7 @@ try {
 // is refused before any AAD is built, so the format of the planted row is moot.
 $plantedV3 = Primitives::encrypt(
     'escrow key bytes',
-    $reserve->getMasterKey(),
+    heldKey($reserve),
     \Pierroons\SelfDataGuard\Escrow\EscrowVault::wrapAad('reserved-name')
 )->toBase64();
 (new PDO("sqlite:{$dbPath}"))->prepare(

@@ -187,8 +187,9 @@ Sources publiques ──(tâches planifiées)──> bases SQLite, catalogue JSO
    - Le mot mémorisé ne franchit pas la frontière, seule son empreinte la franchit.
    - La passphrase de niveau 1 et les mots de passe la franchissent en clair, sous TLS.
 2. **Requête → clé maîtresse (SelfDataGuard).** Par contrat, la clé ne vit que le temps de la
-   requête : `UnlockedVault` refuse la sérialisation. Ce n'est pas une contrainte :
-   `getMasterKey()` est publique, et rien n'empêche un intégrateur de la conserver.
+   requête : `UnlockedVault` refuse la sérialisation. 🟢 Depuis la 0.7.0, elle ne sort plus de
+   l'objet : aucune méthode publique ne la rend, et `self-security/selfdataguard/tests/sanity_keys.php`
+   le garde.
 3. **Serveur → base.**
    - Les écritures sont conditionnelles (génération du coffre, révision) et transactionnelles.
    - Le sel du compte entre dans la dérivation : une enveloppe d'une autre génération, ou

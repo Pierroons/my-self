@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/key_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -251,7 +252,7 @@ try {
 $OPS = Primitives::ARGON2_OPSLIMIT + 1;
 $MEM = Primitives::ARGON2_MEMLIMIT;
 $base = $uv->register('user-profile', 'profile-password-01');
-$mk   = $base['unlocked']->getMasterKey();
+$mk   = heldKey($base['unlocked']);
 $wrap = (new ReflectionMethod(UserVault::class, 'seal'))->invoke(
     null, Lock::Password, 'profile-password-01', $base['record']->userSalt, 'user-profile', $mk, $OPS, $MEM);
 $storage05->saveVault(new VaultRecord(
@@ -262,7 +263,7 @@ $storage05->saveVault(new VaultRecord(
 $relu = $storage05->loadVault('user-profile');
 try {
     $relu->kdfOpslimit === $OPS && $relu->kdfMemlimit === $MEM
-        && $uv->unlockWithPassword($relu, 'profile-password-01')->getMasterKey() === $mk
+        && heldKey($uv->unlockWithPassword($relu, 'profile-password-01')) === $mk
         ? ok('a vault saved under another profile reads back with it, and opens')
         : ko('the profile did not survive the table', "{$relu->kdfOpslimit}/{$relu->kdfMemlimit}");
 } catch (Throwable $e) {

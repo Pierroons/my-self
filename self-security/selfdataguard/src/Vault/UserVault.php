@@ -184,12 +184,12 @@ final class UserVault
                 . "({$ops} / {$mem} bytes): nothing is derived under it"
             );
         }
-        $key = self::deriveKey($lock, $secret, $record->userSalt, $ops, $mem);
+        $key = self::keyFor($lock, $secret, $record->userSalt, $ops, $mem);
         try {
             $masterKey = Primitives::decryptAcrossFormats(
                 $wrap,
                 $key,
-                self::wrapAad($record->userId),
+                self::wrapAadFor($record->userId),
                 $record->userId
             );
         } catch (LegacyCipherUnavailableException $e) {
@@ -273,7 +273,7 @@ final class UserVault
         self::assertPasswordLength($newPassword, 'newPassword');
         self::assertSameVault($record, $unlocked);
 
-        $newWrap = self::resealIn($record, Lock::Password, $newPassword, $unlocked);
+        $newWrap = $unlocked->sealLock(Lock::Password, $newPassword);
         return $record->withWrapPwd($newWrap, $this->now());
     }
 
@@ -295,7 +295,7 @@ final class UserVault
             return $record->withWrapRecov(null, $this->now());
         }
 
-        $newWrap = self::resealIn($record, Lock::Memorized, $newMemorized, $unlocked);
+        $newWrap = $unlocked->sealLock(Lock::Memorized, $newMemorized);
         return $record->withWrapRecov($newWrap, $this->now());
     }
 
@@ -312,7 +312,7 @@ final class UserVault
         self::assertPassphraseLength($newPassphrase, 'newPassphrase');
         self::assertSameVault($record, $unlocked);
 
-        $newWrap = self::resealIn($record, Lock::Passphrase, $newPassphrase, $unlocked);
+        $newWrap = $unlocked->sealLock(Lock::Passphrase, $newPassphrase);
         return $record->withWrapPhrase($newWrap, $this->now());
     }
 
@@ -339,7 +339,7 @@ final class UserVault
             $probe = Primitives::decryptAcrossFormats(
                 $record->wrapRecov,
                 $legacy,
-                self::wrapAad($record->userId),
+                self::wrapAadFor($record->userId),
                 $record->userId
             );
             Primitives::zeroize($probe);
@@ -351,12 +351,17 @@ final class UserVault
         }
     }
 
-    private static function deriveKey(
+    /**
+     * The key that opens the envelope of $lock, derived from its secret. Public
+     * so that a session can re-seal its own envelope: it derives what the caller
+     * already holds the secret to, and holds nothing itself.
+     */
+    public static function keyFor(
         Lock $lock,
         #[\SensitiveParameter] string $secret,
         string $userSalt,
-        int $opslimit = Primitives::ARGON2_OPSLIMIT,
-        int $memlimit = Primitives::ARGON2_MEMLIMIT
+        int $opslimit,
+        int $memlimit
     ): string {
         return match ($lock) {
             Lock::Password   => Primitives::deriveFromPassword($secret, $userSalt, $opslimit, $memlimit),
@@ -376,9 +381,9 @@ final class UserVault
     }
 
     /**
-     * register() passes the current profile; a re-seal passes the profile the
-     * session was opened under (resealIn), never the current constants: a vault
-     * keeps one profile across all its envelopes.
+     * A new vault's envelopes, under the current profile. A re-seal goes through
+     * UnlockedVault::sealLock(), under the profile the session was opened under:
+     * a vault keeps one profile across all its envelopes.
      */
     private static function seal(
         Lock $lock,
@@ -389,9 +394,9 @@ final class UserVault
         int $opslimit,
         int $memlimit
     ): EncryptedBlob {
-        $key = self::deriveKey($lock, $secret, $userSalt, $opslimit, $memlimit);
+        $key = self::keyFor($lock, $secret, $userSalt, $opslimit, $memlimit);
         try {
-            return Primitives::encrypt($masterKey, $key, aad: self::wrapAad($userId));
+            return Primitives::encrypt($masterKey, $key, aad: self::wrapAadFor($userId));
         } finally {
             Primitives::zeroize($key);
         }
@@ -404,26 +409,9 @@ final class UserVault
      * user-wrap of "alice" are both read under "alice|escrow" — under different
      * keys, so they do not open one another.
      */
-    private static function wrapAad(string $userId): Aad
+    public static function wrapAadFor(string $userId): Aad
     {
         return Aad::of('vault-wrap', $userId);
-    }
-
-    private static function resealIn(
-        VaultRecord $vault,
-        Lock $lock,
-        #[\SensitiveParameter] string $secret,
-        UnlockedVault $unlocked
-    ): EncryptedBlob {
-        return self::seal(
-            $lock,
-            $secret,
-            $vault->userSalt,
-            $vault->userId,
-            $unlocked->getMasterKey(),
-            $unlocked->kdfOpslimit,
-            $unlocked->kdfMemlimit
-        );
     }
 
     private static function wrapOf(VaultRecord $record, Lock $lock): ?EncryptedBlob

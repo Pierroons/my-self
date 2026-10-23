@@ -16,7 +16,7 @@ the salt, the revision and every wrap it wrote. An indexed value now names one a
 account can no longer take the address of the first, and a lookup no longer picks between them.
 A vault's Argon2id profile is sealed under a server key: changed in the database, it is reported as
 tampering before any derivation, instead of failing every lock as a wrong secret — which sent the
-holder down to level 3.
+holder down to level 3. No object that holds a key hands it out any more.
 
 Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInterface`, or calls
 `reEnroll()`, `delete()`, `listArchives()`, `deleteArchive()`, `purgeArchives()`, `hasEscrow()` or
@@ -81,6 +81,14 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 - **BREAKING** — `UnlockedVault` carries the profile it was opened under (`kdfOpslimit`, `kdfMemlimit`,
   required by its constructor), and a re-seal uses it instead of the profile read from the database
   at that moment. A record claiming another profile than its session stops the re-seal.
+- **BREAKING** — `UnlockedVault::getMasterKey()`, `UnlockedEscrow::getEscrowKey()` and
+  `UnlockedArchive::session()` are gone. The object that holds the key does the operation:
+  `UnlockedVault::encryptField()` / `decryptField()` / `sealLock()` / `createEscrow()` /
+  `openEscrow()`, `UnlockedEscrow::encryptField()` / `decryptField()` / `sealToAdmin()`,
+  `UnlockedArchive::decryptFields()` / `openEscrow()`. None takes an AAD or a key from the caller: a
+  method that did would hand the key out in two calls. `FieldCrypter` and `EscrowFieldCrypter` keep
+  their signatures and delegate. The admin key is still unsealed and passed by three methods: it
+  leaves with the escrow ceremony.
 - `StorageInterface::updateVault()` writes the record's profile and seal as well as its wraps.
 - The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
   `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
@@ -127,8 +135,11 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 
 ### Tests
 
-- 477 checks across twelve suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 38, facade 67 → 91, storage 60 → 64, migration 15 → 23, vault 58 → 62, and
+- 497 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 38, facade 67 → 91, storage 60 → 64, migration 15 → 23, vault 58 → 62, `sanity_keys` (20) —
+  a closed list of the public methods of each key-holding class, each of them called with a known
+  key inside and the key looked for in what comes back, and no public method of the object layer
+  taking a key but the named admin-key path; seen failing on four planted defects —, and
   `sanity_conformance` (37), which plays the suite against the shipped adapter and against fourteen
   storages that each break one clause: each fails on the case that names it. The racing cases catch the two that check, then
   write in a second statement — they pass every sequential case. Three storages written wrong on purpose — a case-insensitive
@@ -178,6 +189,8 @@ misread. Do not roll back after a write.
   can decide.
 - Index a value once the account has proven it holds it (a confirmation mail, a code): whoever
   indexes it first keeps it, and `DuplicateIndexException` tells the second one it is taken.
+- Code that read the master key or the escrow key calls the method that does the operation instead;
+  a test that compared keys compares what they open.
 - Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
   `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
   `eraseAccount($id)` for `purgeArchives($id)`.

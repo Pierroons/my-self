@@ -6,7 +6,6 @@ namespace Pierroons\SelfDataGuard\Fields;
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use InvalidArgumentException;
-use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Crypto\Aad;
@@ -44,12 +43,7 @@ final class FieldCrypter
         string $fieldName,
         #[\SensitiveParameter] string $plaintext
     ): string {
-        $blob = Primitives::encrypt(
-            plaintext: $plaintext,
-            key: $vault->getMasterKey(),
-            aad: self::aadFor($vault->userId, $fieldName)
-        );
-        return $blob->toBase64();
+        return $vault->encryptField($fieldName, $plaintext)->toBase64();
     }
 
     /**
@@ -63,13 +57,7 @@ final class FieldCrypter
         string $fieldName,
         string $serialized
     ): string {
-        $blob = EncryptedBlob::fromBase64($serialized);
-        return Primitives::decryptAcrossFormats(
-            $blob,
-            $vault->getMasterKey(),
-            self::aadFor($vault->userId, $fieldName),
-            self::legacyAad($vault->userId, $fieldName)
-        );
+        return $vault->decryptField($fieldName, EncryptedBlob::fromBase64($serialized));
     }
 
     /**
@@ -127,7 +115,7 @@ final class FieldCrypter
      * AAD. Length-prefixed segments close that by construction, but only for
      * blobs written since 0.7.0.
      */
-    private static function legacyAad(string $userId, string $fieldName): string
+    public static function legacyAadFor(string $userId, string $fieldName): string
     {
         self::assertFieldNameAllowed($fieldName);
 
