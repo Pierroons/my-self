@@ -539,7 +539,7 @@ final class ProfileLosingStorage extends DelegatingStorage
             userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
             wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
             wrapPhrase: $r->wrapPhrase, revision: $r->revision,
-            kdfOpslimit: $r->kdfOpslimit + 1, kdfMemlimit: $r->kdfMemlimit
+            kdfOpslimit: $r->kdfOpslimit + 1, kdfMemlimit: $r->kdfMemlimit, profileSeal: $r->profileSeal
         );
     }
 }
