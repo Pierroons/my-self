@@ -2122,6 +2122,44 @@ $r52['ok'] && $e52['banned'] && $e52['needs_review'] && $e52['review_reason'] ==
     : nok('un ban d\'arbitre efface la revue ou la tait : '
         . json_encode([$r52, $e52['review_reason'], $acte52[0]['raison'] ?? 'absente'], JSON_UNESCAPED_UNICODE));
 
+// ── 53. Le balayage qui ne peut pas prendre le verrou n'écrit rien au journal ─
+// Le pendant du n° 49 pour le planificateur. Sans le verrou, chaque balayage
+// inscrit la fin de la même peine puis échoue sur la base : autant de fins que
+// de balayages, et la page qui balaie tombe. La peine est la plus ancienne de
+// la base : le balayage la prend en premier.
+$journalAvant53 = Moderate::journal();
+$journal53 = new JournalDeBanc();
+Moderate::setJournal($journal53);
+$echu53 = membre($pdo, 'echu-53');
+Moderate::ensureRow($pdo, $echu53);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'auto', ban_motif = 'reputation_zero'
+                WHERE account_id = ?")->execute([time() - 10_000_000, time() - 10_000_120, $echu53]);
+$a53 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$a53->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b53 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$b53->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b53->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$b53->exec('PRAGMA busy_timeout = 100');
+$a53->exec('BEGIN IMMEDIATE');
+$a53->exec('UPDATE member_moderation SET updated_at = updated_at WHERE account_id = ' . $echu53);
+$refuse53 = false;
+try {
+    Moderate::balayerBansEchus($b53);
+} catch (PDOException) {
+    $refuse53 = true;
+}
+$pendant53 = count($journal53->de($echu53, 'ban_fin'));
+$a53->exec('ROLLBACK');
+Moderate::balayerBansEchus($b53);
+$apres53 = count($journal53->de($echu53, 'ban_fin'));
+Moderate::setJournal($journalAvant53);
+$refuse53 && $pendant53 === 0 && $apres53 === 1 && !Moderate::getReputation($pdo, $echu53)['banned']
+    ? ok('un balayage qui ne peut pas prendre le verrou n\'écrit rien au journal ; le verrou rendu, la peine se referme une fois')
+    : nok('le balayage inscrit une fin de peine avant de tenir le verrou : '
+        . json_encode(['refuse' => $refuse53, 'pendant_le_verrou' => $pendant53, 'apres' => $apres53]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

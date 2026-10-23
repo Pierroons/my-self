@@ -253,7 +253,8 @@ class Moderate
      *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
      * rend l'inscription unique, parce que la clôture se décide sous le verrou
-     * d'écriture (`transaction()`) — un seul lecteur la voit à faire. Défaite
+     * d'écriture (`transaction()`), à la lecture comme au balayage — un seul
+     * passage la voit à faire. Rend vrai s'il a refermé la peine. Défaite
      * avec la transaction qui la porte, elle se refait au passage suivant, et
      * le journal porte alors deux fins pour une peine, que `debut` et `jusqu_a`
      * identifient : `applyVote()` referme donc les peines échues du votant et
@@ -267,7 +268,7 @@ class Moderate
      * n'ajouterait aucune trace. La clôture se fait au passage suivant, le
      * journal revenu. Le planificateur, lui, fait remonter le refus.
      */
-    private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): void
+    private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): bool
     {
         $maintenant = time();
         $stmt = $pdo->prepare(
@@ -277,7 +278,7 @@ class Moderate
         $stmt->execute([$accountId, $maintenant]);
         $row = $stmt->fetch();
         if (!$row) {
-            return;
+            return false;
         }
         $origine = $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null;
 
@@ -299,7 +300,7 @@ class Moderate
             }
             error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
             self::signaler($pdo, $accountId, 'journal_en_panne');
-            return;
+            return false;
         }
 
         if ($origine === 'auto') {
@@ -320,6 +321,8 @@ class Moderate
                     ' . self::leveSignalSql() . '
               WHERE account_id = ?'
         )->execute([$maintenant, 'journal_en_panne', 'journal_en_panne', $accountId]);
+
+        return true;
     }
 
     /**
@@ -340,8 +343,9 @@ class Moderate
 
         $clos = 0;
         foreach ($stmt->fetchAll() as $row) {
-            self::cloreBanExpire($pdo, (int) $row['account_id']);
-            $clos++;
+            if (self::transaction($pdo, static fn (): bool => self::cloreBanExpire($pdo, (int) $row['account_id']))) {
+                $clos++;
+            }
         }
 
         return $clos;
