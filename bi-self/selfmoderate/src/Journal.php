@@ -47,7 +47,8 @@ interface Journal
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
      *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
-     *   raison     cause du signalement classé                 revue_classee
+     *   raison     cause du signalement classé ; pour un ban   revue_classee, ban_debut
+     *              d'arbitre, la revue ouverte, ou null
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.

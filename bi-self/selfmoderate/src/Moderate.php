@@ -1497,6 +1497,10 @@ class Moderate
      * reproche. Un ban en cours n'est pas remplacé — l'arbitre le lève d'abord,
      * et les deux gestes restent au journal.
      *
+     * La revue ouverte ne se ferme pas avec le ban : un signal de comportement
+     * attend qu'un arbitre le classe (`adminClasser()`), un signal d'état se
+     * lève quand l'état cesse. L'acte dit laquelle était ouverte.
+     *
      * @return array{ok: bool, message: string}
      */
     public static function adminBan(PDO $pdo, int $accountId, string $arbitre, string $motif, ?int $seconds = null): array
@@ -1540,11 +1544,12 @@ class Moderate
                 'jusqu_a' => $jusqua,
                 'motif'   => trim($motif),
                 'arbitre' => $arbitre,
+                'raison'  => $etat['review_reason'],
             ]);
             $pdo->prepare(
                 "UPDATE member_moderation
                     SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,
-                        voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?
+                        voting_rights = 0, strikes = ?, updated_at = ?
                   WHERE account_id = ?"
             )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
 

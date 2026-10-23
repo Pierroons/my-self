@@ -2012,6 +2012,7 @@ $refuse49 && $pendantLeVerrou49 === 0 && $journal49->actes === ['ban_fin'] && !$
 // geste qui passerait sans journal est celui qui efface : une grâce remet la
 // réputation au départ et les strikes à zéro.
 $journal50 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());      // la mise en place passe par des gestes, qui l'exigent
 $aBannir50 = membre($pdo, 'a-bannir-50');
 poserReputation($pdo, $aBannir50, 15);
 [$gracie50, $maintenu50] = [membre($pdo, 'gracie-50'), membre($pdo, 'maintenu-50')];
@@ -2099,6 +2100,27 @@ Moderate::setJournal($journalAvant51);
 $fautes51 === []
     ? ok('aucun geste d\'arbitre n\'inscrit d\'acte sans tenir le verrou ; le verrou rendu, chacun passe')
     : nok('un geste d\'arbitre inscrit son acte avant de tenir le verrou : ' . json_encode($fautes51, JSON_UNESCAPED_UNICODE));
+
+// ── 52. Un ban d'arbitre laisse la revue ouverte, et dit laquelle ───────────
+// Un signal de comportement ne se lève que classé par un arbitre : un ban posé
+// pour un autre motif ne l'a pas lu. L'acte du ban dit quelle revue était
+// ouverte quand il est tombé.
+$journalAvant52 = Moderate::journal();
+$journal52 = new JournalDeBanc();
+Moderate::setJournal($journal52);
+$recidiviste52 = membre($pdo, 'recidiviste-52');
+poserReputation($pdo, $recidiviste52, 15);
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'meute_recidive' WHERE account_id = ?")
+    ->execute([$recidiviste52]);
+$r52 = Moderate::adminBan($pdo, $recidiviste52, 'arbitre-banc', motif());
+$e52 = Moderate::getReputation($pdo, $recidiviste52);
+$acte52 = $journal52->de($recidiviste52, 'ban_debut');
+Moderate::setJournal($journalAvant52);
+$r52['ok'] && $e52['banned'] && $e52['needs_review'] && $e52['review_reason'] === 'meute_recidive'
+    && count($acte52) === 1 && array_key_exists('raison', $acte52[0]) && $acte52[0]['raison'] === 'meute_recidive'
+    ? ok('un ban d\'arbitre laisse la revue de meute ouverte, et son acte dit laquelle l\'était')
+    : nok('un ban d\'arbitre efface la revue ou la tait : '
+        . json_encode([$r52, $e52['review_reason'], $acte52[0]['raison'] ?? 'absente'], JSON_UNESCAPED_UNICODE));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
