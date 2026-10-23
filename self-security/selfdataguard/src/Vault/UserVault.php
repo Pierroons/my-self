@@ -205,7 +205,7 @@ final class UserVault
                 throw new RuntimeException(
                     'This vault predates the Argon2id recovery derivation '
                     . '(SelfDataGuard < 0.3.0). The memorized secret is correct; '
-                    . 'unlock with another lock and call changeMemorized() to re-seal. '
+                    . 'unlock with another lock and call setLock(Lock::Memorized, …) to re-seal. '
                     . 'Access is refused here on purpose: the legacy derivation is '
                     . 'about 78 000 times cheaper to attack.',
                     previous: $e
@@ -259,67 +259,57 @@ final class UserVault
     }
 
     /**
-     * Re-seal the password wrap with a new password. The data does not need to
-     * be re-encrypted — only the password_wrap is regenerated.
+     * Seal the envelope of $lock with $secret — a new lock, or one replaced: the
+     * same gesture either way. The data is not re-encrypted; only that
+     * envelope is.
      *
-     * Caller must already hold an UnlockedVault opened on this very vault
-     * (any lock) to prove they currently know enough to access the data.
+     * The caller must hold a session opened on this very vault (any lock): it
+     * proves they can already reach the data.
      */
-    public function changePassword(
+    public function setLock(
         VaultRecord $record,
         UnlockedVault $unlocked,
-        #[\SensitiveParameter] string $newPassword
+        Lock $lock,
+        #[\SensitiveParameter] string $secret
     ): VaultRecord {
-        self::assertPasswordLength($newPassword, 'newPassword');
+        match ($lock) {
+            Lock::Password   => self::assertPasswordLength($secret),
+            Lock::Passphrase => self::assertPassphraseLength($secret),
+            Lock::Memorized  => $secret === ''
+                ? throw new InvalidArgumentException('memorized secret must not be empty')
+                : null,
+        };
         self::assertSameVault($record, $unlocked);
-
-        $newWrap = $unlocked->sealLock(Lock::Password, $newPassword);
-        return $record->withWrapPwd($newWrap, $this->now());
+        return self::withWrap($record, $lock, $unlocked->sealLock($lock, $secret), $this->now());
     }
 
     /**
-     * Re-seal the recovery wrap with a new memorized secret. Pass null to remove
-     * the recovery wrap entirely (degrades to single-factor — discouraged).
+     * Remove the envelope of $lock. The password lock is never removed — it is
+     * replaced, with setLock(). A lock the vault does not have leaves the
+     * record as it is: the caller compares, and writes nothing.
+     *
+     * ⚠️ The memorized lock is the one SelfRecover's level 2 opens the vault
+     * with: removing it leaves that path without the data.
      */
-    public function changeMemorized(
-        VaultRecord $record,
-        UnlockedVault $unlocked,
-        #[\SensitiveParameter] ?string $newMemorized
-    ): VaultRecord {
-        self::assertSameVault($record, $unlocked);
-        if ($newMemorized !== null && $newMemorized === '') {
-            throw new InvalidArgumentException('newMemorized, if provided, must not be empty');
-        }
-
-        if ($newMemorized === null) {
-            return $record->withWrapRecov(null, $this->now());
-        }
-
-        $newWrap = $unlocked->sealLock(Lock::Memorized, $newMemorized);
-        return $record->withWrapRecov($newWrap, $this->now());
-    }
-
-    /**
-     * Seal (or re-seal) the passphrase wrap. To remove it, removePassphrase():
-     * no null here, so that a recovery result without a new passphrase — the
-     * device path returns none — cannot drop the lock by accident.
-     */
-    public function changePassphrase(
-        VaultRecord $record,
-        UnlockedVault $unlocked,
-        #[\SensitiveParameter] string $newPassphrase
-    ): VaultRecord {
-        self::assertPassphraseLength($newPassphrase, 'newPassphrase');
-        self::assertSameVault($record, $unlocked);
-
-        $newWrap = $unlocked->sealLock(Lock::Passphrase, $newPassphrase);
-        return $record->withWrapPhrase($newWrap, $this->now());
-    }
-
-    public function removePassphrase(VaultRecord $record, UnlockedVault $unlocked): VaultRecord
+    public function removeLock(VaultRecord $record, UnlockedVault $unlocked, Lock $lock): VaultRecord
     {
+        if ($lock === Lock::Password) {
+            throw new InvalidArgumentException('The password lock is replaced with setLock(), never removed');
+        }
         self::assertSameVault($record, $unlocked);
-        return $record->withWrapPhrase(null, $this->now());
+        if (self::wrapOf($record, $lock) === null) {
+            return $record;
+        }
+        return self::withWrap($record, $lock, null, $this->now());
+    }
+
+    private static function withWrap(VaultRecord $record, Lock $lock, ?EncryptedBlob $wrap, DateTimeImmutable $now): VaultRecord
+    {
+        return match ($lock) {
+            Lock::Password   => $record->withWrapPwd($wrap ?? throw new InvalidArgumentException('The password lock cannot be empty'), $now),
+            Lock::Memorized  => $record->withWrapRecov($wrap, $now),
+            Lock::Passphrase => $record->withWrapPhrase($wrap, $now),
+        };
     }
 
     /**

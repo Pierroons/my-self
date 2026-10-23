@@ -175,7 +175,7 @@ try {
     exit(1);
 }
 
-$storage->updateVault($uv->changePassphrase($record, $session, $PHRASE));
+$storage->updateVault($uv->setLock($record, $session, Lock::Passphrase, $PHRASE));
 try {
     $uv->unlockWithPassphrase($storage->loadVault('user-old'), $PHRASE);
     ok('a passphrase added to the migrated vault is persisted and opens it');

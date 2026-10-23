@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
+use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
@@ -124,7 +125,7 @@ try {
 
 section('Vault — update after password rotation');
 
-$rotated = $vault->changePassword($record, $unlocked, 'new-much-stronger-passphrase');
+$rotated = $vault->setLock($record, $unlocked, Lock::Password, 'new-much-stronger-passphrase');
 $storage->updateVault($rotated);
 ok('updateVault accepted');
 
@@ -335,7 +336,7 @@ $loaded = $own->loadVault('user-phrase');
 $loaded->wrapPhrase?->toBase64() === $withPhrase['record']->wrapPhrase->toBase64()
     ? ok('saveVault() then loadVault() round-trips wrap_phrase')
     : ko('wrap_phrase lost on insert');
-$own->updateVault((new UserVault())->removePassphrase($loaded, $withPhrase['unlocked']));
+$own->updateVault((new UserVault())->removeLock($loaded, $withPhrase['unlocked'], Lock::Passphrase));
 !$own->loadVault('user-phrase')->hasPassphrase()
     ? ok('updateVault() writes wrap_phrase too (here: its removal)')
     : ko('updateVault() left the old wrap_phrase in place');
@@ -394,7 +395,7 @@ $own->saveVault($second['record']);
 
 $thrown = null;
 try {
-    $own->updateVault($uv->changePassword($stale, $first['unlocked'], 'cas-password-0003'));
+    $own->updateVault($uv->setLock($stale, $first['unlocked'], Lock::Password, 'cas-password-0003'));
 } catch (StaleVaultException $e) {
     $thrown = $e;
 }
@@ -427,13 +428,13 @@ $rv = (new UserVault())->register('user-rev', 'rev-password-0001', null, 'cheval
 $own->saveVault($rv['record']);
 $readA = $own->loadVault('user-rev');
 $readB = $own->loadVault('user-rev');
-$own->updateVault((new UserVault())->changePassword($readA, $rv['unlocked'], 'rev-password-0002')) === 1
+$own->updateVault((new UserVault())->setLock($readA, $rv['unlocked'], Lock::Password, 'rev-password-0002')) === 1
     && $own->loadVault('user-rev')->revision === 1
     ? ok('an update bumps the revision')
     : ko('revision not bumped', (string) $own->loadVault('user-rev')->revision);
 $thrown = null;
 try {
-    $own->updateVault((new UserVault())->removePassphrase($readB, $rv['unlocked']));
+    $own->updateVault((new UserVault())->removeLock($readB, $rv['unlocked'], Lock::Passphrase));
 } catch (StaleVaultException $e) {
     $thrown = $e;
 }

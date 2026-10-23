@@ -89,6 +89,11 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
   method that did would hand the key out in two calls. `FieldCrypter` and `EscrowFieldCrypter` keep
   their signatures and delegate. The admin key is still unsealed and passed by three methods: it
   leaves with the escrow ceremony.
+- **BREAKING** — two gestures on a lock, in place of five methods that did not mirror one another:
+  `setLock(UnlockedVault, Lock, string $secret)` seals a lock or replaces it, and
+  `removeLock(UnlockedVault, Lock): bool` takes it off — never the password, and without a write when
+  the vault does not have that lock. `changePassword()`, `changeMemorized()` (whose `null` removed),
+  `changePassphrase()` and `removePassphrase()` are gone, from the façade and from `UserVault`.
 - `StorageInterface::updateVault()` writes the record's profile and seal as well as its wraps.
 - The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
   `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
@@ -135,8 +140,8 @@ Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInte
 
 ### Tests
 
-- 497 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 38, facade 67 → 91, storage 60 → 64, migration 15 → 23, vault 58 → 62, `sanity_keys` (20) —
+- 502 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 38, facade 67 → 96, storage 60 → 64, migration 15 → 23, vault 58 → 62, `sanity_keys` (20) —
   a closed list of the public methods of each key-holding class, each of them called with a known
   key inside and the key looked for in what comes back, and no public method of the object layer
   taking a key but the named admin-key path; seen failing on four planted defects —, and
@@ -189,6 +194,9 @@ misread. Do not roll back after a write.
   can decide.
 - Index a value once the account has proven it holds it (a confirmation mail, a code): whoever
   indexes it first keeps it, and `DuplicateIndexException` tells the second one it is taken.
+- `changePassword($s, $p)` → `setLock($s, Lock::Password, $p)`; `changeMemorized($s, $m)` →
+  `setLock($s, Lock::Memorized, $m)`, and with `null` → `removeLock($s, Lock::Memorized)`;
+  `changePassphrase()` and `removePassphrase()` alike.
 - Code that read the master key or the escrow key calls the method that does the operation instead;
   a test that compared keys compares what they open.
 - Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,

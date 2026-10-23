@@ -170,9 +170,9 @@ final class SelfDataGuard
     ): UnlockedVault {
         $record  = $this->load($userId);
         $session = $this->vault->unlock($record, $lock, $secret);
-        $record  = $this->vault->changePassword($record, $session, $newPassword);
+        $record  = $this->vault->setLock($record, $session, Lock::Password, $newPassword);
         if ($newPassphrase !== null) {
-            $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
+            $record = $this->vault->setLock($record, $session, Lock::Passphrase, $newPassphrase);
         }
         $this->persist($record);
         return $session;
@@ -270,33 +270,31 @@ final class SelfDataGuard
     }
 
     /**
-     * Re-seal the password wrap with a new password. Session must be active.
+     * Seal a lock with a new secret — a new password, a memorized word renewed,
+     * the passphrase SelfRecover just issued, or a lock the vault did not have
+     * yet. One gesture for all three: the session must be on the current vault.
      */
-    public function changePassword(UnlockedVault $session, #[\SensitiveParameter] string $newPassword): void
+    public function setLock(UnlockedVault $session, Lock $lock, #[\SensitiveParameter] string $secret): void
     {
-        $this->persist($this->vault->changePassword($this->currentRecord($session), $session, $newPassword));
+        $this->persist($this->vault->setLock($this->currentRecord($session), $session, $lock, $secret));
     }
 
     /**
-     * Re-seal the recovery wrap. Pass null to remove recovery entirely.
+     * Remove a lock. The password is replaced with setLock(), never removed.
+     * ⚠️ Removing the memorized lock leaves SelfRecover's level 2 without the
+     * data.
+     *
+     * @return bool false if the vault did not have that lock — then nothing is written
      */
-    public function changeMemorized(UnlockedVault $session, #[\SensitiveParameter] ?string $newMemorized): void
+    public function removeLock(UnlockedVault $session, Lock $lock): bool
     {
-        $this->persist($this->vault->changeMemorized($this->currentRecord($session), $session, $newMemorized));
-    }
-
-    /**
-     * Seal the passphrase wrap with a new passphrase — after SelfRecover issued
-     * one, or to add the lock to an existing vault.
-     */
-    public function changePassphrase(UnlockedVault $session, #[\SensitiveParameter] string $newPassphrase): void
-    {
-        $this->persist($this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase));
-    }
-
-    public function removePassphrase(UnlockedVault $session): void
-    {
-        $this->persist($this->vault->removePassphrase($this->currentRecord($session), $session));
+        $record  = $this->currentRecord($session);
+        $removed = $this->vault->removeLock($record, $session, $lock);
+        if ($removed === $record) {
+            return false;
+        }
+        $this->persist($removed);
+        return true;
     }
 
     // -- Re-enrolment and archives ---------------------------------------------

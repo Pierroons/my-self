@@ -191,7 +191,7 @@ $cosmoStill === 'user-cosmo' ? ok('cosmo still findable after bob registered') :
 
 section('Password rotation via façade');
 
-$dg->changePassword($session2, 'new-much-stronger-passphrase');
+$dg->setLock($session2, Lock::Password, 'new-much-stronger-passphrase');
 
 $sessionNew = $dg->loginWithPassword('user-cosmo', 'new-much-stronger-passphrase');
 $plain2 = $dg->getFields($sessionNew);
@@ -210,7 +210,7 @@ try {
 
 section('Memorized rotation via façade');
 
-$dg->changeMemorized($sessionNew, 'autumn-leaves-quiet');
+$dg->setLock($sessionNew, Lock::Memorized, 'autumn-leaves-quiet');
 
 $sessionMem = $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
 $plain3 = $dg->getFields($sessionMem);
@@ -219,7 +219,7 @@ $plain3['email'] === 'alice@example.com'
     : ko('memorized rotation broke recovery');
 
 // Remove memorized recovery
-$dg->changeMemorized($sessionMem, null);
+$dg->removeLock($sessionMem, Lock::Memorized);
 try {
     $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
     ko('login by memorized should fail after removal');
@@ -333,8 +333,8 @@ $guarded = [
     'getFields'              => static fn () => $dg->getFields($stale),
     'setEscrowFields'        => static fn () => $dg->setEscrowFields($stale, $admin['publicKey'], ['c' => 'd']),
     'getEscrowFieldsAsUser'  => static fn () => $dg->getEscrowFieldsAsUser($stale),
-    'changePassword'         => static fn () => $dg->changePassword($stale, 'gen-password-0003'),
-    'changePassphrase'       => static fn () => $dg->changePassphrase($stale, $PH1),
+    'changePassword'         => static fn () => $dg->setLock($stale, Lock::Password, 'gen-password-0003'),
+    'changePassphrase'       => static fn () => $dg->setLock($stale, Lock::Passphrase, $PH1),
     'hasEscrow'              => static fn () => $dg->hasEscrow($stale),
     'listArchives'           => static fn () => $dg->listArchives($stale),
 ];
@@ -579,6 +579,34 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('Two gestures on a lock: setLock() seals or replaces it, removeLock() takes it off');
+
+$locks = $dg->register('user-locks', 'locks-password-0001');
+$revision = static fn (): int => $storage->loadVault('user-locks')->revision;
+$dg->setLock($locks, Lock::Passphrase, $PH2);
+$dg->recover('user-locks', Lock::Passphrase, $PH2, 'locks-password-0002')->userId === 'user-locks'
+    ? ok('setLock() adds a lock the vault did not have, and it opens')
+    : ko('setLock() did not add the passphrase lock');
+$before = $revision();
+$dg->removeLock($locks, Lock::Memorized) === false && $revision() === $before
+    ? ok('removeLock() of a lock the vault does not have: false, and nothing written')
+    : ko('removing an absent lock wrote, or said it removed something');
+$dg->removeLock($locks, Lock::Passphrase) === true && $revision() === $before + 1
+    ? ok('removeLock() of a lock the vault has: true, one write')
+    : ko('removeLock() did not remove the passphrase lock');
+try {
+    $dg->recover('user-locks', Lock::Passphrase, $PH2, 'locks-password-0003');
+    ko('a removed passphrase still opens the vault');
+} catch (WrongSecretException | Pierroons\SelfDataGuard\Vault\MissingEnvelopeException) {
+    ok('the removed passphrase no longer opens the vault');
+}
+try {
+    $dg->removeLock($locks, Lock::Password);
+    ko('the password lock was removed');
+} catch (InvalidArgumentException) {
+    ok('the password lock is never removed — it is replaced with setLock()');
+}
+
 section('A profile changed in the database is tampering, not a wrong secret — and the operator repairs it');
 
 $PW_SEAL = 'seal-password-0001';
@@ -644,7 +672,7 @@ $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tam
 $open = $dg->loginWithPassword('user-seal', $PW_SEAL);
 $setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
 try {
-    $dg->changePassword($open, 'seal-password-0003');
+    $dg->setLock($open, Lock::Password, 'seal-password-0003');
     ko('a re-seal went ahead on a profile changed under an open session');
 } catch (VaultTamperedException) {
     ok('a profile changed under an open session stops the re-seal: nothing is sealed under a profile the session never proved');
@@ -765,7 +793,7 @@ final class UpdateDroppingStorage extends DelegatingStorage
 $dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey);
 $droppedSession = $dropping->register('user-dropped', 'dropped-password-01');
 try {
-    $dropping->changePassword($droppedSession, 'dropped-password-02');
+    $dropping->setLock($droppedSession, Lock::Password, 'dropped-password-02');
     ko('a password change the storage never wrote was reported as stored');
 } catch (RuntimeException $e) {
     str_contains($e->getMessage(), 'did not persist revision 1')

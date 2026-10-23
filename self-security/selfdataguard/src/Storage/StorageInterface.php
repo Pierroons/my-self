@@ -50,7 +50,7 @@ interface StorageInterface
 
     /**
      * Update an existing vault to the record: its wraps (e.g. after
-     * changePassword / changeMemorized), its profile and its profileSeal.
+     * setLock / removeLock), its profile and its profileSeal.
      * user_salt is never rewritten: it identifies the vault. The write applies only where user_salt AND revision still match
      * the record's, and bumps the revision. Throws StaleVaultException if the
      * vault was replaced or updated since the record was read,

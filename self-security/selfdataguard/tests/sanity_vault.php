@@ -171,7 +171,7 @@ try {
 
 section('changePassword (password rotation, no data re-encryption)');
 
-$rotated = $vault->changePassword($record, $unlocked2, 'new-much-stronger-passphrase');
+$rotated = $vault->setLock($record, $unlocked2, Lock::Password, 'new-much-stronger-passphrase');
 
 $rotated->userId === $record->userId ? ok('rotated record keeps userId') : ko('userId changed?!');
 hash_equals($rotated->userSalt, $record->userSalt) ? ok('rotated record keeps userSalt') : ko('salt should not change');
@@ -198,14 +198,14 @@ try {
 
 section('changeMemorized (rotation + removal)');
 
-$rotatedMem = $vault->changeMemorized($record, $unlocked2, 'autumn-leaves-quiet');
+$rotatedMem = $vault->setLock($record, $unlocked2, Lock::Memorized, 'autumn-leaves-quiet');
 $unlockedNewMem = $vault->unlockWithMemorized($rotatedMem, 'autumn-leaves-quiet');
 hash_equals(heldKey($unlockedNewMem), $masterKey1)
     ? ok('new memorized unlocks SAME master key')
     : ko('memorized rotation broke master key');
 
 // Remove memorized recovery entirely
-$noMem = $vault->changeMemorized($record, $unlocked2, null);
+$noMem = $vault->removeLock($record, $unlocked2, Lock::Memorized);
 $noMem->wrapRecov === null ? ok('changeMemorized(null) clears recovery wrap') : ko('null did not clear');
 
 // -----------------------------------------------------------------------------
@@ -245,7 +245,7 @@ $otherUnlocked = $vault->unlockWithPassword($rotated, 'new-much-stronger-passphr
 $bobRecord = $vault->register(userId: 'bob', password: 'bobs-long-password')['record'];
 
 try {
-    $vault->changePassword($bobRecord, $otherUnlocked, 'un-mot-de-passe-assez-long');
+    $vault->setLock($bobRecord, $otherUnlocked, Lock::Password, 'un-mot-de-passe-assez-long');
     ko('changePassword with mismatched userId → should throw');
 } catch (InvalidArgumentException) {
     ok('changePassword with mismatched userId → throws');
@@ -397,14 +397,14 @@ try {
 
 section('Passphrase — rotation, removal, and the other wraps keep it');
 
-$afterPwd = $vault->changePassword($rec3, $byPhrase, 'phrase-password-0002');
-$afterMem = $vault->changeMemorized($afterPwd, $byPhrase, 'dawn-lake-copper');
+$afterPwd = $vault->setLock($rec3, $byPhrase, Lock::Password, 'phrase-password-0002');
+$afterMem = $vault->setLock($afterPwd, $byPhrase, Lock::Memorized, 'dawn-lake-copper');
 $afterMem->wrapPhrase?->toBase64() === $rec3->wrapPhrase->toBase64()
     ? ok('changePassword() and changeMemorized() keep wrap_phrase')
     : ko('a rotation of another wrap dropped or altered wrap_phrase');
 
 $NEW_PHRASE = 'tapis girafe lundi orage piment velours';
-$rotated = $vault->changePassphrase($afterMem, $byPhrase, $NEW_PHRASE);
+$rotated = $vault->setLock($afterMem, $byPhrase, Lock::Passphrase, $NEW_PHRASE);
 try {
     $vault->unlockWithPassphrase($rotated, $PHRASE);
     ko('the consumed passphrase still opens the vault');
@@ -415,13 +415,13 @@ hash_equals(heldKey($three['unlocked']), heldKey($vault->unlockWithPassphrase($r
     ? ok('the new passphrase opens the same master key')
     : ko('the new passphrase opened a different key');
 
-$removed = $vault->removePassphrase($rotated, $byPhrase);
+$removed = $vault->removeLock($rotated, $byPhrase, Lock::Passphrase);
 !$removed->hasPassphrase() && $removed->wrapRecov !== null
     ? ok('removePassphrase() drops wrap_phrase only')
     : ko('removePassphrase() touched another wrap');
 
 try {
-    $vault->changePassphrase($rotated, $byPhrase, ' trop  court ');
+    $vault->setLock($rotated, $byPhrase, Lock::Passphrase, ' trop  court ');
     ko('a passphrase under the floor was sealed');
 } catch (InvalidArgumentException) {
     ok('sealing a passphrase under PASSWORD_MIN_LEN (after normalisation) is refused');
@@ -434,13 +434,13 @@ section('Generation — a session from a replaced vault cannot write into the ne
 $old = $vault->register('user-gen', 'gen-password-0001', 'old-memorized');
 $new = $vault->register('user-gen', 'gen-password-0002', 'new-memorized');
 try {
-    $vault->changePassword($new['record'], $old['unlocked'], 'gen-password-0003');
+    $vault->setLock($new['record'], $old['unlocked'], Lock::Password, 'gen-password-0003');
     ko('a session from the old vault re-sealed the new one');
 } catch (StaleVaultException) {
     ok('changePassword() with a session from another vault of the same userId raises StaleVaultException');
 }
 try {
-    $vault->changePassphrase($new['record'], $old['unlocked'], $NEW_PHRASE);
+    $vault->setLock($new['record'], $old['unlocked'], Lock::Passphrase, $NEW_PHRASE);
     ko('a session from the old vault sealed a passphrase on the new one');
 } catch (StaleVaultException) {
     ok('changePassphrase() is guarded the same way');
@@ -494,7 +494,7 @@ try {
 }
 
 try {
-    $rot = $vault->changePassword($autre, $vault->unlockWithPassword($autre, 'profile-password-01'), 'profile-password-02');
+    $rot = $vault->setLock($autre, $vault->unlockWithPassword($autre, 'profile-password-01'), Lock::Password, 'profile-password-02');
     $rot->kdfOpslimit === $OPS && $rot->kdfMemlimit === $MEM
         && heldKey($vault->unlockWithPassword($rot, 'profile-password-02')) === $mk
         && heldKey($vault->unlockWithMemorized($rot, 'profile-memorized')) === $mk
@@ -528,7 +528,7 @@ $session->kdfOpslimit === $bounded['record']->kdfOpslimit && $session->kdfMemlim
     ? ok('the session carries the profile it was opened under')
     : ko('the session does not say which profile opened it');
 try {
-    $vault->changePassword($claiming(Primitives::ARGON2_OPSLIMIT + 1, Primitives::ARGON2_MEMLIMIT), $session, 'bounds-password-02');
+    $vault->setLock($claiming(Primitives::ARGON2_OPSLIMIT + 1, Primitives::ARGON2_MEMLIMIT), $session, Lock::Password, 'bounds-password-02');
     ko('a re-seal went ahead on a record claiming another profile than the session proved');
 } catch (VaultTamperedException) {
     ok('a record claiming another profile than its session stops the re-seal');
