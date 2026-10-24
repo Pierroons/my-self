@@ -182,6 +182,20 @@ class Moderate
             : null;
     }
 
+    /**
+     * Un geste d'arbitre ne se fait pas dans la transaction d'un hôte : il
+     * rendrait `ok`, l'hôte pourrait encore annuler, et le journal dirait un
+     * ban ou une grâce que la base n'a jamais vu.
+     *
+     * @return array{ok: false, message: string}|null
+     */
+    private static function refusTransactionDeLHote(PDO $pdo): ?array
+    {
+        return self::dansLaTransactionDeLHote($pdo)
+            ? ['ok' => false, 'message' => static::t('Un geste d\'arbitre ne se fait pas dans la transaction de l\'hôte : le journal ne se défait pas avec elle.')]
+            : null;
+    }
+
     /** Crée la ligne de modération si absente. */
     public static function ensureRow(PDO $pdo, int $accountId): void
     {
@@ -629,6 +643,16 @@ class Moderate
     private static function enTransaction(PDO $pdo): bool
     {
         return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
+    }
+
+    /**
+     * La transaction ouverte sur cette connexion est-elle celle de l'hôte ? Le
+     * journal ne se défait pas avec elle : un acte que le moteur y inscrirait
+     * survivrait à une annulation que l'hôte décide après coup.
+     */
+    private static function dansLaTransactionDeLHote(PDO $pdo): bool
+    {
+        return $pdo->inTransaction() && self::$transactionOuverteSur !== $pdo;
     }
 
     /**
@@ -1413,6 +1437,9 @@ class Moderate
 
     /**
      * Réputation au plancher : bannir quand le journal le permet, signaler sinon.
+     * Dans la transaction d'un hôte, le journal ne le permet pas : l'hôte peut
+     * encore annuler, et l'acte survivrait à la base. La réputation à zéro y est
+     * signalée, comme sans journal ; le ban tombe au premier vote hors d'elle.
      *
      * ⚠️ **Le journal s'écrit AVANT la base**, et l'ordre n'est pas indifférent.
      * Les deux écritures ne peuvent pas tenir dans une même transaction : l'une
@@ -1425,7 +1452,7 @@ class Moderate
     {
         $maintenant = time();
 
-        if (self::$journal === null) {
+        if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {
             self::signaler($pdo, $accountId, 'reputation_zero');
 
             return;
@@ -1552,6 +1579,10 @@ class Moderate
         if ($sansTrace !== null) {
             return $sansTrace;
         }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -1624,6 +1655,10 @@ class Moderate
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
             return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
         }
         $motif = $motif !== null ? trim($motif) : '';
         if ($motif !== '') {
@@ -1716,6 +1751,10 @@ class Moderate
         if ($sansTrace !== null) {
             return $sansTrace;
         }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -1755,6 +1794,10 @@ class Moderate
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
             return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
         }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {

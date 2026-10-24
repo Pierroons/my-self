@@ -21,8 +21,10 @@
  * implémentation qui écrirait dans cette même base par une autre connexion
  * attendrait un verrou que le moteur tient ; une implémentation lente retarde
  * d'autant les écritures concurrentes. Et le journal ne se défait pas avec la
- * base : un hôte qui annule sa transaction après un geste réussi laisse l'acte
- * au journal, sans effet.
+ * base : aucun geste d'arbitre ne se fait donc dans la transaction d'un hôte,
+ * et un vote n'y arme pas le ban automatique. Une clôture de peine ou une levée
+ * pour meute faites là, puis défaites avec elle, se refont au passage suivant,
+ * et s'inscrivent alors deux fois.
  */
 
 declare(strict_types=1);

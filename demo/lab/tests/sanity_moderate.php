@@ -1924,36 +1924,30 @@ $cout47 === 1 && $lu47['reputation'] === 20 && !$lu47['convalescent'] && !$lu47[
     : nok("lire un compte calme coûte $cout47 requêtes au lieu d'une : " . json_encode($lu47));
 
 // ── 48. Dans la transaction de l'hôte, un vote qui échoue ne laisse rien ────
-// L'hôte ouvre la sienne, écrit son propre travail, vote ; le vote échoue (le
-// journal refuse le début du ban), l'hôte attrape et valide son travail. Son
-// travail reste, le vote partiel non : ni vote, ni point retiré, ni ban. Sans
-// point de reprise, la cible resterait à zéro, sans ban ni trace.
-$journalAvant48 = Moderate::journal();
-Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
-    public function inscrire(array $acte): void
-    {
-        if ($acte['acte'] === 'ban_debut') {
-            throw new RuntimeException('journal fermé');
-        }
-    }
-});
+// L'hôte ouvre la sienne, écrit son propre travail, vote ; le vote échoue (un
+// déclencheur temporaire refuse la réputation de la cible, après l'inscription
+// du vote), l'hôte attrape et valide son travail. Son travail reste, le vote
+// partiel non : ni vote, ni point retiré. Sans point de reprise, le vote resterait
+// inscrit sans son effet.
 $hote48  = membre($pdo, 'hote-48');
 $cible48 = membre($pdo, 'cible-48');
 $post48  = message($pdo, $cible48, 'fil-48');
 poserReputation($pdo, $cible48, 1);
+$pdo->exec("CREATE TEMP TRIGGER reputation_refusee_48 BEFORE UPDATE OF reputation ON main.member_moderation
+            WHEN NEW.account_id = $cible48 BEGIN SELECT RAISE(ABORT, 'réputation refusée'); END");
 $pdo->beginTransaction();
 $travail48 = message($pdo, $hote48, 'travail-48');
 $remonte48 = false;
 try {
     Moderate::applyVote($pdo, $hote48, 'post', $post48, -1, motif(), 'agressif');
-} catch (RuntimeException $e) {
-    $remonte48 = $e->getMessage() === 'journal fermé';
+} catch (PDOException $e) {
+    $remonte48 = str_contains($e->getMessage(), 'réputation refusée');
 }
 $encore48 = $pdo->inTransaction();
 if ($encore48) {
     $pdo->commit();
 }
-Moderate::setJournal($journalAvant48);
+$pdo->exec('DROP TRIGGER IF EXISTS temp.reputation_refusee_48');
 $votes48   = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $hote48")->fetchColumn();
 $rep48     = (int) $pdo->query("SELECT reputation FROM member_moderation WHERE account_id = $cible48")->fetchColumn();
 $travail48 = (int) $pdo->query("SELECT COUNT(*) FROM posts WHERE id = $travail48")->fetchColumn();
@@ -2225,8 +2219,8 @@ foreach (['grace' => static fn (): mixed => Moderate::adminPardon($hote55, $bann
     $autre55->exec('BEGIN IMMEDIATE');
     $autre55->exec('UPDATE member_moderation SET updated_at = updated_at WHERE account_id = ' . $banni55);
     try {
-        $faire55();
-        $issues55[$geste] = 'passé';
+        $r55 = $faire55();
+        $issues55[$geste] = is_array($r55) && !($r55['ok'] ?? true) ? 'refusé' : 'passé';
     } catch (PDOException) {
         $issues55[$geste] = 'refusé';
     }
@@ -2375,6 +2369,69 @@ $levees58 === 0 && $encoreBanni58 && $apres58 === [1, false]
     : nok('une levée de ban s\'inscrit pour une meute défaite : ' . json_encode([
         'levees_apres_echec' => $levees58, 'encore_banni' => $encoreBanni58, 'apres' => $apres58,
     ]));
+
+// ── 59. Aucun geste d'arbitre dans la transaction d'un hôte ─────────────────
+// Le journal ne se défait pas avec la transaction de l'hôte : un geste qui y
+// rendrait `ok` laisserait son acte au journal si l'hôte annulait ensuite. Les
+// quatre gestes refusent, et rien n'est inscrit.
+$journalAvant59 = Moderate::journal();
+$journal59 = new JournalDeBanc();
+Moderate::setJournal($journal59);
+$cibles59 = [];
+foreach (['ban', 'grace', 'maintien', 'classement'] as $geste) {
+    $cibles59[$geste] = membre($pdo, "hote-$geste-59");
+    poserReputation($pdo, $cibles59[$geste], 15);
+}
+Moderate::adminBan($pdo, $cibles59['grace'], 'arbitre-banc', motif());
+Moderate::adminBan($pdo, $cibles59['maintien'], 'arbitre-banc', motif());
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")
+    ->execute([$cibles59['classement']]);
+$journal59->actes = [];
+$fautes59 = [];
+foreach (['ban'        => static fn (): array => Moderate::adminBan($pdo, $cibles59['ban'], 'arbitre-banc', motif()),
+          'grace'      => static fn (): array => Moderate::adminPardon($pdo, $cibles59['grace'], 'arbitre-banc', motif()),
+          'maintien'   => static fn (): array => Moderate::adminMaintenir($pdo, $cibles59['maintien'], 'arbitre-banc', motif()),
+          'classement' => static fn (): array => Moderate::adminClasser($pdo, $cibles59['classement'], 'arbitre-banc', motif())]
+         as $geste => $faire59) {
+    $pdo->beginTransaction();
+    $r59 = $faire59();
+    $pdo->rollBack();
+    if ($r59['ok'] || !str_contains($r59['message'], 'transaction de l\'hôte')) {
+        $fautes59[$geste] = $r59;
+    }
+}
+$actes59 = count($journal59->actes);
+Moderate::setJournal($journalAvant59);
+$fautes59 === [] && $actes59 === 0
+    ? ok('dans la transaction d\'un hôte, aucun des quatre gestes ne passe, et rien n\'est inscrit')
+    : nok('un geste d\'arbitre passe dans la transaction d\'un hôte : ' . json_encode(['gestes' => $fautes59, 'actes' => $actes59], JSON_UNESCAPED_UNICODE));
+
+// ── 60. Dans la transaction d'un hôte, un vote n'arme pas le ban automatique ─
+// Le vote y a sa place, le ban automatique non : l'hôte peut encore annuler, et
+// l'acte survivrait à la base. La réputation à zéro y est signalée, comme sans
+// journal ; le même vote, hors de la transaction de l'hôte, bannit.
+$journalAvant60 = Moderate::journal();
+$journal60 = new JournalDeBanc();
+Moderate::setJournal($journal60);
+$dansLHote60 = membre($pdo, 'zero-hote-60');
+poserReputation($pdo, $dansLHote60, 1);
+$pdo->beginTransaction();
+$vote60 = Moderate::applyVote($pdo, membre($pdo, 'votant-hote-60'), 'member', $dansLHote60, -1, motif(), 'agressif');
+$pendant60 = Moderate::getReputation($pdo, $dansLHote60);
+$pdo->rollBack();
+$actesHote60 = count($journal60->actes);
+$horsHote60 = membre($pdo, 'zero-libre-60');
+poserReputation($pdo, $horsHote60, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-libre-60'), 'member', $horsHote60, -1, motif(), 'agressif');
+$libre60 = Moderate::getReputation($pdo, $horsHote60);
+Moderate::setJournal($journalAvant60);
+($vote60['ok'] ?? false) && !$pendant60['banned'] && $pendant60['review_reason'] === 'reputation_zero'
+    && $actesHote60 === 0 && $libre60['banned'] && count($journal60->de($horsHote60, 'ban_debut')) === 1
+    ? ok('dans la transaction d\'un hôte, un vote signale la réputation à zéro sans bannir ni rien inscrire ; hors d\'elle, il bannit')
+    : nok('un vote arme le ban automatique dans la transaction d\'un hôte : ' . json_encode([
+        'vote' => $vote60, 'pendant' => [$pendant60['banned'], $pendant60['review_reason']],
+        'actes_dans_l_hote' => $actesHote60, 'hors_hote_banni' => $libre60['banned'],
+    ], JSON_UNESCAPED_UNICODE));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
