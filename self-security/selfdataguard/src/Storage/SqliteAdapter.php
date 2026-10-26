@@ -434,17 +434,21 @@ final class SqliteAdapter implements StorageInterface
 
     public function listArchives(string $userId): array
     {
+        // The locks are read from the package, the bytes an opening uses and the
+        // seal covers — not from the `locks` column beside it, which a write
+        // could leave announcing an envelope the package no longer holds.
         $stmt = $this->pdo->prepare(
-            'SELECT archive_id, archived_at, locks FROM selfdataguard_archives
+            'SELECT archive_id, archived_at, package FROM selfdataguard_archives
              WHERE user_id = :uid ORDER BY archived_at, rowid'
         );
         $stmt->execute([':uid' => $userId]);
         $out = [];
         while ($row = $stmt->fetch()) {
+            $package = json_decode((string) $row['package'], true, flags: JSON_THROW_ON_ERROR);
             $out[] = [
                 'id'         => (string) $row['archive_id'],
                 'archivedAt' => new DateTimeImmutable((string) $row['archived_at']),
-                'locks'      => array_map(static fn (string $l) => Lock::from($l), explode(',', (string) $row['locks'])),
+                'locks'      => $this->locksOf($package['vault']),
             ];
         }
         return $out;

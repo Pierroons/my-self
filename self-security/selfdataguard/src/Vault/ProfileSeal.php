@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard\Vault;
 
 /**
- * An HMAC over a vault's Argon2id profile, under a server key kept out of the
- * database.
+ * An HMAC over a vault's Argon2id profile and its envelopes, under a server key
+ * kept out of the database.
  *
  * The profile is an input of every envelope key: change it in the database,
  * and each lock fails as a wrong secret would. An AAD would not help — it is
@@ -15,8 +15,11 @@ namespace Pierroons\SelfDataGuard\Vault;
  * profile pass, and the operator finds the true one again by trying the
  * published profiles against the seal, without the holder's secret.
  *
- * It covers the userId and the salt with the profile, so that a seal copied
- * from another row does not vouch for this one.
+ * It covers the userId and the salt, so that a seal copied from another row
+ * does not vouch for this one, and every envelope, present or absent: one
+ * removed, or brought from another row, is tampering too, and an archive —
+ * which keeps the row as it was — keeps a seal over all of it. It does not
+ * tell a whole row put back from an old backup: that row carries its old seal.
  */
 final class ProfileSeal
 {
@@ -36,18 +39,36 @@ final class ProfileSeal
         return hash_hkdf('sha256', $blindKey, 32, self::DOMAIN);
     }
 
-    public static function of(#[\SensitiveParameter] string $key, string $userId, string $userSalt, int $opslimit, int $memlimit): string
+    /** The seal of $record, read under the profile $opslimit / $memlimit. */
+    public static function of(#[\SensitiveParameter] string $key, VaultRecord $record, int $opslimit, int $memlimit): string
     {
-        return hash_hmac(
-            'sha256',
-            pack('N', strlen($userId)) . $userId . pack('N', strlen($userSalt)) . $userSalt . pack('JJ', $opslimit, $memlimit),
-            $key,
-            true
-        );
+        return hash_hmac('sha256', self::message($record, $opslimit, $memlimit), $key, true);
     }
 
-    public static function holds(#[\SensitiveParameter] string $key, string $seal, string $userId, string $userSalt, int $opslimit, int $memlimit): bool
+    public static function holds(#[\SensitiveParameter] string $key, string $seal, VaultRecord $record, int $opslimit, int $memlimit): bool
     {
-        return hash_equals(self::of($key, $userId, $userSalt, $opslimit, $memlimit), $seal);
+        return hash_equals(self::of($key, $record, $opslimit, $memlimit), $seal);
+    }
+
+    /**
+     * True when an envelope of $record was written by a version that seals
+     * every vault it writes: then a missing seal was removed, not never set.
+     */
+    public static function expected(VaultRecord $record): bool
+    {
+        foreach ([$record->wrapPwd, $record->wrapRecov, $record->wrapPhrase, $record->wrapAdmin] as $wrap) {
+            if ($wrap !== null && $wrap->bindsItsContext()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function message(VaultRecord $record, int $opslimit, int $memlimit): string
+    {
+        $part = static fn (?string $bytes): string => $bytes === null ? "\0" : "\1" . pack('N', strlen($bytes)) . $bytes;
+        return $part($record->userId) . $part($record->userSalt) . pack('JJ', $opslimit, $memlimit)
+            . $part($record->wrapPwd->toBase64()) . $part($record->wrapRecov?->toBase64())
+            . $part($record->wrapPhrase?->toBase64()) . $part($record->wrapAdmin?->toBase64());
     }
 }

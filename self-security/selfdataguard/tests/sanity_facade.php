@@ -464,20 +464,51 @@ try {
         : ko('the tampered profile was caught only after an Argon2id ran');
 }
 
-// An archive taken before 0.7.0 carries no seal: its profile is still the one used.
-$pdoForProfile->prepare(
-    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.vault.profile_seal\', NULL) WHERE archive_id = :id'
-)->execute([':id' => $archiveId]);
+// An archive written by this version is sealed: one without its seal had it removed.
+$archiveSeal = (string) $pdoForProfile->query(
+    "SELECT json_extract(package, '$.vault.profile_seal') FROM selfdataguard_archives WHERE archive_id = '{$archiveId}'"
+)->fetchColumn();
+$setArchiveSeal = static fn (?string $seal) => $pdoForProfile->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.vault.profile_seal\', :s) WHERE archive_id = :id'
+)->execute([':s' => $seal, ':id' => $archiveId]);
+$setArchiveSeal(null);
 try {
     $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
-    ko('the stored profile is ignored — the archive opened under the current one');
-} catch (WrongSecretException) {
-    ok('an archive without a seal, with another profile recorded, no longer opens: the stored profile is the one used');
+    ko('an archive of this version opened without its seal, as one from before 0.7.0 would');
+} catch (VaultTamperedException $e) {
+    str_contains($e->getMessage(), 'removed')
+        ? ok('an archive of this version whose seal was removed is tampering, not an archive from before 0.7.0')
+        : ko('refused, but not as a removed seal', $e->getMessage());
+} catch (Throwable $e) {
+    ko('an archive of this version opened without its seal, as one from before 0.7.0 would', get_class($e));
 }
+$setArchiveSeal($archiveSeal);
 $setOps(Primitives::ARGON2_OPSLIMIT);
 $dg->readArchive($dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1))['private'] !== []
-    ? ok('the profile put back, the unsealed archive opens again')
-    : ko('the archive did not reopen once its profile was put back');
+    ? ok('the profile and the seal put back, the archive opens again')
+    : ko('the archive did not reopen once its profile and seal were put back');
+
+$archivedRecov = (string) $pdoForProfile->query(
+    "SELECT json_extract(package, '$.vault.wrap_recov') FROM selfdataguard_archives WHERE archive_id = '{$archiveId}'"
+)->fetchColumn();
+$setArchiveRecov = static fn (?string $wrap) => $pdoForProfile->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.vault.wrap_recov\', :w) WHERE archive_id = :id'
+)->execute([':w' => $wrap, ':id' => $archiveId]);
+$listed = static fn (): array => array_column($dg->listArchives($current), 'locks', 'id')[$archiveId] ?? [];
+$archivedRecov !== '' && in_array(Lock::Memorized, $listed(), true)
+    ? ok('fixture: the archive holds a memorized lock, and the listing says so')
+    : ko('fixture: no memorized lock in the archive — the checks below would prove nothing');
+$setArchiveRecov(null);
+!in_array(Lock::Memorized, $listed(), true)
+    ? ok('the listing reads the locks from the archive itself: an envelope removed no longer shows')
+    : ko('the listing still announces an envelope the archive no longer holds');
+try {
+    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+    ko('an archive opened with an envelope removed from it');
+} catch (VaultTamperedException) {
+    ok('an envelope removed from an archive is tampering: the archive does not open by another lock around it');
+}
+$setArchiveRecov($archivedRecov);
 
 // -----------------------------------------------------------------------------
 
@@ -617,6 +648,7 @@ $sealed  = $dg->register('user-seal', $PW_SEAL, 'seal-memorized', $PH1);
 $dg->setFields($sealed, ['note' => 'sous sceau']);
 $pdoSeal = new PDO("sqlite:{$dbPath}");
 $setRow  = static fn (string $set) => $pdoSeal->exec("UPDATE selfdataguard_vaults SET {$set} WHERE user_id = 'user-seal'");
+$sealBefore = (string) $pdoSeal->query("SELECT profile_seal FROM selfdataguard_vaults WHERE user_id = 'user-seal'")->fetchColumn();
 $refusal = static function (callable $call) {
     $t0 = microtime(true);
     try {
@@ -666,11 +698,30 @@ try {
 }
 
 $setRow('profile_seal = NULL');
+try {
+    $dg->sealProfile('user-seal');
+    ko('sealProfile() sealed a vault of this version whose seal was removed: it would vouch for whatever the row now says');
+} catch (VaultTamperedException $e) {
+    $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered' && str_contains($e->getMessage(), 'removed')
+        ? ok('a vault of this version without its seal opens to no one, and sealProfile() refuses it: the seal was removed, not never set')
+        : ko('a removed seal was not reported as such', $e->getMessage());
+}
+$setRow("profile_seal = '{$sealBefore}'");
+($dg->getFields($dg->loginWithPassword('user-seal', $PW_SEAL))['note'] ?? null) === 'sous sceau'
+    ? ok('the seal put back from a backup, the vault opens as before')
+    : ko('the vault did not reopen with its seal put back');
+
+$phraseBefore = (string) $pdoSeal->query("SELECT wrap_phrase FROM selfdataguard_vaults WHERE user_id = 'user-seal'")->fetchColumn();
+$pdoSeal->exec("UPDATE selfdataguard_vaults SET wrap_phrase = NULL WHERE user_id = 'user-seal'");
 $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
-    && $dg->sealProfile('user-seal') && !$dg->sealProfile('user-seal')
-    && ($dg->getFields($dg->loginWithPassword('user-seal', $PW_SEAL))['note'] ?? null) === 'sous sceau'
-    ? ok('a vault without a seal opens to no one until sealProfile(); sealed once, it opens, and a second call writes nothing')
-    : ko('an unsealed vault was opened, or sealProfile() did not seal it');
+    ? ok('an envelope removed in the database is tampering: the password, untouched, does not open around it')
+    : ko('an envelope was removed and the vault still opened, or failed as another error');
+$otherWrap = (string) $pdoSeal->query("SELECT wrap_pwd FROM selfdataguard_vaults WHERE user_id = 'user-seal-other'")->fetchColumn();
+$pdoSeal->prepare("UPDATE selfdataguard_vaults SET wrap_phrase = ? WHERE user_id = 'user-seal'")->execute([$otherWrap]);
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
+    ? ok('an envelope brought from another account is tampering, before any derivation')
+    : ko('an envelope from another account went unnoticed by the seal');
+$pdoSeal->prepare("UPDATE selfdataguard_vaults SET wrap_phrase = ? WHERE user_id = 'user-seal'")->execute([$phraseBefore]);
 
 $open = $dg->loginWithPassword('user-seal', $PW_SEAL);
 $setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
@@ -698,20 +749,20 @@ try {
     $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
     ko('a level 3 archived a vault without a seal');
 } catch (VaultTamperedException $e) {
-    str_contains($e->getMessage(), 'sealProfile()')
-        ? ok('a level 3 on a vault without a seal is refused the same way, naming sealProfile()')
-        : ko('refused, without naming the remedy', $e->getMessage());
+    str_contains($e->getMessage(), 'removed')
+        ? ok('a level 3 on a vault whose seal was removed is refused the same way')
+        : ko('refused, without naming the removed seal', $e->getMessage());
 }
-$dg->sealProfile('user-seal');
+$setRow("profile_seal = '{$sealBefore}'");
 $l3 = $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
 ($dg->readArchive($dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, $PW_SEAL))['private']['note'] ?? null) === 'sous sceau'
     ? ok('sealed again, the level 3 goes through, and its archive opens under its seal')
     : ko('the archive of a sealed vault did not open');
 
-$sealSalt = str_repeat("\x01", 16);
-$packed   = pack('N', 9) . 'user-seal' . pack('N', 16) . $sealSalt . pack('JJ', 4, 1 << 28);
-base64_decode(BlindIndex::compute($packed, $blindKey, 'selfdataguard/profile-seal'))
-    !== ProfileSeal::of(ProfileSeal::key($blindKey), 'user-seal', $sealSalt, 4, 1 << 28)
+$sealRecord = $storage->loadVault('user-seal');
+$sealed     = (new ReflectionMethod(ProfileSeal::class, 'message'))->invoke(null, $sealRecord, 4, 1 << 28);
+base64_decode(BlindIndex::compute($sealed, $blindKey, 'selfdataguard/profile-seal'))
+    !== ProfileSeal::of(ProfileSeal::key($blindKey), $sealRecord, 4, 1 << 28)
     ? ok('the blind index of a field named after the seal domain is not a seal: the application cannot be made to compute one')
     : ko('a blind index the application computes is a valid profile seal');
 

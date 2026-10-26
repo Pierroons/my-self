@@ -2799,7 +2799,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=47 [sanity_escrow]=53
-            [sanity_facade]=105 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
+            [sanity_facade]=111 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=25 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -2991,6 +2991,15 @@ jobs:
             $D/tests/sanity_facade.php 'a façade opened a database under another blind-index key'
           canari $D/src/SelfDataGuard.php 'if ($recorded !== $declared) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a façade that shares a field opened a database where that field names one account'
+          canari $D/src/Vault/ProfileSeal.php '            . $part($record->wrapPhrase?->toBase64()) . $part($record->wrapAdmin?->toBase64());' '            ;' \
+            $D/tests/sanity_facade.php 'an envelope was removed and the vault still opened'
+          canari $D/src/Vault/ProfileSeal.php '            if ($wrap !== null && $wrap->bindsItsContext()) {' '            if (false) {' \
+            $D/tests/sanity_facade.php 'sealProfile() sealed a vault of this version whose seal was removed'
+          canari $D/src/SelfDataGuard.php 'if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {' \
+            'if ($archive->record->profileSeal !== null) {' \
+            $D/tests/sanity_facade.php 'an archive of this version opened without its seal'
+          canari $D/src/SelfDataGuard.php '        $sealed = $this->sealed($updated);' '        $sealed = $updated;' \
+            $D/tests/sanity_facade.php "The vault of 'user-cosmo' does not match its seal"
           canari $D/src/SelfDataGuard.php 'if ($this->storage->listArchives($userId) !== []) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a name that still holds archives was registered again'
           canari $D/src/SelfDataGuard.php '        $this->load($replacing->userId);' '' \

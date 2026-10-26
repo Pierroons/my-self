@@ -421,7 +421,7 @@ final class SelfDataGuard
         $archive = $this->storage->loadArchive($current->userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
         $this->assertSameUser($current->userId, $archive->record->userId);
-        if ($archive->record->profileSeal !== null) {
+        if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {
             $this->assertProfileSealed($archive->record, $archive->kdfOpslimit, $archive->kdfMemlimit, archive: true);
         }
         $session = $this->vault->unlock(
@@ -517,11 +517,11 @@ final class SelfDataGuard
             return false;
         }
         $this->assertSameUser($userId, $record->userId);
-        if ($record->profileSeal !== null) {
+        if ($record->profileSeal !== null || ProfileSeal::expected($record)) {
             $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
             return false;
         }
-        $this->persist($this->sealed($record));
+        $this->persist($record);
         return true;
     }
 
@@ -541,18 +541,18 @@ final class SelfDataGuard
         if ($record->profileSeal === null) {
             throw new VaultTamperedException("The vault of '{$userId}' carries no profile seal to repair against");
         }
-        if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $userId, $record->userSalt, $record->kdfOpslimit, $record->kdfMemlimit)) {
+        if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {
             return false;
         }
         foreach (Primitives::PUBLISHED_PROFILES as [$opslimit, $memlimit]) {
-            if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $userId, $record->userSalt, $opslimit, $memlimit)) {
+            if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $opslimit, $memlimit)) {
                 $this->persist($record->withProfile($opslimit, $memlimit));
                 return true;
             }
         }
         throw new VaultTamperedException(
             "No published Argon2id profile matches the seal of '{$userId}': the seal itself was changed, "
-            . 'or this blind-index key is not the one it was sealed under'
+            . 'or an envelope was — restore the row from a backup'
         );
     }
 
@@ -706,30 +706,25 @@ final class SelfDataGuard
      */
     private function assertProfileSealed(VaultRecord $record, int $opslimit, int $memlimit, bool $archive = false): void
     {
+        $what = $archive ? "An archive of '{$record->userId}'" : "The vault of '{$record->userId}'";
         if ($record->profileSeal === null) {
-            throw new VaultTamperedException(
-                "The vault of '{$record->userId}' carries no profile seal: an operator seals the vaults written "
-                . 'before 0.7.0 with sealProfile(), once, before serving'
-            );
+            throw new VaultTamperedException(ProfileSeal::expected($record)
+                ? "{$what} carries no seal, though its envelopes were written by a version that seals every vault: "
+                    . 'the seal was removed in the database — restore the row from a backup'
+                : "{$what} carries no profile seal: an operator seals the vaults written before 0.7.0 with "
+                    . 'sealProfile(), once, before serving');
         }
-        if (!ProfileSeal::holds($this->sealKey, $record->profileSeal, $record->userId, $record->userSalt, $opslimit, $memlimit)) {
+        if (!ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $opslimit, $memlimit)) {
             throw new VaultTamperedException(
-                ($archive ? "The Argon2id profile of an archive of '{$record->userId}'" : "The Argon2id profile of '{$record->userId}'")
-                . ' does not match its seal: it was changed in the database, or this blind-index key is not the one it was sealed under'
-                . ($archive ? '' : ' — repairProfile() puts back the one the seal vouches for, under the same key')
+                "{$what} does not match its seal: its Argon2id profile or its envelopes were changed in the database"
+                . ($archive ? '' : ' — repairProfile() puts back a profile the seal vouches for; an envelope changed is restored from a backup')
             );
         }
     }
 
     private function sealed(VaultRecord $record): VaultRecord
     {
-        return $record->withProfileSeal(ProfileSeal::of(
-            $this->sealKey,
-            $record->userId,
-            $record->userSalt,
-            $record->kdfOpslimit,
-            $record->kdfMemlimit
-        ));
+        return $record->withProfileSeal(ProfileSeal::of($this->sealKey, $record, $record->kdfOpslimit, $record->kdfMemlimit));
     }
 
     private function assertSameUser(string $asked, string $returned): void
@@ -743,11 +738,14 @@ final class SelfDataGuard
     }
 
     /**
-     * Store an updated record, then read it back.
+     * Seal an updated record over its envelopes as they now are, store it, then
+     * read it back. Every record reaching here was loaded through its seal, but
+     * the one sealProfile() passes: a row the operator trusts as it stands.
      */
     private function persist(VaultRecord $updated): void
     {
-        $this->assertVaultPersisted($updated, $this->storage->updateVault($updated));
+        $sealed = $this->sealed($updated);
+        $this->assertVaultPersisted($sealed, $this->storage->updateVault($sealed));
     }
 
     /**

@@ -15,14 +15,17 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
+require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
+use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 $failures = 0;
 $passes = 0;
@@ -98,9 +101,10 @@ function scelleAvant060(string $userId, string $password, ?string $memorized = n
 {
     $base = (new UserVault())->register($userId, $password)['record'];
     $mk   = random_bytes(Primitives::KEY_LEN);
-    $seal = new ReflectionMethod(UserVault::class, 'seal');
-    $sous = static fn (Lock $l, ?string $s) => $s === null ? null : $seal->invoke(
-        null, $l, $s, $base->userSalt, $userId, $mk, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
+    // As 0.6.x wrote a wrap: format v2, under the bare userId. One written by
+    // this version would be format v3, which no version before 0.7.0 wrote.
+    $sous = static fn (Lock $l, ?string $s) => $s === null ? null : blobV2(
+        $mk, UserVault::keyFor($l, $s, $base->userSalt, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT), $userId);
     return new VaultRecord(
         userId: $userId, userSalt: $base->userSalt,
         wrapPwd: $sous(Lock::Password, $password), wrapRecov: $sous(Lock::Memorized, $memorized), wrapAdmin: null,
@@ -372,6 +376,30 @@ $dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-unsealed'
 $dgAvant->loginWithMemorized('user-unsealed', 'unsealed-memorized')->userId === 'user-unsealed'
     ? ok('sealed, the vault written before 0.7.0 opens under its legacy profile')
     : ko('the sealed vault did not open');
+
+section('An archive written before 0.7.0 carries no seal, and opens under the profile it recorded');
+
+$legacyPdo   = oldDatabase('user-legacy-l3', 'legacy-password-01', 'legacy-memorized');
+$legacyStore = new SqliteAdapter($legacyPdo);
+$legacyKey   = random_bytes(32);
+$dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey);
+// Archived as 0.6.x did: without a seal, the new vault sealed as this version seals it.
+$fresh = (new UserVault())->register('user-legacy-l3', 'legacy-password-02')['record'];
+$fresh = $fresh->withProfileSeal(ProfileSeal::of(ProfileSeal::key($legacyKey), $fresh, $fresh->kdfOpslimit, $fresh->kdfMemlimit));
+$legacyArchive = $legacyStore->replaceWithArchive($legacyStore->loadVault('user-legacy-l3')->generation(), $fresh);
+$legacyCurrent = $dgLegacy->loginWithPassword('user-legacy-l3', 'legacy-password-02');
+$dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, 'legacy-memorized') instanceof Pierroons\SelfDataGuard\Vault\UnlockedArchive
+    ? ok('an archive whose envelopes predate 0.7.0, without a seal, opens under the profile it recorded')
+    : ko('a legacy archive did not open');
+$legacyPdo->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.kdf.opslimit\', :ops) WHERE archive_id = :id'
+)->execute([':ops' => Primitives::LEGACY_OPSLIMIT + 1, ':id' => $legacyArchive]);
+try {
+    $dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, 'legacy-memorized');
+    ko('the recorded profile is ignored: the legacy archive opened under another one');
+} catch (WrongSecretException) {
+    ok('its recorded profile is the one used — and nothing vouches for it: a profile changed fails as a wrong secret (declared)');
+}
 
 section('Blind indexes become unique when a database written before 0.7.0 is opened');
 
