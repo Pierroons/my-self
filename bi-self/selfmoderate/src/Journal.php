@@ -56,8 +56,17 @@ interface Journal
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
      *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
-     *   raison     cause du signalement classé ; pour un ban   revue_classee, ban_debut
-     *              d'arbitre, la revue ouverte, ou null
+     *   raison     cause du signal fermé ; pour un ban         revue_classee, ban_maintenu,
+     *              d'arbitre, la cause ouverte que la case     ban_debut
+     *              unique aurait portée, ou null
+     *   ouverts    liste des causes ouvertes sur le compte     tous
+     *              quand l'acte se décide, sous le verrou
+     *   ferme      liste des signaux que l'acte ferme, chacun  tous ; [] pour un ban
+     *              `{signal, cause, ouvert_le, occurrences}`   d'arbitre
+     *
+     * ⚠️ `ouverts` et `ferme` sont des listes : les premières valeurs du journal
+     * qui ne sont pas scalaires. Une implémentation qui range une colonne par
+     * clé, ou écrit des lignes `clé=valeur`, les sérialise elle-même.
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.
