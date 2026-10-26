@@ -2712,7 +2712,9 @@ $refus68 = Moderate::adminClasser($pdo, $auto68, 'arbitre-banc', motif());
 // Une copie de la base, ramenée à la forme d'avant : la case seule, pas de
 // table, pas de marque. À l'ouverture, chaque case ouverte devient une ligne,
 // une case sans cause devient `signal_anterieur`, et un état dont l'état a
-// cessé ne passe pas. Rouverte, la base ne bouge plus.
+// cessé ne passe pas. Rouverte, la base ne bouge plus — même quand un écrivain
+// resté à l'ancienne forme a écrit la case entre-temps : rejouée, la copie en
+// ferait un signal sans un mot.
 [$m1, $m2, $m3, $m4] = [membre($pdo, 'mig-salve-69'), membre($pdo, 'mig-sans-cause-69'),
     membre($pdo, 'mig-ban-69'), membre($pdo, 'mig-orphelin-69')];
 foreach ([$m1, $m2, $m3, $m4] as $m69) {
@@ -2746,8 +2748,10 @@ try {
         return [$lignes, (int) $p->query('SELECT COUNT(*) FROM mod_signaux')->fetchColumn()];
     };
     $premiere69 = $lue69();
+    Db::pdo()->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")->execute([$m4]);
     Db::fermer();
     $seconde69 = $lue69();
+    $seconde69[0][3][1] = $premiere69[0][3][1] ?? null;   // la case écrite à la main n'est pas ce qu'on compare
 } catch (Throwable $t69) {
     $premiere69 = $seconde69 = ['exception' => $t69->getMessage()];
 } finally {

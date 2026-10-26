@@ -2174,8 +2174,8 @@ jobs:
                             "        if ($rep['banned'] && $rep['ban_origine'] === 'auto'\n"),
               'strikes':   ("                        strikes = MAX(0, strikes - 1),\n",
                             "                        strikes = 0,\n"),
-              'remise':    ("            )->execute([self::config()->reputationInitiale, 'ban_auto', 'ban_auto', $accountId]);\n            self::effacerEffets($pdo, $accountId);\n",
-                            "            )->execute([self::config()->reputationInitiale, 'ban_auto', 'ban_auto', $accountId]);\n"),
+              'remise':    ("            )->execute([self::config()->reputationInitiale, $accountId]);\n            self::effacerEffets($pdo, $accountId);\n",
+                            "            )->execute([self::config()->reputationInitiale, $accountId]);\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -2248,7 +2248,7 @@ jobs:
         run: |
           # @plante
           # Deux gardes retirées tour à tour : la règle des signalements, qui
-          # interdit à un signal d'état d'écraser un signal de comportement ; le
+          # interdit à une cause d'en effacer une autre en se posant ; le
           # filtre de la composition d'une chute, qui ne compte que les votes qui
           # ont réellement retiré un point.
           M=bi-self/selfmoderate/src/Moderate.php
@@ -2259,8 +2259,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'signal':      ("        $remplacables = in_array($raison, $etats, true) ? $etats : [...$etats, $raison];\n",
-                              "        $remplacables = [...$etats, 'salve_rapide', 'meute_recidive', $raison];\n"),
+              'signal':      ("        $pose = $pdo->prepare('INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, ?, ?, ?)');\n",
+                              "        $pdo->prepare('DELETE FROM mod_signaux WHERE account_id = ? AND cause <> ?')->execute([$accountId, $cause]);\n        $pose = $pdo->prepare('INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, ?, ?, ?)');\n"),
               'composition': ("              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, 0) < 0\n",
                               "              WHERE v.target_author = ?\n"),
           }[os.environ['CAS']]
@@ -2407,7 +2407,7 @@ jobs:
           # graphe qui garde les votes déjà annulés pour meute ; l'annulation qui
           # ne prend qu'un vote encore actif ; l'épisode qui exige un vote neuf ;
           # l'effet inconnu d'un vote d'avant la colonne ; la panne du journal
-          # tenue pour un signal d'état ; aucun ban avant la clôture du précédent.
+          # levée avec la clôture de la peine ; aucun ban avant la clôture du précédent.
           M=bi-self/selfmoderate/src/Moderate.php
           for cas in chaine course tiers migration panne attente; do
             cp "$M" /tmp/moderate.audit.intact
@@ -2421,8 +2421,8 @@ jobs:
               'course':    ("WHERE id = ? AND blocked = 0\");\n", "WHERE id = ?\");\n"),
               'tiers':     ("            if ($neuf->fetchColumn() === false) {\n", "            if (false) {\n"),
               'migration': ("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes", "SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes"),
-              'panne':     ("        $etats = ['reputation_zero', 'ban_auto', 'journal_en_panne'];\n",
-                            "        $etats = ['reputation_zero', 'ban_auto'];\n"),
+              'panne':     ("            $s['cause'] === 'journal_en_panne'\n            || ($origine",
+                            "            ($origine"),
               'attente':   ("        if ((int) $etat['banned_until'] > 0) {\n", "        if ((int) $etat['banned_until'] > time()) {\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
@@ -2442,7 +2442,7 @@ jobs:
               course)    attendu='✗ ⭐ le second passage annule encore' ;;
               tiers)     attendu='✗ ⭐ un tiers fait monter le rang du premier votant' ;;
               migration) attendu='✗ ⭐ des votes d.avant la colonne lèvent un ban' ;;
-              panne)     attendu='✗ ⭐ panne du journal' ;;
+              panne)     attendu='✗ ⭐ un journal en panne fait tomber la lecture ou referme sans trace' ;;
               attente)   attendu='✗ ⭐ panne du journal' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
@@ -2614,8 +2614,8 @@ jobs:
                           ('self::$journal->inscrire(', 'self::$journal?->inscrire(', None)],
               'gestes':  [('return self::transaction($pdo, static function () use (', 'return (static function () use (', 4),
                           ('        });\n    }\n', '        })();\n    }\n', 4)],
-              'revue':   [("ban_origine = 'admin', ban_motif = ?,\n                        voting_rights = 0, strikes = ?, updated_at = ?",
-                           "ban_origine = 'admin', ban_motif = ?,\n                        voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?", 1)],
+              'revue':   [("            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n",
+                           "            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n", 1)],
               'balayage': [("if (self::transaction($pdo, static fn (): bool => self::cloreBanExpire($pdo, (int) $row['account_id']))) {",
                             "if (self::cloreBanExpire($pdo, (int) $row['account_id'])) {", 1)],
               'meute':    [('$episode = self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {',
@@ -2658,6 +2658,63 @@ jobs:
               ordre)     attendu="une levée de ban s'inscrit pour une meute défaite" ;;
               hote-geste) attendu="un geste d'arbitre passe dans la transaction d'un hôte" ;;
               hote-vote)  attendu="un vote arme le ban automatique dans la transaction d'un hôte" ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate perd un signal, ferme ce que l'arbitre n'a pas vu, ou laisse la case mentir
+        run: |
+          # @plante
+          # Les gardes du signal par cause, retirées tour à tour : la fin d'un ban
+          # qui lève ses signaux d'état ; la dernière occurrence comptée, que
+          # les redétections ne déplacent pas ; le compte d'occurrences affiché,
+          # que le geste compare ; la grâce qui ne ferme que ce qu'elle défait ;
+          # le maintien qui ne ferme que le ban automatique ; la case recalée sur
+          # la table ; la migration qui ne se rejoue pas.
+          for cas in orphelin filet jeton grace maintien resume migration; do
+            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do cp "$f" "/tmp/signaux.$(basename "$f").intact"; done
+            CAS="$cas" python3 - <<'PY'
+          import os
+          M, D = 'bi-self/selfmoderate/src/Moderate.php', 'demo/lab/lib/db.php'
+          fichier, avant, apres, n = {
+              'orphelin':  (M, "        self::designaler($pdo, $accountId, ...array_column($tombent, 'cause'));\n", "", 1),
+              'filet':     (M, "            if ($suite->rowCount() === 0) {\n                return;\n            }\n",
+                               "            if ($suite->rowCount() === 0) {\n                $pdo->prepare('UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ? AND cause = ?')->execute([$maintenant, $accountId, $cause]);\n                return;\n            }\n", 1),
+              'jeton':     (M, "                return $s['occurrences'] === (int) ($vu['occurrences'] ?? 0)\n", "                return true\n", 1),
+              'grace':     (M, "                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0)));\n",
+                               "                true));\n", 1),
+              'maintien':  (M, "            self::retirerDeLaFile($pdo, $accountId, [$vise]);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu",
+                               "            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu", 1),
+              'resume':    (M, "        $pdo->prepare('UPDATE member_moderation SET needs_review = ?, review_reason = ?, updated_at = ? WHERE account_id = ?')\n            ->execute([$cause === null ? 0 : 1, $cause, time(), $accountId]);\n", "", 1),
+              'migration': (D, "if (self::$pdo->query(\"SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'\")->fetchColumn() === false) {", "if (true) {", 2),
+          }[os.environ['CAS']]
+          s = open(fichier, encoding='utf-8').read()
+          assert s.count(avant) == n, 'plantation impossible'
+          open(fichier, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            plante=$?
+            restaurer() { for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do cp "/tmp/signaux.$(basename "$f").intact" "$f"; done; }
+            [ $plante -eq 0 ] || { restaurer; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              restaurer; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            restaurer
+            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do
+              cmp -s "/tmp/signaux.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
+            done
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              orphelin)  attendu='un signal survit à la fin du ban' ;;
+              filet)     attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
+              jeton)     attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
+              grace)     attendu="la grâce ferme plus, ou moins, qu'elle ne défait" ;;
+              maintien)  attendu='maintien :' ;;
+              resume)    attendu='un état et son signal se sont séparés, ou la case ment' ;;
+              migration) attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
