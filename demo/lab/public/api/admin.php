@@ -34,11 +34,15 @@ switch ($action) {
         $op    = (string) ($body['op'] ?? '');
         $motif = (string) ($body['motif'] ?? '');
         if ($id <= 0) { json_out(['ok' => false, 'message' => 'Compte invalide.'], 400); }
+        // Le signal que la console a affiché : le moteur refuse s'il a changé depuis.
+        $vu = is_array($body['vu'] ?? null)
+            ? ['signal' => (int) ($body['vu']['signal'] ?? 0), 'occurrences' => (int) ($body['vu']['occurrences'] ?? 0)]
+            : null;
         $r = match ($op) {
             'ban'       => Moderate::adminBan($pdo, $id, (string) $moi['username'], $motif),
             'pardon'    => Moderate::adminPardon($pdo, $id, (string) $moi['username'], $motif),
-            'maintenir' => Moderate::adminMaintenir($pdo, $id, (string) $moi['username'], $motif),
-            'classer'   => Moderate::adminClasser($pdo, $id, (string) $moi['username'], $motif),
+            'maintenir' => Moderate::adminMaintenir($pdo, $id, (string) $moi['username'], $motif, $vu),
+            'classer'   => Moderate::adminClasser($pdo, $id, (string) $moi['username'], $motif, $vu),
             default     => ['ok' => false, 'message' => 'Opération inconnue.'],
         };
         json_out($r, $r['ok'] ? 200 : 400);
