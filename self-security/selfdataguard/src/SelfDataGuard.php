@@ -111,6 +111,12 @@ final class SelfDataGuard
         if ($this->storage->vaultExists($userId)) {
             throw new VaultExistsException("User '{$userId}' already exists");
         }
+        if ($this->storage->listArchives($userId) !== []) {
+            throw new VaultExistsException(
+                "User '{$userId}' still holds the archives of a deleted vault: they would open to whoever registers "
+                . 'the name with an old secret. eraseAccount() erases them first — an operator\'s decision'
+            );
+        }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
         $record = $this->sealed($result['record']);
         $this->storage->saveVault($record);
@@ -337,6 +343,10 @@ final class SelfDataGuard
         #[\SensitiveParameter] ?string $newMemorized = null,
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): array {
+        // The vault set aside keeps its seal: one that does not hold would make
+        // an archive nothing can repair, as an unsealed one would make one
+        // without a seal.
+        $this->load($replacing->userId);
         $result    = $this->vault->register($replacing->userId, $newPassword, $newMemorized, $newPassphrase);
         $record    = $this->sealed($result['record']);
         $archiveId = $this->storage->replaceWithArchive($replacing, $record);
@@ -383,7 +393,7 @@ final class SelfDataGuard
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
         $this->assertSameUser($current->userId, $archive->record->userId);
         if ($archive->record->profileSeal !== null) {
-            $this->assertProfileSealed($archive->record, $archive->kdfOpslimit, $archive->kdfMemlimit);
+            $this->assertProfileSealed($archive->record, $archive->kdfOpslimit, $archive->kdfMemlimit, archive: true);
         }
         $session = $this->vault->unlock(
             $archive->record,
@@ -512,7 +522,8 @@ final class SelfDataGuard
             }
         }
         throw new VaultTamperedException(
-            "No published Argon2id profile matches the seal of '{$userId}': the seal itself was changed"
+            "No published Argon2id profile matches the seal of '{$userId}': the seal itself was changed, "
+            . 'or this blind-index key is not the one it was sealed under'
         );
     }
 
@@ -664,7 +675,7 @@ final class SelfDataGuard
      * profile changed in the database fails here, as tampering, instead of
      * failing every lock as a wrong secret.
      */
-    private function assertProfileSealed(VaultRecord $record, int $opslimit, int $memlimit): void
+    private function assertProfileSealed(VaultRecord $record, int $opslimit, int $memlimit, bool $archive = false): void
     {
         if ($record->profileSeal === null) {
             throw new VaultTamperedException(
@@ -674,8 +685,9 @@ final class SelfDataGuard
         }
         if (!ProfileSeal::holds($this->sealKey, $record->profileSeal, $record->userId, $record->userSalt, $opslimit, $memlimit)) {
             throw new VaultTamperedException(
-                "The Argon2id profile of '{$record->userId}' does not match its seal: it was changed in the database"
-                . ' — repairProfile() puts back the one the seal vouches for'
+                ($archive ? "The Argon2id profile of an archive of '{$record->userId}'" : "The Argon2id profile of '{$record->userId}'")
+                . ' does not match its seal: it was changed in the database, or this blind-index key is not the one it was sealed under'
+                . ($archive ? '' : ' — repairProfile() puts back the one the seal vouches for, under the same key')
             );
         }
     }

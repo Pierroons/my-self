@@ -26,10 +26,14 @@ final class ProfileSeal
     {
     }
 
-    /** The seal key, derived from the blind-index key under its own domain. */
+    /**
+     * The seal key, derived from the blind-index key by HKDF. Not an HMAC of a
+     * name under that key: HMAC(blindKey, name) is how BlindIndex keys a field,
+     * and a field named after the domain would have its index computed as a seal.
+     */
     public static function key(#[\SensitiveParameter] string $blindKey): string
     {
-        return hash_hmac('sha256', self::DOMAIN, $blindKey, true);
+        return hash_hkdf('sha256', $blindKey, 32, self::DOMAIN);
     }
 
     public static function of(#[\SensitiveParameter] string $key, string $userId, string $userSalt, int $opslimit, int $memlimit): string

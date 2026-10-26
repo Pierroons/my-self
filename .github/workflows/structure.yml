@@ -2799,7 +2799,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=42 [sanity_escrow]=53
-            [sanity_facade]=96 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
+            [sanity_facade]=102 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -2976,6 +2976,12 @@ jobs:
             $D/tests/sanity_escrow.php 'the escrow no longer reads in full'
           canari $D/src/Storage/Conformance.php "            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment'," '' \
             $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
+          canari $D/src/SelfDataGuard.php 'if ($this->storage->listArchives($userId) !== []) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a name that still holds archives was registered again'
+          canari $D/src/SelfDataGuard.php '        $this->load($replacing->userId);' '' \
+            $D/tests/sanity_facade.php 'a level 3 archived a vault whose seal does not hold'
+          canari $D/src/Vault/ProfileSeal.php "return hash_hkdf('sha256', \$blindKey, 32, self::DOMAIN);" "return hash_hmac('sha256', self::DOMAIN, \$blindKey, true);" \
+            $D/tests/sanity_facade.php 'a blind index the application computes is a valid profile seal'
           canari $D/src/Escrow/AuditLog.php 'if (!@fsync($handle)) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'an append was reported written on a stream that cannot be synced'
           canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \

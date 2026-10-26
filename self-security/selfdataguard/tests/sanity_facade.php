@@ -25,8 +25,10 @@ use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
@@ -679,6 +681,60 @@ try {
     ok('a profile changed under an open session stops the re-seal: nothing is sealed under a profile the session never proved');
 }
 $dg->repairProfile('user-seal');
+
+$setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
+$archivesBefore = count($storage->listArchives('user-seal'));
+try {
+    $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
+    ko('a level 3 archived a vault whose seal does not hold: nothing could repair that archive');
+} catch (VaultTamperedException) {
+    count($storage->listArchives('user-seal')) === $archivesBefore
+        ? ok('a level 3 on a vault whose seal does not hold is refused before anything is archived: repairProfile() first')
+        : ko('the refused level 3 archived the vault anyway');
+}
+$dg->repairProfile('user-seal');
+$setRow('profile_seal = NULL');
+try {
+    $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
+    ko('a level 3 archived a vault without a seal');
+} catch (VaultTamperedException $e) {
+    str_contains($e->getMessage(), 'sealProfile()')
+        ? ok('a level 3 on a vault without a seal is refused the same way, naming sealProfile()')
+        : ko('refused, without naming the remedy', $e->getMessage());
+}
+$dg->sealProfile('user-seal');
+$l3 = $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
+($dg->readArchive($dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, $PW_SEAL))['private']['note'] ?? null) === 'sous sceau'
+    ? ok('sealed again, the level 3 goes through, and its archive opens under its seal')
+    : ko('the archive of a sealed vault did not open');
+
+$sealSalt = str_repeat("\x01", 16);
+$packed   = pack('N', 9) . 'user-seal' . pack('N', 16) . $sealSalt . pack('JJ', 4, 1 << 28);
+base64_decode(BlindIndex::compute($packed, $blindKey, 'selfdataguard/profile-seal'))
+    !== ProfileSeal::of(ProfileSeal::key($blindKey), 'user-seal', $sealSalt, 4, 1 << 28)
+    ? ok('the blind index of a field named after the seal domain is not a seal: the application cannot be made to compute one')
+    : ko('a blind index the application computes is a valid profile seal');
+
+// -----------------------------------------------------------------------------
+
+section('A deleted account keeps its archives, and its name until they are erased');
+
+$reused = $dg->register('user-reuse', 'reuse-password-0001', null, $PH1);
+$dg->setFields($reused, ['iban' => 'FR76 PREMIER']);
+$l3r = $dg->reEnroll($dg->generationOf('user-reuse'), 'reuse-password-0002');
+$dg->delete($l3r['unlocked']->generation());
+try {
+    $dg->register('user-reuse', 'reuse-password-tiers');
+    ko('a name that still holds archives was registered again: they would open to the new holder with an old secret');
+} catch (VaultExistsException $e) {
+    str_contains($e->getMessage(), 'eraseAccount()')
+        ? ok('a name that still holds archives is not registered again, and the refusal names the operator\'s act')
+        : ko('refused, without naming the remedy', $e->getMessage());
+}
+$dg->eraseAccount('user-reuse') === 1
+    && $dg->listArchives($dg->register('user-reuse', 'reuse-password-tiers')) === []
+    ? ok('once the operator erases them, the name registers again, with no archive behind it')
+    : ko('the name did not register again after eraseAccount(), or archives were left');
 
 section('An indexed value names one account; a field declared shared names none');
 
