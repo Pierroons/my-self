@@ -30,7 +30,8 @@ declare(strict_types=1);
  *   DATAGUARD_ADMIN_PUBKEY_FILE fichier clé publique admin (base64)
  *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (v2:ops:mem:salt:blob ; salt:blob avant 0.6.0)
  *   DATAGUARD_AUDIT_LOG         chemin du journal d'audit
- *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal
+ *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal ; un secret neuf ouvre un journal
+ *                               neuf : sous lui, l'ancien se rompt à sa première ligne
  *   DATAGUARD_ARBITER_FILE      fichier PHP qui renvoie l'EscrowArbiter
  *   DATAGUARD_WITNESS_FILE      fichier PHP qui renvoie le HeadWitness
  *   DATAGUARD_OPERATOR          (optionnel) identité opérateur pour le forensic
