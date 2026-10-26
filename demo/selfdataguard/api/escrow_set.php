@@ -41,5 +41,5 @@ try {
     $dataGuard->setEscrowFields($session, $adminRecoveryPubKey, $clean);
     ok(['userId' => $userId, 'saved' => array_keys($clean)]);
 } catch (RuntimeException $e) {
-    fail('Authentication failed', 401);
+    fail_vault($e);
 }

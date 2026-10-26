@@ -28,5 +28,5 @@ try {
 } catch (InvalidArgumentException $e) {
     fail($e->getMessage(), 400);
 } catch (RuntimeException $e) {
-    fail('Authentication failed', 401);
+    fail_vault($e);
 }

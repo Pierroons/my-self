@@ -37,17 +37,16 @@ try {
         $dataGuard->setFields($session, $clean, $indexed);
     }
     ok(['userId' => $userId]);
-} catch (InvalidArgumentException $e) {
-    // Un refus de la bibliothèque sur une entrée, pas un conflit : sans ce
-    // catch, il sortait en 500 sans JSON.
-    $baseNeuve && demo_effacer_base_neuve();
-    fail($e->getMessage(), 400);
-} catch (DuplicateIndexException $e) {
-    // Le compte est inscrit avant que l'index soit refusé : sans ce retrait,
-    // il resterait, sans ses champs.
+} catch (InvalidArgumentException | DuplicateIndexException $e) {
+    // Une entrée refusée par la bibliothèque, ou un index tenu par un autre
+    // compte : le compte est déjà inscrit, et sans ce retrait il resterait, sans
+    // ses champs — un second essai le trouverait pris. Sans ce catch, une entrée
+    // refusée sortait en 500 sans JSON.
     isset($session) && $dataGuard->delete($session->generation());
     $baseNeuve && demo_effacer_base_neuve();
-    fail('Already held by another account: ' . implode(', ', $e->fields), 409);
+    $e instanceof DuplicateIndexException
+        ? fail('Already held by another account: ' . implode(', ', $e->fields), 409)
+        : fail($e->getMessage(), 400);
 } catch (RuntimeException $e) {
     $baseNeuve && demo_effacer_base_neuve();
     fail($e->getMessage(), 409);

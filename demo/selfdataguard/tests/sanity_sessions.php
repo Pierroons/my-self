@@ -154,6 +154,39 @@ $doublon['code'] === 409 && in_array('alice', array_column(appel($port, $NOM, 'i
     ? ok('une inscription refusée dans une base existante ne l\'efface pas')
     : ko('une inscription en doublon a touché la base existante', (string) $doublon['code']);
 
+echo "\n→ Ce que la démo dit d'un refus du coffre\n";
+$pdoA = new PDO('sqlite:' . $bases . '/' . $cookieA . '.sqlite');
+$connexion = static fn (string $mdp): array
+    => appel($port, $NOM, 'login.php', ['userId' => 'alice', 'secret' => $mdp, 'mode' => 'password'], $cookieA);
+$faux = $connexion('pas-le-bon-mot-de-passe');
+$faux['code'] === 401
+    ? ok('un mot de passe faux : 401')
+    : ko('un mot de passe faux', $faux['code'] . ' ' . json_encode($faux['json']));
+$pdoA->exec("UPDATE selfdataguard_vaults SET kdf_opslimit = kdf_opslimit + 1 WHERE user_id = 'alice'");
+$altere = $connexion('mot-de-passe-alice');
+$pdoA->exec("UPDATE selfdataguard_vaults SET kdf_opslimit = kdf_opslimit - 1 WHERE user_id = 'alice'");
+$altere['code'] === 409 && str_contains((string) ($altere['json']['error'] ?? ''), 'tampered')
+    ? ok('un profil changé dans la base : 409 « tampered », et non le 401 d\'un mot de passe faux')
+    : ko('un coffre falsifié est rendu comme autre chose', $altere['code'] . ' ' . json_encode($altere['json']));
+$connexion('mot-de-passe-alice')['code'] === 200
+    ? ok('remis en état, le coffre s\'ouvre')
+    : ko('le coffre ne s\'ouvre plus après sa remise en état');
+
+$reserve = appel($port, $NOM, 'register.php', ['userId' => 'bob', 'password' => 'mot-de-passe-bob-01', 'fields' => ['escrow' => 'x']], $cookieA);
+$encore  = appel($port, $NOM, 'register.php', ['userId' => 'bob', 'password' => 'mot-de-passe-bob-01'], $cookieA);
+$reserve['code'] === 400 && $encore['code'] === 200
+    ? ok('une inscription refusée sur un nom de champ réservé ne garde pas le compte : le second essai passe')
+    : ko('le compte d\'une inscription refusée est resté', "{$reserve['code']} puis {$encore['code']} " . json_encode($encore['json']));
+
+$cle = $etat . '/blindkey.bin';
+rename($cle, $cle . '.ailleurs');
+$sansCle = appel($port, $NOM, 'inspect_db.php', null, $cookieA);
+$neuve   = is_file($cle);
+rename($cle . '.ailleurs', $cle);
+$sansCle['code'] === 500 && !$neuve
+    ? ok('la clé d\'index disparue quand des bases existent : 500, et aucune clé neuve n\'est écrite à sa place')
+    : ko('une clé neuve a remplacé celle des coffres existants', $sansCle['code'] . ' neuve=' . var_export($neuve, true));
+
 echo "\n→ Cookies inattendus\n";
 $inconnu = appel($port, $NOM, 'inspect_db.php', null, str_repeat('ab', 16));
 $inconnu['code'] === 200 && ($inconnu['json']['vaults'] ?? null) === [] && nbBases() === 2

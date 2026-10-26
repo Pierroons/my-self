@@ -2846,7 +2846,9 @@ jobs:
 
       # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
       # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
-      # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
+      # perd Secure par défaut, un quota par adresse levé, une clé d'index régénérée
+      # sous des bases existantes, un coffre falsifié rendu comme un mot de passe faux,
+      # un compte gardé après une inscription refusée — le banc doit rougir sur chacun.
       - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
         run: |
           # @plante
@@ -2870,6 +2872,12 @@ jobs:
             "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
           canari "=== '1';" "!== '0';" 'attributs du cookie'
           canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
+          canari "if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" 'if (false) {' \
+            'une clé neuve a remplacé celle des coffres existants'
+          F=demo/selfdataguard/api/login.php
+          canari '    fail_vault($e);' "    fail('Authentication failed', 401);" 'un coffre falsifié est rendu comme autre chose'
+          F=demo/selfdataguard/api/register.php
+          canari '    isset($session) && $dataGuard->delete($session->generation());' '' "le compte d'une inscription refusée est resté"
 
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce

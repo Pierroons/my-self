@@ -22,5 +22,5 @@ try {
     $fields = $dataGuard->getFields($session);
     ok(['userId' => $userId, 'mode' => $mode, 'fields' => $fields]);
 } catch (RuntimeException $e) {
-    fail('Authentication failed', 401);
+    fail_vault($e);
 }

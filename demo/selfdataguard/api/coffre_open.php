@@ -33,5 +33,5 @@ try {
         'hasEscrow' => $dataGuard->hasEscrow($session),
     ]);
 } catch (RuntimeException $e) {
-    fail('Authentication failed', 401);
+    fail_vault($e);
 }
