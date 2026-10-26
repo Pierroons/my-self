@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 116/116 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 116 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 126/126 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 126 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |

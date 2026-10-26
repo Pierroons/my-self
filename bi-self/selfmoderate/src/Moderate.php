@@ -226,7 +226,7 @@ class Moderate
                     return;
                 }
                 if ((int) $row['convalescent']) {
-                    self::regenerate($pdo, $accountId);
+                    self::regenererSousVerrou($pdo, $accountId);
                 }
                 $jusqua = (int) $row['banned_until'];
                 if ($jusqua > 0 && $jusqua <= time()) {
@@ -235,6 +235,7 @@ class Moderate
             });
             $row = self::ligne($pdo, $accountId);
         }
+        $signaux = (int) $row['signale'] ? self::signauxDe($pdo, $accountId) : [];
         return [
             'reputation'    => (int) $row['reputation'],
             'strikes'       => (int) $row['strikes'],
@@ -244,21 +245,27 @@ class Moderate
             'ban_debut'     => (int) $row['ban_debut'],
             'ban_origine'   => $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null,
             'ban_motif'     => $row['ban_motif'] !== null ? (string) $row['ban_motif'] : null,
-            'needs_review'  => (bool) $row['needs_review'],
-            'review_reason' => $row['review_reason'] !== null ? (string) $row['review_reason'] : null,
+            'needs_review'  => self::projection($signaux) !== null,
+            'review_reason' => self::projection($signaux),
+            'signaux'       => $signaux,
             'convalescent'  => (bool) $row['convalescent'],
             'vote_muted'       => ((int) $row['vote_muted_until']) > time(),
             'vote_muted_until' => (int) $row['vote_muted_until'],
         ];
     }
 
-    /** La ligne de modération d'un compte, ou null s'il n'en a pas encore. */
+    /**
+     * La ligne de modération d'un compte, ou null s'il n'en a pas encore. Elle
+     * dit si un signal est ouvert sur lui, sans le lire : un compte calme se lit
+     * en une requête, et la lecture ne se fie pas au résumé de la case.
+     */
     private static function ligne(PDO $pdo, int $accountId): ?array
     {
         $stmt = $pdo->prepare(
             'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
-                    needs_review, review_reason, convalescent, vote_muted_until
-               FROM member_moderation WHERE account_id = ?'
+                    convalescent, vote_muted_until,
+                    EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id) AS signale
+               FROM member_moderation m WHERE account_id = ?'
         );
         $stmt->execute([$accountId]);
         $row = $stmt->fetch();
@@ -304,15 +311,22 @@ class Moderate
     {
         $maintenant = time();
         $stmt = $pdo->prepare(
-            'SELECT banned_until, ban_debut, ban_origine, ban_motif, strikes, review_reason FROM member_moderation
+            'SELECT banned_until, ban_debut, ban_origine, ban_motif, strikes FROM member_moderation
               WHERE account_id = ? AND banned_until > 0 AND banned_until <= ?'
         );
         $stmt->execute([$accountId, $maintenant]);
         $row = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$row) {
             return false;
         }
         $origine = $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null;
+        // La fin d'un ban automatique remet la réputation au départ : la chute et le
+        // ban qu'elle a causé cessent ensemble.
+        $signaux = self::signauxDe($pdo, $accountId);
+        $tombent = array_values(array_filter($signaux, static fn (array $s): bool =>
+            $s['cause'] === 'journal_en_panne'
+            || ($origine === 'auto' && in_array($s['cause'], ['ban_auto', 'reputation_zero'], true))));
 
         try {
             self::$journal?->inscrire([
@@ -323,8 +337,10 @@ class Moderate
                 'debut'     => (int) $row['ban_debut'],
                 'jusqu_a'   => (int) $row['banned_until'],
                 'observe_a' => $maintenant,
-                'motif'     => $row['ban_motif'] ?? $row['review_reason'] ?? 'inconnu',
+                'motif'     => $row['ban_motif'] ?? self::projection($signaux) ?? 'inconnu',
                 'arbitre'   => null,
+                'ouverts'   => array_column($signaux, 'cause'),
+                'ferme'     => array_map([self::class, 'pourJournal'], $tombent),
             ]);
         } catch (\Throwable $e) {
             if (!$contenir) {
@@ -338,10 +354,9 @@ class Moderate
         if ($origine === 'auto') {
             $pdo->prepare(
                 'UPDATE member_moderation
-                    SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0,
-                        ' . self::leveSignalSql() . '
+                    SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0
                   WHERE account_id = ?'
-            )->execute([self::config()->reputationInitiale, 'ban_auto', 'ban_auto', $accountId]);
+            )->execute([self::config()->reputationInitiale, $accountId]);
             self::effacerEffets($pdo, $accountId);
         } else {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ? AND reputation >= ?')
@@ -349,10 +364,10 @@ class Moderate
         }
         $pdo->prepare(
             'UPDATE member_moderation
-                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?,
-                    ' . self::leveSignalSql() . '
+                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?
               WHERE account_id = ?'
-        )->execute([$maintenant, 'journal_en_panne', 'journal_en_panne', $accountId]);
+        )->execute([$maintenant, $accountId]);
+        self::designaler($pdo, $accountId, ...array_column($tombent, 'cause'));
 
         return true;
     }
@@ -390,8 +405,14 @@ class Moderate
      * ne se met à jour que pour qui se connecte est faux pour tous les autres,
      * et c'est justement quand on regarde un profil qu'on a besoin du bon
      * chiffre. Ne jamais appeler getReputation() ici : la récursion est immédiate.
+     * Elle lit puis écrit, et lève un signal : sous le verrou d'écriture.
      */
     public static function regenerate(PDO $pdo, int $accountId): void
+    {
+        self::transaction($pdo, static fn () => self::regenererSousVerrou($pdo, $accountId));
+    }
+
+    private static function regenererSousVerrou(PDO $pdo, int $accountId): void
     {
         $stmt = $pdo->prepare(
             'SELECT reputation, convalescent, last_regen_at FROM member_moderation WHERE account_id = ?'
@@ -1256,14 +1277,17 @@ class Moderate
                 'cause'     => 'meute_detectee',
                 'anticipee' => false,
                 'reste'     => $rep['banned_until'] - time(),
+                'ouverts'   => array_column($rep['signaux'], 'cause'),
+                'ferme'     => array_map([self::class, 'pourJournal'], self::deCause($rep['signaux'], 'ban_auto')),
             ]);
             $pdo->prepare(
                 'UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
                         strikes = MAX(0, strikes - 1),
-                        updated_at = ?, ' . self::leveSignalSql() . '
+                        updated_at = ?
                   WHERE account_id = ?'
-            )->execute([time(), 'ban_auto', 'ban_auto', $author]);
+            )->execute([time(), $author]);
+            self::designaler($pdo, $author, 'ban_auto');
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -1368,43 +1392,242 @@ class Moderate
     }
 
     /**
-     * Signale un compte à l'arbitre, sans écraser un signal plus précis.
-     *
-     * Deux familles. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`,
+     * Deux familles de signaux. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`,
      * `journal_en_panne`) se déduit de la base et se lève seul quand l'état
-     * cesse. Un signal de COMPORTEMENT
-     * (une salve, une récidive de meute…) dit ce qui s'est passé, et seul un
-     * arbitre le lève. Un comportement remplace un état ; un état ne remplace
-     * jamais un comportement, et un comportement n'en remplace pas un autre.
+     * cesse. Un signal de COMPORTEMENT (une salve, une récidive de meute…) dit
+     * ce qui s'est passé, et seul un arbitre le ferme. Une cause que le moteur
+     * ne connaît pas — reprise d'une base ancienne — est un comportement : ce
+     * qu'il ne sait pas lever, un humain le ferme.
      */
-    private static function signaler(PDO $pdo, int $accountId, string $raison): void
+    private static function famille(string $cause): string
     {
-        $etats = ['reputation_zero', 'ban_auto', 'journal_en_panne'];
-        $remplacables = in_array($raison, $etats, true) ? $etats : [...$etats, $raison];
-        $ph = implode(',', array_fill(0, count($remplacables), '?'));
-        $pdo->prepare(
-            "UPDATE member_moderation SET needs_review = 1, review_reason = ?, updated_at = ?
-              WHERE account_id = ? AND (review_reason IS NULL OR review_reason IN ($ph))"
-        )->execute([$raison, time(), $accountId, ...$remplacables]);
+        return in_array($cause, ['reputation_zero', 'ban_auto', 'journal_en_panne'], true) ? 'etat' : 'comportement';
     }
 
     /**
-     * Lève un signal d'ÉTAT, et lui seul : l'état a cessé. Un signal de
-     * comportement posé entre-temps reste en place, l'arbitre doit encore le
-     * voir. Le pendant de `signaler()`. Le fragment prend la raison deux fois ;
-     * il s'inclut dans l'UPDATE qui clôt l'état, pour qu'une coupure ne laisse
-     * pas un signal sans son état.
+     * Le délai depuis la dernière occurrence comptée au-delà duquel une
+     * détection est un fait neuf. Une salve se redétecte à chaque downvote de sa
+     * fenêtre, une troncature à chaque balayage : sans ce délai, le compte dirait
+     * combien de fois on a regardé, pas combien de fois c'est arrivé. Compté
+     * depuis la dernière détection, un filet continu resterait à un pour toujours.
      */
-    private static function designaler(PDO $pdo, int $accountId, string $raison): void
+    private static function regroupement(string $cause): int
     {
-        $pdo->prepare('UPDATE member_moderation SET ' . self::leveSignalSql() . ' WHERE account_id = ?')
-            ->execute([$raison, $raison, $accountId]);
+        return match ($cause) {
+            'salve_rapide'     => 2 * self::config()->fenetreSalveSecondes,
+            'votants_tronques' => self::config()->balayagePeriodeSecondes,
+            default            => 0,
+        };
     }
 
-    private static function leveSignalSql(): string
+    /**
+     * Signale un compte à l'arbitre : une ligne par cause, et aucune cause n'en
+     * remplace une autre. Un comportement déjà ouvert compte une occurrence de
+     * plus, ce qui fait refuser le geste d'un arbitre qui ne l'a pas vue ; un
+     * état déjà ouvert reste tel quel, vu ou non.
+     */
+    private static function signaler(PDO $pdo, int $accountId, string $cause): void
     {
-        return 'needs_review = CASE WHEN review_reason = ? THEN 0 ELSE needs_review END,
-                        review_reason = CASE WHEN review_reason = ? THEN NULL ELSE review_reason END';
+        self::transaction($pdo, static fn () => self::poserSignal($pdo, $accountId, $cause));
+    }
+
+    private static function poserSignal(PDO $pdo, int $accountId, string $cause): void
+    {
+        $maintenant = time();
+        $pose = $pdo->prepare('INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, ?, ?, ?)');
+        $pose->execute([$accountId, $cause, $maintenant, $maintenant]);
+        if ($pose->rowCount() === 0) {
+            if (self::famille($cause) === 'etat') {
+                return;
+            }
+            $suite = $pdo->prepare(
+                'UPDATE mod_signaux SET occurrences = occurrences + 1, derniere_le = ?
+                  WHERE account_id = ? AND cause = ? AND derniere_le <= ?'
+            );
+            $suite->bindValue(1, $maintenant, PDO::PARAM_INT);
+            $suite->bindValue(2, $accountId, PDO::PARAM_INT);
+            $suite->bindValue(3, $cause);
+            $suite->bindValue(4, $maintenant - self::regroupement($cause), PDO::PARAM_INT);
+            $suite->execute();
+            if ($suite->rowCount() === 0) {
+                return;
+            }
+        }
+        self::resumer($pdo, $accountId);
+    }
+
+    /**
+     * Lève des signaux d'ÉTAT : l'état a cessé. Appelée dans la transaction qui
+     * le clôt. Un comportement passé ici est une faute de code, pas une donnée :
+     * la machine ne ferme jamais ce qu'un arbitre doit voir.
+     */
+    private static function designaler(PDO $pdo, int $accountId, string ...$causes): void
+    {
+        if ($causes === []) {
+            return;
+        }
+        foreach ($causes as $cause) {
+            if (self::famille($cause) !== 'etat') {
+                throw new \LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');
+            }
+        }
+        $ph = implode(',', array_fill(0, count($causes), '?'));
+        $leve = $pdo->prepare("DELETE FROM mod_signaux WHERE account_id = ? AND cause IN ($ph)");
+        $leve->execute([$accountId, ...$causes]);
+        if ($leve->rowCount() > 0) {
+            self::resumer($pdo, $accountId);
+        }
+    }
+
+    /**
+     * Ce qu'un geste d'arbitre retire de la file : un comportement se ferme, un
+     * état vu reste en base jusqu'à ce qu'il cesse, hors de la file.
+     *
+     * @param list<array{signal: int, famille: string}> $signaux
+     */
+    private static function retirerDeLaFile(PDO $pdo, int $accountId, array $signaux): void
+    {
+        if ($signaux === []) {
+            return;
+        }
+        foreach ($signaux as $s) {
+            if ($s['famille'] === 'comportement') {
+                $pdo->prepare('DELETE FROM mod_signaux WHERE id = ?')->execute([$s['signal']]);
+            } else {
+                $pdo->prepare('UPDATE mod_signaux SET vu_le = ? WHERE id = ?')->execute([time(), $s['signal']]);
+            }
+        }
+        self::resumer($pdo, $accountId);
+    }
+
+    /**
+     * Le signal qu'un geste d'arbitre ferme, ou la raison de son refus. Avec
+     * `$vu`, celui que la console a affiché, à condition qu'il soit encore
+     * ouvert, à voir, du ressort de ce geste, et au même compte d'occurrences ;
+     * sans lui, le seul signal du ressort de ce geste. Un geste ne ferme jamais
+     * une cause que personne n'a désignée, ni un fait arrivé après l'affichage.
+     *
+     * @param list<array{signal: int, cause: string, occurrences: int, vu_le: ?int}> $signaux
+     * @param array{signal?: int, occurrences?: int}|null $vu
+     * @param callable(array): bool $duGeste
+     * @return array{signal: int, cause: string, famille: string, ouvert_le: int, occurrences: int, vu_le: ?int}|string
+     */
+    private static function signalVise(array $signaux, ?array $vu, callable $duGeste, string $aucun, string $horsGeste): array|string
+    {
+        $aVoir = array_values(array_filter($signaux, static fn (array $s): bool => $s['vu_le'] === null));
+        if ($vu !== null) {
+            foreach ($aVoir as $s) {
+                if ($s['signal'] !== (int) ($vu['signal'] ?? 0)) {
+                    continue;
+                }
+                if (!$duGeste($s)) {
+                    return $horsGeste;
+                }
+
+                return $s['occurrences'] === (int) ($vu['occurrences'] ?? 0)
+                    ? $s
+                    : static::t('Ce signalement a changé depuis ton affichage : recharge la console.');
+            }
+
+            return static::t('Ce signalement n\'est plus ouvert : recharge la console.');
+        }
+        $possibles = array_values(array_filter($aVoir, $duGeste));
+        if ($possibles === []) {
+            return $aVoir === [] ? $aucun : $horsGeste;
+        }
+        if (count($possibles) > 1) {
+            return sprintf(
+                static::t('Plusieurs signalements sont ouverts sur ce compte (%s) : nomme celui que tu fermes.'),
+                implode(', ', array_column($possibles, 'cause'))
+            );
+        }
+
+        return $possibles[0];
+    }
+
+    /**
+     * @param list<array{famille: string}> $signaux
+     * @return list<array{famille: string}>
+     */
+    private static function deFamille(array $signaux, string $famille): array
+    {
+        return array_values(array_filter($signaux, static fn (array $s): bool => $s['famille'] === $famille));
+    }
+
+    /**
+     * Recale la case `needs_review` / `review_reason` sur la table, pour qui lit
+     * la base sans passer par le moteur. Le moteur ne la relit jamais.
+     */
+    private static function resumer(PDO $pdo, int $accountId): void
+    {
+        $cause = self::projection(self::signauxDe($pdo, $accountId));
+        self::ensureRow($pdo, $accountId);
+        $pdo->prepare('UPDATE member_moderation SET needs_review = ?, review_reason = ?, updated_at = ? WHERE account_id = ?')
+            ->execute([$cause === null ? 0 : 1, $cause, time(), $accountId]);
+    }
+
+    /**
+     * Les signaux ouverts sur un compte, dans l'ordre où ils ont été posés.
+     *
+     * @return list<array{signal: int, cause: string, famille: string, ouvert_le: int,
+     *                    derniere_le: int, occurrences: int, vu_le: ?int}>
+     */
+    private static function signauxDe(PDO $pdo, int $accountId): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT id, cause, ouvert_le, derniere_le, occurrences, vu_le FROM mod_signaux WHERE account_id = ? ORDER BY id'
+        );
+        $stmt->execute([$accountId]);
+
+        return array_map(static fn (array $s): array => [
+            'signal'      => (int) $s['id'],
+            'cause'       => (string) $s['cause'],
+            'famille'     => self::famille((string) $s['cause']),
+            'ouvert_le'   => (int) $s['ouvert_le'],
+            'derniere_le' => (int) $s['derniere_le'],
+            'occurrences' => (int) $s['occurrences'],
+            'vu_le'       => $s['vu_le'] !== null ? (int) $s['vu_le'] : null,
+        ], $stmt->fetchAll());
+    }
+
+    /**
+     * La cause que la case unique d'avant aurait portée, parmi les signaux
+     * qu'un arbitre n'a pas encore vus : le premier comportement, sinon le
+     * dernier état. C'est ce que rendent `review_reason` et la case.
+     *
+     * @param list<array{cause: string, famille: string, vu_le: ?int}> $signaux
+     */
+    private static function projection(array $signaux): ?string
+    {
+        $aVoir = array_values(array_filter($signaux, static fn (array $s): bool => $s['vu_le'] === null));
+        foreach ($aVoir as $s) {
+            if ($s['famille'] === 'comportement') {
+                return $s['cause'];
+            }
+        }
+
+        return $aVoir === [] ? null : $aVoir[count($aVoir) - 1]['cause'];
+    }
+
+    /**
+     * @param list<array{cause: string}> $signaux
+     * @return list<array{cause: string}>
+     */
+    private static function deCause(array $signaux, string ...$causes): array
+    {
+        return array_values(array_filter($signaux, static fn (array $s): bool => in_array($s['cause'], $causes, true)));
+    }
+
+    /**
+     * Un signal tel que le journal le garde : l'instance, sa cause, depuis
+     * quand, et combien d'occurrences l'arbitre avait sous les yeux.
+     *
+     * @param array{signal: int, cause: string, ouvert_le: int, occurrences: int} $s
+     * @return array{signal: int, cause: string, ouvert_le: int, occurrences: int}
+     */
+    private static function pourJournal(array $s): array
+    {
+        return ['signal' => $s['signal'], 'cause' => $s['cause'], 'ouvert_le' => $s['ouvert_le'], 'occurrences' => $s['occurrences']];
     }
 
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation): void
@@ -1418,7 +1641,7 @@ class Moderate
         // d'escalade à la portée de qui n'a aucun droit d'admin ; un signalement
         // seul ne protège personne tant que l'arbitre n'est pas devant. D'où un
         // ban tenu par trois bornes : la peine est graduée et FINIE, visible dès
-        // qu'elle tombe (`needs_review` reste levé), et ses deux bouts sont
+        // qu'elle tombe (le signal `ban_auto` attend l'arbitre), et ses deux bouts sont
         // inscrits au journal.
         if ($reputation <= self::config()->banA) {
             self::sanctionnerReputationZero($pdo, $accountId);
@@ -1453,7 +1676,15 @@ class Moderate
         $maintenant = time();
 
         if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {
-            self::signaler($pdo, $accountId, 'reputation_zero');
+            // Pendant une peine, le ban EST l'état, et il porte son signal : un
+            // second pour le même fait survivrait à la peine, sans rien pour le lever.
+            $peine = $pdo->prepare('SELECT banned_until FROM member_moderation WHERE account_id = ?');
+            $peine->execute([$accountId]);
+            $enPeine = (int) $peine->fetchColumn() > 0;
+            $peine->closeCursor();
+            if (!$enPeine) {
+                self::signaler($pdo, $accountId, 'reputation_zero');
+            }
 
             return;
         }
@@ -1477,6 +1708,7 @@ class Moderate
         $episode = (int) $etat['strikes'] + 1;
         $duree   = self::config()->dureeBanPourEpisode($episode);
         $jusqua  = $maintenant + $duree;
+        $signaux = self::signauxDe($pdo, $accountId);
 
         self::$journal->inscrire([
             'acte'    => 'ban_debut',
@@ -1488,6 +1720,8 @@ class Moderate
             'jusqu_a' => $jusqua,
             'motif'   => 'reputation_zero',
             'arbitre' => null,
+            'ouverts' => array_column($signaux, 'cause'),
+            'ferme'   => array_map([self::class, 'pourJournal'], self::deCause($signaux, 'reputation_zero')),
         ]);
 
         $pdo->prepare(
@@ -1496,6 +1730,8 @@ class Moderate
                     voting_rights = 0, strikes = ?, updated_at = ?
               WHERE account_id = ?"
         )->execute([$jusqua, $maintenant, $episode, $maintenant, $accountId]);
+        // Le ban prend la place de la chute qui l'a causé : un fait, un signal.
+        self::designaler($pdo, $accountId, 'reputation_zero');
         self::signaler($pdo, $accountId, 'ban_auto');
     }
 
@@ -1623,6 +1859,8 @@ class Moderate
                 'motif'   => trim($motif),
                 'arbitre' => $arbitre,
                 'raison'  => $etat['review_reason'],
+                'ouverts' => array_column($etat['signaux'], 'cause'),
+                'ferme'   => [],
             ]);
             $pdo->prepare(
                 "UPDATE member_moderation
@@ -1640,6 +1878,13 @@ class Moderate
      * réputation au départ et les strikes à zéro, lève une suspension de vote
      * et efface le rang de meute. Sans ban en cours, elle fait tout cela sauf
      * lever un ban.
+     *
+     * Elle ferme ce qu'elle défait : les signaux d'état, dont l'état est remis
+     * au départ, et la récidive de meute quand elle en efface le rang. Une
+     * salve, une troncature, un votant étendu restent à classer : une grâce
+     * passe sans motif une fois le plancher franchi, et un comportement ne se
+     * ferme pas sans motif écrit. L'acte dit ce qui était ouvert et ce qu'elle
+     * a fermé.
      *
      * 🔑 **Le plancher.** Avant `plancherFraction` de la peine en cours, la grâce
      * exige un motif, et s'inscrit comme levée anticipée avec le temps qui
@@ -1678,6 +1923,10 @@ class Moderate
             $maintenant = time();
             $anticipee  = false;
             $rangEfface = self::rangDe($pdo, $accountId);
+            $fermes     = array_values(array_filter($etat['signaux'], static fn (array $s): bool =>
+                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0)));
+            $ouverts    = array_column($etat['signaux'], 'cause');
+            $ferme      = array_map([self::class, 'pourJournal'], $fermes);
 
             if ($etat['banned']) {
                 $plancher  = $etat['ban_debut'] > 0
@@ -1702,6 +1951,8 @@ class Moderate
                     'plancher'  => $plancher,
                     'rang_efface'      => $rangEfface,
                     'suspension_levee' => $etat['vote_muted'],
+                    'ouverts'   => $ouverts,
+                    'ferme'     => $ferme,
                 ]);
             } else {
                 self::$journal->inscrire([
@@ -1712,16 +1963,20 @@ class Moderate
                     'reputation' => $etat['reputation'],
                     'rang_efface'      => $rangEfface,
                     'suspension_levee' => $etat['vote_muted'],
+                    'ouverts'    => $ouverts,
+                    'ferme'      => $ferme,
                 ]);
             }
 
             $pdo->prepare(
                 'UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
-                        voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
+                        voting_rights = 1, reputation = ?, strikes = 0,
                         convalescent = 0, vote_muted_until = 0, updated_at = ?
                   WHERE account_id = ?'
             )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
+            self::designaler($pdo, $accountId, ...array_column(self::deFamille($fermes, 'etat'), 'cause'));
+            self::retirerDeLaFile($pdo, $accountId, self::deFamille($fermes, 'comportement'));
             self::effacerEffets($pdo, $accountId);
             if ($rangEfface > 0) {
                 $pdo->prepare(
@@ -1739,13 +1994,21 @@ class Moderate
     }
 
     /**
-     * Clôt la revue d'un ban sans le lever : l'arbitre a regardé, la peine
-     * court. La revue close est celle du compte, quel qu'en soit le motif. Le
-     * motif est exigé — un maintien sans raison ne se distingue pas d'un oubli.
+     * Prend acte d'un ban automatique sans le lever : l'arbitre a regardé, la
+     * peine court. Seul un ban automatique attend cette revue — un ban
+     * d'arbitre a déjà eu son regard humain, et un comportement signalé sur un
+     * compte banni se classe. Le signal du ban reste en base, vu, jusqu'à la
+     * fin de la peine. Le motif est exigé — un maintien sans raison ne se
+     * distingue pas d'un oubli.
      *
+     * `$vu` est ce que la console a affiché, `['signal' => id, 'occurrences' => n]` :
+     * si le signal a changé depuis, le geste refuse. Sans lui, le geste vise le
+     * signal tel qu'il est au moment du clic.
+     *
+     * @param array{signal: int, occurrences: int}|null $vu
      * @return array{ok: bool, message: string}
      */
-    public static function adminMaintenir(PDO $pdo, int $accountId, string $arbitre, string $motif): array
+    public static function adminMaintenir(PDO $pdo, int $accountId, string $arbitre, string $motif, ?array $vu = null): array
     {
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
@@ -1761,10 +2024,15 @@ class Moderate
         }
         self::getReputation($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $vu): array {
             $etat = self::getReputation($pdo, $accountId);
             if (!$etat['banned']) {
                 return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
+            }
+            $aucun = static::t('Ce ban n\'attend aucune revue : un signalement se classe.');
+            $vise  = self::signalVise($etat['signaux'], $vu, static fn (array $s): bool => $s['cause'] === 'ban_auto', $aucun, $aucun);
+            if (is_string($vise)) {
+                return ['ok' => false, 'message' => $vise];
             }
             self::$journal->inscrire([
                 'acte'    => 'ban_maintenu',
@@ -1773,23 +2041,36 @@ class Moderate
                 'arbitre' => $arbitre,
                 'motif'   => trim($motif),
                 'jusqu_a' => $etat['banned_until'],
+                'raison'  => $vise['cause'],
+                'ouverts' => array_column($etat['signaux'], 'cause'),
+                'ferme'   => [self::pourJournal($vise)],
             ]);
-            $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
-                ->execute([time(), $accountId]);
+            self::retirerDeLaFile($pdo, $accountId, [$vise]);
 
             return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
         });
     }
 
     /**
-     * Classe un signalement sans rien toucher d'autre : l'arbitre a regardé, et
+     * Classe UN signalement sans rien toucher d'autre : l'arbitre a regardé, et
      * le compte n'appelle aucun geste. La grâce remettrait la réputation au
      * départ, ce qu'un signalement classé ne justifie pas. Le motif est exigé,
      * comme pour un maintien.
      *
+     * Un comportement classé se ferme. Une réputation à zéro classée reste en
+     * base, vue, tant que la réputation n'est pas remontée. Un ban automatique
+     * se maintient, il ne se classe pas, et une fin de peine qui attend le
+     * journal n'est pas au compte d'en répondre.
+     *
+     * `$vu` est ce que la console a affiché, `['signal' => id, 'occurrences' => n]` :
+     * si le signal a été fermé ou a compté une occurrence depuis, le geste
+     * refuse — l'arbitre ne ferme pas un fait qu'il n'a pas vu. Sans lui, le
+     * geste vise le seul signal classable, et refuse s'il y en a plusieurs.
+     *
+     * @param array{signal: int, occurrences: int}|null $vu
      * @return array{ok: bool, message: string}
      */
-    public static function adminClasser(PDO $pdo, int $accountId, string $arbitre, string $motif): array
+    public static function adminClasser(PDO $pdo, int $accountId, string $arbitre, string $motif, ?array $vu = null): array
     {
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
@@ -1805,24 +2086,32 @@ class Moderate
         }
         self::getReputation($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $vu): array {
             $etat = self::getReputation($pdo, $accountId);
             $enAttente = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;
             }
-            if (!$etat['needs_review']) {
-                return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
+            $vise = self::signalVise(
+                $etat['signaux'],
+                $vu,
+                static fn (array $s): bool => !in_array($s['cause'], ['ban_auto', 'journal_en_panne'], true),
+                static::t('Aucun signalement en cours sur ce compte.'),
+                static::t('Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine attend le journal.')
+            );
+            if (is_string($vise)) {
+                return ['ok' => false, 'message' => $vise];
             }
             self::$journal->inscrire([
                 'acte'    => 'revue_classee',
                 'compte'  => $accountId,
                 'arbitre' => $arbitre,
                 'motif'   => trim($motif),
-                'raison'  => $etat['review_reason'],
+                'raison'  => $vise['cause'],
+                'ouverts' => array_column($etat['signaux'], 'cause'),
+                'ferme'   => [self::pourJournal($vise)],
             ]);
-            $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
-                ->execute([time(), $accountId]);
+            self::retirerDeLaFile($pdo, $accountId, [$vise]);
 
             return ['ok' => true, 'message' => static::t('Signalement classé.')];
         });
@@ -1839,18 +2128,23 @@ class Moderate
      * l'un d'eux : l'origine, le motif, le temps restant, la date du plancher,
      * et pour un ban automatique la composition de sa chute.
      *
+     * `a_revoir` : un ban automatique que personne n'a encore maintenu ; `revue`
+     * est alors ce que `adminMaintenir()` attend en `$vu`.
+     *
      * @return list<array{account_id: int, username: string, origine: ?string, motif: ?string,
      *                    debut: int, jusqu_a: int, reste: int, plancher: ?int, episode: int, a_revoir: bool,
+     *                    revue: ?array{signal: int, occurrences: int},
      *                    chute: ?array{votants: int, ages_jours: list<int>, etalement: int}}>
      */
     public static function bansEnCours(PDO $pdo, int $limite = 100): array
     {
         $maintenant = time();
         $stmt = $pdo->prepare(
-            'SELECT m.account_id, a.username, m.ban_origine, m.ban_motif, m.ban_debut, m.banned_until,
-                    m.strikes, m.needs_review
+            "SELECT m.account_id, a.username, m.ban_origine, m.ban_motif, m.ban_debut, m.banned_until,
+                    m.strikes, s.id AS revue, s.occurrences
                FROM member_moderation m JOIN accounts a ON a.id = m.account_id
-              WHERE m.banned_until > ? ORDER BY m.banned_until ASC LIMIT ?'
+          LEFT JOIN mod_signaux s ON s.account_id = m.account_id AND s.cause = 'ban_auto' AND s.vu_le IS NULL
+              WHERE m.banned_until > ? ORDER BY m.banned_until ASC LIMIT ?"
         );
         $stmt->bindValue(1, $maintenant, PDO::PARAM_INT);
         $stmt->bindValue(2, $limite, PDO::PARAM_INT);
@@ -1870,7 +2164,8 @@ class Moderate
                 'reste'      => $fin - $maintenant,
                 'plancher'   => $debut > 0 ? self::config()->plancherDe($debut, $fin) : null,
                 'episode'    => (int) $r['strikes'],
-                'a_revoir'   => (bool) $r['needs_review'],
+                'a_revoir'   => $r['revue'] !== null,
+                'revue'      => $r['revue'] !== null ? ['signal' => (int) $r['revue'], 'occurrences' => (int) $r['occurrences']] : null,
                 'chute'      => $auto ? self::compositionChute($pdo, (int) $r['account_id'], $debut) : null,
             ];
         }, $stmt->fetchAll());
@@ -1911,20 +2206,81 @@ class Moderate
     }
 
     /**
-     * Membres à arbitrer par un admin. `review_reason` dit la cause ; les valeurs
-     * sont listées dans le schéma de référence, leurs deux familles dans
-     * `signaler()`. Un drapeau sans sa cause laisserait l'admin appliquer le même
-     * geste à des situations opposées.
+     * Membres à arbitrer, une ligne par compte, celui qui attend depuis le plus
+     * longtemps en tête : un flot de signaux neufs ne pousse pas les anciens
+     * hors de la page. `review_reason` rend une cause, celle que la case unique
+     * aurait portée ; `signaux` les rend toutes. Les valeurs sont listées dans le
+     * schéma de référence, leurs deux familles dans `famille()`. Un drapeau sans
+     * sa cause laisserait l'admin appliquer le même geste à des situations
+     * opposées.
      */
     public static function flaggedForReview(PDO $pdo, int $limit = 50): array
     {
         $stmt = $pdo->prepare(
-            'SELECT m.account_id, a.username, m.reputation, m.strikes, m.review_reason, m.convalescent
-               FROM member_moderation m JOIN accounts a ON a.id = m.account_id
-              WHERE m.needs_review = 1 ORDER BY m.updated_at DESC LIMIT ?'
+            'SELECT m.account_id, a.username, m.reputation, m.strikes, m.convalescent
+               FROM mod_signaux s
+               JOIN member_moderation m ON m.account_id = s.account_id
+               JOIN accounts a ON a.id = s.account_id
+              WHERE s.vu_le IS NULL
+           GROUP BY s.account_id ORDER BY MIN(s.ouvert_le), s.account_id LIMIT ?'
         );
         $stmt->bindValue(1, $limit, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll();
+
+        return array_map(static function (array $r) use ($pdo): array {
+            $signaux = self::signauxDe($pdo, (int) $r['account_id']);
+
+            return [...$r, 'review_reason' => self::projection($signaux), 'signaux' => $signaux];
+        }, $stmt->fetchAll());
+    }
+
+    /**
+     * Les signaux à voir, une ligne par signal, en pages par cause : la plus
+     * ancienne en tête de chaque page, au plus `$parCause` lignes par cause, et
+     * `total_cause` pour dire ce que la page tait. Un tiers qui provoque cent
+     * salves remplit la page des salves, et aucune autre cause ne sort de la vue.
+     * `signal` et `occurrences` sont ce qu'un geste rend en `$vu`.
+     *
+     * @return list<array{signal: int, account_id: int, username: string, cause: string, famille: string,
+     *                    ouvert_le: int, derniere_le: int, occurrences: int, reputation: ?int, total_cause: int}>
+     */
+    public static function signauxOuverts(PDO $pdo, int $parCause = 50, ?string $cause = null): array
+    {
+        $causes = $pdo->prepare(
+            'SELECT cause, COUNT(*) AS total FROM mod_signaux WHERE vu_le IS NULL' . ($cause === null ? '' : ' AND cause = ?')
+            . ' GROUP BY cause ORDER BY MIN(ouvert_le), cause'
+        );
+        $causes->execute($cause === null ? [] : [$cause]);
+        $page = $pdo->prepare(
+            'SELECT s.id, s.account_id, a.username, s.cause, s.ouvert_le, s.derniere_le, s.occurrences, m.reputation
+               FROM mod_signaux s
+               JOIN accounts a ON a.id = s.account_id
+          LEFT JOIN member_moderation m ON m.account_id = s.account_id
+              WHERE s.cause = ? AND s.vu_le IS NULL
+           ORDER BY s.ouvert_le, s.id LIMIT ?'
+        );
+
+        $lignes = [];
+        foreach ($causes->fetchAll() as $c) {
+            $page->bindValue(1, (string) $c['cause']);
+            $page->bindValue(2, $parCause, PDO::PARAM_INT);
+            $page->execute();
+            foreach ($page->fetchAll() as $s) {
+                $lignes[] = [
+                    'signal'      => (int) $s['id'],
+                    'account_id'  => (int) $s['account_id'],
+                    'username'    => (string) $s['username'],
+                    'cause'       => (string) $s['cause'],
+                    'famille'     => self::famille((string) $s['cause']),
+                    'ouvert_le'   => (int) $s['ouvert_le'],
+                    'derniere_le' => (int) $s['derniere_le'],
+                    'occurrences' => (int) $s['occurrences'],
+                    'reputation'  => $s['reputation'] !== null ? (int) $s['reputation'] : null,
+                    'total_cause' => (int) $c['total'],
+                ];
+            }
+        }
+
+        return $lignes;
     }
 }

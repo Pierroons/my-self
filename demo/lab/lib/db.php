@@ -584,6 +584,46 @@ final class Db
             }
         }
 
+        // SelfModerate — les signaux passent de la case à `mod_signaux`, UNE fois. Rejouée à
+        // chaque ouverture, la copie relirait le résumé que le moteur tient dans la case : un
+        // écrivain qui y écrirait encore à la main deviendrait un signal, sans un mot. Une case
+        // ouverte sans cause devient `signal_anterieur`, que seul un arbitre ferme ; sa date est
+        // celle de la dernière écriture de la ligne. Un signal d'état dont l'état a cessé n'a
+        // plus rien à montrer et ne passe pas — la case unique en laissait (un `reputation_zero`
+        // après la fin d'un ban automatique) —, et la case se recale sur ce qui a passé.
+        if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'")->fetchColumn() === false) {
+            self::$pdo->exec('BEGIN IMMEDIATE');
+            try {
+                if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'")->fetchColumn() === false) {
+                    self::$pdo->exec(
+                        "INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le)
+                         SELECT account_id, COALESCE(review_reason, 'signal_anterieur'), updated_at, updated_at
+                           FROM member_moderation
+                          WHERE needs_review = 1
+                            AND CASE review_reason
+                                  WHEN 'ban_auto'         THEN ban_origine = 'auto' AND banned_until > 0
+                                  WHEN 'journal_en_panne' THEN banned_until > 0
+                                  WHEN 'reputation_zero'  THEN convalescent = 1
+                                  ELSE 1
+                                END"
+                    );
+                    self::$pdo->exec(
+                        "UPDATE member_moderation
+                            SET needs_review = 0, review_reason = NULL
+                          WHERE needs_review = 1
+                            AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = member_moderation.account_id)"
+                    );
+                    self::$pdo->exec("UPDATE member_moderation SET review_reason = 'signal_anterieur' WHERE needs_review = 1 AND review_reason IS NULL");
+                    self::$pdo->prepare("INSERT INTO lab_migrations (nom, faite_le) VALUES ('signaux-en-table', ?)")
+                        ->execute([time()]);
+                }
+                self::$pdo->exec('COMMIT');
+            } catch (\Throwable $e) {
+                self::$pdo->exec('ROLLBACK');
+                throw $e;
+            }
+        }
+
         // SelfModerate — motif de vote, et ce que le vote a changé à la réputation.
         // Un vote d'avant cette colonne la garde à NULL : le moteur le lit sans effet connu.
         $cols = self::$pdo->query('PRAGMA table_info(mod_votes)')->fetchAll(PDO::FETCH_COLUMN, 1);

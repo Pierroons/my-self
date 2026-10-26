@@ -279,6 +279,16 @@ return [
     'Réputation remise au point de départ.' => 'Reputation reset to its starting point.',
     'Aucun ban en cours sur ce compte.' => 'No ban in progress on this account.',
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
+    'Ce ban n\'attend aucune revue : un signalement se classe.'
+        => 'This ban awaits no review: a flag is closed instead.',
+    'Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine attend le journal.'
+        => 'This flag cannot be closed: an automatic ban is maintained, and a penalty end waits for the journal.',
+    'Ce signalement a changé depuis ton affichage : recharge la console.'
+        => 'This flag has changed since it was displayed: reload the console.',
+    'Ce signalement n\'est plus ouvert : recharge la console.'
+        => 'This flag is no longer open: reload the console.',
+    'Plusieurs signalements sont ouverts sur ce compte (%s) : nomme celui que tu fermes.'
+        => 'Several flags are open on this account (%s): name the one you are closing.',
     'Droit de vote retiré (réputation trop basse).' => 'Voting rights withdrawn (reputation too low).',
 
     // ── Red team report encryption ───────────────────────────────────────

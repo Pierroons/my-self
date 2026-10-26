@@ -128,10 +128,8 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     ban_debut      INTEGER NOT NULL DEFAULT 0,  -- début de la peine en cours : le plancher en dépend
     ban_origine    TEXT,                        -- 'auto' | 'admin' — seul un ban 'auto' se lève sur meute détectée
     ban_motif      TEXT,                        -- le même au journal, au début et à la fin
-    needs_review   INTEGER NOT NULL DEFAULT 0,  -- signalé à un admin
-    review_reason  TEXT,                        -- état : 'reputation_zero' | 'ban_auto' ; comportement :
-                                                -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' ;
-                                                -- 'journal_en_panne' : une fin de peine attend sa trace
+    needs_review   INTEGER NOT NULL DEFAULT 0,  -- résumé de mod_signaux, tenu par le moteur pour qui lit la base :
+    review_reason  TEXT,                        -- un signal à voir existe ; le premier comportement, sinon le dernier état
     convalescent   INTEGER NOT NULL DEFAULT 0,  -- posé sous le seuil du vote, levé au point de départ
     last_regen_at  INTEGER NOT NULL DEFAULT 0,
     vote_muted_until INTEGER NOT NULL DEFAULT 0, -- suspension du droit de vote, à échéance : séparée de
@@ -186,6 +184,24 @@ CREATE INDEX IF NOT EXISTS idx_packflags_voter ON mod_pack_flags(voter_id, detec
 CREATE TABLE IF NOT EXISTS mod_sweeps (
     slot INTEGER PRIMARY KEY   -- intdiv(heure du vote, balayagePeriodeSecondes)
 );
+
+-- SelfModerate — les signaux OUVERTS à l'arbitre, une ligne par compte et par cause.
+-- Un signal clos n'y est plus : l'acte qui l'a clos, au journal, le nomme. Un tiers
+-- qui recommence sans fin fait monter `occurrences`, il n'ajoute pas de ligne.
+CREATE TABLE IF NOT EXISTS mod_signaux (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
+    account_id  INTEGER NOT NULL,
+    cause       TEXT NOT NULL,     -- état : 'reputation_zero' | 'ban_auto' | 'journal_en_panne' ; comportement :
+                                   -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' ;
+                                   -- 'signal_anterieur' : une case ouverte sans cause, reprise à la migration
+    ouvert_le   INTEGER NOT NULL,
+    derniere_le INTEGER NOT NULL,  -- dernière occurrence comptée
+    occurrences INTEGER NOT NULL DEFAULT 1,
+    vu_le       INTEGER,           -- un état vu par l'arbitre, qui court encore : hors de la file
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_signaux_compte ON mod_signaux(account_id, cause);
+CREATE INDEX IF NOT EXISTS idx_signaux_file ON mod_signaux(cause, ouvert_le);
 
 -- Rapports red team — soumis via formulaire public. Le corps du rapport
 -- (titre, description, repro, contact) est chiffré en PGP dans le navigateur :
