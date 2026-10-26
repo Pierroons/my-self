@@ -2798,7 +2798,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=42 [sanity_escrow]=53
+            [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=47 [sanity_escrow]=53
             [sanity_facade]=102 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -2984,6 +2984,9 @@ jobs:
             $D/tests/sanity_escrow.php 'the escrow no longer reads in full'
           canari $D/src/Storage/Conformance.php "            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment'," '' \
             $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
+          canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
+            "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
+            $D/tests/sanity_conformance.php 'a second claimSetting() replaced the value'
           canari $D/src/SelfDataGuard.php 'if ($this->storage->listArchives($userId) !== []) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a name that still holds archives was registered again'
           canari $D/src/SelfDataGuard.php '        $this->load($replacing->userId);' '' \

@@ -29,8 +29,10 @@ use Throwable;
  * breaks the vault in silence. These cases are what tells it apart.
  *
  * It writes to the database it is given, under userIds drawn at random
- * ("conformance-<hex>-…"), and erases each of them when its case ends. Run it
- * against a database you can write to, before the storage serves anyone.
+ * ("conformance-<hex>-…"), and erases each of them when its case ends; the
+ * three settings it claims stay, under names of the same form, which nothing
+ * reads. Run it against a database you can write to, before the storage
+ * serves anyone.
  *
  * The cases that need several processes run only when the connection comes
  * from a file — the child processes require it in turn. Without one, they are
@@ -114,6 +116,8 @@ final class Conformance
             'concurrent-unique-index'       => 'concurrentUniqueIndex',
             'concurrent-escrow-creations'   => 'concurrentEscrowCreations',
             'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment',
+            'setting-claimed-once'          => 'settingClaimedOnce',
+            'concurrent-setting-claims'     => 'concurrentSettingClaims',
         ];
     }
 
@@ -579,6 +583,49 @@ final class Conformance
             'several accounts hold the same blind-index value: the uniqueness is checked before the write, not enforced by it'
         );
         return null;
+    }
+
+    private function settingClaimedOnce(): ?string
+    {
+        $name  = $this->setting('once');
+        $other = $this->setting('other');
+        $this->assert($this->storage->claimSetting($name, 'first') === 'first', 'claimSetting() did not return the value it wrote');
+        $this->assert(
+            $this->storage->claimSetting($name, 'second') === 'first',
+            'a second claimSetting() replaced the value: the first one written must stay, and be returned'
+        );
+        $this->assert($this->storage->claimSetting($other, 'its own') === 'its own', 'a setting under another name was mixed up with the first');
+        $this->assert($this->storage->claimSetting($name, 'third') === 'first', 'claimSetting() lost the first value');
+        return null;
+    }
+
+    private function concurrentSettingClaims(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $name = $this->setting('race');
+        $outcomes = $this->race(<<<'PHP'
+            $ready();
+            echo $s->claimSetting($uid, "claimed-by-{$me}"), ' ';
+            PHP, $name);
+        $held = $this->storage->claimSetting($name, 'claimed-after');
+        $this->assert(
+            array_count_values($outcomes) === ["{$held} ok" => self::RACERS],
+            sprintf('%d processes claimed one setting at once: each must be given the value the database holds, %s — got %s',
+                self::RACERS, $held, implode(' | ', $outcomes))
+        );
+        return null;
+    }
+
+    /**
+     * A setting name for this run. The contract has no way to remove a
+     * setting: the few the cases write stay, under these names, and nothing
+     * reads them.
+     */
+    private function setting(string $label): string
+    {
+        return "{$this->prefix}-setting-{$label}";
     }
 
     private function concurrentEscrowCreations(): ?string

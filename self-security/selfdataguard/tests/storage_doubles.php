@@ -44,6 +44,7 @@ abstract class DelegatingStorage implements StorageInterface
     public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
     public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
+    public function claimSetting(string $n, string $v): string { return $this->inner->claimSetting($n, $v); }
 }
 
 /** $record with its revision, or its Argon2id profile, replaced. */
@@ -207,6 +208,48 @@ final class UpsertingEscrowStorage extends DelegatingStorage
              ON CONFLICT(user_id) DO UPDATE SET wrap_user = excluded.wrap_user, wrap_admin = excluded.wrap_admin,
                updated_at = excluded.updated_at'
         )->execute([$r->userId, $r->wrapUser->toBase64(), base64_encode($r->wrapAdmin), $r->createdAt->format('c'), $r->updatedAt->format('c')]);
+    }
+}
+
+/** claimSetting() as an upsert: the last value claimed replaces the first. */
+final class SettingOverwritingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function claimSetting(string $n, string $v): string
+    {
+        $this->pdo->prepare('INSERT INTO selfdataguard_settings (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value')
+            ->execute([$n, $v]);
+        return $v;
+    }
+}
+
+/**
+ * Reads the setting, then writes it in a second statement when it found none:
+ * right alone, wrong under concurrency, where every claimer finds it free.
+ */
+final class CheckThenClaimStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function claimSetting(string $n, string $v): string
+    {
+        $st = $this->pdo->prepare('SELECT value FROM selfdataguard_settings WHERE name = ?');
+        $st->execute([$n]);
+        $held = $st->fetchColumn();
+        $st->closeCursor();
+        if ($held !== false) {
+            return (string) $held;
+        }
+        usleep(200_000);
+        $this->pdo->prepare('INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (?, ?)')->execute([$n, $v]);
+        return $v;
     }
 }
 

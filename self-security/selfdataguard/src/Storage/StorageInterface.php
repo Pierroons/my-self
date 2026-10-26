@@ -192,6 +192,17 @@ interface StorageInterface
      */
     public function deleteArchive(VaultGeneration $generation, string $archiveId): bool;
 
+    // -- Settings of the database ---------------------------------------------
+
+    /**
+     * The value the database holds under $name, after writing $value there if
+     * it held none. The first value written stays: two callers that claim
+     * different values at once both get back the one stored first, which is
+     * enforced by the storage itself (a unique name). A setting is never
+     * replaced through this contract.
+     */
+    public function claimSetting(string $name, string $value): string;
+
     /**
      * Erase the account: the live vault, its fields and escrow, and every
      * archive of the userId, in one transaction. Works on a userId that has

@@ -416,6 +416,22 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
+    public function claimSetting(string $name, string $value): string
+    {
+        $insert = $this->pdo->prepare('INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)');
+        $read   = $this->pdo->prepare('SELECT value FROM selfdataguard_settings WHERE name = :n');
+        return $this->atomic(function () use ($insert, $read, $name, $value): string {
+            $insert->execute([':n' => $name, ':v' => $value]);
+            $read->execute([':n' => $name]);
+            $held = $read->fetchColumn();
+            $read->closeCursor();
+            if ($held === false) {
+                throw new RuntimeException("The setting '{$name}' was written, then is gone");
+            }
+            return (string) $held;
+        });
+    }
+
     public function listArchives(string $userId): array
     {
         $stmt = $this->pdo->prepare(
@@ -705,6 +721,12 @@ final class SqliteAdapter implements StorageInterface
         $this->addMissingColumn('selfdataguard_vaults', 'kdf_opslimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT);
         $this->addMissingColumn('selfdataguard_vaults', 'kdf_memlimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT);
         $this->addMissingColumn('selfdataguard_vaults', 'profile_seal', 'TEXT');
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS selfdataguard_settings (
+                name   TEXT PRIMARY KEY,
+                value  TEXT NOT NULL
+            )'
+        );
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_archives (
                 archive_id  TEXT PRIMARY KEY,

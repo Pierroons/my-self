@@ -113,8 +113,8 @@ section('Without a connection file, the racing cases are skipped — never repor
 
 $memory = outcomes(Conformance::run(static fn () => new SqliteAdapter('sqlite::memory:')));
 $racing = array_filter($memory, static fn (string $case): bool => str_starts_with($case, 'concurrent-'), ARRAY_FILTER_USE_KEY);
-count($racing) === 5 && array_unique(array_column($racing, 'outcome')) === ['skip']
-    ? ok('the five concurrent-* cases: skip')
+count($racing) === 6 && array_unique(array_column($racing, 'outcome')) === ['skip']
+    ? ok('the six concurrent-* cases: skip')
     : ko('a racing case ran, or passed, with no process to race', json_encode($racing));
 
 // -----------------------------------------------------------------------------
@@ -140,6 +140,8 @@ $broken = [
     SharedIndexDroppingStorage::class  => ['blind-index-unique'],
     GenerationCheckThenWriteStorage::class => ['concurrent-writes-and-re-enrolment'],
     UpsertingEscrowStorage::class      => ['escrow-round-trip', 'concurrent-escrow-creations'],
+    SettingOverwritingStorage::class   => ['setting-claimed-once'],
+    CheckThenClaimStorage::class       => ['concurrent-setting-claims'],
     CheckThenInsertIndexStorage::class => ['concurrent-unique-index'],
     SealDroppingStorage::class         => ['vault-round-trip', 'update-compare-and-swap'],
     ProfileFrozenStorage::class        => ['update-compare-and-swap'],
@@ -158,6 +160,7 @@ foreach ([
     CheckThenWriteStorage::class           => 'update-compare-and-swap',
     CheckThenInsertIndexStorage::class     => 'blind-index-unique',
     GenerationCheckThenWriteStorage::class => 'writes-check-their-generation',
+    CheckThenClaimStorage::class           => 'setting-claimed-once',
 ] as $class => $sequential) {
     $results = outcomes(Conformance::run(...connection($work, $class)));
     $results[$sequential]['outcome'] === 'pass'
