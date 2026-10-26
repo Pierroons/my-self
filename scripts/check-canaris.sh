@@ -192,11 +192,18 @@ verts, rouges, absents = 0, [], []
 with tempfile.TemporaryDirectory(prefix='check-canaris-') as tmp:
     for n, (nom, corps) in enumerate(canaris, 1):
         creux = min((len(l) - len(l.lstrip()) for l in corps if l.strip()), default=0)
+        # Un `/tmp` à lui : les `run:` sauvegardent dans des chemins fixes de
+        # `/tmp`, que deux rejeux lancés en même temps depuis deux arbres
+        # s'échangeraient — chacun restaurerait le fichier de l'autre. En CI,
+        # chaque job a déjà le sien.
+        prive = os.path.join(tmp, f'tmp-{n:02d}')
+        os.mkdir(prive)
         script = os.path.join(tmp, f'canari-{n:02d}.sh')
         with open(script, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(l[creux:] if len(l) >= creux else l for l in corps))
+            f.write('\n'.join(l[creux:] if len(l) >= creux else l for l in corps).replace('/tmp/', prive + '/'))
 
-        r = subprocess.run(['bash', '-e', script], capture_output=True, text=True, timeout=900)
+        r = subprocess.run(['bash', '-e', script], capture_output=True, text=True, timeout=900,
+                           env=dict(os.environ, TMPDIR=prive))
         sortie = (r.stdout + r.stderr).split('\n')
 
         if r.returncode == 0:
