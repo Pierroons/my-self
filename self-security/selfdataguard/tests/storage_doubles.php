@@ -45,6 +45,8 @@ abstract class DelegatingStorage implements StorageInterface
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
     public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
     public function claimSetting(string $n, string $v): string { return $this->inner->claimSetting($n, $v); }
+    public function loadSetting(string $n): ?string { return $this->inner->loadSetting($n); }
+    public function hasVaults(): bool { return $this->inner->hasVaults(); }
 }
 
 /** $record with its revision, or its Argon2id profile, replaced. */
@@ -156,8 +158,10 @@ final class CheckThenWriteStorage extends DelegatingStorage
  * transaction. Alone, it refuses a stale generation; racing a re-enrolment,
  * the field lands in the vault that replaced the one it was meant for.
  */
-final class GenerationCheckThenWriteStorage extends DelegatingStorage
+class GenerationCheckThenWriteStorage extends DelegatingStorage
 {
+    protected const PAUSE_US = 200_000;
+
     public function __construct(StorageInterface $inner, private readonly PDO $pdo)
     {
         parent::__construct($inner);
@@ -172,7 +176,7 @@ final class GenerationCheckThenWriteStorage extends DelegatingStorage
         if (!hash_equals($live->userSalt, $g->userSalt)) {
             throw new StaleVaultException('stale');
         }
-        usleep(200_000);
+        usleep(static::PAUSE_US);
         $st = $this->pdo->prepare(
             'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, shared_index, updated_at)
              VALUES (?, ?, ?, ?, ?, ?)
@@ -183,6 +187,12 @@ final class GenerationCheckThenWriteStorage extends DelegatingStorage
             $st->execute([$g->userId, $name, $d['ciphertext'], $d['blindIndex'] ?? null, $d['sharedIndex'] ?? null, date('c')]);
         }
     }
+}
+
+/** The same, without a pause: the window an integrator's storage really leaves. */
+final class GenerationCheckThenWriteNoPauseStorage extends GenerationCheckThenWriteStorage
+{
+    protected const PAUSE_US = 0;
 }
 
 /** createEscrow() as the upsert it was before 0.7.0: a second creation replaces the escrow, and its key. */

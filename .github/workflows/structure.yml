@@ -2798,7 +2798,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=47 [sanity_escrow]=53
+            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=49 [sanity_escrow]=53
             [sanity_facade]=111 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=25 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -2987,6 +2987,9 @@ jobs:
           canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
             "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
             $D/tests/sanity_conformance.php 'a second claimSetting() replaced the value'
+          canari $D/src/Storage/SqliteAdapter.php '            $package = $this->package($row, $userId);' \
+            "            \$package = json_decode((string) \$row['package'], true, flags: JSON_THROW_ON_ERROR);" \
+            $D/tests/sanity_archive.php 'listArchives() threw JsonException, which no caller expects'
           canari $D/src/SelfDataGuard.php 'if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a façade opened a database under another blind-index key'
           canari $D/src/SelfDataGuard.php 'if ($recorded !== $declared) {' 'if (false) {' \

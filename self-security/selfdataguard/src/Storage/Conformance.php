@@ -30,8 +30,8 @@ use Throwable;
  *
  * It writes to the database it is given, under userIds drawn at random
  * ("conformance-<hex>-…"), and erases each of them when its case ends; the
- * three settings it claims stay, under names of the same form, which nothing
- * reads. Run it against a database you can write to, before the storage
+ * settings it claims stay, under names of the same form, which nothing reads.
+ * Each concurrent case is played ten times. Run it against a database you can write to, before the storage
  * serves anyone.
  *
  * The cases that need several processes run only when the connection comes
@@ -42,6 +42,13 @@ final class Conformance
 {
     /** Processes that race in the concurrent cases. */
     private const RACERS = 4;
+
+    /**
+     * Times each concurrent case is played. One race catches a storage that
+     * checks, then writes without a pause, about nine times in ten: a pass is a
+     * presumption, which ten rounds make a strong one.
+     */
+    private const ROUNDS = 10;
 
     /** Argon2id profile written by the cases: not the constants, so a storage that substitutes them shows. */
     private const OPSLIMIT = 7;
@@ -81,7 +88,16 @@ final class Conformance
         $results = [];
         foreach (self::cases() as $case => $method) {
             try {
-                $detail  = $suite->{$method}();
+                $rounds = str_starts_with($case, 'concurrent-') ? self::ROUNDS : 1;
+                for ($round = 0; $round < $rounds; $round++) {
+                    if ($round > 0) {
+                        $suite->eraseCreated();
+                    }
+                    $detail = $suite->{$method}();
+                    if ($detail !== null) {
+                        break;
+                    }
+                }
                 $outcome = $detail === null ? 'pass' : 'skip';
             } catch (Throwable $e) {
                 $outcome = 'fail';
@@ -117,6 +133,7 @@ final class Conformance
             'concurrent-escrow-creations'   => 'concurrentEscrowCreations',
             'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment',
             'setting-claimed-once'          => 'settingClaimedOnce',
+            'has-vaults'                    => 'hasVaultsCase',
             'concurrent-setting-claims'     => 'concurrentSettingClaims',
         ];
     }
@@ -596,6 +613,15 @@ final class Conformance
         );
         $this->assert($this->storage->claimSetting($other, 'its own') === 'its own', 'a setting under another name was mixed up with the first');
         $this->assert($this->storage->claimSetting($name, 'third') === 'first', 'claimSetting() lost the first value');
+        $this->assert($this->storage->loadSetting($name) === 'first', 'loadSetting() did not return the value claimed');
+        $this->assert($this->storage->loadSetting($this->setting('never')) === null, 'loadSetting() returned a value for a name never claimed');
+        return null;
+    }
+
+    private function hasVaultsCase(): ?string
+    {
+        $this->storage->saveVault($this->newVault('has'));
+        $this->assert($this->storage->hasVaults(), 'hasVaults() is false on a database holding a vault');
         return null;
     }
 
@@ -604,7 +630,7 @@ final class Conformance
         if ($this->connectFile === null) {
             return 'needs a connection file: the racers are separate processes';
         }
-        $name = $this->setting('race');
+        $name = $this->setting('race-' . bin2hex(random_bytes(3)));
         $outcomes = $this->race(<<<'PHP'
             $ready();
             echo $s->claimSetting($uid, "claimed-by-{$me}"), ' ';

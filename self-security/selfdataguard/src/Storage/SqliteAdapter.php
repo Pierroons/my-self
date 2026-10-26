@@ -21,6 +21,7 @@ use Pierroons\SelfDataGuard\Vault\VaultExistsException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use RuntimeException;
 use Throwable;
 
@@ -407,6 +408,8 @@ final class SqliteAdapter implements StorageInterface
                 ':id'    => $archiveId,
                 ':uid'   => $new->userId,
                 ':at'    => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
+                // Read by 0.6.2, so that a rollback still lists the archive; 0.7.0
+                // reads the locks from the package.
                 ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
                 ':pkg'   => $this->archivePackage($live),
             ]);
@@ -418,6 +421,10 @@ final class SqliteAdapter implements StorageInterface
 
     public function claimSetting(string $name, string $value): string
     {
+        $held = $this->loadSetting($name);
+        if ($held !== null) {
+            return $held;
+        }
         $insert = $this->pdo->prepare('INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)');
         $read   = $this->pdo->prepare('SELECT value FROM selfdataguard_settings WHERE name = :n');
         return $this->atomic(function () use ($insert, $read, $name, $value): string {
@@ -432,6 +439,22 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
+    public function loadSetting(string $name): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT value FROM selfdataguard_settings WHERE name = :n');
+        $stmt->execute([':n' => $name]);
+        $held = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        return $held === false ? null : (string) $held;
+    }
+
+    public function hasVaults(): bool
+    {
+        return (bool) $this->pdo->query(
+            'SELECT EXISTS (SELECT 1 FROM selfdataguard_vaults) OR EXISTS (SELECT 1 FROM selfdataguard_archives)'
+        )->fetchColumn();
+    }
+
     public function listArchives(string $userId): array
     {
         // The locks are read from the package, the bytes an opening uses and the
@@ -444,7 +467,7 @@ final class SqliteAdapter implements StorageInterface
         $stmt->execute([':uid' => $userId]);
         $out = [];
         while ($row = $stmt->fetch()) {
-            $package = json_decode((string) $row['package'], true, flags: JSON_THROW_ON_ERROR);
+            $package = $this->package($row, $userId);
             $out[] = [
                 'id'         => (string) $row['archive_id'],
                 'archivedAt' => new DateTimeImmutable((string) $row['archived_at']),
@@ -465,7 +488,7 @@ final class SqliteAdapter implements StorageInterface
         if ($row === false) {
             return null;
         }
-        $package = json_decode((string) $row['package'], true, flags: JSON_THROW_ON_ERROR);
+        $package = $this->package($row, $userId);
         $format = $package['format'] ?? null;
         if ($format !== self::ARCHIVE_FORMAT) {
             throw new RuntimeException(is_int($format) && $format > self::ARCHIVE_FORMAT
@@ -600,6 +623,28 @@ final class SqliteAdapter implements StorageInterface
      * @param array<string, mixed> $vault
      * @return list<Lock>
      */
+    /**
+     * The archive package of $row, refused as tampering when it cannot be read
+     * as one — never a JsonException or a TypeError for the caller to meet.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function package(array $row, string $userId): array
+    {
+        try {
+            $package = json_decode((string) $row['package'], true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            $package = null;
+        }
+        if (!is_array($package) || !is_array($package['vault'] ?? null)) {
+            throw new VaultTamperedException(
+                "The archive '{$row['archive_id']}' of '{$userId}' cannot be read: its package was changed in the database"
+            );
+        }
+        return $package;
+    }
+
     private function locksOf(array $vault): array
     {
         return array_values(array_filter([

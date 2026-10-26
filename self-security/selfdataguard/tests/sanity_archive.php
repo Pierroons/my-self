@@ -23,6 +23,7 @@ use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 
 $failures = 0;
 $passes = 0;
@@ -269,6 +270,24 @@ try {
     str_contains($e->getMessage(), 'newer SelfDataGuard')
         ? ok('format 99 → "written by a newer SelfDataGuard"')
         : ko('wrong refusal', $e->getMessage());
+}
+
+section('A package that no longer reads is tampering, named — not a JsonException or a TypeError');
+
+foreach (['pas du json' => 'a package that is not JSON', '{"vault":null}' => 'a package without its vault row'] as $package => $what) {
+    $pdo->prepare('UPDATE selfdataguard_archives SET package = :p WHERE archive_id = :id')->execute([':p' => $package, ':id' => $id3]);
+    foreach (['listArchives' => static fn () => $storage->listArchives('user-boom'), 'loadArchive' => static fn () => $storage->loadArchive('user-boom', $id3)] as $how => $call) {
+        try {
+            $call();
+            ko("{$what}: {$how}() read it");
+        } catch (VaultTamperedException $e) {
+            str_contains($e->getMessage(), $id3)
+                ? ok("{$what}: {$how}() refuses it as tampering, naming the archive")
+                : ko("{$what}: {$how}() refused without naming the archive", $e->getMessage());
+        } catch (Throwable $e) {
+            ko("{$what}: {$how}() threw " . get_class($e) . ', which no caller expects', $e->getMessage());
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------

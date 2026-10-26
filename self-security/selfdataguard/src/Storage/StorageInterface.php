@@ -198,10 +198,17 @@ interface StorageInterface
      * The value the database holds under $name, after writing $value there if
      * it held none. The first value written stays: two callers that claim
      * different values at once both get back the one stored first, which is
-     * enforced by the storage itself (a unique name). A setting is never
-     * replaced through this contract.
+     * enforced by the storage itself (a unique name). A database that already
+     * holds the value is read, not written to — a read-only copy answers. A
+     * setting is never replaced through this contract.
      */
     public function claimSetting(string $name, string $value): string;
+
+    /** The value the database holds under $name, or null. Never writes. */
+    public function loadSetting(string $name): ?string;
+
+    /** Whether the database holds any vault, live or archived. */
+    public function hasVaults(): bool;
 
     /**
      * Erase the account: the live vault, its fields and escrow, and every

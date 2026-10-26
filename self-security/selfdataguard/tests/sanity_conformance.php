@@ -139,6 +139,7 @@ $broken = [
     UniqueIndexDroppedStorage::class   => ['blind-index-unique'],
     SharedIndexDroppingStorage::class  => ['blind-index-unique'],
     GenerationCheckThenWriteStorage::class => ['concurrent-writes-and-re-enrolment'],
+    GenerationCheckThenWriteNoPauseStorage::class => ['concurrent-writes-and-re-enrolment'],
     UpsertingEscrowStorage::class      => ['escrow-round-trip', 'concurrent-escrow-creations'],
     SettingOverwritingStorage::class   => ['setting-claimed-once'],
     CheckThenClaimStorage::class       => ['concurrent-setting-claims'],
