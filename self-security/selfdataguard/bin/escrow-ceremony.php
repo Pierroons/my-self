@@ -15,7 +15,9 @@ declare(strict_types=1);
  * L'arbitre et le témoin sont à l'exploitant : SelfDataGuard n'en livre aucun
  * qui réponde « oui » par défaut. Chacun vit dans un fichier PHP qui charge son
  * autoloader et RENVOIE l'objet (un EscrowArbiter, un HeadWitness ; sans témoin,
- * `return new NoHeadWitness();`, choisi par son nom).
+ * `return new NoHeadWitness();`, choisi par son nom). Le témoin rend aussi la
+ * dernière tête qu'il a prise : un journal coupé ou réécrit depuis arrête la
+ * cérémonie avant son intention.
  *
  * Usage :
  *   php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]

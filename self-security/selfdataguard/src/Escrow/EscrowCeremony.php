@@ -20,9 +20,11 @@ use Throwable;
  * side. The admin key is unsealed here and nowhere else, and only after three
  * things, in this order:
  *
- *   1. the arbiter's verdict on the case, whatever it is, and the intention —
- *      who, which account, which case, which arbiter, which witness — written
- *      to the audit log and forced to disk;
+ *   1. the arbiter's verdict on the case, whatever it is — an arbiter that
+ *      throws answers Unavailable —, and the intention — who, which account,
+ *      which case, which arbiter, which witness — written to the audit log and
+ *      forced to disk, once the log is found to still hold the last head the
+ *      witness took: a log cut or rewritten since stops the ceremony here;
  *   2. the head of the log taken out of the machine by the witness, which
  *      stops the ceremony when it fails;
  *   3. a verdict of Open.
@@ -131,9 +133,33 @@ final class EscrowCeremony
     private function perform(string $act, string $userId, string $caseRef, ?string $archiveId, array $detail, callable $work): mixed
     {
         $context = ['target' => $userId, 'case' => $caseRef, 'archive' => $archiveId, 'operator' => $this->operator] + $detail;
-        $verdict = $this->arbiter->verdict($userId, $caseRef, $archiveId);
+        $failure = [];
+        try {
+            $verdict = $this->arbiter->verdict($userId, $caseRef, $archiveId);
+        } catch (Throwable $e) {
+            // A case table that cannot be read is the answer Unavailable names.
+            $verdict = Verdict::Unavailable;
+            $failure = ['arbiterFailed' => get_class($e)];
+        }
+        try {
+            $lastHead = $this->witness->lastHead();
+        } catch (Throwable $e) {
+            $this->log->append(['action' => "{$act}-denied", 'reason' => 'witness-failed'] + $context);
+            throw new RuntimeException("The head witness did not give back the last head it took: nothing is unsealed", previous: $e);
+        }
+        if ($lastHead !== null) {
+            $held = $this->log->verify($lastHead);
+            if (in_array($held['reason'], ['truncated', 'rewritten'], true)) {
+                $this->log->append(['action' => "{$act}-denied", 'reason' => 'log-behind-witness',
+                    'found' => $held['reason'], 'witnessHead' => $lastHead] + $context);
+                throw new RuntimeException(
+                    "The audit log no longer holds the head the witness took last ({$lastHead}): it was {$held['reason']}"
+                    . ' — nothing is unsealed, the log is an incident to examine'
+                );
+            }
+        }
         $intent  = $this->log->append(['action' => "{$act}-intent", 'arbiter' => get_class($this->arbiter),
-            'verdict' => $verdict->value, 'witness' => get_class($this->witness)] + $context);
+            'verdict' => $verdict->value, 'witness' => get_class($this->witness)] + $failure + $context, $lastHead);
         try {
             $this->witness->witness((int) $intent['seq'], (string) $intent['hmac']);
         } catch (Throwable $e) {

@@ -205,6 +205,14 @@ $r = $alog->verify($anchor);
 !$r['ok'] && $r['reason'] === 'truncated'
     ? ok('with the anchor, the cut tail is refused as truncated')
     : ko('a truncated log passed its anchor', json_encode($r));
+try {
+    $alog->append(['action' => 'after the cut'], $anchor);
+    ko('an entry was appended to a log that no longer holds the anchor it was given');
+} catch (RuntimeException $e) {
+    count(file($anchored, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)) === 2 && str_contains($e->getMessage(), 'truncated')
+        ? ok('append() given the anchor writes nothing to a log cut before it, and says how it lost it')
+        : ko('append() refused for another reason, or wrote', $e->getMessage());
+}
 
 unlink($anchored);
 $r = $alog->verify($anchor);
@@ -219,7 +227,7 @@ try {
     ok('a malformed anchor is refused');
 }
 
-section('A tail that is not signed is quarantined; a break in the middle is not');
+section('A tail a crash leaves is quarantined; an entry that does not hold, or a break in the middle, is not');
 
 $qpath = tempnam(sys_get_temp_dir(), 'dg_audit_q_');
 register_shutdown_function(static fn () => @unlink($qpath));
@@ -227,33 +235,70 @@ $qlog = new AuditLog($qpath, $secret);
 $qlog->append(['action' => 'a']);
 $qlog->append(['action' => 'b']);
 $lines = static fn (): int => count(file($qpath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES));
+$signedTwo = file_get_contents($qpath);
 
 file_put_contents($qpath, json_encode(['seq' => 2, 'ts' => 'x', 'event' => ['action' => 'forged'], 'prev' => 'p', 'hmac' => str_repeat('0', 64)]) . "\n", FILE_APPEND);
 $r = $qlog->verifyUnanchored();
+!$r['ok'] && $r['reason'] === 'chain' && $r['brokenAt'] === 2
+    ? ok('an entry whose signature does not hold, at the end: a break at line 2, not a tail')
+    : ko('a forged entry at the end was reported as something else', json_encode($r));
+try {
+    $qlog->append(['action' => 'over it']);
+    ko('an entry was appended over a forged one: the forgery would have been set aside in silence');
+} catch (RuntimeException) {
+    $lines() === 3
+        ? ok('nothing is appended over it: no crash writes an entry whose signature does not hold')
+        : ko('the refused append wrote to the log');
+}
+
+file_put_contents($qpath, $signedTwo . '{"seq":2,"ts":"cut sho');
+$r = $qlog->verifyUnanchored();
 !$r['ok'] && $r['reason'] === 'unsigned-tail' && $r['brokenAt'] === 2 && ($r['head']['seq'] ?? null) === 1
-    ? ok('a line not signed at the end: unsigned-tail, from line 2, the head still the last signed entry')
-    : ko('an unsigned tail was not reported as such', json_encode($r));
+    ? ok('a write cut short by a crash, without its end of line: unsigned-tail, from line 2, the head still the last signed entry')
+    : ko('a cut tail was not reported as such', json_encode($r));
 
 $act = $qlog->append(['action' => 'c']);
 $r = $qlog->verifyUnanchored();
 $act['seq'] === 3 && $r['ok'] && $r['quarantined'] === 1 && $r['count'] === 4 && $lines() === 5
-    ? ok('the next append quarantines it in a signed entry, then writes its act: the log verifies, and says one line was set aside')
-    : ko('the unsigned tail was not quarantined', json_encode($r));
+    ? ok('the next append ends the cut line, quarantines it in a signed entry, then writes its act: the log verifies, and says one line was set aside')
+    : ko('the cut tail was not quarantined on its own line', json_encode($r));
+try {
+    $qlog->append(['action' => 'c2']);
+    $qlog->verifyUnanchored()['ok']
+        ? ok('and the append after it goes on: the log is not broken for good')
+        : ko('the log broke after the quarantine of a cut line');
+} catch (RuntimeException $e) {
+    ko('the log broke after the quarantine of a cut line', $e->getMessage());
+}
 
-file_put_contents($qpath, '{"seq":5,"ts":"cut sho' . "\n", FILE_APPEND);
+file_put_contents($qpath, '{"seq":5,"ts":"cut' . "\n" . '{"seq":5,"ts":"cut again', FILE_APPEND);
 $qlog->append(['action' => 'd']);
 $r = $qlog->verifyUnanchored();
-$r['ok'] && $r['quarantined'] === 2
-    ? ok('a line cut short — not even JSON — no longer blocks every append: it is quarantined the same way')
-    : ko('a non-JSON tail blocked the log', json_encode($r));
+$r['ok'] && $r['quarantined'] === 3
+    ? ok('two crashes in a row — a cut line, then a cut write after it — are quarantined together')
+    : ko('two cut lines blocked the log', json_encode($r));
+
+try {
+    count($qlog->readAll()) === $r['count']
+        ? ok('readAll() lists the chain: the lines a quarantine sets aside are not entries, and do not stop it')
+        : ko('readAll() does not list the chain verify() walks');
+} catch (RuntimeException $e) {
+    ko('readAll() does not list the chain verify() walks', $e->getMessage());
+}
 
 $all = file($qpath, FILE_IGNORE_NEW_LINES);
-$all[2] = str_replace('forged', 'reforged', $all[2]);
+$all[2] = str_replace('cut sho', 'cut shx', $all[2]);
 file_put_contents($qpath, implode("\n", $all) . "\n");
 $r = $qlog->verifyUnanchored();
 !$r['ok'] && $r['reason'] === 'chain'
     ? ok('a quarantined line changed afterwards breaks the chain: a second incident, not the first one again')
     : ko('a change to quarantined bytes went unnoticed', json_encode($r));
+try {
+    $qlog->readAll();
+    ko('readAll() listed a log broken mid-chain');
+} catch (RuntimeException) {
+    ok('readAll() refuses a log broken mid-chain, as append() does');
+}
 
 $mpath = tempnam(sys_get_temp_dir(), 'dg_audit_m_');
 register_shutdown_function(static fn () => @unlink($mpath));

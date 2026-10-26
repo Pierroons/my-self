@@ -25,6 +25,9 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\Verdict;
 use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
+use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
+use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
+use Pierroons\SelfDataGuard\Escrow\NoHeadWitness;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
@@ -213,6 +216,13 @@ final class BenchWitness implements Pierroons\SelfDataGuard\Escrow\HeadWitness
         }
         $this->got = ['seq' => $seq, 'hmac' => $hmac];
     }
+    public function lastHead(): ?string
+    {
+        if (!$this->reachable) {
+            throw new RuntimeException('witness unreachable');
+        }
+        return $this->got === null ? null : "{$this->got['seq']}:{$this->got['hmac']}";
+    }
 }
 
 $cLog = sys_get_temp_dir() . '/sdg-ceremony-bench-' . bin2hex(random_bytes(4)) . '.log';
@@ -252,6 +262,75 @@ foreach ([Verdict::Closed, Verdict::Expired, Verdict::Unknown, Verdict::Unavaila
             : ko("verdict {$verdict->value}: refused, but not logged as given", json_encode($last));
     }
 }
+
+$failing = new class implements EscrowArbiter {
+    public function verdict(string $userId, string $caseRef, ?string $archiveId): Verdict
+    {
+        throw new RuntimeException('case table unreachable');
+    }
+};
+try {
+    (new EscrowCeremony($storage, new AuditLog($cLog, str_repeat('s', 32)), $failing, new NoHeadWitness(), 'bench'))
+        ->readEscrow('alice', 'case-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('an arbiter that throws let the escrow be unsealed');
+} catch (EscrowRefusedException $e) {
+    $intents = array_values(array_filter($entries(), static fn (array $x): bool => ($x['event']['case'] ?? null) === 'case-4'));
+    $e->verdict === Verdict::Unavailable && count($intents) === 2
+        && ($intents[0]['event']['arbiterFailed'] ?? null) === 'RuntimeException'
+        && ($intents[1]['event']['verdict'] ?? null) === 'unavailable'
+        ? ok('an arbiter that throws answers Unavailable: the intention is in the log, naming the failure, and so is the refusal')
+        : ko('an arbiter that throws left no intention, or not as Unavailable', json_encode($intents));
+} catch (Throwable $e) {
+    ko('an arbiter that throws escaped the ceremony: nothing of the attempt is in the log', $e->getMessage());
+}
+
+section('The log is checked against the witness before the intention is written');
+
+$aLog = sys_get_temp_dir() . '/sdg-anchor-bench-' . bin2hex(random_bytes(4)) . '.log';
+register_shutdown_function(static fn () => @unlink($aLog));
+$holder = new BenchWitness();
+$ceremonyOn = static fn () => benchCeremony($storage, Verdict::Open, $holder, $aLog)
+    ->readEscrow('alice', 'case-a', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+$ceremonyOn();
+$ceremonyOn();
+$kept = file($aLog);
+$heldHead = $holder->got;
+count($kept) === 4 && ($heldHead['seq'] ?? null) === 2
+    ? ok('precondition: two ceremonies, four entries, the witness holds the head of the second intention')
+    : ko('precondition: the log is not the one the checks below expect', json_encode([count($kept), $heldHead]));
+
+$refusedOver = static function (string $what, array $lines, string $expected) use ($aLog, $ceremonyOn, $holder, $heldHead): void {
+    file_put_contents($aLog, implode('', $lines));
+    try {
+        $ceremonyOn();
+        ko("{$what}: the ceremony went on");
+    } catch (RuntimeException $e) {
+        str_contains($e->getMessage(), $expected) && $holder->got === $heldHead
+            ? ok("{$what}: refused before the intention, and the witness is never handed another head")
+            : ko("{$what}: refused for another reason, or the witness was handed another head", $e->getMessage());
+    }
+};
+$refusedOver('a log cut after the first ceremony, as whoever writes the file can', array_slice($kept, 0, 2), 'it was truncated');
+$afterCut = file($aLog, FILE_IGNORE_NEW_LINES);
+$last = json_decode((string) end($afterCut), true);
+($last['event']['reason'] ?? null) === 'log-behind-witness' && ($last['event']['found'] ?? null) === 'truncated'
+    ? ok('the refusal is in the log, naming the head the witness holds and what became of it')
+    : ko('the refusal over a cut log is not in the log', json_encode($last));
+$refusedOver(
+    'the entries of the second ceremony turned into lines a crash would leave',
+    [$kept[0], $kept[1], substr($kept[2], 0, 40) . "\n", substr($kept[3], 0, 40) . "\n"],
+    'it was truncated'
+);
+$refusedOver(
+    'an entry of the second ceremony altered without the secret',
+    [$kept[0], $kept[1], $kept[2], str_replace('escrow-unlock', 'escrow-unlocc', $kept[3])],
+    'broken mid-chain'
+);
+file_put_contents($aLog, implode('', $kept));
+$ceremonyOn();
+($holder->got['seq'] ?? null) === 4
+    ? ok('the log as the witness left it: the next ceremony goes on, and the witness takes a higher head')
+    : ko('a log that holds the witness head was refused', json_encode($holder->got));
 
 section('Cold seizure: wrong admin key cannot open the sealed escrow');
 

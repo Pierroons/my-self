@@ -2798,7 +2798,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=26 [sanity_audit]=29 [sanity_ceremony]=28 [sanity_conformance]=42 [sanity_escrow]=46
+            [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=42 [sanity_escrow]=53
             [sanity_facade]=96 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -2958,8 +2958,24 @@ jobs:
             $D/tests/sanity_facade.php 'a planted "escrow" row was decrypted'
           canari $D/src/Escrow/AdminKey.php 'if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {' 'if (false) {' \
             $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
-          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null) {' 'if (false) {' \
+          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null && ($found = self::anchorFound($entries, $anchorAt)) !== null) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'a truncated log passed its anchor'
+          canari $D/src/Escrow/AuditLog.php "if (\$anchorAt !== null && (\$found = self::anchorFound(\$state['chain'], \$anchorAt)) !== null) {" 'if (false) {' \
+            $D/tests/sanity_audit.php 'an entry was appended to a log that no longer holds the anchor it was given'
+          canari $D/src/Escrow/AuditLog.php "\$out = \$cutOff ? \"\\n\" : '';" "\$out = '';" \
+            $D/tests/sanity_audit.php 'the cut tail was not quarantined on its own line'
+          canari $D/src/Escrow/AuditLog.php '            if (!$shaped) {' \
+            '            if (!$shaped || !hash_equals($this->hmac(["seq" => $rec["seq"], "ts" => $rec["ts"], "event" => $rec["event"], "prev" => $rec["prev"]]), $rec["hmac"])) {' \
+            $D/tests/sanity_audit.php 'an entry was appended over a forged one'
+          canari $D/src/Escrow/EscrowCeremony.php 'if ($lastHead !== null) {' 'if (false) {' \
+            $D/tests/sanity_escrow.php 'the refusal over a cut log is not in the log'
+          canari $D/src/Escrow/EscrowCeremony.php '            // A case table that cannot be read is the answer Unavailable names.' '            throw $e;' \
+            $D/tests/sanity_escrow.php 'an arbiter that throws escaped the ceremony'
+          canari $D/src/SelfDataGuard.php "\$created['unlocked']->lock();" \
+            "\$this->storage->replaceEscrow(\$session->generation(), \$created['record']); \$unlocked = \$created['unlocked'];" \
+            $D/tests/sanity_escrow.php 'the escrow no longer reads in full'
+          canari $D/src/Storage/Conformance.php "            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment'," '' \
+            $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
           canari $D/src/Escrow/AuditLog.php 'if (!@fsync($handle)) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'an append was reported written on a stream that cannot be synced'
           canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \
