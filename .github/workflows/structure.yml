@@ -2799,7 +2799,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=49 [sanity_escrow]=57
-            [sanity_facade]=112 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=31 [sanity_primitives]=56
+            [sanity_facade]=116 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=31 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -2999,6 +2999,11 @@ jobs:
             $D/tests/sanity_facade.php 'a façade opened a database under another blind-index key'
           canari $D/src/SelfDataGuard.php 'if ($recorded !== $declared) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a façade that shares a field opened a database where that field names one account'
+          canari $D/src/Storage/SqliteAdapter.php '        $held = $this->loadSetting($name);' '        $held = null;' \
+            $D/tests/sanity_facade.php 'claimSetting() wrote to a database that already held the value'
+          canari $D/src/SelfDataGuard.php '$keyHeld = $storage->loadSetting(self::SETTING_BLIND_KEY);' \
+            '$keyHeld = $storage->claimSetting(self::SETTING_BLIND_KEY, $check);' \
+            $D/tests/sanity_facade.php 'a façade claimed a setting the database already holds'
           canari $D/src/SelfDataGuard.php '            if ($storage->hasVaults()) {' '            if (false) {' \
             $D/tests/sanity_migration.php 'a façade recorded the first key it brought to a database written before 0.7.0'
           canari $D/src/SelfDataGuard.php 'if (!in_array($proofUserId, $storage->findUserIdsByIndex($proofField, $index), true)) {' 'if (false) {' \

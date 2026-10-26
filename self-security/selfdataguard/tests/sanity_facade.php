@@ -875,6 +875,59 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('A database that holds its settings is read, not written, when a façade opens it');
+
+$roPath = sys_get_temp_dir() . '/sdg-readonly-' . bin2hex(random_bytes(4)) . '.sqlite';
+copy($dbPath, $roPath);
+chmod($roPath, 0444);
+register_shutdown_function(static function () use ($roPath): void {
+    @chmod($roPath, 0644);
+    @unlink($roPath);
+});
+$roStore = new SqliteAdapter("sqlite:{$roPath}");
+try {
+    (new SelfDataGuard($roStore, $blindKey))->userExists('user-owner')
+        ? ok('a read-only copy of a database that recorded its key opens, and reads')
+        : ko('the read-only copy opened and lost an account');
+} catch (Throwable $e) {
+    ko('a read-only copy of a database that recorded its key does not open', $e->getMessage());
+}
+try {
+    $roStore->claimSetting(SelfDataGuard::SETTING_BLIND_KEY, 'another value') === BlindIndex::keyCheck($blindKey)
+        ? ok('claimSetting() on a database that holds the value reads it, and writes nothing')
+        : ko('claimSetting() returned another value than the one held');
+} catch (Throwable $e) {
+    ko('claimSetting() wrote to a database that already held the value', $e->getMessage());
+}
+$noClaim = new class ($storage) extends DelegatingStorage {
+    public function claimSetting(string $n, string $v): string
+    {
+        throw new RuntimeException("claimed {$n}");
+    }
+};
+try {
+    new SelfDataGuard($noClaim, $blindKey);
+    ok('a façade on a database that holds its settings claims nothing: it reads them');
+} catch (RuntimeException $e) {
+    ko('a façade claimed a setting the database already holds', $e->getMessage());
+}
+$writer = new PDO("sqlite:{$dbPath}");
+$writer->exec('BEGIN IMMEDIATE');
+$host = new PDO("sqlite:{$dbPath}");
+$host->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$host->beginTransaction();
+$host->query('SELECT 1 FROM selfdataguard_vaults LIMIT 1')->fetchAll();
+try {
+    (new SelfDataGuard(new SqliteAdapter($host), $blindKey))->userExists('user-owner')
+        ? ok('a façade built inside a host transaction, while another connection writes, opens at once')
+        : ko('the façade built inside a host transaction lost an account');
+} catch (Throwable $e) {
+    ko('a façade built inside a host transaction fell under another writer', $e->getMessage());
+} finally {
+    $host->rollBack();
+    $writer->exec('ROLLBACK');
+}
+
 section('The read-back compares the salt, the revision and every wrap; the userId is echoed');
 
 /** A storage with a case-insensitive user_id: asked for 'USER-CI', it answers with 'user-ci'. */
