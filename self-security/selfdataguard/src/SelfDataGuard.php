@@ -68,11 +68,23 @@ final class SelfDataGuard
 
     private readonly string $sealKey;
 
+    /** Settings the façade claims in the database: what the first façade opened on it recorded. */
+    public const SETTING_BLIND_KEY      = 'selfdataguard.blind-key-check';
+    public const SETTING_SHARED_INDEXES = 'selfdataguard.shared-indexes';
+
     /**
+     * The first façade opened on a database records there which blind-index
+     * key it holds and which fields it shares; every later one is refused when
+     * it differs. Under another key, every seal would read as tampering and
+     * every lookup would miss; under another list, one field would be written
+     * under two rules.
+     *
      * @param list<string> $sharedIndexes the indexed fields several accounts may
      *        hold the same value of (a household phone). Every other indexed
-     *        field names one account. Declared here, once: declared per call,
-     *        two calls could write the same field under two rules.
+     *        field names one account.
+     *
+     * @throws InvalidArgumentException when the key, or the shared fields, are
+     *         not the ones the database was first opened with
      */
     public function __construct(
         private readonly StorageInterface $storage,
@@ -89,6 +101,23 @@ final class SelfDataGuard
                 throw new InvalidArgumentException('sharedIndexes lists field names');
             }
             $this->shared[$fieldName] = true;
+        }
+        $check = BlindIndex::keyCheck($blindKey);
+        if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {
+            throw new InvalidArgumentException(
+                'This blind-index key is not the one the database was first opened with: every profile seal '
+                . 'and every blind index in it is computed under that other key. Put it back'
+            );
+        }
+        $shared = array_keys($this->shared);
+        sort($shared, SORT_STRING);
+        $declared = json_encode($shared, JSON_THROW_ON_ERROR);
+        $recorded = $storage->claimSetting(self::SETTING_SHARED_INDEXES, $declared);
+        if ($recorded !== $declared) {
+            throw new InvalidArgumentException(
+                "This database shares the fields {$recorded}, and this façade was given {$declared}: "
+                . 'every façade opened on one database receives the same sharedIndexes'
+            );
         }
         $this->sealKey = ProfileSeal::key($blindKey);
         $this->vault   = new UserVault();

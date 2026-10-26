@@ -753,9 +753,14 @@ $dg->findUserByField('email', 'owner@example.org') === 'user-owner'
     ? ok('the value still names its holder')
     : ko('the refused write moved the value');
 
-$dgShared = new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
-$dgShared->setFields($owner, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
-$dgShared->setFields($squat, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
+// A field is shared or not for the whole database: the façade that shares
+// 'phone' opens a database of its own.
+$sharedStorage = new SqliteAdapter('sqlite::memory:');
+$dgShared = new SelfDataGuard($sharedStorage, $blindKey, sharedIndexes: ['phone']);
+$sharedOwner = $dgShared->register('user-owner', 'owner-password-0001');
+$sharedOther = $dgShared->register('user-squat', 'squat-password-0001');
+$dgShared->setFields($sharedOwner, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
+$dgShared->setFields($sharedOther, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
 $holders = $dgShared->findUsersByField('phone', '+33 6 00 00 00 01');
 sort($holders);
 $holders === ['user-owner', 'user-squat']
@@ -766,6 +771,28 @@ try {
     ko('a field declared shared was used to name one account');
 } catch (InvalidArgumentException) {
     ok('findUserByField() refuses a field declared shared: it names no single account');
+}
+
+try {
+    new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
+    ko('a façade that shares a field opened a database where that field names one account');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'sharedIndexes')
+        ? ok('a façade given other shared fields than the database records is refused: one field, one rule')
+        : ko('refused for another reason', $e->getMessage());
+}
+$twoShared = new SqliteAdapter('sqlite::memory:');
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['phone', 'address']);
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['address', 'phone']) instanceof SelfDataGuard
+    ? ok('the same shared fields in another order are the same list')
+    : ko('the order of the shared fields was taken for another list');
+try {
+    new SelfDataGuard($storage, Primitives::randomBytes(32));
+    ko('a façade opened a database under another blind-index key: every vault would report tampering');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'not the one the database was first opened with')
+        ? ok('another blind-index key is refused when the façade is built, named as such — not as tampering, vault after vault')
+        : ko('another key refused for another reason', $e->getMessage());
 }
 
 /** A storage holding a value under two accounts, as a database written before 0.7.0 can. */

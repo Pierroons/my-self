@@ -39,6 +39,16 @@ final class BlindIndex
     }
 
     /**
+     * What a database records of the blind-index key it was opened with: an
+     * HKDF output, from which the key is not computed back, and which no index
+     * or seal equals.
+     */
+    public static function keyCheck(#[\SensitiveParameter] string $blindKey): string
+    {
+        return base64_encode(hash_hkdf(Primitives::HMAC_ALGO, $blindKey, 32, 'selfdataguard/blind-key-check'));
+    }
+
+    /**
      * Compute a deterministic blind index for a field value.
      *
      * @param string $value     The plaintext to index (will NOT be stored)

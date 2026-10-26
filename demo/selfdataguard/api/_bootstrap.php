@@ -109,7 +109,14 @@ if ($blindKey === false || strlen($blindKey) < 32) {
 // Sans base, une lecture passe par une base vide en mémoire : rien n'est écrit, et
 // chaque page vue n'occupe pas une place jusqu'à son expiration.
 $storage     = new SqliteAdapter($baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
-$dataGuard   = new SelfDataGuard($storage, $blindKey);
+try {
+    $dataGuard = new SelfDataGuard($storage, $blindKey);
+} catch (InvalidArgumentException) {
+    // La base a été ouverte sous une autre clé d'index : chaque coffre s'y dirait falsifié.
+    http_response_code(500);
+    echo json_encode(['error' => 'The blind-index key is not the one this demo base was opened with: restore it']);
+    exit;
+}
 
 // Une action sur un coffre suppose une base : sans elle, le dire, plutôt qu'un
 // « mauvais mot de passe » qui enverrait chercher une faute de frappe.

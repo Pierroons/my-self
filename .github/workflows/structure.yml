@@ -2799,7 +2799,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=26 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=47 [sanity_escrow]=53
-            [sanity_facade]=102 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
+            [sanity_facade]=105 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -2987,6 +2987,10 @@ jobs:
           canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
             "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
             $D/tests/sanity_conformance.php 'a second claimSetting() replaced the value'
+          canari $D/src/SelfDataGuard.php 'if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a façade opened a database under another blind-index key'
+          canari $D/src/SelfDataGuard.php 'if ($recorded !== $declared) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a façade that shares a field opened a database where that field names one account'
           canari $D/src/SelfDataGuard.php 'if ($this->storage->listArchives($userId) !== []) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a name that still holds archives was registered again'
           canari $D/src/SelfDataGuard.php '        $this->load($replacing->userId);' '' \

@@ -186,6 +186,13 @@ rename($cle . '.ailleurs', $cle);
 $sansCle['code'] === 500 && !$neuve
     ? ok('la clé d\'index disparue quand des bases existent : 500, et aucune clé neuve n\'est écrite à sa place')
     : ko('une clé neuve a remplacé celle des coffres existants', $sansCle['code'] . ' neuve=' . var_export($neuve, true));
+copy($cle, $cle . '.vraie');
+file_put_contents($cle, random_bytes(32));
+$autreCle = appel($port, $NOM, 'inspect_db.php', null, $cookieA);
+rename($cle . '.vraie', $cle);
+$autreCle['code'] === 500 && str_contains((string) ($autreCle['json']['error'] ?? ''), 'not the one')
+    ? ok('une autre clé d\'index sous une base existante : un 500 qui le dit, et non chaque coffre « falsifié »')
+    : ko('une autre clé d\'index n\'est pas nommée comme telle', $autreCle['code'] . ' ' . json_encode($autreCle['json']));
 
 echo "\n→ Cookies inattendus\n";
 $inconnu = appel($port, $NOM, 'inspect_db.php', null, str_repeat('ab', 16));
