@@ -73,18 +73,22 @@ final class SelfDataGuard
     public const SETTING_SHARED_INDEXES = 'selfdataguard.shared-indexes';
 
     /**
-     * The first façade opened on a database records there which blind-index
-     * key it holds and which fields it shares; every later one is refused when
-     * it differs. Under another key, every seal would read as tampering and
-     * every lookup would miss; under another list, one field would be written
-     * under two rules.
+     * The first façade opened on an empty database records there which
+     * blind-index key it holds and which fields it shares; every later one is
+     * refused when it differs. Under another key, every seal would read as
+     * tampering and every lookup would miss; under another list, one field would
+     * be written under two rules. A database that already holds vaults and never
+     * recorded a key — one written before 0.7.0 — is refused until an operator
+     * adopts its key with adoptBlindKey(), which proves it first: a wrong key
+     * recorded there would make every lookup miss in silence.
      *
      * @param list<string> $sharedIndexes the indexed fields several accounts may
      *        hold the same value of (a household phone). Every other indexed
      *        field names one account.
      *
      * @throws InvalidArgumentException when the key, or the shared fields, are
-     *         not the ones the database was first opened with
+     *         not the ones the database recorded, or when it recorded none and
+     *         holds vaults
      */
     public function __construct(
         private readonly StorageInterface $storage,
@@ -96,23 +100,29 @@ final class SelfDataGuard
                 'blindKey must be ≥32 bytes of server-side secret'
             );
         }
-        foreach ($sharedIndexes as $fieldName) {
-            if (!is_string($fieldName) || $fieldName === '') {
-                throw new InvalidArgumentException('sharedIndexes lists field names');
-            }
+        $declared = self::sharedList($sharedIndexes);
+        foreach (json_decode($declared, true) as $fieldName) {
             $this->shared[$fieldName] = true;
         }
-        $check = BlindIndex::keyCheck($blindKey);
-        if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {
+        $check   = BlindIndex::keyCheck($blindKey);
+        $keyHeld = $storage->loadSetting(self::SETTING_BLIND_KEY);
+        if ($keyHeld === null) {
+            if ($storage->hasVaults()) {
+                throw new InvalidArgumentException(
+                    'This database holds vaults and never recorded its blind-index key: an operator adopts it '
+                    . 'once with SelfDataGuard::adoptBlindKey(), which proves the key against what the database holds'
+                );
+            }
+            $keyHeld = $storage->claimSetting(self::SETTING_BLIND_KEY, $check);
+        }
+        if (!hash_equals($keyHeld, $check)) {
             throw new InvalidArgumentException(
-                'This blind-index key is not the one the database was first opened with: every profile seal '
-                . 'and every blind index in it is computed under that other key. Put it back'
+                'This blind-index key is not the one this database recorded: every profile seal and every '
+                . 'blind index in it is computed under the recorded one'
             );
         }
-        $shared = array_keys($this->shared);
-        sort($shared, SORT_STRING);
-        $declared = json_encode($shared, JSON_THROW_ON_ERROR);
-        $recorded = $storage->claimSetting(self::SETTING_SHARED_INDEXES, $declared);
+        $recorded = $storage->loadSetting(self::SETTING_SHARED_INDEXES)
+            ?? $storage->claimSetting(self::SETTING_SHARED_INDEXES, $declared);
         if ($recorded !== $declared) {
             throw new InvalidArgumentException(
                 "This database shares the fields {$recorded}, and this façade was given {$declared}: "
@@ -122,6 +132,90 @@ final class SelfDataGuard
         $this->sealKey = ProfileSeal::key($blindKey);
         $this->vault   = new UserVault();
         $this->escrow  = new EscrowVault();
+    }
+
+    /**
+     * Record the blind-index key of a database that holds vaults and never
+     * recorded one — written before 0.7.0 — after proving it against what the
+     * database already holds. The operator's step, once, before any façade
+     * opens the database:
+     *
+     *   - $proofUserId, $proofField and $proofValue: the blind index of that
+     *     value under this key must name that account — the lookup a database
+     *     written under this key answers;
+     *   - $proofUserId alone: that account's seal must hold under this key;
+     *   - no proof: for a database where no value was ever indexed and no vault
+     *     sealed, so that the key decides nothing that exists yet. The operator
+     *     vouches for it.
+     *
+     * It then records the key and $sharedIndexes, as the first façade on an
+     * empty database does. Adopting the key already recorded does nothing.
+     *
+     * @param list<string> $sharedIndexes
+     * @throws InvalidArgumentException when the proof does not hold, or the
+     *         database recorded another key
+     */
+    public static function adoptBlindKey(
+        StorageInterface $storage,
+        #[\SensitiveParameter] string $blindKey,
+        array $sharedIndexes = [],
+        ?string $proofUserId = null,
+        ?string $proofField = null,
+        #[\SensitiveParameter] ?string $proofValue = null
+    ): void {
+        if (strlen($blindKey) < 32) {
+            throw new InvalidArgumentException('blindKey must be ≥32 bytes of server-side secret');
+        }
+        $check = BlindIndex::keyCheck($blindKey);
+        $held  = $storage->loadSetting(self::SETTING_BLIND_KEY);
+        if ($held !== null) {
+            if (!hash_equals($held, $check)) {
+                throw new InvalidArgumentException('This database already recorded another blind-index key');
+            }
+            return;
+        }
+        if ($proofField !== null || $proofValue !== null) {
+            if ($proofUserId === null || $proofField === null || $proofValue === null) {
+                throw new InvalidArgumentException('A lookup proof names the account, the field and the value');
+            }
+            $index = BlindIndex::compute($proofValue, $blindKey, $proofField);
+            if (!in_array($proofUserId, $storage->findUserIdsByIndex($proofField, $index), true)) {
+                throw new InvalidArgumentException(
+                    "Under this key, '{$proofField}' does not lead to '{$proofUserId}': "
+                    . 'it is not the key this database indexed its values under'
+                );
+            }
+        } elseif ($proofUserId !== null) {
+            $record = $storage->loadVault($proofUserId);
+            if ($record->profileSeal === null
+                || !ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {
+                throw new InvalidArgumentException(
+                    "The seal of '{$proofUserId}' does not hold under this key: it is not the key this database sealed under"
+                );
+            }
+        }
+        if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {
+            throw new InvalidArgumentException('Another blind-index key was recorded meanwhile');
+        }
+        $storage->claimSetting(self::SETTING_SHARED_INDEXES, self::sharedList($sharedIndexes));
+    }
+
+    /**
+     * The shared fields as the database records them: sorted, without
+     * duplicates, JSON.
+     *
+     * @param array<mixed> $sharedIndexes
+     */
+    private static function sharedList(array $sharedIndexes): string
+    {
+        foreach ($sharedIndexes as $fieldName) {
+            if (!is_string($fieldName) || $fieldName === '') {
+                throw new InvalidArgumentException('sharedIndexes lists field names');
+            }
+        }
+        $shared = array_values(array_unique($sharedIndexes));
+        sort($shared, SORT_STRING);
+        return json_encode($shared, JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -421,16 +515,11 @@ final class SelfDataGuard
         $archive = $this->storage->loadArchive($current->userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
         $this->assertSameUser($current->userId, $archive->record->userId);
+        [$opslimit, $memlimit] = [$archive->kdfOpslimit, $archive->kdfMemlimit];
         if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {
-            $this->assertProfileSealed($archive->record, $archive->kdfOpslimit, $archive->kdfMemlimit, archive: true);
+            [$opslimit, $memlimit] = $this->vouchedProfile($archive->record, $opslimit, $memlimit);
         }
-        $session = $this->vault->unlock(
-            $archive->record,
-            $lock,
-            $oldSecret,
-            $archive->kdfOpslimit,
-            $archive->kdfMemlimit
-        );
+        $session = $this->vault->unlock($archive->record, $lock, $oldSecret, $opslimit, $memlimit);
         return new UnlockedArchive($archive, $session, $current->generation());
     }
 
@@ -709,8 +798,9 @@ final class SelfDataGuard
         $what = $archive ? "An archive of '{$record->userId}'" : "The vault of '{$record->userId}'";
         if ($record->profileSeal === null) {
             throw new VaultTamperedException(ProfileSeal::expected($record)
-                ? "{$what} carries no seal, though its envelopes were written by a version that seals every vault: "
-                    . 'the seal was removed in the database — restore the row from a backup'
+                ? "{$what} carries no seal, though its envelopes were written by a version that seals every vault "
+                    . 'it writes through its façade: the seal was removed in the database, or the row was written '
+                    . 'outside the façade — restore it from a backup'
                 : "{$what} carries no profile seal: an operator seals the vaults written before 0.7.0 with "
                     . 'sealProfile(), once, before serving');
         }
@@ -720,6 +810,26 @@ final class SelfDataGuard
                 . ($archive ? '' : ' — repairProfile() puts back a profile the seal vouches for; an envelope changed is restored from a backup')
             );
         }
+    }
+
+    /**
+     * The profile an archive's seal vouches for: the one it recorded, or else
+     * the published profile the seal holds under — an archive taken while its
+     * profile was changed in the database keeps a seal over the true one.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function vouchedProfile(VaultRecord $record, int $opslimit, int $memlimit): array
+    {
+        if ($record->profileSeal !== null && !ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $opslimit, $memlimit)) {
+            foreach (Primitives::PUBLISHED_PROFILES as [$publishedOps, $publishedMem]) {
+                if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $publishedOps, $publishedMem)) {
+                    return [$publishedOps, $publishedMem];
+                }
+            }
+        }
+        $this->assertProfileSealed($record, $opslimit, $memlimit, archive: true);
+        return [$opslimit, $memlimit];
     }
 
     private function sealed(VaultRecord $record): VaultRecord

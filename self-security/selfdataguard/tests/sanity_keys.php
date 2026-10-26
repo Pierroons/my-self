@@ -213,9 +213,12 @@ foreach ([UnlockedVault::class, UnlockedEscrow::class, UnlockedArchive::class, U
         }
     }
 }
+// The one public method that takes a key: the server's blind-index key, as the
+// façade's constructor takes it. It records a check of it, and hands nothing back.
+$found = array_values(array_diff($found, ['SelfDataGuard::adoptBlindKey($blindKey)']));
 sort($found);
 $found === []
-    ? ok('none does — the admin key is unsealed and used inside EscrowCeremony, in private methods')
+    ? ok('none does but adoptBlindKey(), which takes the server key as the constructor does — the admin key is unsealed and used inside EscrowCeremony, in private methods')
     : ko('a public method takes a key', implode(', ', $found));
 
 // -----------------------------------------------------------------------------

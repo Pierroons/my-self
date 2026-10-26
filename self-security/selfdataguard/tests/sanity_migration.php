@@ -18,6 +18,7 @@ require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
@@ -361,7 +362,11 @@ $storage->loadVault('user-old')->wrapPhrase?->toBase64() === $before->wrapPhrase
 section('A vault written before 0.7.0 opens to no one until the operator seals its profile');
 
 $avantSceau = oldDatabase('user-unsealed', 'unsealed-password-01', 'unsealed-memorized');
-$dgAvant = new SelfDataGuard(new SqliteAdapter($avantSceau), random_bytes(32));
+$avantStore = new SqliteAdapter($avantSceau);
+$avantKey   = random_bytes(32);
+// Nothing indexed, nothing sealed: the key decides nothing that exists yet.
+SelfDataGuard::adoptBlindKey($avantStore, $avantKey);
+$dgAvant = new SelfDataGuard($avantStore, $avantKey);
 try {
     $dgAvant->loginWithPassword('user-unsealed', 'unsealed-password-01');
     ko('a vault without a profile seal was opened');
@@ -377,11 +382,64 @@ $dgAvant->loginWithMemorized('user-unsealed', 'unsealed-memorized')->userId === 
     ? ok('sealed, the vault written before 0.7.0 opens under its legacy profile')
     : ko('the sealed vault did not open');
 
+section('A database that holds vaults records its blind-index key only on proof');
+
+$pinPdo   = oldDatabase('user-pin', 'pin-password-0001', 'pin-memorized');
+$rightKey = random_bytes(32);
+$wrongKey = random_bytes(32);
+$pinPdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at) VALUES (?, ?, ?, ?, ?)')
+    ->execute(['user-pin', 'email', 'c-email', BlindIndex::compute('pin@example.org', $rightKey, 'email'), '2026-01-01']);
+$pinStore = new SqliteAdapter($pinPdo);
+try {
+    new SelfDataGuard($pinStore, $wrongKey);
+    ko('a façade recorded the first key it brought to a database written before 0.7.0');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'adoptBlindKey()') && $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('a database written before 0.7.0 is not opened, and records nothing, until its key is adopted')
+        : ko('refused for another reason, or a key was recorded', $e->getMessage());
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $wrongKey, [], 'user-pin', 'email', 'pin@example.org');
+    ko('a wrong key was adopted against a lookup it does not answer');
+} catch (InvalidArgumentException) {
+    $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('a wrong key is not adopted: the lookup it should answer does not lead to the account, and nothing is recorded')
+        : ko('the refused key was recorded anyway');
+}
+SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'pin@example.org');
+$dgPin = new SelfDataGuard($pinStore, $rightKey);
+$dgPin->sealProfile('user-pin') && $dgPin->findUserByField('email', 'pin@example.org') === 'user-pin'
+    ? ok('the key the lookup proves is adopted: the vault is sealed under it, and the lookup answers')
+    : ko('the adopted key did not seal the vault, or the lookup does not answer');
+try {
+    new SelfDataGuard($pinStore, $wrongKey);
+    ko('another key opened the database once its key was adopted');
+} catch (InvalidArgumentException) {
+    ok('once adopted, another key is refused');
+}
+
+$sealPdo = new PDO('sqlite::memory:');
+$sealPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$sealStore = new SqliteAdapter($sealPdo);
+(new SelfDataGuard($sealStore, $rightKey))->register('user-sealproof', 'sealproof-password-01');
+$sealPdo->exec('DELETE FROM selfdataguard_settings');
+try {
+    SelfDataGuard::adoptBlindKey($sealStore, $wrongKey, [], 'user-sealproof');
+    ko('a wrong key was adopted against a seal that does not hold under it');
+} catch (InvalidArgumentException) {
+    ok('a database whose vaults are sealed adopts no key their seals deny');
+}
+SelfDataGuard::adoptBlindKey($sealStore, $rightKey, [], 'user-sealproof');
+(new SelfDataGuard($sealStore, $rightKey))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
+    ? ok('the key a seal proves is adopted, and the vault opens')
+    : ko('the key a seal proves did not open the vault');
+
 section('An archive written before 0.7.0 carries no seal, and opens under the profile it recorded');
 
 $legacyPdo   = oldDatabase('user-legacy-l3', 'legacy-password-01', 'legacy-memorized');
 $legacyStore = new SqliteAdapter($legacyPdo);
 $legacyKey   = random_bytes(32);
+SelfDataGuard::adoptBlindKey($legacyStore, $legacyKey);
 $dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey);
 // Archived as 0.6.x did: without a seal, the new vault sealed as this version seals it.
 $fresh = (new UserVault())->register('user-legacy-l3', 'legacy-password-02')['record'];

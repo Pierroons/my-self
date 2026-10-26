@@ -454,14 +454,12 @@ $setOps = static fn (int $ops) => $pdoForProfile->prepare(
     'UPDATE selfdataguard_archives SET package = json_set(package, \'$.kdf.opslimit\', :ops) WHERE archive_id = :id'
 )->execute([':ops' => $ops, ':id' => $archiveId]);
 $setOps(Primitives::ARGON2_OPSLIMIT + 1);
-$t0 = microtime(true);
 try {
-    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
-    ko('a profile changed in the archive package went unnoticed');
-} catch (VaultTamperedException) {
-    microtime(true) - $t0 < 0.05
-        ? ok('a profile changed in the archive package fails its seal, before any derivation')
-        : ko('the tampered profile was caught only after an Argon2id ran');
+    ($dg->readArchive($dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1))['private'] ?? []) !== []
+        ? ok('a profile changed in the archive package: the archive opens under the profile its seal vouches for')
+        : ko('the archive opened under the vouched profile, and read nothing');
+} catch (Throwable $e) {
+    ko('a profile changed in the archive package closed the archive, though its seal vouches for the true one', $e->getMessage());
 }
 
 // An archive written by this version is sealed: one without its seal had it removed.
@@ -765,6 +763,9 @@ base64_decode(BlindIndex::compute($sealed, $blindKey, 'selfdataguard/profile-sea
     !== ProfileSeal::of(ProfileSeal::key($blindKey), $sealRecord, 4, 1 << 28)
     ? ok('the blind index of a field named after the seal domain is not a seal: the application cannot be made to compute one')
     : ko('a blind index the application computes is a valid profile seal');
+BlindIndex::keyCheck($blindKey) !== base64_encode(hash_hmac('sha256', 'selfdataguard/blind-key-check', $blindKey, true))
+    ? ok('the key check is not the key BlindIndex derives for a field of its name: the database holds no field key')
+    : ko('the key check stored in the database is the field key of a field named after it');
 
 // -----------------------------------------------------------------------------
 
@@ -841,7 +842,7 @@ try {
     new SelfDataGuard($storage, Primitives::randomBytes(32));
     ko('a façade opened a database under another blind-index key: every vault would report tampering');
 } catch (InvalidArgumentException $e) {
-    str_contains($e->getMessage(), 'not the one the database was first opened with')
+    str_contains($e->getMessage(), 'not the one this database recorded')
         ? ok('another blind-index key is refused when the façade is built, named as such — not as tampering, vault after vault')
         : ko('another key refused for another reason', $e->getMessage());
 }
