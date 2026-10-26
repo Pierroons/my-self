@@ -262,7 +262,8 @@ misread. Do not roll back after a write.
 - A `HeadWitness` of your own implements `lastHead()`: the last head it took, as `seq:hmac`, or `null`
   before its first.
 - The first façade opened on a database records its blind-index key and its shared fields: open it
-  first with the key and the list it was written under. Keep the key with the database's backups:
+  first with the key and the list it was written under, and read-write — a read-only copy made after
+  that opens without writing. Keep the key with the database's backups:
   every seal and every index is computed under it, and a façade that brings another is refused.
 - Changing the shared fields later is a migration: move the values of the field between
   `blind_index` and `shared_index`, and write the new list, sorted, as JSON, under
