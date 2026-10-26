@@ -113,13 +113,13 @@ final class AuditLog
                 ));
             }
             if ($anchorAt !== null && ($found = self::anchorFound($state['chain'], $anchorAt)) !== null) {
-                throw new RuntimeException(sprintf(
+                throw new AuditAnchorException(sprintf(
                     'Audit log %s no longer holds the anchor %d:%s — %s: nothing is appended',
                     $this->path,
                     $anchorAt['seq'],
                     $anchorAt['hmac'],
                     $found
-                ));
+                ), $found);
             }
             $seq  = count($state['chain']);
             $prev = $state['chain'] === [] ? '' : (string) end($state['chain'])['hmac'];

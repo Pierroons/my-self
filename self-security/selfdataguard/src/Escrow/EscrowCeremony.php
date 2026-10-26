@@ -147,19 +147,28 @@ final class EscrowCeremony
             $this->log->append(['action' => "{$act}-denied", 'reason' => 'witness-failed'] + $context);
             throw new RuntimeException("The head witness did not give back the last head it took: nothing is unsealed", previous: $e);
         }
-        if ($lastHead !== null) {
-            $held = $this->log->verify($lastHead);
-            if (in_array($held['reason'], ['truncated', 'rewritten'], true)) {
-                $this->log->append(['action' => "{$act}-denied", 'reason' => 'log-behind-witness',
-                    'found' => $held['reason'], 'witnessHead' => $lastHead] + $context);
-                throw new RuntimeException(
-                    "The audit log no longer holds the head the witness took last ({$lastHead}): it was {$held['reason']}"
-                    . ' — nothing is unsealed, the log is an incident to examine'
-                );
-            }
+        if ($lastHead === null && !$this->witness instanceof NoHeadWitness && $this->witnessTookAHead()) {
+            // It took a head, and holds none: what it lost, a log cut since would hide in.
+            $this->log->append(['action' => "{$act}-denied", 'reason' => 'witness-forgot'] + $context);
+            throw new RuntimeException(
+                'The head witness holds no head, though this log shows it took one: it lost what it held — nothing is unsealed'
+            );
         }
-        $intent  = $this->log->append(['action' => "{$act}-intent", 'arbiter' => get_class($this->arbiter),
-            'verdict' => $verdict->value, 'witness' => get_class($this->witness)] + $failure + $context, $lastHead);
+        try {
+            $intent = $this->log->append(['action' => "{$act}-intent", 'arbiter' => get_class($this->arbiter),
+                'verdict' => $verdict->value, 'witness' => get_class($this->witness)] + $failure + $context, $lastHead);
+        } catch (AuditAnchorException $e) {
+            $this->log->append(['action' => "{$act}-denied", 'reason' => 'log-behind-witness',
+                'found' => $e->found, 'witnessHead' => $lastHead] + $context);
+            throw new RuntimeException(
+                "The audit log no longer holds the head the witness took last ({$lastHead}): it was {$e->found}"
+                . ' — nothing is unsealed, the log is an incident to examine',
+                previous: $e
+            );
+        } catch (InvalidArgumentException $e) {
+            $this->log->append(['action' => "{$act}-denied", 'reason' => 'witness-failed'] + $context);
+            throw new RuntimeException('The head witness gave back a head that is not one: nothing is unsealed', previous: $e);
+        }
         try {
             $this->witness->witness((int) $intent['seq'], (string) $intent['hmac']);
         } catch (Throwable $e) {
@@ -183,6 +192,24 @@ final class EscrowCeremony
         }
         $this->log->append(['action' => $act] + $context + $said);
         return $result;
+    }
+
+    /**
+     * Whether this witness took a head here before: an intention naming its
+     * class, not followed by the refusal a witness that failed leaves.
+     */
+    private function witnessTookAHead(): bool
+    {
+        $entries = $this->log->readAll();
+        $class   = get_class($this->witness);
+        foreach ($entries as $i => $entry) {
+            $event = $entry['event'] ?? [];
+            if (str_ends_with((string) ($event['action'] ?? ''), '-intent') && ($event['witness'] ?? null) === $class
+                && isset($entries[$i + 1]) && ($entries[$i + 1]['event']['reason'] ?? null) !== 'witness-failed') {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

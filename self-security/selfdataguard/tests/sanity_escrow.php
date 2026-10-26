@@ -208,6 +208,9 @@ section('The ceremony: verdict and intention first, the witness before the unsea
 final class BenchWitness implements Pierroons\SelfDataGuard\Escrow\HeadWitness
 {
     public ?array $got = null;
+    /** When set, lastHead() answers this instead of what it took. */
+    public bool $forced = false;
+    public ?string $forcedHead = null;
     public function __construct(private readonly bool $reachable = true) {}
     public function witness(int $seq, string $hmac): void
     {
@@ -218,6 +221,9 @@ final class BenchWitness implements Pierroons\SelfDataGuard\Escrow\HeadWitness
     }
     public function lastHead(): ?string
     {
+        if ($this->forced) {
+            return $this->forcedHead;
+        }
         if (!$this->reachable) {
             throw new RuntimeException('witness unreachable');
         }
@@ -331,6 +337,64 @@ $ceremonyOn();
 ($holder->got['seq'] ?? null) === 4
     ? ok('the log as the witness left it: the next ceremony goes on, and the witness takes a higher head')
     : ko('a log that holds the witness head was refused', json_encode($holder->got));
+
+$wLog = static function (): string {
+    $path = sys_get_temp_dir() . '/sdg-witness-bench-' . bin2hex(random_bytes(4)) . '.log';
+    register_shutdown_function(static fn () => @unlink($path));
+    return $path;
+};
+$lastEvent = static function (string $path): array {
+    $lines = file($path, FILE_IGNORE_NEW_LINES);
+    return json_decode((string) end($lines), true)['event'] ?? [];
+};
+$readWith = static fn (BenchWitness $w, string $path) => benchCeremony($storage, Verdict::Open, $w, $path)
+    ->readEscrow('alice', 'case-w', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+
+$forgetLog = $wLog();
+$forgetful = new BenchWitness();
+$readWith($forgetful, $forgetLog);
+$readWith($forgetful, $forgetLog);
+$forgetful->forced = true;
+try {
+    $readWith($forgetful, $forgetLog);
+    ko('a witness that took heads, then holds none, let a ceremony go on: a log cut since would pass');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'lost what it held') && ($lastEvent($forgetLog)['reason'] ?? null) === 'witness-forgot'
+        ? ok('a witness that took heads and now holds none is refused, and the log says why')
+        : ko('a forgetful witness refused for another reason, or not logged', $e->getMessage());
+}
+
+$firstLog = $wLog();
+$neverTook = new BenchWitness(false);
+$neverTook->forced = true;
+try {
+    $readWith($neverTook, $firstLog);
+} catch (RuntimeException) {
+}
+($lastEvent($firstLog)['reason'] ?? null) === 'witness-failed'
+    ? ok('fixture: a first ceremony whose witness failed to take the head')
+    : ko('fixture: the first witness did not fail as planned');
+try {
+    $readWith(new BenchWitness(), $firstLog);
+    ok('a witness that never took a head — its first attempt failed — is not taken for one that forgot');
+} catch (RuntimeException $e) {
+    ko('a witness that never took a head was refused as forgetful', $e->getMessage());
+}
+
+$badLog = $wLog();
+$malformed = new BenchWitness();
+$malformed->forced = true;
+$malformed->forcedHead = 'not-a-head';
+try {
+    $readWith($malformed, $badLog);
+    ko('a malformed head from the witness let the ceremony go on');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'not one') && ($lastEvent($badLog)['reason'] ?? null) === 'witness-failed'
+        ? ok('a malformed head from the witness stops the ceremony, and the log says so')
+        : ko('a malformed head stopped the ceremony without a line in the log', $e->getMessage());
+} catch (Throwable $e) {
+    ko('a malformed head from the witness escaped the ceremony, with no line in the log', get_class($e));
+}
 
 section('Cold seizure: wrong admin key cannot open the sealed escrow');
 

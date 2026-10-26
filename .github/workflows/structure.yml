@@ -2798,7 +2798,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=49 [sanity_escrow]=53
+            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=49 [sanity_escrow]=57
             [sanity_facade]=111 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=25 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -2975,8 +2975,13 @@ jobs:
           canari $D/src/Escrow/AuditLog.php '            if (!$shaped) {' \
             '            if (!$shaped || !hash_equals($this->hmac(["seq" => $rec["seq"], "ts" => $rec["ts"], "event" => $rec["event"], "prev" => $rec["prev"]]), $rec["hmac"])) {' \
             $D/tests/sanity_audit.php 'an entry was appended over a forged one'
-          canari $D/src/Escrow/EscrowCeremony.php 'if ($lastHead !== null) {' 'if (false) {' \
+          canari $D/src/Escrow/EscrowCeremony.php '+ $failure + $context, $lastHead);' '+ $failure + $context);' \
             $D/tests/sanity_escrow.php 'the refusal over a cut log is not in the log'
+          canari $D/src/Escrow/EscrowCeremony.php 'if ($lastHead === null && !$this->witness instanceof NoHeadWitness && $this->witnessTookAHead()) {' \
+            'if (false) {' \
+            $D/tests/sanity_escrow.php 'a witness that took heads, then holds none, let a ceremony go on'
+          canari $D/src/Escrow/EscrowCeremony.php '        } catch (InvalidArgumentException $e) {' '        } catch (\DomainException $e) {' \
+            $D/tests/sanity_escrow.php 'a malformed head from the witness escaped the ceremony'
           canari $D/src/Escrow/EscrowCeremony.php '            // A case table that cannot be read is the answer Unavailable names.' '            throw $e;' \
             $D/tests/sanity_escrow.php 'an arbiter that throws escaped the ceremony'
           canari $D/src/SelfDataGuard.php "\$created['unlocked']->lock();" \
