@@ -8,6 +8,8 @@ use DateTimeImmutable;
 use Pierroons\SelfDataGuard\Crypto\Aad;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
+use Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -110,6 +112,8 @@ final class Conformance
             'concurrent-updates'            => 'concurrentUpdates',
             'concurrent-re-enrolments'      => 'concurrentReEnrolments',
             'concurrent-unique-index'       => 'concurrentUniqueIndex',
+            'concurrent-escrow-creations'   => 'concurrentEscrowCreations',
+            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment',
         ];
     }
 
@@ -227,8 +231,9 @@ final class Conformance
         $generation = $vault->generation();
         $escrow = $this->escrow($vault->userId);
         $fields = ['note' => ['ciphertext' => 'c-note', 'blindIndex' => null]];
+        $this->storage->createEscrow($generation, $escrow);
         for ($i = 0; $i < 2; $i++) {
-            $this->storage->saveEscrow($generation, $escrow);
+            $this->storage->replaceEscrow($generation, $escrow);
             $this->storage->saveFields($generation, $fields);
             $this->storage->saveEscrowFields($generation, ['contact' => 'c-contact']);
         }
@@ -332,14 +337,32 @@ final class Conformance
         $vault = $this->newVault('escrow');
         $this->storage->saveVault($vault);
         $this->assert($this->storage->loadEscrow($vault->userId) === null, 'loadEscrow() returned an escrow before any was saved');
+        $this->expect(
+            EscrowNotFoundException::class,
+            fn () => $this->storage->replaceEscrow($vault->generation(), $this->escrow($vault->userId)),
+            'replaceEscrow() of an account without escrow'
+        );
+        $this->assert($this->storage->loadEscrow($vault->userId) === null, 'a refused replaceEscrow() created an escrow');
         $escrow = $this->escrow($vault->userId);
-        $this->storage->saveEscrow($vault->generation(), $escrow);
+        $this->storage->createEscrow($vault->generation(), $escrow);
         $read = $this->storage->loadEscrow($vault->userId);
         $this->assert(
             $read !== null && $read->userId === $vault->userId
                 && $read->wrapUser->toBase64() === $escrow->wrapUser->toBase64()
                 && $read->wrapAdmin === $escrow->wrapAdmin,
             'loadEscrow() did not return the escrow as written'
+        );
+        $second = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:second', $escrow->createdAt, $escrow->updatedAt);
+        $this->expect(EscrowExistsException::class, fn () => $this->storage->createEscrow($vault->generation(), $second), 'a second createEscrow() of the same userId');
+        $this->assert(
+            $this->storage->loadEscrow($vault->userId)?->wrapAdmin === $escrow->wrapAdmin,
+            'a second createEscrow() replaced the first escrow: the fields sealed under its key no longer open'
+        );
+        $rebound = new EscrowRecord($vault->userId, $escrow->wrapUser, 'sealed-to-admin:rebound', $escrow->createdAt, new DateTimeImmutable());
+        $this->storage->replaceEscrow($vault->generation(), $rebound);
+        $this->assert(
+            $this->storage->loadEscrow($vault->userId)?->wrapAdmin === 'sealed-to-admin:rebound',
+            'replaceEscrow() did not replace the envelope'
         );
         $this->storage->saveEscrowFields($vault->generation(), ['contact' => 'c-1', 'hint' => 'c-2']);
         $this->assert($this->storage->loadEscrowFields($vault->userId, ['hint']) === ['hint' => 'c-2'], 'loadEscrowFields() with a name did not return exactly that field');
@@ -558,6 +581,75 @@ final class Conformance
         return null;
     }
 
+    private function concurrentEscrowCreations(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $vault = $this->newVault('race-escrow');
+        $this->storage->saveVault($vault);
+        $outcomes = $this->race(<<<'PHP'
+            $r = $s->loadVault($uid);
+            $now = new DateTimeImmutable();
+            $escrow = new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $r->wrapPwd, "sealed-by-{$me}", $now, $now);
+            $ready();
+            $s->createEscrow($r->generation(), $escrow);
+            PHP, $vault->userId);
+        $this->assertOneWinner($outcomes, 'createEscrow() of the same account');
+        $winner = array_search('ok', $outcomes, true);
+        $this->assert(
+            $this->storage->loadEscrow($vault->userId)?->wrapAdmin === "sealed-by-{$winner}",
+            'the escrow stored is not the one whose creation succeeded: a refused creation replaced it'
+        );
+        return null;
+    }
+
+    /**
+     * A re-enrolment and writes that name the generation it replaces, at the
+     * same instant. Each write lands in the old vault, archived with it, or is
+     * refused: none may land in the vault that replaced it.
+     */
+    private function concurrentWritesAndReEnrolment(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $vault = $this->newVault('race-writes');
+        $this->storage->saveVault($vault);
+        $outcomes = $this->race(<<<'PHP'
+            $r = $s->loadVault($uid);
+            $g = $r->generation();
+            $now = new DateTimeImmutable();
+            $new = new Pierroons\SelfDataGuard\Vault\VaultRecord(
+                userId: $uid, userSalt: random_bytes(16), wrapPwd: $r->wrapPwd, wrapRecov: null, wrapAdmin: null,
+                createdAt: $now, updatedAt: $now, kdfOpslimit: $r->kdfOpslimit, kdfMemlimit: $r->kdfMemlimit
+            );
+            $ready();
+            match ($me) {
+                0       => $s->replaceWithArchive($g, $new),
+                1       => $s->saveFields($g, ['late' => ['ciphertext' => 'c-late']]),
+                2       => $s->saveEscrowFields($g, ['late' => 'c-late']),
+                default => $s->createEscrow($g, new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $r->wrapPwd, 'sealed-late', $now, $now)),
+            };
+            PHP, $vault->userId);
+        $this->assert(
+            $outcomes[0] === 'ok' && array_diff($outcomes, ['ok', 'refused']) === [],
+            'the re-enrolment, or a write racing it, failed in another way than a stale generation — got ' . implode(' | ', $outcomes)
+        );
+        $this->assert(
+            !hash_equals($vault->userSalt, $this->storage->loadVault($vault->userId)->userSalt),
+            'the re-enrolment did not replace the vault'
+        );
+        $this->assert(
+            $this->storage->loadFields($vault->userId) === []
+                && $this->storage->loadEscrowFields($vault->userId) === []
+                && $this->storage->loadEscrow($vault->userId) === null,
+            'a write that named the replaced generation landed in the vault that replaced it: '
+            . 'the generation is compared before the write, not inside its transaction'
+        );
+        return null;
+    }
+
     // -- Racing processes -------------------------------------------------------
 
     /**
@@ -581,7 +673,8 @@ final class Conformance
             . ' };'
             . ' try { %s echo "ok"; }'
             . ' catch (Pierroons\SelfDataGuard\Vault\StaleVaultException'
-            . ' | Pierroons\SelfDataGuard\Storage\DuplicateIndexException) { echo "refused"; }'
+            . ' | Pierroons\SelfDataGuard\Storage\DuplicateIndexException'
+            . ' | Pierroons\SelfDataGuard\Escrow\EscrowExistsException) { echo "refused"; }'
             . ' catch (Throwable $e) { echo get_class($e), ": ", $e->getMessage(); }',
             var_export($this->connectFile, true),
             var_export($userId, true),
@@ -708,7 +801,7 @@ final class Conformance
             'email' => ['ciphertext' => 'c-email', 'blindIndex' => $this->indexOf($vault->userId)],
             'note'  => ['ciphertext' => 'c-note'],
         ]);
-        $this->storage->saveEscrow($vault->generation(), $this->escrow($vault->userId));
+        $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
         $this->storage->saveEscrowFields($vault->generation(), ['contact' => 'c-contact']);
     }
 
@@ -717,7 +810,8 @@ final class Conformance
     {
         return [
             'saveFields'         => fn () => $this->storage->saveFields($generation, ['f' => ['ciphertext' => 'c']]),
-            'saveEscrow'         => fn () => $this->storage->saveEscrow($generation, $this->escrow($generation->userId)),
+            'createEscrow'       => fn () => $this->storage->createEscrow($generation, $this->escrow($generation->userId)),
+            'replaceEscrow'      => fn () => $this->storage->replaceEscrow($generation, $this->escrow($generation->userId)),
             'saveEscrowFields'   => fn () => $this->storage->saveEscrowFields($generation, ['e' => 'c']),
             'deleteVault'        => fn () => $this->storage->deleteVault($generation),
             'deleteArchive'      => fn () => $this->storage->deleteArchive($generation, $archiveId),

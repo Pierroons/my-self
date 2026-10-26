@@ -2798,7 +2798,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=26 [sanity_audit]=29 [sanity_ceremony]=28 [sanity_conformance]=37 [sanity_escrow]=44
+            [sanity_archive]=26 [sanity_audit]=29 [sanity_ceremony]=28 [sanity_conformance]=42 [sanity_escrow]=46
             [sanity_facade]=96 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=23 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )

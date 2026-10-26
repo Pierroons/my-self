@@ -7,6 +7,7 @@ namespace Pierroons\SelfDataGuard;
 use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
@@ -557,15 +558,21 @@ final class SelfDataGuard
         }
         $this->currentRecord($session);
 
-        $record = $this->storage->loadEscrow($session->userId);
+        $record   = $this->storage->loadEscrow($session->userId);
+        $unlocked = null;
         if ($record === null) {
-            $created  = $this->escrow->create($session, $adminPublicKey);
-            $record   = $created['record'];
-            $unlocked = $created['unlocked'];
-            $this->storage->saveEscrow($session->generation(), $record);
-        } else {
-            $unlocked = $this->escrow->unlockAsUser($record, $session);
+            $created = $this->escrow->create($session, $adminPublicKey);
+            try {
+                $this->storage->createEscrow($session->generation(), $created['record']);
+                $unlocked = $created['unlocked'];
+            } catch (EscrowExistsException) {
+                // Another request created it first: its key is the one to write under.
+                $created['unlocked']->lock();
+                $record = $this->storage->loadEscrow($session->userId)
+                    ?? throw new RuntimeException("The escrow of '{$session->userId}' was created, then is gone");
+            }
         }
+        $unlocked ??= $this->escrow->unlockAsUser($record, $session);
 
         $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);
         $this->storage->saveEscrowFields($session->generation(), $ciphertexts);
@@ -591,7 +598,7 @@ final class SelfDataGuard
         $unlocked = $this->escrow->unlockAsUser($record, $session);
         $rebound  = $this->escrow->rebindAdmin($record, $unlocked, $adminPublicKey);
         $unlocked->lock();
-        $this->storage->saveEscrow($session->generation(), $rebound);
+        $this->storage->replaceEscrow($session->generation(), $rebound);
         return true;
     }
 

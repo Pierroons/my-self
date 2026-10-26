@@ -18,6 +18,7 @@ use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 
 /** Delegates everything to a real storage; the doubles override one or two methods. */
@@ -33,7 +34,8 @@ abstract class DelegatingStorage implements StorageInterface
     public function saveFields(VaultGeneration $g, array $f): void { $this->inner->saveFields($g, $f); }
     public function loadFields(string $u, array $n = []): array { return $this->inner->loadFields($u, $n); }
     public function findUserIdsByIndex(string $f, string $i): array { return $this->inner->findUserIdsByIndex($f, $i); }
-    public function saveEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->saveEscrow($g, $r); }
+    public function createEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->createEscrow($g, $r); }
+    public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->replaceEscrow($g, $r); }
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
     public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($g, $f); }
     public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
@@ -102,7 +104,8 @@ final class GenerationBlindStorage extends DelegatingStorage
 
     public function deleteVault(VaultGeneration $g): void { $this->inner->deleteVault($this->live($g)); }
     public function saveFields(VaultGeneration $g, array $f): void { $this->inner->saveFields($this->live($g), $f); }
-    public function saveEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->saveEscrow($this->live($g), $r); }
+    public function createEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->createEscrow($this->live($g), $r); }
+    public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->replaceEscrow($this->live($g), $r); }
     public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($this->live($g), $f); }
     public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($this->live($g), $r); }
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($this->live($g), $id); }
@@ -144,6 +147,66 @@ final class CheckThenWriteStorage extends DelegatingStorage
             $r->profileSeal === null ? null : base64_encode($r->profileSeal), $r->revision + 1, $r->userId,
         ]);
         return $r->revision + 1;
+    }
+}
+
+/**
+ * Compares the generation of saveFields(), then writes in a second
+ * transaction. Alone, it refuses a stale generation; racing a re-enrolment,
+ * the field lands in the vault that replaced the one it was meant for.
+ */
+final class GenerationCheckThenWriteStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function saveFields(VaultGeneration $g, array $f): void
+    {
+        $live = $this->inner->findVault($g->userId);
+        if ($live === null) {
+            throw new VaultNotFoundException('none');
+        }
+        if (!hash_equals($live->userSalt, $g->userSalt)) {
+            throw new StaleVaultException('stale');
+        }
+        usleep(200_000);
+        $st = $this->pdo->prepare(
+            'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, shared_index, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id, field_name) DO UPDATE SET ciphertext = excluded.ciphertext,
+               blind_index = excluded.blind_index, shared_index = excluded.shared_index, updated_at = excluded.updated_at'
+        );
+        foreach ($f as $name => $d) {
+            $st->execute([$g->userId, $name, $d['ciphertext'], $d['blindIndex'] ?? null, $d['sharedIndex'] ?? null, date('c')]);
+        }
+    }
+}
+
+/** createEscrow() as the upsert it was before 0.7.0: a second creation replaces the escrow, and its key. */
+final class UpsertingEscrowStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function createEscrow(VaultGeneration $g, EscrowRecord $r): void
+    {
+        $live = $this->inner->findVault($g->userId);
+        if ($live === null) {
+            throw new VaultNotFoundException('none');
+        }
+        if (!hash_equals($live->userSalt, $g->userSalt)) {
+            throw new StaleVaultException('stale');
+        }
+        $this->pdo->prepare(
+            'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET wrap_user = excluded.wrap_user, wrap_admin = excluded.wrap_admin,
+               updated_at = excluded.updated_at'
+        )->execute([$r->userId, $r->wrapUser->toBase64(), base64_encode($r->wrapAdmin), $r->createdAt->format('c'), $r->updatedAt->format('c')]);
     }
 }
 

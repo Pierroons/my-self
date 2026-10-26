@@ -11,6 +11,8 @@ use PDO;
 use PDOException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
+use Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
@@ -277,18 +279,42 @@ final class SqliteAdapter implements StorageInterface
 
     // -- Escrow compartment ---------------------------------------------------
 
-    public function saveEscrow(VaultGeneration $generation, EscrowRecord $record): void
+    public function createEscrow(VaultGeneration $generation, EscrowRecord $record): void
     {
         if ($record->userId !== $generation->userId) {
             throw new InvalidArgumentException('The escrow record belongs to another userId than the generation');
         }
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
-             VALUES (:uid, :wu, :wa, :ca, :ua)
-             ON CONFLICT(user_id) DO UPDATE SET
-               wrap_user  = excluded.wrap_user,
-               wrap_admin = excluded.wrap_admin,
-               updated_at = excluded.updated_at'
+             VALUES (:uid, :wu, :wa, :ca, :ua)'
+        );
+        $this->atomic(function () use ($stmt, $record, $generation): void {
+            $this->assertGeneration($generation);
+            try {
+                $stmt->execute([
+                    ':uid' => $record->userId,
+                    ':wu'  => $record->wrapUser->toBase64(),
+                    ':wa'  => base64_encode($record->wrapAdmin),
+                    ':ca'  => $record->createdAt->format('c'),
+                    ':ua'  => $record->updatedAt->format('c'),
+                ]);
+            } catch (PDOException $e) {
+                $stmt->closeCursor();
+                if (str_contains($e->getMessage(), 'UNIQUE') || str_contains($e->getMessage(), 'PRIMARY KEY')) {
+                    throw new EscrowExistsException("An escrow already exists for userId '{$record->userId}'", 0, $e);
+                }
+                throw $e;
+            }
+        });
+    }
+
+    public function replaceEscrow(VaultGeneration $generation, EscrowRecord $record): void
+    {
+        if ($record->userId !== $generation->userId) {
+            throw new InvalidArgumentException('The escrow record belongs to another userId than the generation');
+        }
+        $stmt = $this->pdo->prepare(
+            'UPDATE selfdataguard_escrow SET wrap_user = :wu, wrap_admin = :wa, updated_at = :ua WHERE user_id = :uid'
         );
         $this->atomic(function () use ($stmt, $record, $generation): void {
             $this->assertGeneration($generation);
@@ -296,9 +322,11 @@ final class SqliteAdapter implements StorageInterface
                 ':uid' => $record->userId,
                 ':wu'  => $record->wrapUser->toBase64(),
                 ':wa'  => base64_encode($record->wrapAdmin),
-                ':ca'  => $record->createdAt->format('c'),
                 ':ua'  => $record->updatedAt->format('c'),
             ]);
+            if ($stmt->rowCount() === 0 && $this->loadEscrow($record->userId) === null) {
+                throw new EscrowNotFoundException("No escrow to replace for userId '{$record->userId}'");
+            }
         });
     }
 

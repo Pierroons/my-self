@@ -17,6 +17,7 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
+require __DIR__ . '/storage_doubles.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
@@ -113,6 +114,40 @@ $dg->hasEscrow($dg->register('sans-sequestre', 'motdepasse-sans-01')) ? ko('hasE
 $asUser = $dg->getEscrowFieldsAsUser($session, ['contact_secours', 'indice_recup']);
 $asUser['contact_secours'] === ESCROW_PLAINTEXT['contact_secours'] ? ok('user reads own escrow (contact_secours)') : ko('user escrow read wrong');
 $asUser['indice_recup'] === ESCROW_PLAINTEXT['indice_recup'] ? ok('user reads own escrow (indice_recup)') : ko('user escrow read wrong');
+
+// -----------------------------------------------------------------------------
+
+section('Two first deposits at once: the one that loses the creation writes under the escrow that won');
+
+// Hides the escrow from one read, as when another request creates it between
+// this one's read and its own creation.
+$raced = new class ($storage) extends DelegatingStorage {
+    public bool $hide = true;
+
+    public function loadEscrow(string $u): ?EscrowRecord
+    {
+        if ($this->hide) {
+            $this->hide = false;
+            return null;
+        }
+        return $this->inner->loadEscrow($u);
+    }
+};
+$twice = $dg->register('deux-depots', 'motdepasse-deux-depots');
+$dg->setEscrowFields($twice, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
+(new SelfDataGuard($raced, $blindKey))->setEscrowFields($twice, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+!$raced->hide
+    ? ok('precondition: the second deposit found no escrow, as the losing request does')
+    : ko('precondition: the second deposit never read the escrow — the check below measures nothing');
+try {
+    $both = $dg->getEscrowFieldsAsUser($twice);
+    ksort($both);
+    $both === ['contact_a' => 'premier dépôt', 'contact_b' => 'second dépôt']
+        ? ok('both deposits read back: the second was written under the escrow key of the first')
+        : ko('the escrow does not hold both deposits', json_encode($both));
+} catch (RuntimeException $e) {
+    ko('the escrow no longer reads in full: a deposit was sealed under a key that was replaced', $e->getMessage());
+}
 
 // -----------------------------------------------------------------------------
 
@@ -374,7 +409,7 @@ $ancien  = new EscrowRecord(
     wrapAdmin: sodium_crypto_box_seal(heldKey($neuf['unlocked']), base64_decode($admin['publicKey'])),
     createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt
 );
-$storage->saveEscrow($carol->generation(), $ancien);
+$storage->createEscrow($carol->generation(), $ancien);
 !EscrowVault::isAccountBound($storage->loadEscrow('carol'))
     ? ok('fixture: a pre-0.6.0 wrap_admin is told apart by its length')
     : ko('fixture: the pre-0.6.0 wrap_admin reads as bound');

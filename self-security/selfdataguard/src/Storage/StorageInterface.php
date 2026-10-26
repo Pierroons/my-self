@@ -121,10 +121,22 @@ interface StorageInterface
     // -- Escrow compartment (recovery-escrow sub-vault) -----------------------
 
     /**
-     * Insert or replace the escrow envelope (wrap_user + wrap_admin) of the
-     * vault $generation names. $record->userId must be $generation's.
+     * Insert the escrow envelope (wrap_user + wrap_admin) of the vault
+     * $generation names. Never an upsert: throws EscrowExistsException if the
+     * userId has one, enforced by the storage itself — two first deposits that
+     * both find none would each bring their own escrow key, and the fields
+     * sealed under the replaced one would never open again.
+     * $record->userId must be $generation's.
      */
-    public function saveEscrow(VaultGeneration $generation, EscrowRecord $record): void;
+    public function createEscrow(VaultGeneration $generation, EscrowRecord $record): void;
+
+    /**
+     * Replace the escrow envelope the userId holds with $record, which wraps
+     * the same escrow key again (wrap_admin re-sealed). Throws
+     * EscrowNotFoundException if the userId has none.
+     * $record->userId must be $generation's.
+     */
+    public function replaceEscrow(VaultGeneration $generation, EscrowRecord $record): void;
 
     /**
      * Load the escrow envelope for a user, or null if none.

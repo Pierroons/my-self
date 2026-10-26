@@ -113,8 +113,8 @@ section('Without a connection file, the racing cases are skipped — never repor
 
 $memory = outcomes(Conformance::run(static fn () => new SqliteAdapter('sqlite::memory:')));
 $racing = array_filter($memory, static fn (string $case): bool => str_starts_with($case, 'concurrent-'), ARRAY_FILTER_USE_KEY);
-count($racing) === 3 && array_unique(array_column($racing, 'outcome')) === ['skip']
-    ? ok('the three concurrent-* cases: skip')
+count($racing) === 5 && array_unique(array_column($racing, 'outcome')) === ['skip']
+    ? ok('the five concurrent-* cases: skip')
     : ko('a racing case ran, or passed, with no process to race', json_encode($racing));
 
 // -----------------------------------------------------------------------------
@@ -138,6 +138,8 @@ $broken = [
     BlindIndexNoCaseStorage::class     => ['fields-round-trip'],
     UniqueIndexDroppedStorage::class   => ['blind-index-unique'],
     SharedIndexDroppingStorage::class  => ['blind-index-unique'],
+    GenerationCheckThenWriteStorage::class => ['concurrent-writes-and-re-enrolment'],
+    UpsertingEscrowStorage::class      => ['escrow-round-trip', 'concurrent-escrow-creations'],
     CheckThenInsertIndexStorage::class => ['concurrent-unique-index'],
     SealDroppingStorage::class         => ['vault-round-trip', 'update-compare-and-swap'],
     ProfileFrozenStorage::class        => ['update-compare-and-swap'],
@@ -152,7 +154,11 @@ foreach ($broken as $class => $expected) {
         : ko("{$class} passed a case it breaks", implode(', ', $missed));
 }
 
-foreach ([CheckThenWriteStorage::class => 'update-compare-and-swap', CheckThenInsertIndexStorage::class => 'blind-index-unique'] as $class => $sequential) {
+foreach ([
+    CheckThenWriteStorage::class           => 'update-compare-and-swap',
+    CheckThenInsertIndexStorage::class     => 'blind-index-unique',
+    GenerationCheckThenWriteStorage::class => 'writes-check-their-generation',
+] as $class => $sequential) {
     $results = outcomes(Conformance::run(...connection($work, $class)));
     $results[$sequential]['outcome'] === 'pass'
         ? ok("{$class} passes {$sequential}: only the racing processes catch it")
