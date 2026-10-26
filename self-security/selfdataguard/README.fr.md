@@ -137,7 +137,7 @@ Ce que le séquestre tient :
 | Endpoint utilisateur compromis (keylogger) | Identifiants utilisateur capturés | Identifiants capturés → données de cet utilisateur uniquement (pas de fan-out) |
 | Papier de passphrase volé | Accès au compte par le niveau 1 | Le même, plus les données de cet utilisateur — hors ligne aussi, avec un dump. La passphrase est consommée à sa première utilisation légitime, qui la remplace |
 | Coercition d'un admin pour déchiffrer | Toutes les données à la discrétion de l'admin | Les coffres privés n'ont pas de clé admin : il faudrait un secret de chaque utilisateur. Le séquestre en a une, permanente : qui contraint le détenteur de sa passphrase obtient, cérémonie après cérémonie, le compartiment de séquestre de chaque compte qui en a un — jamais le coffre privé |
-| Clé du blind index perdue, ou remplacée par une neuve | — | **Limite.** Chaque coffre et chaque archive se disent altérés — chaque sceau de profil est calculé sous cette clé — jusqu'au retour de l'ancienne. Garde-la avec les sauvegardes de la base |
+| Clé du blind index perdue, ou remplacée par une neuve | — | **Limite.** La base garde un témoin de la clé sous laquelle elle a été ouverte la première fois : une façade qui en apporte une autre est refusée, et le refus le dit. Chaque sceau et chaque index sont calculés sous cette clé : tant qu'elle n'est pas revenue, rien ne s'ouvre. Garde-la avec les sauvegardes de la base |
 | Un tiers qui connaît un nom | Apprend si le compte existe | Le même, par le temps de réponse ; et si son coffre est déjà scellé. Pas les serrures qu'il porte (whitepaper, §8.1) |
 | Écriture en base : remise d'une ancienne ligne de coffre | — | **Limite.** La ligne restaurée rouvre avec les secrets qu'elle portait, passphrase consommée depuis comprise. Rien dans le coffre ne distingue une révision restaurée : la parade est l'intégrité de la base et de ses sauvegardes (whitepaper, §8.1) |
 
@@ -203,7 +203,7 @@ $session = $dg->recover('alice', Lock::Passphrase, $anciennePassphrase, $nouveau
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' ou null
 ```
 
-Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus). Une implémentation de `StorageInterface` à toi est conforme quand `php bin/storage-conformance.php <connexion.php>` passe contre elle, et pas autrement : un stockage peut respecter chaque signature et perdre un coffre sans un mot. Chaque échec a son type d'exception : `WrongSecretException` (et `MissingEnvelopeException`, au même message : une serrure absente répond comme un secret faux), `VaultTamperedException` (un profil qui ne correspond pas à son sceau, ou sans sceau), `VaultNotFoundException`, `StaleVaultException` (une session ouverte sur un coffre remplacé depuis), `DuplicateIndexException`, `AmbiguousLookupException`.
+Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus). Une implémentation de `StorageInterface` à toi est conforme quand `php bin/storage-conformance.php <connexion.php>` passe contre elle, et pas autrement : un stockage peut respecter chaque signature et perdre un coffre sans un mot. Chaque échec a son type d'exception : `WrongSecretException` (et `MissingEnvelopeException`, au même message : une serrure absente répond comme un secret faux), `VaultTamperedException` (un profil ou une enveloppe que le sceau ne couvre pas tels quels, ou un sceau absent), `VaultNotFoundException`, `StaleVaultException` (une session ouverte sur un coffre remplacé depuis), `DuplicateIndexException`, `AmbiguousLookupException`.
 
 > ⚠️ **Après la montée d'une base en 0.7.0, avant de servir** : appelle `sealProfile($userId)` une fois pour chaque compte. Un coffre écrit avant la 0.7.0 n'a pas de sceau de profil, et ne s'ouvre pour personne tant qu'il n'est pas scellé — comme un coffre altéré ; un niveau 3 (`reEnroll()`) le refuse de la même façon. Ensuite, n'indexe une valeur qu'une fois que le compte a prouvé qu'il la détient : qui l'indexe le premier la garde.
 
@@ -218,16 +218,16 @@ php tests/sanity_primitives.php   # 56 tests — Argon2id, HMAC, XChaCha20-Poly1
 php tests/sanity_vault.php        # 64 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération, bornes du profil, serrure absente
 php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind index
 php tests/sanity_storage.php      # 64 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle (génération, révision), test "soupe DB"
-php tests/sanity_migration.php    # 23 tests — bases 0.4.0 et 0.5.x migrées en place, index aveugle unique, profil scellé par l'exploitant
+php tests/sanity_migration.php    # 25 tests — bases 0.4.0 et 0.5.x migrées en place, index aveugle unique, profil scellé par l'exploitant
 php tests/sanity_archive.php      # 26 tests — archive : contenu, cloisonnement, tout-ou-rien, écrivain concurrent attendu
-php tests/sanity_facade.php       # 102 tests — API complète bout en bout, recover(), niveau 3 sous le sceau, sceau du profil et réparation, index unique, course à l'écriture, un nom qui garde ses archives
-php tests/sanity_conformance.php  # 42 tests — la suite de conformité du stockage, contre l'adaptateur fourni et seize stockages fautifs
+php tests/sanity_facade.php       # 111 tests — API complète bout en bout, recover(), niveau 3 sous le sceau, sceau du profil et des enveloppes, réparation, clé et champs partagés de la base, index unique, course à l'écriture, un nom qui garde ses archives
+php tests/sanity_conformance.php  # 47 tests — la suite de conformité du stockage, contre l'adaptateur fourni et dix-huit stockages fautifs
 php tests/sanity_keys.php         # 20 tests — aucun objet qui tient une clé n'a d'accesseur pour elle
 php tests/sanity_audit.php        # 35 tests — journal d'audit, ancre contre la troncature, forcé sur disque, quarantaine de ce que laisse une panne
 php tests/sanity_ceremony.php     # 28 tests — CLI de cérémonie, arbitre et témoin de l'exploitant, archives, options de verify-log
 php tests/sanity_escrow.php       # 53 tests — compartiment escrow, premiers dépôts simultanés, clé admin v2, scellé lié au compte, ordre de la cérémonie, journal vérifié contre le témoin
 php tests/sanity_vecteurs.php     # 9 tests — clés des trois serrures face aux vecteurs figés
-# Total : 548 tests, 0 échec — relevé par exécution le 26/10/2026
+# Total : 564 tests, 0 échec — relevé par exécution le 26/10/2026
 python3 tests/vecteurs_argon2.py  # recalcule les vecteurs par argon2-cffi, seconde implémentation
 ```
 

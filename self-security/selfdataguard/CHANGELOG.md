@@ -14,9 +14,10 @@ implementation could leave it out, and a write from a replaced vault then landed
 a key that cannot read it. It is now a required parameter of the contract, and the façade reads back
 the salt, the revision and every wrap it wrote. An indexed value now names one account: a second
 account can no longer take the address of the first, and a lookup no longer picks between them.
-A vault's Argon2id profile is sealed under a server key: changed in the database, it is reported as
-tampering before any derivation, instead of failing every lock as a wrong secret — which sent the
-holder down to level 3. No object that holds a key has an accessor for it any more. Two first escrow
+A vault's Argon2id profile and envelopes are sealed under a server key: changed in the database, they
+are reported as tampering before any derivation, instead of failing every lock as a wrong secret —
+which sent the holder down to level 3. A database records which blind-index key and which shared
+fields it was first opened with, and refuses a façade that brings others. No object that holds a key has an accessor for it any more. Two first escrow
 deposits made at once no longer lose one of them. A ceremony checks the audit log against the last head
 its witness took before it writes anything. A deleted account's name no longer brings its archives to
 whoever registers it next.
@@ -82,12 +83,23 @@ they did not.
 - **BREAKING** — `readArchive()` no longer returns `indexed`. It came from the archive package, which
   whoever writes the database can extend to a field never meant to be looked up: restore with the
   fields your application indexes.
-- **BREAKING** — a vault's Argon2id profile carries a seal (`profile_seal`, an HMAC over the userId, the
-  salt and the profile, under a key derived from the blind-index key by HKDF). The façade checks it before any
-  derivation and throws `VaultTamperedException` — not `WrongSecretException` — when it does not hold,
-  or is missing. Measured before: a profile changed within the bounds made password, memorized word
-  and passphrase each fail as a wrong secret, and the archive made at level 3 kept the false profile.
-  **A vault written before 0.7.0 opens to no one until an operator runs `sealProfile()` on it.**
+- **BREAKING** — a vault carries a seal (`profile_seal`, an HMAC over the userId, the salt, the
+  Argon2id profile and every envelope, present or absent, under a key derived from the blind-index key
+  by HKDF). The façade checks it before any derivation and throws `VaultTamperedException` — not
+  `WrongSecretException` — when it does not hold, or is missing; every write seals the envelopes it
+  leaves. Measured before: a profile changed within the bounds made password, memorized word and
+  passphrase each fail as a wrong secret, and the archive made at level 3 kept the false profile; an
+  envelope removed from the row, or from an archive, answered as an absent lock while the others
+  opened. An archive keeps the row as it was, and so a seal over all of it.
+  **A vault written before 0.7.0 opens to no one until an operator runs `sealProfile()` on it.** A
+  vault or an archive with an envelope in format v3 was written by a version that seals everything:
+  without a seal, the seal was removed — tampering, which `sealProfile()` refuses to seal over.
+- **BREAKING** — the first façade opened on a database records there, through
+  `StorageInterface::claimSetting()`, a check of its blind-index key (an HKDF output, from which the key
+  is not computed back) and its `sharedIndexes`. A later façade that brings another key, or another
+  list, is refused when it is built (`InvalidArgumentException`, naming which). Measured before: under
+  another key, every vault and every archive reported tampering one after the other, and lookups
+  answered "absent"; under another list, one field was written under two rules.
 - **BREAKING** — no derivation runs under a profile outside `Primitives::PROFILE_FLOOR_*` (the lowest
   profile ever written) and `PROFILE_CEILING_*` (four times the current one): `VaultTamperedException`,
   or `InvalidArgumentException` for a sealed admin key. A stored profile was unbounded, and its cost
@@ -180,14 +192,17 @@ they did not.
   before 0.7.0, trusting the row as it stands. `repairProfile(string $userId): bool` puts back the
   profile a seal vouches for, trying `Primitives::PUBLISHED_PROFILES` — an HMAC each, no Argon2id, no
   secret of the holder. An archive keeps the seal of its vault; one taken before 0.7.0 has none, and
-  is opened under its recorded profile as before.
+  is opened under its recorded profile as before. `listArchives()` reads the locks of an archive from
+  the archive itself, the bytes its opening uses.
 - `Storage\Conformance` and `bin/storage-conformance.php <connection.php>`: the contract played against
-  an implementation — 18 cases, five of them racing four processes, among them a first escrow created
-  twice at once, and writes that name the generation a level 3 replaces at the same instant. A storage
+  an implementation — 20 cases, six of them racing four processes, among them a first escrow created
+  twice at once, writes that name the generation a level 3 replaces at the same instant, and one setting
+  claimed by several at once. A storage
   that compared the generation outside its write's transaction passed every case of the first version
   of the suite. An implementation that does not
   pass it is not conformant. It writes under random `conformance-<hex>-…` userIds and erases each of
-  them, so it runs against a database that already holds accounts.
+  them, so it runs against a database that already holds accounts; the three settings it claims stay,
+  under names of the same form, which nothing reads.
 
 - `new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone'])`: the indexed fields several
   accounts may hold the same value of. They are stored as `sharedIndex`, never name one account, and
@@ -202,19 +217,21 @@ they did not.
 
 ### Tests
 
-- 548 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 53, audit 23 → 35, ceremony 22 → 28, facade 67 → 102, storage 60 → 64, migration 15 → 23, vault 58 → 64, `sanity_keys` (20) —
+- 564 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 53, audit 23 → 35, ceremony 22 → 28, facade 67 → 111, storage 60 → 64, migration 15 → 25, vault 58 → 64, `sanity_keys` (20) —
   a closed list of the public methods of each key-holding class, each of them called with a known
   key inside and the key looked for in what comes back, and no public method of the object layer
   taking a key but the named admin-key path; seen failing on four planted defects —, and
-  `sanity_conformance` (42), which plays the suite against the shipped adapter and against sixteen
-  storages that each break one clause: each fails on the case that names it. The racing cases catch the three that check, then
+  `sanity_conformance` (47), which plays the suite against the shipped adapter and against eighteen
+  storages that each break one clause: each fails on the case that names it. The racing cases catch the four that check, then
   write in a second statement — they pass every sequential case. Three storages written wrong on purpose — a case-insensitive
   `user_id`, an insert overwritten before its read-back, an update reported and never written — are
   each refused by the façade. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
   also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
-  because `reEnroll()` draws a new master key. Five canaries were seen failing, each on its own case,
-  and fourteen more, one per fix made after review, each on its line.
+  because `reEnroll()` draws a new master key. The vaults "written before 0.7.0" of `sanity_migration`
+  are written as 0.6.x wrote them, format v2 under the bare userId; they were format v3, which no
+  released version wrote. Five canaries were seen failing, each on its own case, and twenty-one more,
+  one per fix made after review, each on its line.
 - The libsodium/OpenSSL cross-check in `sanity_primitives` gives each read its own `try`: a regression
   in the legacy path no longer stops the suite before the checks that follow.
 
@@ -240,13 +257,16 @@ misread. Do not roll back after a write.
   no live vault, `StaleVaultException` when it has another. A generation received and not compared
   breaks nothing visible: run `bin/storage-conformance.php` against it before it serves anyone.
   `saveEscrow()` splits into `createEscrow()`, enforced as an insert by the storage itself (a unique
-  key on `user_id`), and `replaceEscrow()`.
+  key on `user_id`), and `replaceEscrow()`. `claimSetting()` is new: the first value written under a
+  name stays, enforced by a unique name.
 - A `HeadWitness` of your own implements `lastHead()`: the last head it took, as `seq:hmac`, or `null`
   before its first.
-- Keep the blind-index key with the database's backups, and never generate a new one under existing
-  vaults: every profile seal is computed under it. Opened with another key, every vault and every
-  archive reports tampering, and neither `repairProfile()` nor `sealProfile()` helps: put the old key
-  back.
+- The first façade opened on a database records its blind-index key and its shared fields: open it
+  first with the key and the list it was written under. Keep the key with the database's backups:
+  every seal and every index is computed under it, and a façade that brings another is refused.
+- Changing the shared fields later is a migration: move the values of the field between
+  `blind_index` and `shared_index`, and write the new list, sorted, as JSON, under
+  `selfdataguard.shared-indexes` in `selfdataguard_settings`, in one transaction.
 - **After upgrading, before serving**: call `sealProfile($userId)` once for every account. Until then
   its vault opens to no one, as a tampered one would. The call trusts each row as it stands: run it on
   a database nobody else is writing to.

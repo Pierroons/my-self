@@ -137,7 +137,7 @@ What the escrow guarantees:
 | Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
 | Stolen passphrase paper | Account access through level 1 | The same, plus that user's data — offline too, given a dump. The passphrase is consumed at its first legitimate use, which replaces it |
 | Coercion of admin to decrypt | All data at admin's discretion | Private vaults have no admin key: opening them would take a secret from every user. The escrow has one, and it is permanent: whoever coerces the holder of its passphrase obtains, ceremony after ceremony, the escrow compartment of every account with an escrow compartment — never the private vault |
-| Blind-index key lost, or replaced by a new one | — | **Limit.** Every vault and every archive reports tampering — each profile seal is computed under that key — until the old key is back. Keep it with the database's backups |
+| Blind-index key lost, or replaced by a new one | — | **Limit.** The database records a check of the key it was first opened with: a façade that brings another is refused, naming it. Every seal and every index is computed under that key: until it is back, nothing opens. Keep it with the database's backups |
 | A third party who knows a name | Learns whether the account exists | The same, from the response time; and whether its vault is sealed yet. Not which locks it carries (whitepaper, §8.1) |
 | Database write: an old vault row put back | — | **Limit.** The restored row opens with the secrets it carried, a passphrase consumed since included. Nothing in the vault tells a restored revision apart: the defence is the integrity of the database and its backups (whitepaper, §8.1) |
 
@@ -203,7 +203,7 @@ $session = $dg->recover('alice', Lock::Passphrase, $oldPassphrase, $newPassword,
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' or null
 ```
 
-Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). An implementation of `StorageInterface` of your own is conformant when `php bin/storage-conformance.php <connection.php>` passes against it, and not otherwise: a storage can match every signature and lose a vault in silence. Each failure has its own exception type: `WrongSecretException` (and `MissingEnvelopeException`, with the same message: an absent lock answers as a wrong secret), `VaultTamperedException` (a profile that does not match its seal, or no seal), `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced), `DuplicateIndexException`, `AmbiguousLookupException`.
+Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). An implementation of `StorageInterface` of your own is conformant when `php bin/storage-conformance.php <connection.php>` passes against it, and not otherwise: a storage can match every signature and lose a vault in silence. Each failure has its own exception type: `WrongSecretException` (and `MissingEnvelopeException`, with the same message: an absent lock answers as a wrong secret), `VaultTamperedException` (a profile or an envelope that does not match the seal, or a seal missing), `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced), `DuplicateIndexException`, `AmbiguousLookupException`.
 
 > ⚠️ **After upgrading a database to 0.7.0, before serving**: call `sealProfile($userId)` once for every account. A vault written before 0.7.0 carries no profile seal, and opens to no one until it is sealed — as a tampered one would; a level 3 (`reEnroll()`) refuses it the same way. Then index a value only once the account has proven it holds it: whoever indexes it first keeps it.
 
@@ -218,16 +218,16 @@ php tests/sanity_primitives.php   # 56 tests — Argon2id, HMAC, XChaCha20-Poly1
 php tests/sanity_vault.php        # 64 tests — three locks, rotation, context separation, AAD binding, generation, profile bounds, absent lock
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 64 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
-php tests/sanity_migration.php    # 23 tests — 0.4.0 and 0.5.x databases migrated in place, unique blind index, profile sealed by the operator
+php tests/sanity_migration.php    # 25 tests — 0.4.0 and 0.5.x databases migrated in place, unique blind index, profile sealed by the operator
 php tests/sanity_archive.php      # 26 tests — archive: content, isolation, all-or-nothing, concurrent writer waited for
-php tests/sanity_facade.php       # 102 tests — full API end-to-end, recover(), level 3 under the seal, profile seal and repair, unique index, write race, a name that keeps its archives
-php tests/sanity_conformance.php  # 42 tests — the storage conformance suite, against the shipped adapter and sixteen broken ones
+php tests/sanity_facade.php       # 111 tests — full API end-to-end, recover(), level 3 under the seal, seal over profile and envelopes, repair, the database's key and shared fields, unique index, write race, a name that keeps its archives
+php tests/sanity_conformance.php  # 47 tests — the storage conformance suite, against the shipped adapter and eighteen broken ones
 php tests/sanity_keys.php         # 20 tests — no object that holds a key has an accessor for it
 php tests/sanity_audit.php        # 35 tests — audit log, anchor against truncation, forced to disk, quarantine of what a crash leaves
 php tests/sanity_ceremony.php     # 28 tests — ceremony CLI, operator arbiter and witness, archives, verify-log options
 php tests/sanity_escrow.php       # 53 tests — escrow compartment, first deposits at once, v2 admin key, seal bound to its account, ceremony order, log checked against the witness
 php tests/sanity_vecteurs.php     # 9 tests — keys of the three locks against frozen vectors
-# Total: 548 tests, 0 failures — counted by running them, 2026-10-26
+# Total: 564 tests, 0 failures — counted by running them, 2026-10-26
 python3 tests/vecteurs_argon2.py  # recomputes the vectors with argon2-cffi, a second implementation
 ```
 
