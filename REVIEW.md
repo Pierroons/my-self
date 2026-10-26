@@ -86,7 +86,8 @@ d'une opération — un coffre ouvert, un texte chiffré —, pas une clé maît
 > Depuis SelfDataGuard 0.7.0, `UnlockedVault`, `UnlockedEscrow` et `UnlockedArchive` font
 > l'opération elles-mêmes — chiffrer un champ, ouvrir le séquestre, resceller une serrure — et
 > `self-security/selfdataguard/tests/sanity_keys.php` rougit si une méthode publique de la couche
-> objet rend ou reçoit une clé. La clé admin n'est descellée que dans `EscrowCeremony`, par des
+> objet, constructeurs exceptés, rend ou reçoit une clé. Une clé n'en sort plus que scellée sous un
+> secret, et dans un même processus PHP c'est une interface, pas une frontière. La clé admin n'est descellée que dans `EscrowCeremony`, par des
 > méthodes privées, après l'arbitre, le journal et le témoin de tête : une méthode publique qui la
 > rendrait ou la recevrait est un constat.
 
