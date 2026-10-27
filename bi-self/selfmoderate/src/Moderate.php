@@ -1805,13 +1805,7 @@ class Moderate
         $maintenant = time();
 
         if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {
-            // Pendant une peine, le ban EST l'état, et il porte son signal : un
-            // second pour le même fait survivrait à la peine, sans rien pour le lever.
-            $peine = $pdo->prepare('SELECT banned_until FROM member_moderation WHERE account_id = ?');
-            $peine->execute([$accountId]);
-            $enPeine = (int) $peine->fetchColumn() > 0;
-            $peine->closeCursor();
-            if (!$enPeine) {
+            if (!self::enPeineAutomatique($pdo, $accountId)) {
                 self::signaler($pdo, $accountId, 'reputation_zero');
             }
 
@@ -1831,6 +1825,10 @@ class Moderate
         // Une peine échue que le journal n'a pas encore refermée tient la même
         // place : aucun ban ne commence avant que la fin du précédent soit écrite.
         if ((int) $etat['banned_until'] > 0) {
+            if (!self::enPeineAutomatique($pdo, $accountId)) {
+                self::signaler($pdo, $accountId, 'reputation_zero');
+            }
+
             return;
         }
 
@@ -1862,6 +1860,22 @@ class Moderate
         // Le ban prend la place de la chute qui l'a causé : un fait, un signal.
         self::designaler($pdo, $accountId, 'reputation_zero');
         self::signaler($pdo, $accountId, 'ban_auto');
+    }
+
+    /**
+     * Une peine automatique EST l'état d'une réputation à zéro, et porte son
+     * signal (`ban_auto`) : un second pour le même fait survivrait à la peine, sans
+     * rien pour le lever. Un ban d'arbitre n'en porte aucun : la chute qui tombe
+     * pendant lui se signale, et reste ouverte à sa fin, que rien ne lève avec elle.
+     */
+    private static function enPeineAutomatique(PDO $pdo, int $accountId): bool
+    {
+        $peine = $pdo->prepare("SELECT 1 FROM member_moderation WHERE account_id = ? AND banned_until > 0 AND ban_origine = 'auto'");
+        $peine->execute([$accountId]);
+        $auto = $peine->fetchColumn() !== false;
+        $peine->closeCursor();
+
+        return $auto;
     }
 
     /** Score (somme votes non bloqués) d'un post ou d'un membre. */

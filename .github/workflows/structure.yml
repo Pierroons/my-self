@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 134/134 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 134 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 135/135 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 135 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2684,9 +2684,11 @@ jobs:
           # qui ne compte que pour son signal ; l'état qui ne se recompte pas ; la
           # borne du regroupement ; la cause inconnue, classée comme un
           # comportement ; la levée d'état qui refuse un comportement ; les
-          # détections que porte l'acte.
+          # détections que porte l'acte ; la chute pendant un ban d'arbitre,
+          # signalée avec ou sans journal.
           for cas in orphelin filet jeton replie etendu liste grace maintien resume ordre file comptes bans reprise migration \
-                     lecture pose arbitre debut illisible balayage balai tronque etat cible borne anterieur machine fermedet; do
+                     lecture pose arbitre debut illisible balayage balai tronque etat cible borne anterieur machine fermedet \
+                     chute chute-hote; do
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do cp "$f" "/tmp/signaux.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
           import os
@@ -2733,6 +2735,10 @@ jobs:
               'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
                                "                continue;\n", 1),
               'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
+              'chute':     (M, "        if ((int) $etat['banned_until'] > 0) {\n            if (!self::enPeineAutomatique($pdo, $accountId)) {",
+                               "        if ((int) $etat['banned_until'] > 0) {\n            if (false) {", 1),
+              'chute-hote': (M, "        if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {\n            if (!self::enPeineAutomatique($pdo, $accountId)) {",
+                               "        if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {\n            if (false) {", 1),
           }[os.environ['CAS']]
           s = open(fichier, encoding='utf-8').read()
           assert s.count(avant) == n, 'plantation impossible'
@@ -2775,6 +2781,7 @@ jobs:
               etat|cible|borne) attendu="le compte d'un signal suit autre chose que ses faits" ;;
               anterieur|machine) attendu='une cause inconnue reste en base une fois classée, ou la machine ferme un comportement' ;;
               fermedet)        attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
+              chute|chute-hote) attendu="une chute pendant un ban d'arbitre passe inaperçue" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

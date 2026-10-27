@@ -2493,10 +2493,11 @@ function liste(mixed $valeur): ?array
 
 /**
  * Ce qui doit tenir sur toute base : un signal d'état n'existe pas sans son état,
- * un ban automatique en cours a son signal, et la case dit la table — le premier
- * comportement à voir, sinon le dernier état.
+ * un ban automatique en cours a son signal, une réputation au plancher hors peine
+ * a le sien, et la case dit la table — le premier comportement à voir, sinon le
+ * dernier état.
  *
- * @return array{orphelins: list<array>, bans_sans_signal: list<array>, cases: list<array>}
+ * @return array{orphelins: list<array>, bans_sans_signal: list<array>, chutes_sans_signal: list<array>, cases: list<array>}
  */
 function invariantsSignaux(PDO $p): array
 {
@@ -2511,6 +2512,11 @@ function invariantsSignaux(PDO $p): array
             "SELECT account_id FROM member_moderation m
               WHERE ban_origine = 'auto' AND banned_until > " . time() . "
                 AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'ban_auto')"
+        )->fetchAll(PDO::FETCH_ASSOC),
+        'chutes_sans_signal' => $p->query(
+            "SELECT account_id FROM member_moderation m
+              WHERE reputation <= " . Moderate::config()->banA . " AND banned_until = 0
+                AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'reputation_zero')"
         )->fetchAll(PDO::FETCH_ASSOC),
         'cases' => $p->query(
             "SELECT account_id, needs_review, review_reason FROM (
@@ -2865,7 +2871,7 @@ $obtenu69 = [];
 foreach (array_keys($attendu69) as $forme) {
     $obtenu69[$forme] = [$premiere69['signaux'][$forme] ?? null, $premiere69['cases'][$forme] ?? null];
 }
-$obtenu69 === $attendu69 && ($premiere69['invariants'] ?? null) === ['orphelins' => [], 'bans_sans_signal' => [], 'cases' => []]
+$obtenu69 === $attendu69 && ($premiere69['invariants'] ?? null) === ['orphelins' => [], 'bans_sans_signal' => [], 'chutes_sans_signal' => [], 'cases' => []]
     && ($premiere69['en_1970'] ?? -1) === 0
     && ($seconde69['signaux'] ?? null) === $premiere69['signaux'] && ($seconde69['total'] ?? null) === $premiere69['total']
     ? ok('⭐ une base d\'avant la table migre une fois : chaque case ouverte devient une ligne, chaque ban automatique retrouve son signal, l\'orphelin ne passe pas')
@@ -3080,35 +3086,69 @@ try {
         $classe76, $reste76, $refus76, causes($pdo, $machine76),
     ], JSON_UNESCAPED_UNICODE));
 
-// ── 77. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
+// ── 77. ⭐ Une chute pendant un ban d'arbitre se signale, et reste à sa fin ──
+// Un ban automatique porte le signal de la chute qui l'a causé ; un ban d'arbitre
+// n'en porte aucun. La réputation qui tombe à zéro pendant lui se signale, avec
+// ou sans journal, et le signal survit à l'échéance : rien ne le lève avec elle.
+$sousArbitre77 = [];
+foreach (['journal' => $journalC, 'sans-journal' => null] as $forme77 => $journal77) {
+    $journalAvant77 = Moderate::journal();
+    Moderate::setJournal($journalC);
+    $compte77 = membre($pdo, "sous-arbitre-$forme77-77");
+    poserReputation($pdo, $compte77, 1);
+    Moderate::adminBan($pdo, $compte77, 'arbitre-banc', motif());
+    Moderate::setJournal($journal77);
+    try {
+        Moderate::applyVote($pdo, membre($pdo, "chute-$forme77-77"), 'member', $compte77, -1, motif(), 'agressif');
+        $pendant77 = in_array('reputation_zero', array_column(
+            $pdo->query("SELECT cause FROM mod_signaux WHERE account_id = $compte77")->fetchAll(), 'cause'), true);
+    } finally {
+        Moderate::setJournal($journalAvant77);
+    }
+    vieillirBan($pdo, $compte77, 100 * Moderate::config()->dureeBanPourEpisode(1));
+    $apres77 = Moderate::getReputation($pdo, $compte77);
+    $sousArbitre77[$forme77] = [
+        'pendant' => $pendant77, 'banni_apres' => $apres77['banned'],
+        'apres' => array_column($apres77['signaux'] ?? [], 'cause'),
+        'dans_la_liste' => in_array($compte77, array_column(Moderate::flaggedForReview($pdo, 1000), 'account_id'), true),
+    ];
+}
+$sousArbitre77 === array_fill_keys(['journal', 'sans-journal'],
+        ['pendant' => true, 'banni_apres' => false, 'apres' => ['reputation_zero'], 'dans_la_liste' => true])
+    ? ok('⭐ une chute à zéro pendant un ban d\'arbitre se signale, avec ou sans journal, et le signal survit à l\'échéance')
+    : nok('⭐ une chute pendant un ban d\'arbitre passe inaperçue : ' . json_encode($sousArbitre77, JSON_UNESCAPED_UNICODE));
+
+// ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
-// ban automatique en cours sans son signal échapperait à l'arbitre ; une case
-// qui ne suit plus la table tromperait qui lit la base sans le moteur. Tout ce
-// que le banc a joué jusqu'ici est relu.
-$inv77 = invariantsSignaux($pdo);
-$inv77 === ['orphelins' => [], 'bans_sans_signal' => [], 'cases' => []]
+// ban automatique en cours sans son signal échapperait à l'arbitre, comme une
+// réputation au plancher hors peine sans le sien ; une case qui ne suit plus la
+// table tromperait qui lit la base sans le moteur. Tout ce que le banc a joué
+// jusqu'ici est relu.
+$invFin = invariantsSignaux($pdo);
+$invFin === ['orphelins' => [], 'bans_sans_signal' => [], 'chutes_sans_signal' => [], 'cases' => []]
     ? ok('⭐ en fin de banc, chaque signal d\'état a son état, chaque ban automatique son signal, et chaque case dit sa table')
     : nok('⭐ un état et son signal se sont séparés, ou la case ment : ' . json_encode([
-        'orphelins' => $inv77['orphelins'], 'bans_sans_signal' => $inv77['bans_sans_signal'],
-        'cases' => array_slice($inv77['cases'], 0, 5), 'nb_cases' => count($inv77['cases']),
+        'orphelins' => $invFin['orphelins'], 'bans_sans_signal' => $invFin['bans_sans_signal'],
+        'chutes_sans_signal' => array_slice($invFin['chutes_sans_signal'], 0, 5),
+        'cases' => array_slice($invFin['cases'], 0, 5), 'nb_cases' => count($invFin['cases']),
     ], JSON_UNESCAPED_UNICODE));
 
-// ── 78. ⭐ Toute valeur d'un acte est scalaire ───────────────────────────────
+// ── Fin 2. ⭐ Toute valeur d'un acte est scalaire ───────────────────────────────
 // Un journal qui range une colonne par clé — la forme que `Journal.php` nomme —
 // rangeait `Array` à la place d'une liste, avec un simple avertissement. Les
 // listes partent en texte JSON ; tous les actes que le banc a fait inscrire sont
 // relus.
-$nonScalaires78 = [];
-foreach ([...$journal->actes, ...$journalC->actes] as $acte78) {
-    foreach ($acte78 as $cle78 => $valeur78) {
-        if ($valeur78 !== null && !is_scalar($valeur78)) {
-            $nonScalaires78[] = ($acte78['acte'] ?? '?') . '.' . $cle78;
+$nonScalairesFin = [];
+foreach ([...$journal->actes, ...$journalC->actes] as $acteFin) {
+    foreach ($acteFin as $cleFin => $valeurFin) {
+        if ($valeurFin !== null && !is_scalar($valeurFin)) {
+            $nonScalairesFin[] = ($acteFin['acte'] ?? '?') . '.' . $cleFin;
         }
     }
 }
-$nonScalaires78 === [] && count($journalC->actes) > 0
+$nonScalairesFin === [] && count($journalC->actes) > 0
     ? ok('⭐ aucune valeur d\'acte n\'est une liste : un journal clé par clé n\'a rien à sérialiser')
-    : nok('⭐ un acte porte une valeur non scalaire : ' . json_encode(array_values(array_unique($nonScalaires78))));
+    : nok('⭐ un acte porte une valeur non scalaire : ' . json_encode(array_values(array_unique($nonScalairesFin))));
 
 Moderate::setJournal($journalAvantC);
 
