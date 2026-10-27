@@ -3118,6 +3118,24 @@ $sousArbitre77 === array_fill_keys(['journal', 'sans-journal'],
     ? ok('⭐ une chute à zéro pendant un ban d\'arbitre se signale, avec ou sans journal, et le signal survit à l\'échéance')
     : nok('⭐ une chute pendant un ban d\'arbitre passe inaperçue : ' . json_encode($sousArbitre77, JSON_UNESCAPED_UNICODE));
 
+// ── 78. ⭐ La convalescence ne reprend pas un point gagné par un vote positif ──
+// La remontée passive borne sa propre progression, pas le score : un compte que des
+// votes positifs ont monté au-dessus de son point de départ pendant la
+// convalescence y reste, et l'état se lève dès le seuil atteint, sans attendre un
+// intervalle. Le score monté est posé ici directement.
+$monte78 = [];
+foreach (['sans-intervalle' => 0, 'apres-un-intervalle' => Moderate::config()->intervalleConvalescenceSecondes] as $forme78 => $ecoule78) {
+    $compte78 = membre($pdo, "convalescent-$forme78-78");
+    poserReputation($pdo, $compte78, 25);
+    $pdo->prepare('UPDATE member_moderation SET convalescent = 1, voting_rights = 0, last_regen_at = ? WHERE account_id = ?')
+        ->execute([time() - $ecoule78, $compte78]);
+    $e78 = Moderate::getReputation($pdo, $compte78);
+    $monte78[$forme78] = ['reputation' => $e78['reputation'], 'convalescent' => $e78['convalescent'], 'vote' => $e78['voting_rights']];
+}
+$monte78 === array_fill_keys(['sans-intervalle', 'apres-un-intervalle'], ['reputation' => 25, 'convalescent' => false, 'vote' => true])
+    ? ok('⭐ la convalescence garde un score monté par des votes positifs, et se lève dès le seuil atteint')
+    : nok('⭐ la convalescence rabat un score, ou tient un compte déjà remonté : ' . json_encode($monte78));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une

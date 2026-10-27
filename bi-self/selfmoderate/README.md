@@ -43,6 +43,7 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 - Score is capped at **30** (configurable) — no hoarding social credit
 - Going up is slow, going down is fast: a downvote takes a point immediately, passive recovery gives one back per quiet interval
 - **Recovery**: below 5 the state is set and the score climbs back on its own **up to 20**, its starting point — never beyond. Voting rights return at 5, the state lifts at 20
+- Recovery caps its own progress, not the score: a point earned from an upvote during recovery is kept, and the state lifts as soon as the score reaches 20
 - The state is **visible** on one's own profile and to the arbiter: it announces that something went wrong, and that the score climbs back with patience rather than merit. Other members only see a reputation tier, never the sanction state; below the voting threshold, that tier carries no number
 - It is a **state, not a threshold**. Gating recovery on "score < 5" stops it exactly at the threshold that restores voting rights, leaving the account permanently on a knife edge
 

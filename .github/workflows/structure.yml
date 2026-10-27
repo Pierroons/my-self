@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 135/135 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 135 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 136/136 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 136 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2585,6 +2585,43 @@ jobs:
               horloge) attendu='✗ convalescence sourde à la config' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate rabat à la convalescence un score monté par des votes positifs
+        run: |
+          # @plante
+          # La remontée passive borne sa propre progression, pas le score, et l'état
+          # se lève dès le seuil atteint. Deux défauts replantés tour à tour : la
+          # remontée qui ramène au point de départ un score monté plus haut, et
+          # l'état qui attend un intervalle de plus pour se lever.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in rabat attend; do
+            cp "$M" /tmp/moderate.convalescence.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'rabat':  ('$rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));',
+                         '$rep = min(self::config()->sortieConvalescence(), $depart + $gagnes);'),
+              'attend': ('if ($gagnes < 1 && $depart < self::config()->sortieConvalescence()) {',
+                         'if ($gagnes < 1) {'),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.convalescence.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.convalescence.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.convalescence.intact "$M"
+            cmp -s /tmp/moderate.convalescence.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            echo "$sortie" | grep -qF 'la convalescence rabat un score, ou tient un compte déjà remonté' \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done

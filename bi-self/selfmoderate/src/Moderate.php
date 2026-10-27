@@ -436,10 +436,13 @@ class Moderate
             return;
         }
         $gagnes = intdiv($now - $last, self::config()->intervalleConvalescenceSecondes);
-        if ($gagnes < 1) {
+        $depart = (int) $row['reputation'];
+        if ($gagnes < 1 && $depart < self::config()->sortieConvalescence()) {
             return;
         }
-        $rep = min(self::config()->sortieConvalescence(), (int) $row['reputation'] + $gagnes);
+        // La remontée borne sa propre progression, pas le score : un point gagné
+        // par un vote positif pendant la convalescence reste acquis.
+        $rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));
         // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
         // reste de temps est acquis et compte pour le point suivant.
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, last_regen_at = ?, updated_at = ? WHERE account_id = ?')
