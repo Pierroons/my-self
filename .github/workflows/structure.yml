@@ -2798,8 +2798,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=49 [sanity_escrow]=57
-            [sanity_facade]=116 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=31 [sanity_primitives]=56
+            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=52 [sanity_escrow]=57
+            [sanity_facade]=116 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=37 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -2991,12 +2991,23 @@ jobs:
             $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
           canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
             "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
-            $D/tests/sanity_conformance.php 'a second claimSetting() replaced the value'
+            $D/tests/sanity_conformance.php 'processes claimed one setting at once: each must be given the value the database holds'
+          canari $D/src/Storage/Conformance.php "        \$this->assert(!\$empty || \$this->storage->hasVaults(), 'hasVaults() is false on a database that keeps only an archive');" '' \
+            $D/tests/sanity_conformance.php 'LiveOnlyHasVaultsStorage passed a case it breaks'
+          canari $D/src/Storage/SqliteAdapter.php "            \$out[(string) \$row['field_name']] = (bool) \$row['shared'];" '' \
+            $D/tests/sanity_conformance.php 'indexedFields() did not name exactly the fields that carry an index'
           canari $D/src/Storage/SqliteAdapter.php '            $package = $this->package($row, $userId);' \
             "            \$package = json_decode((string) \$row['package'], true, flags: JSON_THROW_ON_ERROR);" \
             $D/tests/sanity_archive.php 'listArchives() threw JsonException, which no caller expects'
-          canari $D/src/SelfDataGuard.php 'if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {' 'if (false) {' \
+          canari $D/src/SelfDataGuard.php 'if (!hash_equals($keyHeld, $check)) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a façade opened a database under another blind-index key'
+          canari $D/src/SelfDataGuard.php 'if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {' \
+            '$storage->claimSetting(self::SETTING_BLIND_KEY, $check); if (false) {' \
+            $D/tests/sanity_migration.php 'adoptBlindKey() went on over a key another writer recorded meanwhile'
+          canari $D/src/SelfDataGuard.php '        } elseif ($indexed !== []) {' '        } elseif (false) {' \
+            $D/tests/sanity_migration.php 'over a database that indexes a field: its lookups would answer'
+          canari $D/src/SelfDataGuard.php '        if ($unshared !== []) {' '        if (false) {' \
+            $D/tests/sanity_migration.php 'sharedIndexes were adopted without a field that carries shared indexes'
           canari $D/src/SelfDataGuard.php 'if ($recorded !== $declared) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a façade that shares a field opened a database where that field names one account'
           canari $D/src/Storage/SqliteAdapter.php '        $held = $this->loadSetting($name);' '        $held = null;' \
@@ -3008,8 +3019,8 @@ jobs:
             $D/tests/sanity_migration.php 'a façade recorded the first key it brought to a database written before 0.7.0'
           canari $D/src/SelfDataGuard.php 'if (!in_array($proofUserId, $storage->findUserIdsByIndex($proofField, $index), true)) {' 'if (false) {' \
             $D/tests/sanity_migration.php 'a wrong key was adopted against a lookup it does not answer'
-          canari $D/src/SelfDataGuard.php '                || !ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {' \
-            '                || false) {' \
+          canari $D/src/SelfDataGuard.php '            if (!ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {' \
+            '            if (false) {' \
             $D/tests/sanity_migration.php 'a wrong key was adopted against a seal that does not hold under it'
           canari $D/src/SelfDataGuard.php '            foreach (Primitives::PUBLISHED_PROFILES as [$publishedOps, $publishedMem]) {' \
             '            foreach ([] as [$publishedOps, $publishedMem]) {' \

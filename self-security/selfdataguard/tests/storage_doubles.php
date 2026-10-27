@@ -47,6 +47,7 @@ abstract class DelegatingStorage implements StorageInterface
     public function claimSetting(string $n, string $v): string { return $this->inner->claimSetting($n, $v); }
     public function loadSetting(string $n): ?string { return $this->inner->loadSetting($n); }
     public function hasVaults(): bool { return $this->inner->hasVaults(); }
+    public function indexedFields(): array { return $this->inner->indexedFields(); }
 }
 
 /** $record with its revision, or its Argon2id profile, replaced. */
@@ -260,6 +261,44 @@ final class CheckThenClaimStorage extends DelegatingStorage
         usleep(200_000);
         $this->pdo->prepare('INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (?, ?)')->execute([$n, $v]);
         return $v;
+    }
+}
+
+/** Finds no setting held, though one is: another writer recorded it between the read and the claim. */
+final class SettingRecordedMeanwhileStorage extends DelegatingStorage
+{
+    public function loadSetting(string $n): ?string { return null; }
+}
+
+/** hasVaults() that counts live vaults only. */
+final class LiveOnlyHasVaultsStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function hasVaults(): bool
+    {
+        return (bool) $this->pdo->query('SELECT EXISTS (SELECT 1 FROM selfdataguard_vaults)')->fetchColumn();
+    }
+}
+
+/** indexedFields() that reads the blind indexes and forgets the shared ones. */
+final class BlindOnlyIndexedFieldsStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function indexedFields(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query('SELECT DISTINCT field_name FROM selfdataguard_fields WHERE blind_index IS NOT NULL') as $row) {
+            $out[(string) $row['field_name']] = false;
+        }
+        return $out;
     }
 }
 

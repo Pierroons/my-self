@@ -211,6 +211,14 @@ interface StorageInterface
     public function hasVaults(): bool;
 
     /**
+     * The fields one of whose values carries an index, by name: true when one
+     * of them carries a shared index. Never writes.
+     *
+     * @return array<string, bool>
+     */
+    public function indexedFields(): array;
+
+    /**
      * Erase the account: the live vault, its fields and escrow, and every
      * archive of the userId, in one transaction. Works on a userId that has
      * archives and no live vault.

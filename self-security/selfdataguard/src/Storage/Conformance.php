@@ -31,8 +31,8 @@ use Throwable;
  * It writes to the database it is given, under userIds drawn at random
  * ("conformance-<hex>-…"), and erases each of them when its case ends; the
  * settings it claims stay, under names of the same form, which nothing reads.
- * Each concurrent case is played ten times. Run it against a database you can write to, before the storage
- * serves anyone.
+ * Each concurrent case is played ten times. Run it against a database you can
+ * write to, before the storage serves anyone.
  *
  * The cases that need several processes run only when the connection comes
  * from a file — the child processes require it in turn. Without one, they are
@@ -134,6 +134,7 @@ final class Conformance
             'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment',
             'setting-claimed-once'          => 'settingClaimedOnce',
             'has-vaults'                    => 'hasVaultsCase',
+            'indexed-fields'                => 'indexedFieldsCase',
             'concurrent-setting-claims'     => 'concurrentSettingClaims',
         ];
     }
@@ -620,8 +621,44 @@ final class Conformance
 
     private function hasVaultsCase(): ?string
     {
-        $this->storage->saveVault($this->newVault('has'));
+        // An archive left alone tells a storage that counts live vaults only
+        // apart — on a database that held nothing before this case.
+        $empty = !$this->storage->hasVaults();
+        $vault = $this->newVault('has');
+        $this->storage->saveVault($vault);
         $this->assert($this->storage->hasVaults(), 'hasVaults() is false on a database holding a vault');
+        $this->storage->replaceWithArchive($vault->generation(), $live = $this->newVault('has'));
+        $this->storage->deleteVault($live->generation());
+        $this->assert(!$empty || $this->storage->hasVaults(), 'hasVaults() is false on a database that keeps only an archive');
+        return null;
+    }
+
+    private function indexedFieldsCase(): ?string
+    {
+        $alice = $this->newVault('indexed-alice');
+        $bob   = $this->newVault('indexed-bob');
+        $this->storage->saveVault($alice);
+        $this->storage->saveVault($bob);
+        [$blind, $shared, $mixed, $plain] = array_map(fn ($f) => "{$this->prefix}-field-{$f}", ['blind', 'shared', 'mixed', 'plain']);
+        $this->storage->saveFields($alice->generation(), [
+            $blind => ['ciphertext' => 'c-b', 'blindIndex' => 'IdxFieldB='],
+            $mixed => ['ciphertext' => 'c-m', 'blindIndex' => 'IdxFieldM='],
+            $plain => ['ciphertext' => 'c-p'],
+        ]);
+        $this->storage->saveFields($bob->generation(), [
+            $shared => ['ciphertext' => 'c-s', 'sharedIndex' => 'IdxFieldS='],
+            $mixed  => ['ciphertext' => 'c-m2', 'sharedIndex' => 'IdxFieldM2='],
+        ]);
+        $ours = array_filter(
+            $this->storage->indexedFields(),
+            fn ($name) => str_starts_with((string) $name, "{$this->prefix}-field-"),
+            ARRAY_FILTER_USE_KEY
+        );
+        ksort($ours);
+        $this->assert(
+            $ours === [$blind => false, $mixed => true, $shared => true],
+            'indexedFields() did not name exactly the fields that carry an index, each with whether one of its values is shared'
+        );
         return null;
     }
 

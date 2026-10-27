@@ -16,6 +16,7 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
+require __DIR__ . '/storage_doubles.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
@@ -406,6 +407,30 @@ try {
         ? ok('a wrong key is not adopted: the lookup it should answer does not lead to the account, and nothing is recorded')
         : ko('the refused key was recorded anyway');
 }
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $wrongKey);
+    ko('a key was adopted on the operator\'s word over a database that indexes a field: its lookups would answer "absent"');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'indexes email') && $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('a database that indexes a field adopts no key without proof, and the refusal names the field')
+        : ko('refused for another reason, or a key was recorded', $e->getMessage());
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'Pin@example.org');
+    ko('the right key was adopted against a value the database never indexed');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'the field name, the value')
+        ? ok('a value mistyped under the right key is refused, and the refusal names the value as a cause, not the key alone')
+        : ko('a mistyped value is refused as if the key were wrong', $e->getMessage());
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin');
+    ko('a seal proof was accepted from a vault written before 0.7.0, which carries none');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'carries no seal')
+        ? ok('a seal proof on a vault written before 0.7.0 is refused for what it is: the vault carries no seal')
+        : ko('a missing seal is refused as if the key were wrong', $e->getMessage());
+}
 SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'pin@example.org');
 $dgPin = new SelfDataGuard($pinStore, $rightKey);
 $dgPin->sealProfile('user-pin') && $dgPin->findUserByField('email', 'pin@example.org') === 'user-pin'
@@ -433,6 +458,36 @@ SelfDataGuard::adoptBlindKey($sealStore, $rightKey, [], 'user-sealproof');
 (new SelfDataGuard($sealStore, $rightKey))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
     ? ok('the key a seal proves is adopted, and the vault opens')
     : ko('the key a seal proves did not open the vault');
+
+$sharePdo   = oldDatabase('user-share', 'share-password-001', 'share-memorized');
+$shareStore = new SqliteAdapter($sharePdo);
+$sharePdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, shared_index, updated_at) VALUES (?, ?, ?, ?, ?)')
+    ->execute(['user-share', 'phone', 'c-phone', BlindIndex::compute('+33 6 00', $rightKey, 'phone'), '2026-01-01']);
+try {
+    SelfDataGuard::adoptBlindKey($shareStore, $rightKey, [], 'user-share', 'phone', '+33 6 00');
+    ko('sharedIndexes were adopted without a field that carries shared indexes: every façade that shares it would be refused');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'phone') && $shareStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('sharedIndexes that omit a field carrying shared indexes are refused, and nothing is recorded')
+        : ko('refused for another reason, or a key was recorded', $e->getMessage());
+}
+SelfDataGuard::adoptBlindKey($shareStore, $rightKey, ['phone'], 'user-share', 'phone', '+33 6 00');
+(new SelfDataGuard($shareStore, $rightKey, ['phone']))->findUsersByField('phone', '+33 6 00') === ['user-share']
+    ? ok('sharedIndexes that name the shared field are adopted, and the field\'s lookup answers')
+    : ko('the shared field adopted does not answer its lookup');
+
+$racePdo = new PDO('sqlite::memory:');
+$racePdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$raceStore = new SqliteAdapter($racePdo);
+new SelfDataGuard($raceStore, $rightKey);
+try {
+    SelfDataGuard::adoptBlindKey(new SettingRecordedMeanwhileStorage($raceStore), $wrongKey);
+    ko('adoptBlindKey() went on over a key another writer recorded meanwhile');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'meanwhile')
+        ? ok('adoptBlindKey() refuses when another key was recorded between its read and its claim')
+        : ko('refused for another reason', $e->getMessage());
+}
 
 section('An archive written before 0.7.0 carries no seal, and opens under the profile it recorded');
 

@@ -144,16 +144,19 @@ final class SelfDataGuard
      *     value under this key must name that account — the lookup a database
      *     written under this key answers;
      *   - $proofUserId alone: that account's seal must hold under this key;
-     *   - no proof: for a database where no value was ever indexed and no vault
-     *     sealed, so that the key decides nothing that exists yet. The operator
-     *     vouches for it.
+     *   - no proof: for a database where no field carries an index, so that
+     *     the key decides no lookup yet. The operator vouches for it; a
+     *     database that indexes a field refuses it.
      *
-     * It then records the key and $sharedIndexes, as the first façade on an
-     * empty database does. Adopting the key already recorded does nothing.
+     * It then records the key and $sharedIndexes, which names every field that
+     * carries a shared index in the database, as the first façade on an empty
+     * database does. Adopting the key already recorded does nothing.
      *
      * @param list<string> $sharedIndexes
-     * @throws InvalidArgumentException when the proof does not hold, or the
-     *         database recorded another key
+     * @throws InvalidArgumentException when the proof does not hold, or is
+     *         missing on a database that indexes a field; when $sharedIndexes
+     *         omits a field that carries shared indexes; when the database
+     *         recorded another key
      */
     public static function adoptBlindKey(
         StorageInterface $storage,
@@ -174,6 +177,7 @@ final class SelfDataGuard
             }
             return;
         }
+        $indexed = $storage->indexedFields();
         if ($proofField !== null || $proofValue !== null) {
             if ($proofUserId === null || $proofField === null || $proofValue === null) {
                 throw new InvalidArgumentException('A lookup proof names the account, the field and the value');
@@ -181,18 +185,35 @@ final class SelfDataGuard
             $index = BlindIndex::compute($proofValue, $blindKey, $proofField);
             if (!in_array($proofUserId, $storage->findUserIdsByIndex($proofField, $index), true)) {
                 throw new InvalidArgumentException(
-                    "Under this key, '{$proofField}' does not lead to '{$proofUserId}': "
-                    . 'it is not the key this database indexed its values under'
+                    "Under this key, the value given for '{$proofField}' does not lead to '{$proofUserId}': the key, "
+                    . 'the field name, the value — compared exactly, case and spaces included — or the account is not '
+                    . 'the one the database indexed. Nothing was recorded'
                 );
             }
         } elseif ($proofUserId !== null) {
             $record = $storage->loadVault($proofUserId);
-            if ($record->profileSeal === null
-                || !ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {
+            if ($record->profileSeal === null) {
                 throw new InvalidArgumentException(
-                    "The seal of '{$proofUserId}' does not hold under this key: it is not the key this database sealed under"
+                    "'{$proofUserId}' carries no seal — a database written before 0.7.0 holds none: prove the key by a lookup"
                 );
             }
+            if (!ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {
+                throw new InvalidArgumentException(
+                    "The seal of '{$proofUserId}' does not hold under this key: the key is not the one this database "
+                    . 'sealed under, or the row was changed since. Nothing was recorded'
+                );
+            }
+        } elseif ($indexed !== []) {
+            throw new InvalidArgumentException(
+                'This database indexes ' . implode(', ', array_keys($indexed)) . ', and the key decides every lookup '
+                . 'of them: it is adopted only on proof — an account, one of these fields and its value'
+            );
+        }
+        $unshared = array_diff(array_keys(array_filter($indexed)), json_decode(self::sharedList($sharedIndexes), true));
+        if ($unshared !== []) {
+            throw new InvalidArgumentException(
+                'The fields ' . implode(', ', $unshared) . ' carry shared indexes in this database: sharedIndexes names them'
+            );
         }
         if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {
             throw new InvalidArgumentException('Another blind-index key was recorded meanwhile');
@@ -813,9 +834,10 @@ final class SelfDataGuard
     }
 
     /**
-     * The profile an archive's seal vouches for: the one it recorded, or else
-     * the published profile the seal holds under — an archive taken while its
-     * profile was changed in the database keeps a seal over the true one.
+     * The profile an archive's seal vouches for: the one it records, or else
+     * the published profile the seal holds under. A profile changed in the
+     * database, while the archive was taken or since, is not followed, and
+     * nothing reports it: the seal covers the true one.
      *
      * @return array{0: int, 1: int}
      */

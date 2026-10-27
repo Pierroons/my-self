@@ -594,7 +594,7 @@ final class ProfileBlindStorage extends DelegatingStorage
         return new VaultRecord(
             userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
             wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
-            wrapPhrase: $r->wrapPhrase, revision: $r->revision
+            wrapPhrase: $r->wrapPhrase, revision: $r->revision, profileSeal: $r->profileSeal
         );
     }
 }

@@ -455,6 +455,19 @@ final class SqliteAdapter implements StorageInterface
         )->fetchColumn();
     }
 
+    public function indexedFields(): array
+    {
+        $out = [];
+        foreach ($this->pdo->query(
+            'SELECT field_name, MAX(shared_index IS NOT NULL) AS shared FROM selfdataguard_fields
+             WHERE blind_index IS NOT NULL OR shared_index IS NOT NULL
+             GROUP BY field_name ORDER BY field_name'
+        ) as $row) {
+            $out[(string) $row['field_name']] = (bool) $row['shared'];
+        }
+        return $out;
+    }
+
     public function listArchives(string $userId): array
     {
         // The locks are read from the package, the bytes an opening uses and the
@@ -620,10 +633,6 @@ final class SqliteAdapter implements StorageInterface
     }
 
     /**
-     * @param array<string, mixed> $vault
-     * @return list<Lock>
-     */
-    /**
      * The archive package of $row, refused as tampering when it cannot be read
      * as one — never a JsonException or a TypeError for the caller to meet.
      *
@@ -645,6 +654,10 @@ final class SqliteAdapter implements StorageInterface
         return $package;
     }
 
+    /**
+     * @param array<string, mixed> $vault
+     * @return list<Lock>
+     */
     private function locksOf(array $vault): array
     {
         return array_values(array_filter([
