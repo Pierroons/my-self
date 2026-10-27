@@ -52,6 +52,10 @@ final class Config
      *                                        temps, pas avec le mérite.
      * @param float    $plancherFraction      Part de la peine EN COURS avant laquelle un
      *                                        arbitre ne lève un ban qu'avec un motif écrit.
+     * @param int      $bansArbitreSignal     Bans d'arbitre sur un même compte à partir
+     *                                        desquels l'enchaînement est signalé à
+     *                                        l'arbitre : chacun alourdit le ban
+     *                                        automatique suivant.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -74,6 +78,7 @@ final class Config
         public readonly ?int $dureeBanAdminSecondes = null,
         public readonly int $intervalleConvalescenceSecondes = 86400,
         public readonly float $plancherFraction = 1 / 3,
+        public readonly int $bansArbitreSignal = 2,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');

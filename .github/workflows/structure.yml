@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 138/138 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 138 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 139/139 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 139 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2642,10 +2642,11 @@ jobs:
           # la transaction d'un hôte ; le refus d'une peine qui attend sa fin ; la
           # décision sur l'état relu sous le verrou ; les rangs avant la
           # restitution ; le refus des gestes dans la transaction d'un hôte ; le
-          # ban automatique qui ne s'y arme pas ; le refus d'un compte inexistant.
+          # ban automatique qui ne s'y arme pas ; le refus d'un compte inexistant ;
+          # les bans d'arbitre comptés à part, et leur enchaînement signalé.
           # Le banc doit rougir sur son cas.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in journal gestes revue balayage meute hote attente relecture ordre hote-geste hote-vote inconnu; do
+          for cas in journal gestes revue balayage meute hote attente relecture ordre hote-geste hote-vote inconnu enchaine compteur; do
             cp "$M" /tmp/moderate.arbitrage.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2674,6 +2675,8 @@ jobs:
               'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 4)],
               'hote-vote':  [('if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {', 'if (self::$journal === null) {', 1)],
               'inconnu':    [("return $connu ? null : ['ok' => false, 'message' => static::t('Compte introuvable.')];", 'return null;', 1)],
+              'enchaine':   [("                self::signaler($pdo, $accountId, 'bans_arbitre');\n", '', 1)],
+              'compteur':   [("            $pdo->prepare('UPDATE member_moderation SET strikes_admin = strikes_admin + 1 WHERE account_id = ?')\n                ->execute([$accountId]);\n", '', 1)],
           }[os.environ['CAS']]
           for avant, apres, n in remplacements:
               assert s.count(avant) == n if n is not None else s.count(avant) > 0, 'plantation impossible'
@@ -2702,6 +2705,7 @@ jobs:
               hote-geste) attendu="un geste d'arbitre passe dans la transaction d'un hôte" ;;
               hote-vote)  attendu="un vote arme le ban automatique dans la transaction d'un hôte" ;;
               inconnu)    attendu="un geste sur un compte inexistant échoue autrement qu'en refus" ;;
+              enchaine|compteur) attendu="les bans d'arbitre se perdent dans les strikes" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
@@ -2751,7 +2755,7 @@ jobs:
               'bans':      (M, "AND s.cause = 'ban_auto' AND s.vu_le IS NULL", "AND s.cause = 'ban_auto'", 1),
               'reprise':   (M, "CASE WHEN needs_review = 0 THEN updated_at END\n               FROM member_moderation\n              WHERE ban_origine",
                                "CASE WHEN needs_review = 0 THEN updated_at END\n               FROM member_moderation\n              WHERE 0 AND ban_origine", 1),
-              'grace':     (M, "                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0)));\n",
+              'grace':     (M, "                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0) || $s['cause'] === 'bans_arbitre'));\n",
                                "                true));\n", 1),
               'maintien':  (M, "            self::retirerDeLaFile($pdo, $accountId, [$vise]);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu",
                                "            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu", 1),
@@ -2890,8 +2894,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 41/41 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 41 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 43/43 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 43 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
@@ -2904,7 +2908,7 @@ jobs:
           for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
                      meuteLiensMin meuteVotantsMax meuteEpisodeCooldown fenetreFarmingJours \
                      farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
-                     ageMinPourVoterSecondes dureesBan plancherFraction \
+                     ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal \
                      prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
                      readme:qualificatif readme:sans-chiffre; do
             PLANTE=$(mktemp -d)

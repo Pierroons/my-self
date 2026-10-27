@@ -239,6 +239,7 @@ class Moderate
         return [
             'reputation'    => (int) $row['reputation'],
             'strikes'       => (int) $row['strikes'],
+            'strikes_admin' => (int) $row['strikes_admin'],
             'voting_rights' => (bool) $row['voting_rights'],
             'banned'        => ((int) $row['banned_until']) > time(),
             'banned_until'  => (int) $row['banned_until'],
@@ -264,7 +265,7 @@ class Moderate
     private static function ligne(PDO $pdo, int $accountId): ?array
     {
         $stmt = $pdo->prepare(
-            'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
+            'SELECT reputation, strikes, strikes_admin, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
                     convalescent, vote_muted_until, needs_review,
                     EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id) AS signale
                FROM member_moderation m WHERE account_id = ?'
@@ -1816,7 +1817,7 @@ class Moderate
         }
 
         self::cloreBanExpire($pdo, $accountId, contenir: true);
-        $stmt = $pdo->prepare('SELECT reputation, banned_until, strikes FROM member_moderation WHERE account_id = ?');
+        $stmt = $pdo->prepare('SELECT reputation, banned_until, strikes, strikes_admin FROM member_moderation WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $etat = $stmt->fetch();
         if (!$etat || (int) $etat['reputation'] > self::config()->banA) {
@@ -1845,6 +1846,7 @@ class Moderate
             'compte'  => $accountId,
             'origine' => 'auto',
             'episode' => $episode,
+            'dont_arbitre' => (int) $etat['strikes_admin'],
             'duree'   => $duree,
             'debut'   => $maintenant,
             'jusqu_a' => $jusqua,
@@ -2026,11 +2028,13 @@ class Moderate
             $maintenant = time();
             $jusqua     = $maintenant + $seconds;
             $episode    = $etat['strikes'] + 1;
+            $parArbitre = $etat['strikes_admin'] + 1;
             self::$journal->inscrire([
                 'acte'    => 'ban_debut',
                 'compte'  => $accountId,
                 'origine' => 'admin',
                 'episode' => $episode,
+                'dont_arbitre' => $parArbitre,
                 'duree'   => $seconds,
                 'debut'   => $maintenant,
                 'jusqu_a' => $jusqua,
@@ -2046,6 +2050,14 @@ class Moderate
                         voting_rights = 0, strikes = ?, updated_at = ?
                   WHERE account_id = ?"
             )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
+            // Un ban d'arbitre compte comme un épisode, et alourdit le ban automatique
+            // suivant : la récidive se paie, quelle que soit la main qui l'a constatée.
+            // Leur enchaînement sur un même compte passe sous un autre regard.
+            $pdo->prepare('UPDATE member_moderation SET strikes_admin = strikes_admin + 1 WHERE account_id = ?')
+                ->execute([$accountId]);
+            if ($parArbitre >= self::config()->bansArbitreSignal) {
+                self::signaler($pdo, $accountId, 'bans_arbitre');
+            }
 
             return ['ok' => true, 'message' => sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
         });
@@ -2106,7 +2118,7 @@ class Moderate
             $anticipee  = false;
             $rangEfface = self::rangDe($pdo, $accountId);
             $fermes     = array_values(array_filter($etat['signaux'], static fn (array $s): bool =>
-                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0)));
+                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0) || $s['cause'] === 'bans_arbitre'));
             $ouverts    = self::causesEnTexte($etat['signaux']);
             $ferme      = self::fermesEnTexte($fermes);
 
@@ -2153,7 +2165,7 @@ class Moderate
             $pdo->prepare(
                 'UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
-                        voting_rights = 1, reputation = ?, strikes = 0,
+                        voting_rights = 1, reputation = ?, strikes = 0, strikes_admin = 0,
                         convalescent = 0, vote_muted_until = 0, updated_at = ?
                   WHERE account_id = ?'
             )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);

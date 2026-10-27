@@ -578,6 +578,7 @@ final class Db
             'ban_debut'        => 'INTEGER NOT NULL DEFAULT 0',
             'ban_origine'      => 'TEXT',
             'ban_motif'        => 'TEXT',
+            'strikes_admin'    => 'INTEGER NOT NULL DEFAULT 0',
         ] as $col => $type) {
             if (!in_array($col, $cols, true)) {
                 self::$pdo->exec("ALTER TABLE member_moderation ADD COLUMN $col $type");

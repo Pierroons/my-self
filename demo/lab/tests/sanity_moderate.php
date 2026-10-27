@@ -3199,6 +3199,40 @@ try {
         'borne' => array_map(static fn (array $m): string => mb_substr($m['reason'], 0, 1), $borne80),
     ], JSON_UNESCAPED_UNICODE));
 
+// ── 81. ⭐ Les bans d'arbitre se comptent à part, et leur enchaînement se signale ─
+// Un ban d'arbitre est un épisode, et alourdit le ban automatique suivant. L'acte de
+// début de ban dit combien de ses épisodes viennent d'un arbitre ; au deuxième ban
+// d'arbitre sur un même compte, `bans_arbitre` part à l'arbitre. La grâce remet
+// les deux compteurs et ferme ce signal.
+$enchaine81 = membre($pdo, 'enchaine-81');
+poserReputation($pdo, $enchaine81, 20);
+$premier81 = Moderate::adminBan($pdo, $enchaine81, 'arbitre-banc', motif());
+$apresUn81 = causes($pdo, $enchaine81);
+vieillirBan($pdo, $enchaine81, 100 * Moderate::config()->dureeBanAdmin());
+Moderate::getReputation($pdo, $enchaine81);
+$second81 = Moderate::adminBan($pdo, $enchaine81, 'arbitre-banc', motif());
+$apresDeux81 = causes($pdo, $enchaine81);
+vieillirBan($pdo, $enchaine81, 100 * Moderate::config()->dureeBanAdmin());
+Moderate::getReputation($pdo, $enchaine81);
+$pdo->prepare('UPDATE member_moderation SET reputation = 1, voting_rights = 1 WHERE account_id = ?')->execute([$enchaine81]);
+Moderate::applyVote($pdo, membre($pdo, 'chute-81'), 'member', $enchaine81, -1, motif(), 'agressif');
+$debuts81 = array_map(static fn (array $a): array => [$a['origine'], $a['episode'], $a['dont_arbitre'] ?? null],
+    $journalC->de($enchaine81, 'ban_debut'));
+$grace81 = Moderate::adminPardon($pdo, $enchaine81, 'arbitre-banc', motif());
+$acteGrace81 = $journalC->de($enchaine81, 'ban_leve')[0] ?? [];
+$compteurs81 = $pdo->query("SELECT strikes, strikes_admin FROM member_moderation WHERE account_id = $enchaine81")->fetch(PDO::FETCH_ASSOC);
+($premier81['ok'] ?? false) && ($second81['ok'] ?? false)
+    && !in_array('bans_arbitre', $apresUn81, true) && in_array('bans_arbitre', $apresDeux81, true)
+    && $debuts81 === [['admin', 1, 1], ['admin', 2, 2], ['auto', 3, 2]]
+    && ($grace81['ok'] ?? false) && !in_array('bans_arbitre', causes($pdo, $enchaine81), true)
+    && in_array('bans_arbitre', array_column(liste($acteGrace81['ferme'] ?? null) ?? [], 'cause'), true)
+    && $compteurs81 === ['strikes' => 0, 'strikes_admin' => 0]
+    ? ok('⭐ chaque début de ban dit ses épisodes d\'arbitre, le deuxième ban d\'arbitre se signale, et la grâce remet tout à zéro')
+    : nok('⭐ les bans d\'arbitre se perdent dans les strikes : ' . json_encode([
+        'premier' => $premier81, 'second' => $second81, 'apres_un' => $apresUn81, 'apres_deux' => $apresDeux81,
+        'debuts' => $debuts81, 'grace' => $grace81, 'ferme' => $acteGrace81['ferme'] ?? null, 'compteurs' => $compteurs81,
+    ], JSON_UNESCAPED_UNICODE));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une

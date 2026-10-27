@@ -45,6 +45,8 @@ interface Journal
      *              par `validateReason()` pour un arbitre ; le même au début et à la
      *              fin d'un ban
      *   episode    numéro d'épisode (1 = premier)              ban_debut, ban_fin
+     *   dont_arbitre  combien de ces épisodes sont des bans     ban_debut
+     *              d'arbitre : le palier d'un ban automatique en dépend aussi
      *   duree      durée de la peine en secondes               ban_debut
      *   debut      horodatage du début de la peine             ban_debut, ban_fin
      *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu

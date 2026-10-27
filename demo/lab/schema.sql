@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     account_id     INTEGER PRIMARY KEY,
     reputation     INTEGER NOT NULL DEFAULT 20,
     strikes        INTEGER NOT NULL DEFAULT 0,
+    strikes_admin  INTEGER NOT NULL DEFAULT 0,  -- dont des bans d'arbitre : l'acte de début de ban dit d'où vient son palier
     voting_rights  INTEGER NOT NULL DEFAULT 1,
     banned_until   INTEGER NOT NULL DEFAULT 0,
     ban_debut      INTEGER NOT NULL DEFAULT 0,  -- début de la peine en cours : le plancher en dépend
@@ -193,7 +194,8 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
     account_id  INTEGER NOT NULL,
     cause       TEXT NOT NULL,     -- état : 'reputation_zero' | 'ban_auto' | 'journal_en_panne' ; comportement :
-                                   -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' ;
+                                   -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' |
+                                   -- 'bans_arbitre' ;
                                    -- 'signal_anterieur' : une case ouverte sans cause, reprise à la migration
     ouvert_le   INTEGER NOT NULL,
     derniere_le INTEGER NOT NULL,  -- dernière occurrence comptée
