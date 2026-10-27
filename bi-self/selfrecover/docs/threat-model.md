@@ -25,8 +25,9 @@ You don't need to trust Google, Microsoft, or anyone else for account recovery. 
 ### ✓ Rate-limited brute force
 Per-account rate limits on level 2 and on device enrolment, plus per-address limits under
 the `clearweb` profile, plus the suspension of code recovery past a threshold of failures. Opening a
-level-3 case is braked per address under `clearweb`, and by a service-wide ceiling under
-`tor-onion` where no address discriminates — deliberately not per account (see below).
+level-3 case is braked per address under `clearweb`; under `tor-onion`, where no address
+discriminates, it costs a computation challenge, with a service-wide ceiling behind it — and never
+refused per account (see below).
 
 ⚠️ **Level 1 has no per-account brake, and that is a decision rather than an omission.** It had one, and anyone
 who knew the public username could fill it: the counter lives in a table the integrator shares with
@@ -111,8 +112,8 @@ refused and counted instead of silently created. A unique index could not hold t
 it; an index on statuses alone would have blocked a new dispute behind an expired one, which is
 stricter than the rule.
 
-What bounds the cost meanwhile: the per-address brake under `clearweb`, the service-wide ceiling
-under `tor-onion`, the shared deadline on every refusal, a ceiling per answer and per thread
+What bounds the cost meanwhile: the per-address brake under `clearweb`, the computation challenge
+and the service-wide ceiling behind it under `tor-onion`, the shared deadline on every refusal, a ceiling per answer and per thread
 message — and rate limiting in front of the route, which the library cannot impose.
 
 ### ~ Bot-driven account enumeration
@@ -156,11 +157,14 @@ answers "name taken" at sign-up settles the question this one refuses to.
 
 What opposes enumeration at L3 is cost, not silence:
 
-- two brakes in `Escalade::ouvrir()` — per address and a service-wide ceiling — both applied
-  **before** the account lookup, so that being braked does not itself sort the accounts that
-  exist from the ones that do not. There is deliberately no per-account brake: it would let a
-  third party wall the holder out of their own dispute with nothing shown to the arbitrator,
-  where the existing collision counter shows it;
+- the brakes in `Escalade::ouvrir()` — per address, the computation challenge under `tor-onion`,
+  and a service-wide ceiling — all applied **before** the account lookup, so that being braked
+  does not itself sort the accounts that exist from the ones that do not. There is deliberately
+  no per-account brake that refuses: it would let a third party wall the holder out of their own
+  dispute with nothing shown to the arbitrator, where the existing collision counter shows it. The
+  name only raises the challenge's price, by one bit per opening on it within the hour. That price
+  is readable: it tells that a name was targeted recently — not that it exists, since the name
+  typed is counted before any lookup;
 - ⚠️ **the service-wide ceiling is read only where an address discriminates nothing**, that is
   under `tor-onion`. Until 0.12.0 it applied everywhere, and under `clearweb` — where the profile
   *requires* an address, so the per-address brake always bites — it bought no protection and added
@@ -176,17 +180,21 @@ What opposes enumeration at L3 is cost, not silence:
   delay, as the third already did. Taking the deadline before the lookup bounds that total instead
   of adding it to the work, but the cost to the service goes up, not down — closing an oracle that
   points at an existing dispute is worth it on two rare paths;
-- and, for an exposed deployment, **a proof of work in front of the route**. The library cannot
-  impose it — it has no routes. Under `tor-onion`, deploy without one and the service-wide ceiling
-  is the only brake left, which is a blunt instrument: it refuses every visitor at once. Under
-  `clearweb` there is no global ceiling at all, by design: the per-address brake is the one that
-  works, and rate limiting in the reverse proxy is the deployment's part.
+- and, under `tor-onion`, **the computation challenge** (since 0.13.0). `epreuve()` issues it,
+  signed by the deployment salt, bound to the requested name, valid five minutes; the browser
+  solves it (`client/sr-epreuve.js`); `ouvrir()` checks it and consumes it once, by a unique key.
+  Its difficulty — 16 bits, plus one per ten openings of the service and one per opening on the
+  same name, up to 20 — is read again on submission, so challenges drawn while calm cannot be
+  stockpiled and spent in a burst. Until 0.13.0 the library left this to the integrator, and a
+  deployment without it had only the service-wide ceiling, which refused every visitor at once
+  past twenty openings an hour. That ceiling remains, raised to 500, as a last resort. Under
+  `clearweb` there is no challenge and no global ceiling, by design: the per-address brake is
+  the one that works, and rate limiting in the reverse proxy is the deployment's part.
 
 Behind a hidden service, where every request shares one address, the caller passes `null` rather
 than that address: it says nothing about who is calling, and passing it would turn a per-client
 brake into a global ceiling set at the per-client threshold — lower than the service ceiling, and
-masking it. The service-wide ceiling then governs alone, and the proof of work stops being
-optional.
+masking it. The computation challenge then governs, with the service-wide ceiling behind it.
 
 None of the rows these brakes write carry the caller's address in the column other counters read.
 Were they to, opening disputes would consume the login, L1, L2 and device-enrolment budget of

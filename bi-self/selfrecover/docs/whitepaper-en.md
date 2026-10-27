@@ -202,7 +202,7 @@ There is no automatic escalation to L3. Level 2 asks for no identifier, but the 
   - The bundle carries **no passive signal**: no address, no browser fingerprint
 - **No numeric score is computed.** These facts **never** unlock the account automatically, they only help a **human administrator** decide in the chat
 - Cooldown: 1 hour between submissions
-- Opening is braked before any account lookup: 10 per address per hour (default). A service-wide ceiling of 20 also exists, but it is read **only under the `tor-onion` profile**, where no address discriminates: under `clearweb` the per-address brake always bites, and a global ceiling would only add a master switch that anonymous requests suffice to pull (§6.1). There is deliberately no per-account brake: a third party could otherwise wall the owner out of level 3 with nothing shown to the arbitrator. Harassing an account shows up another way: the concurrent attempt is counted and displayed
+- Opening is braked before any account lookup: 10 per address per hour (default). Under the `tor-onion` profile, where no address discriminates, an opening costs instead: `epreuve()` issues a computation challenge signed by the deployment salt, bound to the requested name and valid five minutes, which the browser solves (`client/sr-epreuve.js`) and `ouvrir()` checks and consumes once. Its difficulty starts at 16 bits and rises by one per ten openings of the service in the hour and by one per opening on the same name, up to 20; it is read again on submission, so a challenge drawn while calm no longer serves once the load has risen. A service-wide ceiling of 500 openings per hour stays behind it, as a last resort, read only under `tor-onion`: under `clearweb` the per-address brake always bites, and a global ceiling would only add a master switch that anonymous requests suffice to pull (§6.1). There is deliberately no per-account brake that refuses — the name raises a price, it never closes the door: a third party could otherwise wall the owner out of level 3 with nothing shown to the arbitrator. Harassing an account shows up another way: the concurrent attempt is counted and displayed
 - The tracking code is presented at every step — filing the answers, the chat thread, the status, the reset. The case expires after 24h while undecided. A grant runs 7 days from the decision; past that it lapses and arbitration must be redone. The reset closes the case and erases the tracking code's hash. If the holder lost their tracking code, an arbitrator can abandon the current case: that grants no access, it frees the slot for a new case
 
 ### 5.4 L2 possession factors — recovery codes & the "this device" factor
@@ -307,13 +307,13 @@ SelfRecover governs **a single right**: settling level-3 disputes. Two roles car
 
 **What the library enforces**
 
-- **Counters**: per address at level 1, per account and per address at level 2 and at device enrollment, with level-2 suspension after 20 failures; per address when opening a level-3 dispute, plus a service-wide ceiling read only under `tor-onion`. The per-address brake only exists under the `clearweb` profile. At level 1 the per-account counter no longer closes a door: it classifies
+- **Counters**: per address at level 1, per account and per address at level 2 and at device enrollment, with level-2 suspension after 20 failures; per address when opening a level-3 dispute; under `tor-onion`, a computation challenge whose price rises with the load and with the same name, and a service-wide ceiling behind it. The per-address brake only exists under the `clearweb` profile. At level 1 the per-account counter no longer closes a door: it classifies
 - **Forced delay** on every refusal that hides a state
 - **Single refusal message**, so nothing sorts the accounts that exist — except two deliberate exceptions: level-2 suspension, which must be stated, and opening a level-3 dispute (§10.1)
 
 **What the integrator owns**, because it needs routes, pages or a browser the
-library does not have: a honeypot field, a form-timing check, a proof of work in
-front of the dispute-opening route, browser-fingerprint correlation, and any
+library does not have: a honeypot field, a form-timing check, calling
+`client/sr-epreuve.js` on the dispute-opening page, browser-fingerprint correlation, and any
 notification or blocking policy built on top.
 
 ---
@@ -356,7 +356,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
 - **Braked brute force** — per address at level 1, per account and per address at level 2 and at enrollment, level-2 suspension after 20 failures, an Argon2id cost per server-side attempt. ⚠️ At level 1 behind a hidden service, no brake of the library applies: only the per-attempt cost and the passphrase's entropy stand in the way
-- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. The refusals, for their part, cannot be told apart: unknown name, case already open and frozen procedure return the same `ouverture_refusee`, with the same delay. What opposes it is cost: a per-address brake applied before the account lookup, the service-wide ceiling that replaces it under `tor-onion` (§5.3), that delay on every refusal, and a proof of work in front of the route — which the library cannot impose, having no routes
+- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. The refusals, for their part, cannot be told apart: unknown name, case already open and frozen procedure return the same `ouverture_refusee`, with the same delay. What opposes it is cost: a per-address brake applied before the account lookup, the computation challenge that replaces it under `tor-onion`, with the service-wide ceiling behind it (§5.3), and that delay on every refusal. The challenge's price for a name tells that the name was targeted within the hour — declared — not that it exists: the name typed is counted before any lookup
 - **Social reputation laundering** — the library offers no account rename; locking the name after registration is the application's to enforce
 
 ### 10.2 CRITICAL — Server Root Access (sudo)
@@ -462,7 +462,7 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 - [ ] Device enrollment: take the account name from the session, never from the request body, and pass `Titulaire::AUTHENTIFIE`
 - [ ] Check the arbitrator role before `trancher()`, `degeler()` and `abandonner()`: the library does not check it
 - [ ] Call `purger()` from a scheduled task: the library has no clock
-- [ ] Put a proof of work in front of the level-3 opening route
+- [ ] Under `tor-onion`, have the level-3 opening page solve the challenge with `client/sr-epreuve.js`, and measure its cost on the target browsers with `bi-self/selfrecover/tools/mesure-epreuve.html`
 - [ ] With the shipped adapter, build `StockagePdo` with the derivation host
 - [ ] With an adapter other than the shipped one: `trancherLitige()` and `enregistrerFaisceau()` write only to a dispute still under review and throw `LitigeDejaTranche` otherwise, `cloreLitige()` closes only a dispute that is still active and throws `LitigeDejaClos` otherwise, and `purgerLitigesExpires()` erases closed disputes and those opened with nothing written in them as soon as they expire, other undecided disputes `RETENTION_DOSSIER_DEPOSE` later
 - [ ] After level 1 or 2, continue on the account with the returned name (`compte`), never with the input

@@ -188,10 +188,12 @@ What the library enforces, with the defaults it ships:
 - L3 — 1 hour between two deposits on a dispute; 10 openings per address, over
   an hour; a ceiling of 500 characters per answer and 2000 per thread message,
   with 100 messages and 10 seconds between two for the requester — never for the
-  arbitrator, whose channel is what they need when the thread fills. The
-  service-wide ceiling of 20 openings per hour applies **only under
-  `tor-onion`**: where an address discriminates, it adds no protection and adds
-  a public master switch that closes the last resort of every account at once
+  arbitrator, whose channel is what they need when the thread fills. Under
+  `tor-onion`, where no address discriminates, an opening **costs** instead: a
+  computation challenge (`epreuve()`), 16 bits plus one per ten openings of the
+  service and one per opening on the same name, up to 20, consumed once. The
+  service-wide ceiling, raised to 500 openings per hour, is the last resort
+  behind it, and is read only there
 - L3 — no brake and no counter poses a freeze. A refusal is counted and the
   count handed to the arbitrator (`gel_suggere` past the threshold); `geler()`
   and `degeler()` are theirs. A counter keyed on the targeted account is
@@ -202,7 +204,7 @@ What the library enforces, with the defaults it ships:
   code names a real account, and tells it without paying the two Argon2id
 
 What it does **not** enforce, and leaves to the integrator: a honeypot field, a
-form-timing check, a proof of work in front of the routes, and any cross-account
+form-timing check, a proof of work in front of the routes other than level-3 opening, and any cross-account
 correlation. These live where the routes and the pages are — the library has
 neither.
 

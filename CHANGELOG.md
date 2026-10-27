@@ -10,6 +10,37 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.0, lot A — sous un service caché, ouvrir un dossier de niveau 3 se paie — 27 octobre 2026
+
+Rupture de contrat : `StorageInterface` gagne une méthode, et une table s'ajoute au schéma.
+
+Derrière un service caché, l'adresse ne dit rien. Le seul frein du niveau 3 était donc un plafond sur
+tout le service, et vingt ouvertures anonymes par heure le fermaient à tous les comptes. Le frein
+devient un coût.
+
+- `Escalade::epreuve($nomCompte)` émet une épreuve de calcul : signée par le sel du déploiement, liée
+  au nom demandé, valable cinq minutes. Le navigateur la résout (`client/sr-epreuve.js`), et
+  `ouvrir($nom, $empreinteSesame, $ip, $maintenant, $epreuve, $solution)` la vérifie puis la consomme
+  une seule fois. Un refus de l'épreuve porte une épreuve neuve, et tombe avant la recherche du
+  compte : il ne dit rien de son existence.
+- L'épreuve n'est exigée que sous un profil où l'adresse ne discrimine rien. Sous `clearweb`, le frein
+  par adresse suffit, et rien ne change.
+- Sa difficulté part de 16 bits et monte d'un bit toutes les dix ouvertures du service dans l'heure,
+  et à chaque ouverture sur un même nom, jusqu'à 20 bits. Elle se relit à la remise : une épreuve tirée
+  au calme ne suffit plus si la charge a monté. Le nom fait payer, il ne refuse jamais : un tiers ne
+  ferme pas le niveau 3 d'autrui. Ce que ce prix trahit est déclaré : qu'un nom a été visé dans
+  l'heure, pas qu'il existe.
+- Le plafond de service passe de 20 à 500 ouvertures par heure : un dernier recours, que quelques
+  épreuves payées ne suffisent plus à tirer.
+- `StorageInterface::consommerEpreuve($empreinte, $expire, $maintenant): bool`, atomique par une clé
+  unique ; la table `l3_epreuves`. Un adaptateur existant ajoute les deux ; `schema.sql` crée la table
+  à son prochain chargement.
+- `tools/mesure-epreuve.html` mesure ce que l'épreuve coûte dans le navigateur qui l'ouvre.
+
+Mesures : 16 bits coûtent 0,33 s en moyenne à `client/sr-epreuve.js` sous Node 20 sur un poste de
+bureau (vingt épreuves), et la vérification PHP accepte les vingt solutions. `sanity_escalade` passe
+à 225 cas, `banc_stockage_pdo` à 192. Neuf canaris, chacun vu rouge sur son cas.
+
 ### Le squelette de MySelf-Live quitte le dépôt — 16 octobre 2026
 
 `tools/build-myself-live/` décrivait la construction et la signature d'une image ISO qui n'a jamais
