@@ -2584,20 +2584,27 @@ $causes62 === ['reputation_zero', 'votant_etendu']
 // ── 63. ⭐ Un flot de salves ne pousse pas un signal grave hors de la vue ─────
 // Des trios de comptes ordinaires salvent cinquante et une cibles. La récidive
 // de meute posée avant eux reste dans la liste des comptes à arbitrer et dans
-// la page de sa cause ; la page des salves s'arrête à sa borne, et son total
-// dit ce qu'elle tait.
+// la page de sa cause ; la page des salves s'arrête à sa borne, la plus ancienne
+// en tête, et son total dit ce qu'elle tait. Les salves tombent dans la même
+// seconde : leurs dates s'étalent ensuite, sans quoi l'ordre ne se verrait pas.
 $grave63 = membre($pdo, 'grave-63');
 poserReputation($pdo, $grave63, 20);
-planterSignal($pdo, $grave63, 'meute_recidive', time() - 3600);
-$pdo->prepare('UPDATE member_moderation SET updated_at = ? WHERE account_id = ?')->execute([time() - 3600, $grave63]);
+planterSignal($pdo, $grave63, 'meute_recidive', time() - 20000);
+$pdo->prepare('UPDATE member_moderation SET updated_at = ? WHERE account_id = ?')->execute([time() - 20000, $grave63]);
+$visees63 = [];
 for ($salvees63 = 0, $g = 0; $salvees63 < 51; $g++) {
     $trio63 = [membre($pdo, "flot-$g-a-63"), membre($pdo, "flot-$g-b-63"), membre($pdo, "flot-$g-c-63")];
     for ($k = 0; $k < Moderate::config()->ciblesParVotantMax && $salvees63 < 51; $k++, $salvees63++) {
         $visee63 = membre($pdo, "flot-$g-$k-visee-63");
+        $visees63[] = $visee63;
         foreach ($trio63 as $v63) {
             Moderate::applyVote($pdo, $v63, 'member', $visee63, -1, motif(), 'agressif');
         }
     }
+}
+$etale63 = $pdo->prepare("UPDATE mod_signaux SET ouvert_le = ? WHERE account_id = ? AND cause = 'salve_rapide'");
+foreach ($visees63 as $rang63 => $visee63) {
+    $etale63->execute([time() - 10000 + $rang63, $visee63]);
 }
 $liste63  = array_column(Moderate::flaggedForReview($pdo, 50), 'account_id');
 $page63   = method_exists(Moderate::class, 'signauxOuverts') ? Moderate::signauxOuverts($pdo, 50) : [];
@@ -2607,12 +2614,12 @@ $ordre63  = array_column($salves63, 'ouvert_le');
 $croissant63 = $ordre63;
 sort($croissant63);
 in_array($grave63, $liste63, true) && count($meute63) === 1 && count($salves63) === 50 && ($salves63[0]['total_cause'] ?? 0) >= 51
-    && $ordre63 === $croissant63
+    && $ordre63 === $croissant63 && ($salves63[0]['account_id'] ?? 0) === $visees63[0]
     ? ok('⭐ cinquante et une salves ne poussent pas la récidive hors de la vue ; la page des salves dit ce qu\'elle tait')
     : nok('⭐ un flot de salves enfouit le signal grave : ' . json_encode([
         'dans_la_liste' => in_array($grave63, $liste63, true), 'dans_sa_page' => count($meute63),
         'salves_affichees' => count($salves63), 'total' => $salves63[0]['total_cause'] ?? null,
-        'plus_anciennes_d_abord' => $ordre63 === $croissant63,
+        'plus_anciennes_d_abord' => $ordre63 === $croissant63, 'la_plus_ancienne_en_tete' => ($salves63[0]['account_id'] ?? 0) === $visees63[0],
     ]));
 
 // ── 64. ⭐ Un ban automatique ne laisse pas de signal orphelin ───────────────
