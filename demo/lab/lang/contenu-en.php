@@ -278,6 +278,7 @@ return [
     'Ban levé.' => 'Ban lifted.',
     'Réputation remise au point de départ.' => 'Reputation reset to its starting point.',
     'Aucun ban en cours sur ce compte.' => 'No ban in progress on this account.',
+    'Compte introuvable.' => 'Account not found.',
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
     'Ce ban n\'attend aucune revue : un signalement se classe.'
         => 'This ban awaits no review: a flag is closed instead.',

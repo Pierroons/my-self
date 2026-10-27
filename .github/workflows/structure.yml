@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 136/136 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 136 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 137/137 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 137 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2638,9 +2638,10 @@ jobs:
           # la transaction d'un hôte ; le refus d'une peine qui attend sa fin ; la
           # décision sur l'état relu sous le verrou ; les rangs avant la
           # restitution ; le refus des gestes dans la transaction d'un hôte ; le
-          # ban automatique qui ne s'y arme pas. Le banc doit rougir sur son cas.
+          # ban automatique qui ne s'y arme pas ; le refus d'un compte inexistant.
+          # Le banc doit rougir sur son cas.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in journal gestes revue balayage meute hote attente relecture ordre hote-geste hote-vote; do
+          for cas in journal gestes revue balayage meute hote attente relecture ordre hote-geste hote-vote inconnu; do
             cp "$M" /tmp/moderate.arbitrage.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2668,6 +2669,7 @@ jobs:
                              '                    self::restoreAfterCancel($pdo, $author, $voteIds);\n                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);\n', 1)],
               'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 4)],
               'hote-vote':  [('if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {', 'if (self::$journal === null) {', 1)],
+              'inconnu':    [("return $connu ? null : ['ok' => false, 'message' => static::t('Compte introuvable.')];", 'return null;', 1)],
           }[os.environ['CAS']]
           for avant, apres, n in remplacements:
               assert s.count(avant) == n if n is not None else s.count(avant) > 0, 'plantation impossible'
@@ -2695,6 +2697,7 @@ jobs:
               ordre)     attendu="une levée de ban s'inscrit pour une meute défaite" ;;
               hote-geste) attendu="un geste d'arbitre passe dans la transaction d'un hôte" ;;
               hote-vote)  attendu="un vote arme le ban automatique dans la transaction d'un hôte" ;;
+              inconnu)    attendu="un geste sur un compte inexistant échoue autrement qu'en refus" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

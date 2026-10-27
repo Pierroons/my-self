@@ -3136,6 +3136,33 @@ $monte78 === array_fill_keys(['sans-intervalle', 'apres-un-intervalle'], ['reput
     ? ok('⭐ la convalescence garde un score monté par des votes positifs, et se lève dès le seuil atteint')
     : nok('⭐ la convalescence rabat un score, ou tient un compte déjà remonté : ' . json_encode($monte78));
 
+// ── 79. ⭐ Un geste sur un compte inexistant est refusé, sans erreur ─────────
+// La ligne de modération a une clé étrangère vers les comptes de l'hôte : un
+// geste sur un identifiant inconnu butait sur elle, et la route rendait une
+// erreur 500. Les quatre gestes refusent, et rien ne s'inscrit au journal.
+$inconnu79 = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1000 FROM accounts')->fetchColumn();
+$actesAvant79 = count($journalC->actes);
+$gestes79 = [];
+foreach ([
+    'ban'       => static fn (): array => Moderate::adminBan($pdo, $inconnu79, 'arbitre-banc', motif()),
+    'grace'     => static fn (): array => Moderate::adminPardon($pdo, $inconnu79, 'arbitre-banc', motif()),
+    'maintenir' => static fn (): array => Moderate::adminMaintenir($pdo, $inconnu79, 'arbitre-banc', motif()),
+    'classer'   => static fn (): array => Moderate::adminClasser($pdo, $inconnu79, 'arbitre-banc', motif()),
+] as $geste79 => $appel79) {
+    try {
+        $r79 = $appel79();
+        $gestes79[$geste79] = [$r79['ok'], $r79['message']];
+    } catch (Throwable $t79) {
+        $gestes79[$geste79] = get_class($t79);
+    }
+}
+$gestes79 === array_fill_keys(['ban', 'grace', 'maintenir', 'classer'], [false, 'Compte introuvable.'])
+    && count($journalC->actes) === $actesAvant79
+    ? ok('⭐ les quatre gestes refusent un compte inexistant, sans erreur et sans rien inscrire')
+    : nok('⭐ un geste sur un compte inexistant échoue autrement qu\'en refus : ' . json_encode([
+        'gestes' => $gestes79, 'actes' => count($journalC->actes) - $actesAvant79,
+    ], JSON_UNESCAPED_UNICODE));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une

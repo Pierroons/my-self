@@ -1866,6 +1866,21 @@ class Moderate
     }
 
     /**
+     * Un geste sur un compte que l'hôte ne connaît pas est refusé, au lieu de
+     * buter sur la clé étrangère de la ligne de modération, que la route rendait
+     * en erreur 500.
+     */
+    private static function refusCompteInconnu(PDO $pdo, int $accountId): ?array
+    {
+        $compte = $pdo->prepare('SELECT 1 FROM accounts WHERE id = ?');
+        $compte->execute([$accountId]);
+        $connu = $compte->fetchColumn() !== false;
+        $compte->closeCursor();
+
+        return $connu ? null : ['ok' => false, 'message' => static::t('Compte introuvable.')];
+    }
+
+    /**
      * Une peine automatique EST l'état d'une réputation à zéro, et porte son
      * signal (`ban_auto`) : un second pour le même fait survivrait à la peine, sans
      * rien pour le lever. Un ban d'arbitre n'en porte aucun : la chute qui tombe
@@ -1965,6 +1980,10 @@ class Moderate
         if ($dansLHote !== null) {
             return $dansLHote;
         }
+        $inconnu = self::refusCompteInconnu($pdo, $accountId);
+        if ($inconnu !== null) {
+            return $inconnu;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -2050,6 +2069,10 @@ class Moderate
         $dansLHote = self::refusTransactionDeLHote($pdo);
         if ($dansLHote !== null) {
             return $dansLHote;
+        }
+        $inconnu = self::refusCompteInconnu($pdo, $accountId);
+        if ($inconnu !== null) {
+            return $inconnu;
         }
         $motif = $motif !== null ? trim($motif) : '';
         if ($motif !== '') {
@@ -2164,6 +2187,10 @@ class Moderate
         if ($dansLHote !== null) {
             return $dansLHote;
         }
+        $inconnu = self::refusCompteInconnu($pdo, $accountId);
+        if ($inconnu !== null) {
+            return $inconnu;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -2226,6 +2253,10 @@ class Moderate
         $dansLHote = self::refusTransactionDeLHote($pdo);
         if ($dansLHote !== null) {
             return $dansLHote;
+        }
+        $inconnu = self::refusCompteInconnu($pdo, $accountId);
+        if ($inconnu !== null) {
+            return $inconnu;
         }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
