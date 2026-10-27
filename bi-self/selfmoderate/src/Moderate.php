@@ -794,13 +794,16 @@ class Moderate
         // gardent leur message : un refus indistinct aurait coûté de
         // l'intelligibilité sans fermer quoi que ce soit de plus.
         //
-        // ⚠️ Ce que cet ordre ferme exactement : sonder exige désormais un motif
-        // VALIDE, et un motif valide sur une cible qui existe **inscrit le vote**.
+        // ⚠️ Ce que cet ordre ferme exactement : sonder par un vote NÉGATIF exige un
+        // motif VALIDE, et un motif valide sur une cible qui existe **inscrit le vote**.
         // La sonde devient donc tracée dans `mod_votes`, visible de l'arbitre, et
         // non répétable — l'index unique `(voter_id, target_type, target_id)` l'y
         // oblige. L'énumération n'est pas rendue impossible, elle est rendue
         // VISIBLE et coûteuse, ce qui vaut mieux sur un terrain où scanner est le
         // jeu : un balayage muet n'apprend rien à personne d'autre qu'à son auteur.
+        // Le vote positif, dont le motif est facultatif, reste une sonde : il passe
+        // sur un identifiant qui existe et refuse sur un autre, et donne un point à
+        // la cible. Seul le plafond par paire le borne — limite déclarée au README.
         if ($value === -1 || ($reason !== null && $reason !== '')) {
             [$motifOk, $pourquoi] = self::validateReason($reason);
             if (!$motifOk) {
@@ -1942,7 +1945,9 @@ class Moderate
      * La date est ramenée au jour, et l'ordre à l'intérieur d'un jour est
      * alphabétique et non chronologique — à la seconde près, recoupée avec les
      * présences, elle désignerait son auteur. Limite qu'aucun tri ne lève : sur
-     * un unique downvote reçu, la personne devine souvent qui l'a émis.
+     * un unique downvote reçu, la personne devine souvent qui l'a émis. Et
+     * l'arrondi ne protège pas d'un chiffre public : un score ou une réputation
+     * que l'hôte affiche sans session date chaque vote à qui les relève.
      *
      * Le jour est celui du fuseau de l'hôte, compté en PHP : SQLite ne connaît
      * que le fuseau de son processus. Les jours rendus sont ceux des `$limit`

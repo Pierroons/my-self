@@ -36,7 +36,7 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 - The reason must **say something**: 40 characters, 3 distinct words, no word hammered on (twice is always allowed; beyond that a short word such as "of" or "my" stays within a third of the words, a word of four letters or more within a fifth), at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down. It also stays within 1000 characters: that bound protects the targeted person's page, where reasons are displayed
 - Voting is a **recommendation, not an obligation** — it helps recognize good teammates or flag problematic behavior
 - Configurable reasons per platform through `setReasonCodes()`; the default set fits a forum (off-topic, aggressive, misinformation, helpful to others, useful contribution, other)
-- Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it
+- Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it. And rounding does not protect against a public figure: if the host shows a post's score or an author's reputation without a session, whoever reads them often enough dates each vote to the minute, and the post it targeted
 
 ### Reputation score
 - Every user starts at **20** (configurable)
@@ -105,6 +105,15 @@ no one.
 - **Limit: the pack that contributed.** Linked accounts that really brought a
   target down lift the ban they caused, even when acting on the target's behalf.
   They get that lift and the exact return of their votes, nothing else
+- **Limit: the supporting pack.** Detection only reads negative votes. Linked
+  accounts that all vote for the same member are neither seen nor neutralised, and
+  carry them up to the cap, which makes them slower to bring down; the per-pair cap
+  bounds each of them, not their number. Detection in both directions is planned for 0.8.0
+- **Limit: whether an account exists.** A reason is optional on a positive vote: a
+  positive vote without a reason on an identifier goes through if it exists and is
+  refused otherwise, and gives the target a point. It therefore tells whether an account
+  exists; the per-pair cap bounds it, not the number of identifiers probed. A negative
+  vote, on the other hand, requires a valid reason before looking at the target
 
 ### Anti-manipulation
 - **Anti-Sybil**: a delay on new accounts, unless they have already posted: **24 hours** in service, matching the warm-up period described by [Bi-Self](../README.md), **2 minutes** in demonstration. The refusal states the remaining wait

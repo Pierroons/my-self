@@ -312,7 +312,8 @@ $liens === 0 && $bloques === 0
 // gratuitement, y compris les comptes qu'aucune autre route ne montre.
 //
 // Ce cas éprouve la propriété par l'ÉGALITÉ des deux réponses, et non par leur
-// contenu : il reste vrai si le libellé change.
+// contenu : il reste vrai si le libellé change. Il ne vaut que pour le vote
+// négatif : le positif, au motif facultatif, reste une sonde, déclarée au README.
 $existe = membre($pdo, 'cible_existante');
 $msgExiste = message($pdo, $existe, 'fil de la cible existante');
 $sondeur = membre($pdo, 'sondeur');

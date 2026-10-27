@@ -36,7 +36,7 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 - La raison doit **dire quelque chose** : 40 caractères, 3 mots distincts, aucun mot ressassé (deux fois sont toujours permises ; au-delà, un mot court comme « de » ou « mon » ne dépasse pas le tiers des mots, un mot de quatre lettres ou plus pas le cinquième), au moins 12 caractères différents, pas de rafale d'un même caractère. Cinq règles parce qu'une seule se contourne — on atteint n'importe quelle longueur en bloquant une touche. Elle ne dépasse pas non plus 1000 caractères : cette borne protège la page de la personne visée, où les motifs s'affichent
 - Voter est une **recommandation, pas une obligation** — ça aide à reconnaître les bons coéquipiers ou signaler les comportements problématiques
 - Raisons configurables par plateforme via `setReasonCodes()` ; le jeu par défaut convient à un forum (hors-sujet, agressif, désinformation, entraide, contribution utile, autre)
-- Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis
+- Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis. Et l'arrondi ne protège pas d'un chiffre public : si l'hôte affiche sans session le score d'un message ou la réputation d'un auteur, qui les relève assez souvent date chaque vote à la minute, et le message visé
 
 ### Score de réputation
 - Chaque utilisateur démarre à **20** (`Config`)
@@ -105,6 +105,15 @@ ensemble. Le moteur neutralise donc ce que le groupe ajoute, et ne punit personn
 - **Limite : la meute qui a contribué.** Des comptes liés qui ont réellement fait
   tomber une cible lèvent le ban qu'ils ont causé, même s'ils agissaient pour elle. Ils
   n'obtiennent que cette levée et la restitution exacte de leurs votes
+- **Limite : la meute qui soutient.** La détection ne lit que les votes négatifs. Des
+  comptes liés qui votent tous pour un même membre ne sont ni vus ni neutralisés, et le
+  portent jusqu'au plafond, ce qui le rend plus long à faire tomber ; le plafond par
+  paire les borne chacun, pas leur nombre. La détection des deux sens est prévue en 0.8.0
+- **Limite : l'existence d'un compte.** Le motif est facultatif au vote positif : un vote
+  positif sans motif sur un identifiant passe s'il existe et refuse sinon, et donne un
+  point à la cible. Il dit donc si un compte existe ; le plafond par paire le borne, pas
+  le nombre d'identifiants sondés. Un vote négatif, lui, exige un motif valide avant de
+  regarder la cible
 
 ### Anti-manipulation
 - **Anti-Sybil** : délai sur les nouveaux comptes, sauf s'ils ont déjà publié : **24 h** en service, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md), **2 min** en démonstration. Le refus dit l'attente restante
