@@ -257,18 +257,23 @@ class Moderate
     /**
      * La ligne de modération d'un compte, ou null s'il n'en a pas encore. Elle
      * dit si un signal est ouvert sur lui, sans le lire : un compte calme se lit
-     * en une requête, et la lecture ne se fie pas au résumé de la case.
+     * en une requête, et la lecture ne se fie pas au résumé de la case. Elle le
+     * confronte seulement à la table : une case ouverte sans aucun signal dit
+     * que la reprise n'a pas été faite, et la lecture refuse.
      */
     private static function ligne(PDO $pdo, int $accountId): ?array
     {
         $stmt = $pdo->prepare(
             'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
-                    convalescent, vote_muted_until,
+                    convalescent, vote_muted_until, needs_review,
                     EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id) AS signale
                FROM member_moderation m WHERE account_id = ?'
         );
         $stmt->execute([$accountId]);
         $row = $stmt->fetch();
+        if ($row !== false && (int) $row['needs_review'] && !(int) $row['signale']) {
+            throw self::repriseManquante($accountId);
+        }
 
         return $row === false ? null : $row;
     }
@@ -907,7 +912,7 @@ class Moderate
         // ban ni strike injuste. Le vote ne regarde que sa cible, sauf le premier
         // de sa tranche, qui balaie le site (`balayageDu()`) et lève ban et strikes a posteriori.
         if ($value === -1) {
-            self::detectPackVoting($pdo, self::balayageDu($pdo) ? null : $author);
+            self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
             $newRep = self::getReputation($pdo, $author)['reputation']; // après éventuelle restauration
         }
         self::enforceThresholds($pdo, $author, $newRep);
@@ -1058,6 +1063,17 @@ class Moderate
      */
     public static function detectPackVoting(PDO $pdo, ?int $seulement = null): array
     {
+        return self::detecter($pdo, $seulement, $seulement);
+    }
+
+    /**
+     * Le passage lui-même. `$voteSur` est la cible du vote qui le lance : seule
+     * elle peut avoir reçu un vote qu'aucune détection n'a encore vu. Un balayage
+     * relit sur les autres comptes des votes déjà détectés, et leurs signaux
+     * redétectés ne font pas refuser l'affichage de l'arbitre.
+     */
+    private static function detecter(PDO $pdo, ?int $seulement, ?int $voteSur): array
+    {
         $surCible = $seulement === null ? '' : ' AND target_author = ?';
         $deLaCible = $seulement === null ? [] : [$seulement];
         $maintenant = time();
@@ -1196,7 +1212,7 @@ class Moderate
             // le signal sans regarder celui en place laisserait un tiers remplacer
             // un motif d'arbitrage par le plus bénin de la liste, et le rendre
             // indélébile. `signaler()` porte la règle pour tous les poseurs.
-            self::signaler($pdo, $author, 'salve_rapide');
+            self::signaler($pdo, $author, 'salve_rapide', $author === $voteSur);
             $salves[] = ['target_author' => $author, 'voters' => array_keys($best)];
         }
 
@@ -1424,15 +1440,17 @@ class Moderate
      * Signale un compte à l'arbitre : une ligne par cause, et aucune cause n'en
      * remplace une autre. Un comportement déjà ouvert compte une occurrence de
      * plus, ce qui fait refuser le geste d'un arbitre qui ne l'a pas vue ; un
-     * état déjà ouvert reste tel quel, vu ou non.
+     * état déjà ouvert reste tel quel, vu ou non. `$neuf` est faux quand la
+     * détection ne relit que des votes qu'une détection a déjà vus.
      */
-    private static function signaler(PDO $pdo, int $accountId, string $cause): void
+    private static function signaler(PDO $pdo, int $accountId, string $cause, bool $neuf = true): void
     {
-        self::transaction($pdo, static fn () => self::poserSignal($pdo, $accountId, $cause));
+        self::transaction($pdo, static fn () => self::poserSignal($pdo, $accountId, $cause, $neuf));
     }
 
-    private static function poserSignal(PDO $pdo, int $accountId, string $cause): void
+    private static function poserSignal(PDO $pdo, int $accountId, string $cause, bool $neuf): void
     {
+        self::exigerReprise($pdo, $accountId);
         $maintenant = time();
         $pose = $pdo->prepare('INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, ?, ?, ?)');
         $pose->execute([$accountId, $cause, $maintenant, $maintenant]);
@@ -1453,13 +1471,14 @@ class Moderate
         $suite->bindValue(3, $cause);
         $suite->bindValue(4, $maintenant - self::regroupement($cause), PDO::PARAM_INT);
         $suite->execute();
-        // Une détection qui peut porter des votants neufs fait refuser un geste fondé
-        // sur l'affichage d'avant : une salve d'autres votants, repliée dans le compte
+        // Une détection qui peut porter un vote neuf fait refuser un geste fondé sur
+        // l'affichage d'avant : une salve d'autres votants, repliée dans le compte
         // faute d'être un fait neuf, n'en est pas moins arrivée après que l'arbitre a
-        // regardé. Un votant étendu ne porte que lui-même : chez lui, seule une
-        // occurrence comptée fait refuser — sinon chacun de ses votes neutralisés
-        // priverait l'arbitre du classement aussi longtemps qu'il vote.
-        if ($suite->rowCount() === 1 || $cause !== 'votant_etendu') {
+        // regardé. Un votant étendu ne porte que lui-même, une troncature dit la
+        // taille du graphe et non qui le compose : chez eux, seule une occurrence
+        // comptée fait refuser — sinon chaque vote priverait l'arbitre du classement
+        // aussi longtemps qu'il dure.
+        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))) {
             $pdo->prepare('UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?')
                 ->execute([$accountId, $cause]);
         }
@@ -1576,16 +1595,46 @@ class Moderate
     }
 
     /**
+     * Refuse d'écrire un signal sur un compte dont la case est ouverte sans aucun
+     * signal en table : la reprise n'a pas été faite, et recaler la case effacerait
+     * le seul endroit où ce signalement existe encore. Sur une base reprise, la
+     * case suit la table à chaque écriture, et ce cas n'arrive pas.
+     */
+    private static function exigerReprise(PDO $pdo, int $accountId): void
+    {
+        $case = $pdo->prepare(
+            'SELECT 1 FROM member_moderation m
+              WHERE account_id = ? AND needs_review = 1
+                AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id)'
+        );
+        $case->execute([$accountId]);
+        if ($case->fetchColumn() !== false) {
+            throw self::repriseManquante($accountId);
+        }
+    }
+
+    private static function repriseManquante(int $accountId): \LogicException
+    {
+        return new \LogicException(sprintf(
+            'SelfModerate : le compte %d a une case de signalement ouverte et aucun signal dans mod_signaux — '
+            . 'la reprise n\'a pas été faite : appelle Moderate::migrerSignaux() une fois, juste après avoir créé la table.',
+            $accountId
+        ));
+    }
+
+    /**
      * Reprend dans `mod_signaux` la case unique d'avant la 0.7.0. À appeler UNE
-     * fois, juste après avoir créé la table : le moteur ne lit plus la case, et
-     * ses signalements ouverts ne se verraient plus. La marque qui empêche de la
-     * rejouer est à l'hôte — rejouée, la copie relirait le résumé que le moteur
-     * tient dans la case, et un écrivain resté à l'ancienne forme y deviendrait
-     * un signal sans un mot. Rend le nombre de signaux repris.
+     * fois, juste après avoir créé la table. Tant qu'elle n'a pas tourné, le
+     * moteur refuse de lire ou de signaler un compte dont la case est ouverte, et
+     * nomme cette fonction : il ne lit plus la case, et l'écraserait. La marque
+     * qui empêche de la rejouer est à l'hôte — rejouée, la copie relirait le
+     * résumé que le moteur tient dans la case, et un écrivain resté à l'ancienne
+     * forme y deviendrait un signal sans un mot. Rend le nombre de signaux repris.
      *
      * Une case ouverte devient une ligne ; sans cause, `signal_anterieur`, que seul
      * un arbitre ferme ; sa date est la dernière écriture de la ligne. Un état ne
-     * passe que si son état tient. Un ban automatique en cours reçoit son signal
+     * passe que si son état tient : la chute reste ouverte sous un ban d'arbitre,
+     * que rien ne lève avec elle. Un ban automatique en cours reçoit son signal
      * même quand la case portait autre chose — elle laissait un comportement, ou
      * la chute, recouvrir le ban —, vu si la case était close : il a été maintenu.
      * La case se recale ensuite sur la table.
@@ -1601,13 +1650,14 @@ class Moderate
                 AND CASE review_reason
                       WHEN 'ban_auto'         THEN ban_origine = 'auto' AND banned_until > 0
                       WHEN 'journal_en_panne' THEN banned_until > 0
-                      WHEN 'reputation_zero'  THEN convalescent = 1 AND banned_until = 0
+                      WHEN 'reputation_zero'  THEN convalescent = 1 AND (banned_until = 0 OR ban_origine IS NOT 'auto')
                       ELSE 1
                     END"
         );
         $pdo->exec(
             "INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le, vu_le)
-             SELECT account_id, 'ban_auto', ban_debut, ban_debut, CASE WHEN needs_review = 0 THEN updated_at END
+             SELECT account_id, 'ban_auto', COALESCE(NULLIF(ban_debut, 0), updated_at), COALESCE(NULLIF(ban_debut, 0), updated_at),
+                    CASE WHEN needs_review = 0 THEN updated_at END
                FROM member_moderation
               WHERE ban_origine = 'auto' AND banned_until > 0"
         );
@@ -1681,12 +1731,15 @@ class Moderate
      * Les causes ouvertes, telles que le journal les reçoit : du texte JSON. Une
      * valeur d'acte reste scalaire, et un journal qui range une colonne par clé
      * n'a rien à sérialiser — avec une liste, il rangeait `Array` sans un mot.
+     * Une cause vient de la base, que l'hôte écrit aussi : ce qui n'y est pas de
+     * l'UTF-8 est remplacé dans l'acte, sans quoi aucun acte du compte ne
+     * s'encoderait plus, et sa peine resterait ouverte au nom d'un journal en panne.
      *
      * @param list<array{cause: string}> $signaux
      */
     private static function causesEnTexte(array $signaux): string
     {
-        return json_encode(array_column($signaux, 'cause'), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        return json_encode(array_column($signaux, 'cause'), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -1703,7 +1756,7 @@ class Moderate
             'ouvert_le'   => $s['ouvert_le'],
             'occurrences' => $s['occurrences'],
             'detections'  => $s['detections'],
-        ], $signaux), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        ], $signaux), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
     }
 
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation): void

@@ -198,8 +198,9 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
     ouvert_le   INTEGER NOT NULL,
     derniere_le INTEGER NOT NULL,  -- dernière occurrence comptée
     occurrences INTEGER NOT NULL DEFAULT 1,
-    detections  INTEGER NOT NULL DEFAULT 1,  -- chaque détection, comptée ou non : un geste fondé sur
-                                             -- l'affichage d'avant refuse dès qu'elle a bougé
+    detections  INTEGER NOT NULL DEFAULT 1,  -- chaque détection qui peut porter un vote neuf, comptée ou
+                                             -- non : un geste fondé sur l'affichage d'avant refuse dès
+                                             -- qu'elle a bougé
     vu_le       INTEGER,           -- un état vu par l'arbitre, qui court encore : hors de la file
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );

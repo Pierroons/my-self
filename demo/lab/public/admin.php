@@ -200,7 +200,7 @@ table.adm tr:last-child td{border-bottom:none}
         <span class="muted">— <?= $affiches ?> <?= $affiches > 1 ? 'signaux' : 'signal' ?><?= $f['total_cause'] > $affiches ? ' affichés sur ' . (int) $f['total_cause'] . ', les plus anciens d\'abord' : '' ?></span></th></tr>
       <?php endif; ?>
       <tr><td>@<?= h($f['username']) ?></td>
-          <td><?= (int) $f['occurrences'] ?></td>
+          <td><?= (int) $f['occurrences'] ?><?php if ($f['detections'] > $f['occurrences']): ?> <span class="muted">· <?= (int) $f['detections'] ?> détections</span><?php endif; ?></td>
           <td><?= h(date('d/m/Y H:i', $f['ouvert_le'])) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>
           <td style="white-space:nowrap">

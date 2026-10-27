@@ -584,11 +584,6 @@ final class Db
             }
         }
 
-        $cols = self::$pdo->query('PRAGMA table_info(mod_signaux)')->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('detections', $cols, true)) {
-            self::$pdo->exec('ALTER TABLE mod_signaux ADD COLUMN detections INTEGER NOT NULL DEFAULT 1');
-        }
-
         // SelfModerate — les signaux passent de la case à `mod_signaux`, UNE fois, par le module
         // (`migrerSignaux()`, qui dit ce qu'il reprend). La marque est au lab : rejouée à chaque
         // ouverture, la copie relirait le résumé que le moteur tient dans la case, et un écrivain
