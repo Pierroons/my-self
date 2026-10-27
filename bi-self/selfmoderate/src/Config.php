@@ -52,6 +52,9 @@ final class Config
      *                                        temps, pas avec le mérite.
      * @param float    $plancherFraction      Part de la peine EN COURS avant laquelle un
      *                                        arbitre ne lève un ban qu'avec un motif écrit.
+     * @param int      $balayageFiletMax      Sans planificateur, le premier vote négatif d'une
+     *                                        tranche de balayage inscrit ensuite au plus ce
+     *                                        nombre de fins de peine et de convalescences dues.
      * @param int      $bansArbitreSignal     Bans d'arbitre sur un même compte à partir
      *                                        desquels l'enchaînement est signalé à
      *                                        l'arbitre : chacun alourdit le ban
@@ -79,6 +82,7 @@ final class Config
         public readonly int $intervalleConvalescenceSecondes = 86400,
         public readonly float $plancherFraction = 1 / 3,
         public readonly int $bansArbitreSignal = 2,
+        public readonly int $balayageFiletMax = 50,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');

@@ -50,7 +50,8 @@ interface Journal
      *   duree      durée de la peine en secondes               ban_debut
      *   debut      horodatage du début de la peine             ban_debut, ban_fin
      *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu
-     *   observe_a  instant où la fin a été constatée           ban_fin
+     *   observe_a  instant où la fin s'est inscrite : la       ban_fin
+     *              première écriture qui a touché le compte, ou le balayage
      *   cause      `grace` | `meute_detectee`                  ban_leve
      *   anticipee  levée avant le plancher de la peine         ban_leve
      *   reste      secondes de peine qui restaient             ban_leve
@@ -77,10 +78,11 @@ interface Journal
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
      * qui échoue en silence vaut l'absence de journal. Une seule exception à la
-     * règle, et elle n'est pas muette : quand un vote ou une lecture constate une
+     * règle, et elle n'est pas muette : quand un vote ou un geste constate une
      * peine échue, le refus est consigné et signalé (`journal_en_panne`), et la
-     * peine reste à refermer au passage suivant. Le planificateur
-     * (`balayerBansEchus()`) et le début d'un ban font remonter le refus.
+     * peine reste à refermer à l'écriture suivante. Une lecture ne constate
+     * rien. Le planificateur (`balayerBansEchus()`) et le début d'un ban font
+     * remonter le refus.
      */
     public function inscrire(array $acte): void;
 }

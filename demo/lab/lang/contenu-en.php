@@ -279,6 +279,7 @@ return [
     'Réputation remise au point de départ.' => 'Reputation reset to its starting point.',
     'Aucun ban en cours sur ce compte.' => 'No ban in progress on this account.',
     'Compte introuvable.' => 'Account not found.',
+    'La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.' => 'The end of your penalty is waiting for the journal to record it: you can vote again as soon as it is.',
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
     'Ce ban n\'attend aucune revue : un signalement se classe.'
         => 'This ban awaits no review: a flag is closed instead.',

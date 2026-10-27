@@ -144,18 +144,18 @@ class Moderate
 
     /**
      * Une peine échue dont le journal a refusé la fin attend sa clôture
-     * (`journal_en_panne`) : `banned_until` la garde, alors que `banned` la dit
+     * (`journal_en_panne`) : la base la garde, alors que la lecture la dit
      * finie. Ni un ban, ni une grâce, ni un classement ne passe par-dessus — le
      * ban la recouvrirait, la grâce la refermerait sans que sa fin soit écrite
      * nulle part, le classement effacerait le seul signal qui en reste. Le ban
      * automatique tient la même règle.
      *
-     * @param array{banned: bool, banned_until: int} $etat
+     * @param array{fin_en_attente: bool} $etat
      * @return array{ok: false, message: string}|null
      */
     private static function refusFinEnAttente(array $etat): ?array
     {
-        return $etat['banned_until'] > 0 && !$etat['banned']
+        return $etat['fin_en_attente']
             ? ['ok' => false, 'message' => static::t('La peine précédente attend que le journal inscrive sa fin : aucun geste ne passe avant.')]
             : null;
     }
@@ -204,38 +204,56 @@ class Moderate
         )->execute([$accountId, self::config()->reputationInitiale, time()]);
     }
 
+    /**
+     * L'état d'un compte, tel que l'heure l'établit. Une lecture n'écrit rien,
+     * ni en base ni au journal, et ne prend aucun verrou : une ligne absente se
+     * lit comme les valeurs de départ, une convalescence avec les points que le
+     * temps lui a rendus, une peine échue comme finie — que la base le porte
+     * déjà ou pas encore. Ce que le temps a fait s'inscrit à la première
+     * écriture qui touche le compte (`rattraper()`), ou au balayage ; tant que
+     * ce n'est pas fait, `fin_en_attente` le dit. Un écrivain du moteur lit par
+     * `etat()`, après avoir rattrapé : décider sur ce que la base ne porte pas
+     * encore perdrait en silence ce qu'elle seule aurait inscrit.
+     */
     public static function getReputation(PDO $pdo, int $accountId): array
     {
-        // Lire d'abord, écrire seulement si l'état le demande : la ligne
-        // absente, la convalescence, la clôture d'une peine. Dans le cas
-        // courant, lire une réputation est un `SELECT` et rien d'autre — une
-        // insertion « si absent », même ignorée, prendrait un verrou d'écriture.
-        // Quand il y a à écrire, c'est sous le verrou d'écriture, et l'état se
-        // relit sous lui : sans cela, N lecteurs d'une peine échue l'inscrivent
-        // N fois au journal, et N − 1 d'entre eux échouent en voulant promouvoir
-        // leur verrou de lecture — une lecture ne doit jamais échouer pour un
-        // autre lecteur.
-        $row    = self::ligne($pdo, $accountId);
-        $jusqua = $row === null ? 0 : (int) $row['banned_until'];
-        if ($row === null || (int) $row['convalescent'] || ($jusqua > 0 && $jusqua <= time())) {
-            self::transaction($pdo, static function () use ($pdo, $accountId): void {
-                $row = self::ligne($pdo, $accountId);
-                if ($row === null) {
-                    self::ensureRow($pdo, $accountId);
-
-                    return;
-                }
-                if ((int) $row['convalescent']) {
-                    self::regenererSousVerrou($pdo, $accountId);
-                }
-                $jusqua = (int) $row['banned_until'];
-                if ($jusqua > 0 && $jusqua <= time()) {
-                    self::cloreBanExpire($pdo, $accountId, contenir: true);
-                }
-            });
-            $row = self::ligne($pdo, $accountId);
+        if (self::$ecritures > 0) {
+            throw new \LogicException('SelfModerate : un écrivain du moteur lit l\'état par etat(), sous son verrou — getReputation() n\'inscrit rien.');
         }
+        $row     = self::ligne($pdo, $accountId);
+        $avance  = self::avancer($row, time());
+        $signaux = $row !== null && (int) $row['signale'] ? self::signauxDe($pdo, $accountId) : [];
+        // Les états que le temps a fait cesser tombent de la lecture ; la panne du
+        // journal, que seule une inscription réussie lève, reste.
+        $tombent = array_diff($avance['tombent'], ['journal_en_panne']);
+        $signaux = array_values(array_filter($signaux, static fn (array $s): bool => !in_array($s['cause'], $tombent, true)));
+
+        return self::presenter($avance['ligne'], $signaux, $avance['fin'] !== null);
+    }
+
+    /** Le nombre d'écritures du moteur en cours : `transaction()` le tient. */
+    private static int $ecritures = 0;
+
+    /**
+     * L'état d'un compte pour qui va écrire : ce que le temps a fait, inscrit sous
+     * le verrou, puis la ligne telle que la base la porte. `fin_en_attente` y dit
+     * qu'une fin de peine n'a pas pu s'inscrire — le journal l'a refusée.
+     */
+    private static function etat(PDO $pdo, int $accountId): array
+    {
+        if (self::$ecritures === 0) {
+            throw new \LogicException('SelfModerate : etat() se lit sous le verrou d\'écriture, après rattrapage.');
+        }
+        self::rattraper($pdo, $accountId, contenir: true);
+        $row     = self::ligne($pdo, $accountId);
         $signaux = (int) $row['signale'] ? self::signauxDe($pdo, $accountId) : [];
+        $jusqua  = (int) $row['banned_until'];
+
+        return self::presenter($row, $signaux, $jusqua > 0 && $jusqua <= time());
+    }
+
+    private static function presenter(array $row, array $signaux, bool $finEnAttente): array
+    {
         return [
             'reputation'    => (int) $row['reputation'],
             'strikes'       => (int) $row['strikes'],
@@ -252,6 +270,7 @@ class Moderate
             'convalescent'  => (bool) $row['convalescent'],
             'vote_muted'       => ((int) $row['vote_muted_until']) > time(),
             'vote_muted_until' => (int) $row['vote_muted_until'],
+            'fin_en_attente'   => $finEnAttente,
         ];
     }
 
@@ -266,7 +285,7 @@ class Moderate
     {
         $stmt = $pdo->prepare(
             'SELECT reputation, strikes, strikes_admin, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
-                    convalescent, vote_muted_until, needs_review,
+                    convalescent, last_regen_at, vote_muted_until, needs_review,
                     EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id) AS signale
                FROM member_moderation m WHERE account_id = ?'
         );
@@ -280,123 +299,216 @@ class Moderate
     }
 
     /**
-     * Referme une peine échue, et l'inscrit au journal quand il y en a un.
+     * Ce que le temps a fait à une ligne, à l'instant `$t`, sans rien écrire :
+     * la remontée de convalescence, puis la fin d'une peine échue. La lecture
+     * le rend, `rattraper()` l'inscrit : une seule source pour les deux, et ce
+     * qu'une page montre est ce que la première écriture inscrira.
      *
-     * 🔑 **Personne ne s'exécute à l'instant où une peine expire.** La fin se
-     * constate donc quand on regarde l'état — ce que `getReputation()` fait à
-     * chaque lecture —, et l'entrée porte les deux dates : l'échéance prévue et
-     * l'instant où on l'a vue. Les confondre daterait la levée du moment où un
-     * curieux a ouvert la fiche. Un déploiement qui veut des entrées à l'heure
-     * appelle `balayerBansEchus()` depuis son planificateur ; il n'y est pas
-     * tenu, et rien n'est perdu s'il ne le fait pas.
+     * 🔑 **Personne ne s'exécute à l'instant où une peine expire.** La fin d'un
+     * ban automatique remet la réputation au point de départ et garde les
+     * strikes : le temps de la peine vaut remise à flot, et le ban suivant sera
+     * plus long. Un ban d'arbitre n'est pas venu de la réputation, et n'y touche
+     * pas en sortant. La convalescence rend un point par intervalle écoulé et
+     * borne sa propre progression, pas le score ; revenue au point de départ,
+     * elle se lève, et avec elle le signalement de la chute — lui seul : une
+     * récidive de meute ne se rachète pas en attendant.
      *
-     * La fin d'un ban automatique remet la réputation au point de départ et
-     * garde les strikes : le temps de la peine vaut remise à flot, et le ban
-     * suivant sera plus long. Sans cette remise, le compte ressortait à zéro et
-     * le premier vote contraire le renvoyait au palier supérieur. Un ban
-     * d'arbitre n'est pas venu de la réputation, et n'y touche pas en sortant.
+     * Rend aussi ce que l'inscription aura à faire : la fin à journaliser, les
+     * signaux d'état qui tombent, les effets de vote à effacer, une horloge de
+     * convalescence à poser.
      *
-     * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
-     * rend l'inscription unique, parce que la clôture se décide sous le verrou
-     * d'écriture (`transaction()`), à la lecture comme au balayage — un seul
-     * passage la voit à faire. Rend vrai s'il a refermé la peine. Défaite
-     * avec la transaction qui la porte, elle se refait au passage suivant, et
-     * le journal porte alors deux fins pour une peine, que `debut` et `jusqu_a`
-     * identifient : `applyVote()` referme donc les peines échues du votant et
-     * de la cible avant d'ouvrir la sienne.
-     *
-     * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Avec
-     * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), et
-     * l'appel continue : `banned` se calcule sur l'heure, donc la personne n'est
-     * plus bannie ; le droit de vote et la réputation remise au départ, eux,
-     * attendent la clôture. Faire tomber toute page qui lit le compte
-     * n'ajouterait aucune trace. La clôture se fait au passage suivant, le
-     * journal revenu. Le planificateur, lui, fait remonter le refus.
+     * @return array{ligne: array, fin: ?array, tombent: list<string>, tombent_regen: list<string>,
+     *               tombent_fin: list<string>, effacer: bool, horloge: bool}
      */
-    private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): bool
+    private static function avancer(?array $row, int $t, bool $clore = true): array
     {
-        $maintenant = time();
-        $stmt = $pdo->prepare(
-            'SELECT banned_until, ban_debut, ban_origine, ban_motif, strikes FROM member_moderation
-              WHERE account_id = ? AND banned_until > 0 AND banned_until <= ?'
-        );
-        $stmt->execute([$accountId, $maintenant]);
-        $row = $stmt->fetch();
-        $stmt->closeCursor();
-        if (!$row) {
-            return false;
-        }
-        $origine = $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null;
-        // La fin d'un ban automatique remet la réputation au départ : la chute et le
-        // ban qu'elle a causé cessent ensemble.
-        $signaux = self::signauxDe($pdo, $accountId);
-        $tombent = array_values(array_filter($signaux, static fn (array $s): bool =>
-            $s['cause'] === 'journal_en_panne'
-            || ($origine === 'auto' && in_array($s['cause'], ['ban_auto', 'reputation_zero'], true))));
+        $l = $row ?? [
+            'reputation' => self::config()->reputationInitiale, 'strikes' => 0, 'strikes_admin' => 0, 'voting_rights' => 1,
+            'banned_until' => 0, 'ban_debut' => 0, 'ban_origine' => null, 'ban_motif' => null,
+            'convalescent' => 0, 'last_regen_at' => 0, 'vote_muted_until' => 0,
+        ];
+        $tombentRegen = [];
+        $tombentFin   = [];
+        $effacer      = false;
+        $horloge      = false;
+        $fin          = null;
 
-        try {
-            self::$journal?->inscrire([
-                'acte'      => 'ban_fin',
-                'compte'    => $accountId,
-                'origine'   => $origine,
-                'episode'   => (int) $row['strikes'],
-                'debut'     => (int) $row['ban_debut'],
-                'jusqu_a'   => (int) $row['banned_until'],
-                'observe_a' => $maintenant,
-                'motif'     => $row['ban_motif'] ?? self::projection($signaux) ?? 'inconnu',
-                'arbitre'   => null,
-                'ouverts'   => self::causesEnTexte($signaux),
-                'ferme'     => self::fermesEnTexte($tombent),
-            ]);
-        } catch (\Throwable $e) {
-            if (!$contenir) {
-                throw $e;
+        if ((int) $l['convalescent']) {
+            $last = (int) $l['last_regen_at'];
+            if ($last <= 0) {
+                // Base migrée : l'état existe sans son horloge. La première écriture la
+                // pose, et le compte part de là.
+                $horloge = true;
+            } else {
+                $gagnes = intdiv($t - $last, self::config()->intervalleConvalescenceSecondes);
+                $depart = (int) $l['reputation'];
+                if ($gagnes >= 1 || $depart >= self::config()->sortieConvalescence()) {
+                    // La remontée borne sa propre progression, pas le score : un point gagné
+                    // par un vote positif pendant la convalescence reste acquis.
+                    $rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));
+                    $l['reputation'] = $rep;
+                    // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
+                    // reste de temps est acquis et compte pour le point suivant.
+                    $l['last_regen_at'] = $last + $gagnes * self::config()->intervalleConvalescenceSecondes;
+                    if ($rep >= self::config()->perteDroitDeVoteSous) {
+                        $l['voting_rights'] = 1;
+                    }
+                    if ($rep >= self::config()->sortieConvalescence()) {
+                        $l['convalescent'] = 0;
+                        $tombentRegen[]    = 'reputation_zero';
+                        $effacer           = true;
+                    }
+                }
             }
-            error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
-            self::signaler($pdo, $accountId, 'journal_en_panne');
-            return false;
         }
 
-        if ($origine === 'auto') {
-            $pdo->prepare(
-                'UPDATE member_moderation
-                    SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0
-                  WHERE account_id = ?'
-            )->execute([self::config()->reputationInitiale, $accountId]);
-            self::effacerEffets($pdo, $accountId);
-        } else {
-            $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ? AND reputation >= ?')
-                ->execute([$accountId, self::config()->perteDroitDeVoteSous]);
+        $jusqua = (int) $l['banned_until'];
+        if ($clore && $jusqua > 0 && $jusqua <= $t) {
+            $fin = [
+                'origine' => $l['ban_origine'] !== null ? (string) $l['ban_origine'] : null,
+                'episode' => (int) $l['strikes'],
+                'debut'   => (int) $l['ban_debut'],
+                'jusqu_a' => $jusqua,
+                'motif'   => $l['ban_motif'] !== null ? (string) $l['ban_motif'] : null,
+            ];
+            if ($fin['origine'] === 'auto') {
+                // La chute et le ban qu'elle a causé cessent ensemble.
+                $l['reputation']    = self::config()->reputationInitiale;
+                $l['voting_rights'] = 1;
+                $l['convalescent']  = 0;
+                $l['last_regen_at'] = 0;
+                $effacer            = true;
+                array_push($tombentFin, 'ban_auto', 'reputation_zero');
+            } elseif ((int) $l['reputation'] >= self::config()->perteDroitDeVoteSous) {
+                $l['voting_rights'] = 1;
+            }
+            $tombentFin[]      = 'journal_en_panne';
+            $l['banned_until'] = 0;
+            $l['ban_debut']    = 0;
+            $l['ban_origine']  = null;
+            $l['ban_motif']    = null;
         }
-        $pdo->prepare(
-            'UPDATE member_moderation
-                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?
-              WHERE account_id = ?'
-        )->execute([$maintenant, $accountId]);
-        self::designaler($pdo, $accountId, ...array_column($tombent, 'cause'));
 
-        return true;
+        return [
+            'ligne'         => $l,
+            'fin'           => $fin,
+            'tombent'       => array_values(array_unique([...$tombentRegen, ...$tombentFin])),
+            'tombent_regen' => $tombentRegen,
+            'tombent_fin'   => $tombentFin,
+            'effacer'       => $effacer,
+            'horloge'       => $horloge,
+        ];
     }
 
     /**
-     * Clôt toutes les peines échues en une passe, pour un planificateur.
+     * Inscrit ce que le temps a fait à un compte, sous le verrou d'écriture : ce
+     * qu'`avancer()` rend, et rien d'autre. Une ligne absente se crée. Rend vrai
+     * s'il a refermé une peine.
+     *
+     * La fin d'une peine va au journal AVANT la base, avec l'échéance et l'instant
+     * où elle s'inscrit : l'écriture qui la constate, jamais une page.
+     * `banned_until = 0` est l'état « aucune peine à clore », décidé sous le
+     * verrou : un seul passage la voit à faire. Défaite avec la transaction qui
+     * la porte, elle se refait au passage suivant, et le journal porte alors deux
+     * fins pour une peine, que `debut` et `jusqu_a` identifient : `applyVote()`
+     * rattrape donc le votant et la cible avant d'ouvrir sa transaction.
+     *
+     * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Avec
+     * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), seule la
+     * remontée de convalescence s'inscrit, et l'appel continue ; la fin attend le
+     * retour du journal, et tant qu'elle attend, aucune écriture ne décide sur
+     * elle. Sans `$contenir` — le balayage —, le refus remonte.
+     */
+    private static function rattraper(PDO $pdo, int $accountId, bool $contenir, bool $clore = true): bool
+    {
+        $row = self::ligne($pdo, $accountId);
+        if ($row === null) {
+            self::ensureRow($pdo, $accountId);
+
+            return false;
+        }
+        $t      = time();
+        $avance = self::avancer($row, $t, $clore);
+        if ($avance['fin'] !== null) {
+            $signaux = self::signauxDe($pdo, $accountId);
+            try {
+                self::$journal?->inscrire([
+                    'acte'      => 'ban_fin',
+                    'compte'    => $accountId,
+                    'origine'   => $avance['fin']['origine'],
+                    'episode'   => $avance['fin']['episode'],
+                    'debut'     => $avance['fin']['debut'],
+                    'jusqu_a'   => $avance['fin']['jusqu_a'],
+                    'observe_a' => $t,
+                    'motif'     => $avance['fin']['motif'] ?? self::projection($signaux) ?? 'inconnu',
+                    'arbitre'   => null,
+                    'ouverts'   => self::causesEnTexte($signaux),
+                    'ferme'     => self::fermesEnTexte(self::deCause($signaux, ...$avance['tombent_fin'])),
+                ]);
+            } catch (\Throwable $e) {
+                if (!$contenir) {
+                    throw $e;
+                }
+                error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
+                self::signaler($pdo, $accountId, 'journal_en_panne');
+                $avance = self::avancer($row, $t, clore: false);
+            }
+        }
+        $l = $avance['ligne'];
+        if ($avance['horloge']) {
+            $l['last_regen_at'] = $t;
+        }
+        $colonnes = array_values(array_filter(
+            ['reputation', 'voting_rights', 'convalescent', 'last_regen_at', 'banned_until', 'ban_debut', 'ban_origine', 'ban_motif'],
+            static fn (string $col): bool => (string) $l[$col] !== (string) $row[$col]
+        ));
+        if ($colonnes !== []) {
+            $poses = implode(', ', array_map(static fn (string $col): string => "$col = ?", $colonnes));
+            $pdo->prepare("UPDATE member_moderation SET $poses, updated_at = ? WHERE account_id = ?")
+                ->execute([...array_map(static fn (string $col): mixed => $l[$col], $colonnes), $t, $accountId]);
+        }
+        if ($avance['effacer']) {
+            self::effacerEffets($pdo, $accountId);
+        }
+        self::designaler($pdo, $accountId, ...$avance['tombent']);
+
+        return $avance['fin'] !== null;
+    }
+
+    /** Rattrape un compte dans sa propre transaction, avant que l'écriture qui le touche ouvre la sienne. */
+    private static function rattraperSeul(PDO $pdo, int $accountId): void
+    {
+        self::transaction($pdo, static fn (): bool => self::rattraper($pdo, $accountId, contenir: true));
+    }
+
+    /**
+     * Inscrit en une passe ce que le temps a fait : les peines échues, au journal
+     * d'abord, et les convalescences dues. Pour un planificateur, la console d'un
+     * arbitre — qui lit la base et l'appelle avant de la lire — et le filet du
+     * vote (`applyVote()`). Sans eux, une fin s'inscrit à la première écriture
+     * qui touche le compte ; la lecture la montre dès l'échéance.
      *
      * Rend le nombre de peines refermées. Sans journal, elles se referment
-     * quand même, sans rien inscrire.
+     * quand même, sans rien inscrire ; un journal qui refuse fait remonter son
+     * refus.
      */
     public static function balayerBansEchus(PDO $pdo, int $limite = 500): int
     {
         $stmt = $pdo->prepare(
             'SELECT account_id FROM member_moderation
-              WHERE banned_until > 0 AND banned_until <= ? ORDER BY banned_until LIMIT ?'
+              WHERE (banned_until > 0 AND banned_until <= :t)
+                 OR (convalescent = 1 AND (last_regen_at <= 0 OR last_regen_at <= :t - :i OR reputation >= :sortie))
+           ORDER BY banned_until = 0, banned_until LIMIT :n'
         );
-        $stmt->bindValue(1, time(), PDO::PARAM_INT);
-        $stmt->bindValue(2, $limite, PDO::PARAM_INT);
+        $stmt->bindValue('t', time(), PDO::PARAM_INT);
+        $stmt->bindValue('i', self::config()->intervalleConvalescenceSecondes, PDO::PARAM_INT);
+        $stmt->bindValue('sortie', self::config()->sortieConvalescence(), PDO::PARAM_INT);
+        $stmt->bindValue('n', $limite, PDO::PARAM_INT);
         $stmt->execute();
 
         $clos = 0;
         foreach ($stmt->fetchAll() as $row) {
-            if (self::transaction($pdo, static fn (): bool => self::cloreBanExpire($pdo, (int) $row['account_id']))) {
+            if (self::transaction($pdo, static fn (): bool => self::rattraper($pdo, (int) $row['account_id'], contenir: false))) {
                 $clos++;
             }
         }
@@ -405,63 +517,13 @@ class Moderate
     }
 
     /**
-     * Convalescence — porte la réputation au niveau que le temps écoulé lui donne.
-     *
-     * Appelée en tête de getReputation() plutôt qu'à la connexion : un score qui
-     * ne se met à jour que pour qui se connecte est faux pour tous les autres,
-     * et c'est justement quand on regarde un profil qu'on a besoin du bon
-     * chiffre. Ne jamais appeler getReputation() ici : la récursion est immédiate.
-     * Elle lit puis écrit, et lève un signal : sous le verrou d'écriture.
+     * Convalescence — inscrit la remontée que le temps écoulé donne au compte,
+     * sans refermer de peine. La lecture la montre sans l'inscrire.
      */
     public static function regenerate(PDO $pdo, int $accountId): void
     {
-        self::transaction($pdo, static fn () => self::regenererSousVerrou($pdo, $accountId));
-    }
-
-    private static function regenererSousVerrou(PDO $pdo, int $accountId): void
-    {
-        $stmt = $pdo->prepare(
-            'SELECT reputation, convalescent, last_regen_at FROM member_moderation WHERE account_id = ?'
-        );
-        $stmt->execute([$accountId]);
-        $row = $stmt->fetch();
-        if (!$row || !(int) $row['convalescent']) {
-            return;
-        }
-        $now  = time();
-        $last = (int) $row['last_regen_at'];
-        if ($last <= 0) {
-            // Base migrée : l'état existe sans son horloge. Le compte part d'ici.
-            $pdo->prepare('UPDATE member_moderation SET last_regen_at = ? WHERE account_id = ?')
-                ->execute([$now, $accountId]);
-            return;
-        }
-        $gagnes = intdiv($now - $last, self::config()->intervalleConvalescenceSecondes);
-        $depart = (int) $row['reputation'];
-        if ($gagnes < 1 && $depart < self::config()->sortieConvalescence()) {
-            return;
-        }
-        // La remontée borne sa propre progression, pas le score : un point gagné
-        // par un vote positif pendant la convalescence reste acquis.
-        $rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));
-        // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
-        // reste de temps est acquis et compte pour le point suivant.
-        $pdo->prepare('UPDATE member_moderation SET reputation = ?, last_regen_at = ?, updated_at = ? WHERE account_id = ?')
-            ->execute([$rep, $last + $gagnes * self::config()->intervalleConvalescenceSecondes, $now, $accountId]);
-
-        if ($rep >= self::config()->perteDroitDeVoteSous) {
-            $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$accountId]);
-        }
-        if ($rep >= self::config()->sortieConvalescence()) {
-            // Revenu à son point de départ : l'état se lève, et le signalement
-            // qui accompagnait la chute n'a plus d'objet. Uniquement celui-là :
-            // une récidive de meute ne se rachète pas en attendant que la
-            // réputation remonte, et l'admin doit encore la trouver.
-            $pdo->prepare('UPDATE member_moderation SET convalescent = 0 WHERE account_id = ?')
-                ->execute([$accountId]);
-            self::designaler($pdo, $accountId, 'reputation_zero');
-            self::effacerEffets($pdo, $accountId);
-        }
+        self::transaction($pdo, static fn (): bool =>
+            self::ligne($pdo, $accountId) !== null && self::rattraper($pdo, $accountId, contenir: true, clore: false));
     }
 
     /**
@@ -659,9 +721,26 @@ class Moderate
             return $refus;
         }
 
-        return self::transaction($pdo, static fn (): array =>
+        self::$trancheBalayee = false;
+        $resultat = self::transaction($pdo, static fn (): array =>
             self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode));
+        // Le filet sans planificateur : le vote qui a pris la tranche de balayage
+        // inscrit ensuite, hors de sa transaction et jamais dans celle d'un hôte,
+        // ce que le temps a fait aux comptes que personne ne touche. Le vote est
+        // déjà validé : un refus du journal ne le défait pas, il se dit.
+        if (self::$trancheBalayee && !self::enTransaction($pdo)) {
+            try {
+                self::balayerBansEchus($pdo, self::config()->balayageFiletMax);
+            } catch (\Throwable $e) {
+                error_log('SelfModerate : le balayage du filet s\'arrête — ' . $e->getMessage());
+            }
+        }
+
+        return $resultat;
     }
+
+    /** Ce vote a-t-il pris la tranche de balayage ? `balayageDu()` le pose. */
+    private static bool $trancheBalayee = false;
 
     /** Un nom par point de reprise posé dans la transaction d'un hôte. */
     private static int $pointsDeReprise = 0;
@@ -717,6 +796,7 @@ class Moderate
         if ($propre) {
             self::$transactionOuverteSur = $pdo;
         }
+        self::$ecritures++;
         try {
             if (!$propre) {
                 self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');
@@ -735,6 +815,7 @@ class Moderate
             }
             throw $e;
         } finally {
+            self::$ecritures--;
             if ($propre) {
                 self::$transactionOuverteSur = null;
             }
@@ -771,9 +852,18 @@ class Moderate
             return null;
         }
 
+        self::rattraperSeul($pdo, $voterId);
         [$can, $why] = self::canVote($pdo, $voterId);
         if (!$can) {
             $refus = ['ok' => false, 'message' => $why];
+
+            return null;
+        }
+        // Seul l'état inscrit autorise une écriture : une page montre la peine
+        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
+        // fin, le compte ne vote pas — et il sait pourquoi.
+        if (self::getReputation($pdo, $voterId)['fin_en_attente']) {
+            $refus = ['ok' => false, 'message' => static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
 
             return null;
         }
@@ -829,7 +919,7 @@ class Moderate
 
             return null;
         }
-        self::getReputation($pdo, $author);
+        self::rattraperSeul($pdo, $author);
 
         return $author;
     }
@@ -905,7 +995,7 @@ class Moderate
         // La réputation se lit AVANT l'insertion : le vote garde ce qu'il a
         // réellement changé. Un vote qui bute sur une borne n'a rien changé, et
         // l'annuler plus tard ne doit rien rendre.
-        $rep = self::getReputation($pdo, $author);
+        $rep = self::etat($pdo, $author);
         $newRep = max(self::config()->banA, min(self::config()->reputationMax, $rep['reputation'] + $value));
         $pdo->prepare(
             'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
@@ -920,7 +1010,7 @@ class Moderate
         // de sa tranche, qui balaie le site (`balayageDu()`) et lève ban et strikes a posteriori.
         if ($value === -1) {
             self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
-            $newRep = self::getReputation($pdo, $author)['reputation']; // après éventuelle restauration
+            $newRep = self::etat($pdo, $author)['reputation']; // après éventuelle restauration
         }
         self::enforceThresholds($pdo, $author, $newRep);
 
@@ -1043,6 +1133,7 @@ class Moderate
             throw $e;
         }
         $pdo->prepare('DELETE FROM mod_sweeps WHERE slot < ?')->execute([$tranche]);
+        self::$trancheBalayee = true;
         return true;
     }
 
@@ -1270,6 +1361,10 @@ class Moderate
      */
     private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds): void
     {
+        // Ce que le temps a fait au compte s'inscrit d'abord : une sortie de
+        // convalescence efface les effets des votes reçus, et une restitution
+        // comptée avant elle rendrait ce que la remise au départ a déjà rendu.
+        self::rattraper($pdo, $author, contenir: true);
         $ph = implode(',', array_fill(0, count($voteIds), '?'));
         $stmt = $pdo->prepare("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes WHERE id IN ($ph)");
         $stmt->execute($voteIds);
@@ -1280,7 +1375,7 @@ class Moderate
                 ->execute([$rendu, self::config()->reputationMax, time(), $author]);
         }
 
-        $rep = self::getReputation($pdo, $author);
+        $rep = self::etat($pdo, $author);
         if ($rep['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
         }
@@ -1819,7 +1914,7 @@ class Moderate
             return;
         }
 
-        self::cloreBanExpire($pdo, $accountId, contenir: true);
+        self::rattraper($pdo, $accountId, contenir: true);
         $stmt = $pdo->prepare('SELECT reputation, banned_until, strikes, strikes_admin FROM member_moderation WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $etat = $stmt->fetch();
@@ -2015,10 +2110,10 @@ class Moderate
         // Une peine échue se referme avant le verrou, comme au vote. Sous lui,
         // l'état se relit : la décision se prend sur ce qu'il est, pas sur ce
         // qu'il était avant qu'un autre geste passe.
-        self::getReputation($pdo, $accountId);
+        self::rattraperSeul($pdo, $accountId);
 
         return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {
-            $etat = self::getReputation($pdo, $accountId);
+            $etat = self::etat($pdo, $accountId);
             if ($etat['banned']) {
                 return ['ok' => false, 'message' => sprintf(
                     static::t('Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'),
@@ -2111,10 +2206,10 @@ class Moderate
                 return ['ok' => false, 'message' => $pourquoi];
             }
         }
-        self::getReputation($pdo, $accountId);
+        self::rattraperSeul($pdo, $accountId);
 
         return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
-            $etat       = self::getReputation($pdo, $accountId);
+            $etat       = self::etat($pdo, $accountId);
             $enAttente  = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;
@@ -2225,10 +2320,10 @@ class Moderate
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
-        self::getReputation($pdo, $accountId);
+        self::rattraperSeul($pdo, $accountId);
 
         return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $vu): array {
-            $etat = self::getReputation($pdo, $accountId);
+            $etat = self::etat($pdo, $accountId);
             if (!$etat['banned']) {
                 return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
             }
@@ -2292,10 +2387,10 @@ class Moderate
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
-        self::getReputation($pdo, $accountId);
+        self::rattraperSeul($pdo, $accountId);
 
         return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $vu): array {
-            $etat = self::getReputation($pdo, $accountId);
+            $etat = self::etat($pdo, $accountId);
             $enAttente = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;

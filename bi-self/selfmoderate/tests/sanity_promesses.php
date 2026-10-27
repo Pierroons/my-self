@@ -154,6 +154,10 @@ $porteurs = [
         fn ($m) => deuxJeux('bansArbitreSignal', (int) $m[1])],
     ['README.md', '/at the \*\*(\d+)(?:st|nd|rd|th) arbiter ban\*\* on the same account \(`bansArbitreSignal`\)/u',
         fn ($m) => deuxJeux('bansArbitreSignal', (int) $m[1])],
+    ['README.fr.md', '/pour \*\*(\d+)\*\* comptes au plus \(`balayageFiletMax`\)/u',
+        fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
+    ['README.md', '/for at most \*\*(\d+)\*\* accounts \(`balayageFiletMax`\)/u',
+        fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
 ];
 
 // Les champs dont le README parle sans en donner la valeur, et la phrase qui
