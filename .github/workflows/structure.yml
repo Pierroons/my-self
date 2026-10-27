@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 128/128 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 128 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 134/134 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 134 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2123,8 +2123,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'global': ("            self::detectPackVoting($pdo, self::balayageDu($pdo) ? null : $author);\n",
-                         "            self::detectPackVoting($pdo);\n"),
+              'global': ("            self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);\n",
+                         "            self::detecter($pdo, null, $author);\n"),
               'jamais': ("        $tranche = intdiv(time(), self::config()->balayagePeriodeSecondes);\n",
                          "        return false;\n        $tranche = intdiv(time(), self::config()->balayagePeriodeSecondes);\n"),
               'course': ("        try {\n            $pdo->prepare('INSERT INTO mod_sweeps (slot) VALUES (?)')->execute([$tranche]);\n"
@@ -2676,8 +2676,17 @@ jobs:
           # défait ; le maintien qui ne ferme que le ban automatique ; la case
           # recalée sur la table ; l'ordre d'une page ; les signaux vus hors des
           # trois lectures de la file ; le ban automatique repris à la migration ;
-          # la migration qui ne se rejoue pas.
-          for cas in orphelin filet jeton replie etendu liste grace maintien resume ordre file comptes bans reprise migration; do
+          # la migration qui ne se rejoue pas ; la reprise oubliée, refusée à la
+          # lecture comme à la pose ; la chute reprise sous un ban d'arbitre, et le
+          # ban sans date de début ; la cause illisible, remplacée dans l'acte ; le
+          # balayage, qui ne fait bouger le jeton que sur la cible du vote qui le
+          # lance ; la troncature, comptée comme le votant étendu ; une détection
+          # qui ne compte que pour son signal ; l'état qui ne se recompte pas ; la
+          # borne du regroupement ; la cause inconnue, classée comme un
+          # comportement ; la levée d'état qui refuse un comportement ; les
+          # détections que porte l'acte.
+          for cas in orphelin filet jeton replie etendu liste grace maintien resume ordre file comptes bans reprise migration \
+                     lecture pose arbitre debut illisible balayage balai tronque etat cible borne anterieur machine fermedet; do
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do cp "$f" "/tmp/signaux.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
           import os
@@ -2687,8 +2696,8 @@ jobs:
               'filet':     (M, "'UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?'",
                                "'UPDATE mod_signaux SET detections = detections + 1, derniere_le = ' . time() . ' WHERE account_id = ? AND cause = ?'", 1),
               'jeton':     (M, "                return $s['detections'] === (int) ($vu['detections'] ?? 0)\n", "                return true\n", 1),
-              'replie':    (M, "        if ($suite->rowCount() === 1 || $cause !== 'votant_etendu') {\n", "        if ($suite->rowCount() === 1) {\n", 1),
-              'etendu':    (M, "        if ($suite->rowCount() === 1 || $cause !== 'votant_etendu') {\n", "        if (true) {\n", 1),
+              'replie':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))) {\n", "        if ($suite->rowCount() === 1) {\n", 1),
+              'etendu':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))) {\n", "        if (true) {\n", 1),
               'liste':     (M, "                'ouverts'   => self::causesEnTexte($signaux),\n", "                'ouverts'   => array_column($signaux, 'cause'),\n", 1),
               'ordre':     (M, "           ORDER BY s.ouvert_le, s.id LIMIT ?'", "           ORDER BY s.ouvert_le DESC, s.id LIMIT ?'", 1),
               'file':      (M, "              WHERE s.cause = ? AND s.vu_le IS NULL\n", "              WHERE s.cause = ?\n", 1),
@@ -2700,8 +2709,30 @@ jobs:
                                "                true));\n", 1),
               'maintien':  (M, "            self::retirerDeLaFile($pdo, $accountId, [$vise]);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu",
                                "            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu", 1),
-              'resume':    (M, "        $pdo->prepare('UPDATE member_moderation SET needs_review = ?, review_reason = ?, updated_at = ? WHERE account_id = ?')\n            ->execute([$cause === null ? 0 : 1, $cause, time(), $accountId]);\n", "", 1),
+              'resume':    (M, "        $pdo->prepare('UPDATE member_moderation SET needs_review = ?, review_reason = ?, updated_at = ? WHERE account_id = ?')\n            ->execute([$cause === null ? 0 : 1, $cause, time(), $accountId]);\n",
+                               "        $pdo->prepare('UPDATE member_moderation SET needs_review = ?, review_reason = ?, updated_at = ? WHERE account_id = ?')\n            ->execute([$cause === null ? 0 : 1, null, time(), $accountId]);\n", 1),
               'migration': (D, "if (self::$pdo->query(\"SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'\")->fetchColumn() === false) {", "if (true) {", 2),
+              'lecture':   (M, "        if ($row !== false && (int) $row['needs_review'] && !(int) $row['signale']) {\n", "        if (false) {\n", 1),
+              'pose':      (M, "        self::exigerReprise($pdo, $accountId);\n        $maintenant = time();\n", "        $maintenant = time();\n", 1),
+              'arbitre':   (M, "convalescent = 1 AND (banned_until = 0 OR ban_origine IS NOT 'auto')", "convalescent = 1 AND banned_until = 0", 1),
+              'debut':     (M, "'ban_auto', COALESCE(NULLIF(ban_debut, 0), updated_at), COALESCE(NULLIF(ban_debut, 0), updated_at),",
+                               "'ban_auto', ban_debut, ban_debut,", 1),
+              'illisible': (M, "JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);\n    }\n\n    /**\n     * Les signaux qu'un acte",
+                               "JSON_THROW_ON_ERROR);\n    }\n\n    /**\n     * Les signaux qu'un acte", 1),
+              'balayage':  (M, "($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))",
+                               "!in_array($cause, ['votant_etendu', 'votants_tronques'], true)", 1),
+              'balai':     (M, "self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);",
+                               "(self::balayageDu($pdo) ? self::detecter($pdo, null, null) : self::detecter($pdo, $author, $author));", 1),
+              'tronque':   (M, "!in_array($cause, ['votant_etendu', 'votants_tronques'], true)", "$cause !== 'votant_etendu'", 1),
+              'etat':      (M, "        if (self::famille($cause) === 'etat') {\n            return;\n        }\n        $suite", "        $suite", 1),
+              'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
+                               "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),
+              'borne':     (M, "AND cause = ? AND derniere_le <= ?'", "AND cause = ? AND derniere_le < ?'", 1),
+              'anterieur': (M, "['reputation_zero', 'ban_auto', 'journal_en_panne'], true) ? 'etat' : 'comportement';",
+                               "['reputation_zero', 'ban_auto', 'journal_en_panne', 'signal_anterieur'], true) ? 'etat' : 'comportement';", 1),
+              'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
+                               "                continue;\n", 1),
+              'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
           }[os.environ['CAS']]
           s = open(fichier, encoding='utf-8').read()
           assert s.count(avant) == n, 'plantation impossible'
@@ -2736,6 +2767,14 @@ jobs:
               bans)      attendu='maintien :' ;;
               reprise)   attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
               migration) attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
+              lecture|pose)    attendu='une reprise oubliée se tait, ou la case est écrasée' ;;
+              arbitre|debut)   attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
+              illisible)       attendu='une cause illisible fige le compte' ;;
+              balayage|balai)  attendu='le balayage périme un affichage sans vote neuf, ou laisse passer une salve repliée' ;;
+              tronque)         attendu="la troncature prive l'arbitre du classement à chaque vote" ;;
+              etat|cible|borne) attendu="le compte d'un signal suit autre chose que ses faits" ;;
+              anterieur|machine) attendu='une cause inconnue reste en base une fois classée, ou la machine ferme un comportement' ;;
+              fermedet)        attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
