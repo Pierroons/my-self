@@ -101,7 +101,10 @@ they did not.
   already holds vaults and recorded no key — written before 0.7.0 — is not opened until an operator
   adopts its key with `SelfDataGuard::adoptBlindKey()`**, which proves it first: by a lookup the
   database answers (this value, indexed under this key, names this account), by a seal that holds
-  under it, or — for a database where nothing was ever indexed or sealed — on the operator's word.
+  under it, or — for a database where no field carries an index — on the operator's word. A database
+  that indexes a field refuses that word, and refuses a `sharedIndexes` that omits a field carrying
+  shared indexes; a refused lookup names its four possible causes — the key, the field, the value or
+  the account.
   Measured before: under another key, every vault and every archive reported tampering one after the
   other, and lookups answered "absent"; under another list, one field was written under two rules; and
   a first façade brought to a 0.6 database with the wrong key recorded it, its lookups answered
@@ -139,8 +142,11 @@ they did not.
   does not advance —, and `NoHeadWitness` naming its absence; `EscrowRefusedException`. The intention
   is appended only if the log still holds the witness's last head, checked under the write's lock: a
   log cut or rewritten since stops the ceremony, and the refusal is logged (`log-behind-witness`). A
-  witness that took a head here and now holds none is refused (`witness-forgot`), and so is a head that
-  is not one (`witness-failed`).
+  witness that holds no head where the log shows a witness took one — of any class but `NoHeadWitness`,
+  an intention on the last line included — is refused (`witness-forgot`), and so is a head that is not
+  one (`witness-failed`). `EscrowCeremony::seedWitness($anchor)` (`seed-witness --ancre` in the CLI)
+  is the operator's act for a new witness, or one that lost its store: once the log is found to hold
+  the anchor noted outside, the witness takes the log's head, logged as a ceremony is.
   Measured before: the next ceremony chained on what was left, and handed the witness a lower head
   that `verify-log` then found intact. The arbiter's class, its verdict and the witness's class are in
   the log. Against the administrator alone — the sealed file and its passphrase — it holds nothing:
@@ -204,11 +210,13 @@ they did not.
   profile a seal vouches for, trying `Primitives::PUBLISHED_PROFILES` — an HMAC each, no Argon2id, no
   secret of the holder. An archive keeps the seal of its vault; one taken before 0.7.0 has none, and
   is opened under its recorded profile as before. `openArchive()` derives under the profile the seal
-  vouches for, trying the published profiles when the recorded one does not hold: an archive taken
-  while its profile was changed in the database opens again. `listArchives()` reads the locks of an
+  vouches for, trying the published profiles when the recorded one does not hold: an archive whose
+  profile was changed in the database, while it was taken or since, opens under the true one, and
+  nothing reports the change. `listArchives()` reads the locks of an
   archive from the archive itself, the bytes its opening uses; a package that no longer reads is
   refused as tampering, naming the archive, where a `JsonException` or a `TypeError` reached even
-  `register()`. `adoptBlindKey()`, `StorageInterface::loadSetting()` and `hasVaults()` are new.
+  `register()`. `adoptBlindKey()`, `StorageInterface::loadSetting()`, `hasVaults()` and
+  `indexedFields()` are new.
 - `Storage\Conformance` and `bin/storage-conformance.php <connection.php>`: the contract played against
   an implementation — 21 cases, six of them racing four processes and each played ten times, among them
   a first escrow created twice at once, writes that name the generation a level 3 replaces at the same
@@ -234,13 +242,13 @@ they did not.
 
 ### Tests
 
-- 585 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 57, audit 23 → 35, ceremony 22 → 28, facade 67 → 116, storage 60 → 64, migration 15 → 31, archive 26 → 30, vault 58 → 64, `sanity_keys` (20) —
+- 605 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 63, audit 23 → 35, ceremony 22 → 33, facade 67 → 116, storage 60 → 64, migration 15 → 37, archive 26 → 30, vault 58 → 64, `sanity_keys` (20) —
   a closed list of the public methods of each key-holding class, each of them called with a known
   key inside and the key looked for in what comes back, and no public method of the object layer
   taking a key but `adoptBlindKey()`, which takes the server key as the constructor does; seen failing
   on four planted defects —, and
-  `sanity_conformance` (49), which plays the suite against the shipped adapter and against nineteen
+  `sanity_conformance` (52), which plays the suite against the shipped adapter and against twenty-one
   storages that each break one clause: each fails on the case that names it. The racing cases catch the five that check, then
   write in a second statement — they pass every sequential case. Three storages written wrong on purpose — a case-insensitive
   `user_id`, an insert overwritten before its read-back, an update reported and never written — are
@@ -248,7 +256,7 @@ they did not.
   also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
   because `reEnroll()` draws a new master key. The vaults "written before 0.7.0" of `sanity_migration`
   are written as 0.6.x wrote them, format v2 under the bare userId; they were format v3, which no
-  released version wrote. Five canaries were seen failing, each on its own case, and thirty-one more,
+  released version wrote. Five canaries were seen failing, each on its own case, and forty more,
   one per fix made after review, each on its line.
 - The libsodium/OpenSSL cross-check in `sanity_primitives` gives each read its own `try`: a regression
   in the legacy path no longer stops the suite before the checks that follow.
@@ -275,16 +283,22 @@ misread. Do not roll back after a write.
   no live vault, `StaleVaultException` when it has another. A generation received and not compared
   breaks nothing visible: run `bin/storage-conformance.php` against it before it serves anyone.
   `saveEscrow()` splits into `createEscrow()`, enforced as an insert by the storage itself (a unique
-  key on `user_id`), and `replaceEscrow()`. `claimSetting()`, `loadSetting()` and `hasVaults()` are new:
-  the first value written under a name stays, enforced by a unique name, and a database that holds it
-  is read without a write.
+  key on `user_id`), and `replaceEscrow()`. `claimSetting()`, `loadSetting()`, `hasVaults()` and
+  `indexedFields()` are new: the first value written under a name stays, enforced by a unique name,
+  and a database that holds it is read without a write.
 - A `HeadWitness` of your own implements `lastHead()`: the last head it took, as `seq:hmac`, or `null`
-  before its first — never after, and its store is kept like the log's backups. Its `witness()` refuses
-  a head that does not advance.
+  before its first — never after. Its `witness()` refuses a head that does not advance. Its store lives
+  off the machine, append-only, and is never restored from a backup: put back to an older head, it
+  vouches for a log cut back to that head. A new witness, or one that lost its store, is seeded with
+  `seed-witness --ancre <seq:hmac>`, the head noted at the last verification. A new log secret opens a
+  new log: verify the old one a last time against its anchor and keep it, start the new one in a new
+  file, and empty the witness's store — a log with no intention takes a witness that holds none.
 - **A database written before 0.7.0 adopts its blind-index key first**, before any façade opens it:
   `SelfDataGuard::adoptBlindKey($storage, $blindKey, $sharedIndexes, $userId, $field, $value)`, with a
-  value you know is indexed for that account; without any indexed value, `adoptBlindKey($storage,
-  $blindKey, $sharedIndexes)` on your word. A wrong key is refused there, before it can be recorded.
+  value you know is indexed for that account, written exactly as it was indexed; `$sharedIndexes` names
+  every field that carries shared indexes. Only a database where no field carries an index adopts
+  `adoptBlindKey($storage, $blindKey, $sharedIndexes)` on your word. A wrong key is refused there,
+  before it can be recorded.
   Keep the key with the database's backups: every seal and every index is computed under it, and a
   façade that brings another is refused. A read-only copy of a database that recorded its key opens.
 - Every write of a vault row goes through the façade: one written beside it, through `UserVault` and

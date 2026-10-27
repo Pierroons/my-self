@@ -137,7 +137,7 @@ What the escrow guarantees:
 | Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
 | Stolen passphrase paper | Account access through level 1 | The same, plus that user's data — offline too, given a dump. The passphrase is consumed at its first legitimate use, which replaces it |
 | Coercion of admin to decrypt | All data at admin's discretion | Private vaults have no admin key: opening them would take a secret from every user. The escrow has one, and it is permanent: whoever coerces the holder of its passphrase obtains, ceremony after ceremony, the escrow compartment of every account with an escrow compartment — never the private vault |
-| Blind-index key lost, or replaced by a new one | — | **Limit.** The database records a check of its key: a façade that brings another is refused, naming it; a database written before 0.7.0 adopts its key only on proof (`adoptBlindKey()`). Every seal and every index is computed under that key: until it is back, nothing opens. Keep it with the database's backups |
+| Blind-index key lost, or replaced by a new one | — | **Limit.** The database records a check of its key: a façade that brings another is refused, naming it; a database written before 0.7.0 adopts its key only on proof (`adoptBlindKey()`), or on the operator's word where no field carries an index. Every seal and every index is computed under that key: until it is back, nothing opens. Keep it with the database's backups |
 | A third party who knows a name | Learns whether the account exists | The same, from the response time; and whether its vault is sealed yet. Not which locks it carries (whitepaper, §8.1) |
 | Database write: an old vault row put back | — | **Limit.** The restored row opens with the secrets it carried, a passphrase consumed since included. Nothing in the vault tells a restored revision apart: the defence is the integrity of the database and its backups (whitepaper, §8.1) |
 
@@ -218,16 +218,16 @@ php tests/sanity_primitives.php   # 56 tests — Argon2id, HMAC, XChaCha20-Poly1
 php tests/sanity_vault.php        # 64 tests — three locks, rotation, context separation, AAD binding, generation, profile bounds, absent lock
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 64 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
-php tests/sanity_migration.php    # 31 tests — the key adopted on proof, 0.4.0 and 0.5.x databases migrated in place, unique blind index, profile sealed by the operator
+php tests/sanity_migration.php    # 37 tests — the key adopted on proof, 0.4.0 and 0.5.x databases migrated in place, unique blind index, profile sealed by the operator
 php tests/sanity_archive.php      # 30 tests — a package that no longer reads, archive: content, isolation, all-or-nothing, concurrent writer waited for
 php tests/sanity_facade.php       # 116 tests — a database read without a write, full API end-to-end, recover(), level 3 under the seal, seal over profile and envelopes, repair, the database's key and shared fields, unique index, write race, a name that keeps its archives
-php tests/sanity_conformance.php  # 49 tests — the storage conformance suite, against the shipped adapter and nineteen broken ones, each race played ten times
+php tests/sanity_conformance.php  # 52 tests — the storage conformance suite, against the shipped adapter and twenty-one broken ones, each race played ten times
 php tests/sanity_keys.php         # 20 tests — no object that holds a key has an accessor for it
 php tests/sanity_audit.php        # 35 tests — audit log, anchor against truncation, forced to disk, quarantine of what a crash leaves
-php tests/sanity_ceremony.php     # 28 tests — ceremony CLI, operator arbiter and witness, archives, verify-log options
-php tests/sanity_escrow.php       # 57 tests — a witness that forgot its heads, escrow compartment, first deposits at once, v2 admin key, seal bound to its account, ceremony order, log checked against the witness
+php tests/sanity_ceremony.php     # 33 tests — ceremony CLI, operator arbiter and witness, a witness seeded, archives, verify-log options
+php tests/sanity_escrow.php       # 63 tests — a witness that forgot its heads, escrow compartment, first deposits at once, v2 admin key, seal bound to its account, ceremony order, log checked against the witness
 php tests/sanity_vecteurs.php     # 9 tests — keys of the three locks against frozen vectors
-# Total: 585 tests, 0 failures — counted by running them, 2026-10-26
+# Total: 605 tests, 0 failures — counted by running them, 2026-10-27
 python3 tests/vecteurs_argon2.py  # recomputes the vectors with argon2-cffi, a second implementation
 ```
 
