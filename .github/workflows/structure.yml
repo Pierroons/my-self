@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 126/126 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 126 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 128/128 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 128 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2669,20 +2669,33 @@ jobs:
           # @plante
           # Les gardes du signal par cause, retirées tour à tour : la fin d'un ban
           # qui lève ses signaux d'état ; la dernière occurrence comptée, que
-          # les redétections ne déplacent pas ; le compte d'occurrences affiché,
-          # que le geste compare ; la grâce qui ne ferme que ce qu'elle défait ;
-          # le maintien qui ne ferme que le ban automatique ; la case recalée sur
-          # la table ; la migration qui ne se rejoue pas.
-          for cas in orphelin filet jeton grace maintien resume migration; do
+          # les redétections ne déplacent pas ; le compte de détections affiché,
+          # que le geste compare ; la détection repliée qui le fait bouger ; le
+          # votant étendu qui ne le fait bouger qu'à un fait compté ; les listes
+          # passées au journal en texte ; la grâce qui ne ferme que ce qu'elle
+          # défait ; le maintien qui ne ferme que le ban automatique ; la case
+          # recalée sur la table ; l'ordre d'une page ; les signaux vus hors des
+          # trois lectures de la file ; le ban automatique repris à la migration ;
+          # la migration qui ne se rejoue pas.
+          for cas in orphelin filet jeton replie etendu liste grace maintien resume ordre file comptes bans reprise migration; do
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do cp "$f" "/tmp/signaux.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
           import os
           M, D = 'bi-self/selfmoderate/src/Moderate.php', 'demo/lab/lib/db.php'
           fichier, avant, apres, n = {
               'orphelin':  (M, "        self::designaler($pdo, $accountId, ...array_column($tombent, 'cause'));\n", "", 1),
-              'filet':     (M, "            if ($suite->rowCount() === 0) {\n                return;\n            }\n",
-                               "            if ($suite->rowCount() === 0) {\n                $pdo->prepare('UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ? AND cause = ?')->execute([$maintenant, $accountId, $cause]);\n                return;\n            }\n", 1),
-              'jeton':     (M, "                return $s['occurrences'] === (int) ($vu['occurrences'] ?? 0)\n", "                return true\n", 1),
+              'filet':     (M, "'UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?'",
+                               "'UPDATE mod_signaux SET detections = detections + 1, derniere_le = ' . time() . ' WHERE account_id = ? AND cause = ?'", 1),
+              'jeton':     (M, "                return $s['detections'] === (int) ($vu['detections'] ?? 0)\n", "                return true\n", 1),
+              'replie':    (M, "        if ($suite->rowCount() === 1 || $cause !== 'votant_etendu') {\n", "        if ($suite->rowCount() === 1) {\n", 1),
+              'etendu':    (M, "        if ($suite->rowCount() === 1 || $cause !== 'votant_etendu') {\n", "        if (true) {\n", 1),
+              'liste':     (M, "                'ouverts'   => self::causesEnTexte($signaux),\n", "                'ouverts'   => array_column($signaux, 'cause'),\n", 1),
+              'ordre':     (M, "           ORDER BY s.ouvert_le, s.id LIMIT ?'", "           ORDER BY s.ouvert_le DESC, s.id LIMIT ?'", 1),
+              'file':      (M, "              WHERE s.cause = ? AND s.vu_le IS NULL\n", "              WHERE s.cause = ?\n", 1),
+              'comptes':   (M, "              WHERE s.vu_le IS NULL\n           GROUP BY s.account_id", "              WHERE 1\n           GROUP BY s.account_id", 1),
+              'bans':      (M, "AND s.cause = 'ban_auto' AND s.vu_le IS NULL", "AND s.cause = 'ban_auto'", 1),
+              'reprise':   (M, "CASE WHEN needs_review = 0 THEN updated_at END\n               FROM member_moderation\n              WHERE ban_origine",
+                               "CASE WHEN needs_review = 0 THEN updated_at END\n               FROM member_moderation\n              WHERE 0 AND ban_origine", 1),
               'grace':     (M, "                $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0)));\n",
                                "                true));\n", 1),
               'maintien':  (M, "            self::retirerDeLaFile($pdo, $accountId, [$vise]);\n\n            return ['ok' => true, 'message' => static::t('Ban maintenu",
@@ -2711,9 +2724,17 @@ jobs:
               orphelin)  attendu='un signal survit à la fin du ban' ;;
               filet)     attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
               jeton)     attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
+              replie)    attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
+              etendu)    attendu='le votant étendu tient le classement, ou un fait neuf passe inaperçu' ;;
+              liste)     attendu='un acte porte une valeur non scalaire' ;;
               grace)     attendu="la grâce ferme plus, ou moins, qu'elle ne défait" ;;
               maintien)  attendu='maintien :' ;;
               resume)    attendu='un état et son signal se sont séparés, ou la case ment' ;;
+              ordre)     attendu='un flot de salves enfouit le signal grave' ;;
+              file)      attendu='un état vu quitte la base trop tôt, ou un ban se classe' ;;
+              comptes)   attendu='un état vu quitte la base trop tôt, ou un ban se classe' ;;
+              bans)      attendu='maintien :' ;;
+              reprise)   attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
               migration) attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
