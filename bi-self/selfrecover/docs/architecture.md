@@ -191,7 +191,7 @@ What the library enforces, with the defaults it ships:
   arbitrator, whose channel is what they need when the thread fills. Under
   `tor-onion`, where no address discriminates, an opening **costs** instead: a
   computation challenge (`epreuve()`), 16 bits plus one per ten openings of the
-  service and one per opening on the same name, up to 20, consumed once. The
+  service and one per opening on the same name, up to 19, consumed once. The
   service-wide ceiling, raised to 500 openings per hour, is the last resort
   behind it, and is read only there
 - L3 — no brake and no counter poses a freeze. A refusal is counted and the

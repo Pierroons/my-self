@@ -184,7 +184,7 @@ What opposes enumeration at L3 is cost, not silence:
   signed by the deployment salt, bound to the requested name, valid five minutes; the browser
   solves it (`client/sr-epreuve.js`); `ouvrir()` checks it and consumes it once, by a unique key.
   Its difficulty — 16 bits, plus one per ten openings of the service and one per opening on the
-  same name, up to 20 — is read again on submission, so challenges drawn while calm cannot be
+  same name, up to 19 — is read again on submission, so challenges drawn while calm cannot be
   stockpiled and spent in a burst. Until 0.13.0 the library left this to the integrator, and a
   deployment without it had only the service-wide ceiling, which refused every visitor at once
   past twenty openings an hour. That ceiling remains, raised to 500, as a last resort. Under

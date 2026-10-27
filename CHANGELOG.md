@@ -26,7 +26,7 @@ devient un coût.
 - L'épreuve n'est exigée que sous un profil où l'adresse ne discrimine rien. Sous `clearweb`, le frein
   par adresse suffit, et rien ne change.
 - Sa difficulté part de 16 bits et monte d'un bit toutes les dix ouvertures du service dans l'heure,
-  et à chaque ouverture sur un même nom, jusqu'à 20 bits. Elle se relit à la remise : une épreuve tirée
+  et à chaque ouverture sur un même nom, jusqu'à 19 bits. Elle se relit à la remise : une épreuve tirée
   au calme ne suffit plus si la charge a monté. Le nom fait payer, il ne refuse jamais : un tiers ne
   ferme pas le niveau 3 d'autrui. Ce que ce prix trahit est déclaré : qu'un nom a été visé dans
   l'heure, pas qu'il existe.
@@ -37,8 +37,10 @@ devient un coût.
   à son prochain chargement.
 - `tools/mesure-epreuve.html` mesure ce que l'épreuve coûte dans le navigateur qui l'ouvre.
 
-Mesures : 16 bits coûtent 0,33 s en moyenne à `client/sr-epreuve.js` sous Node 20 sur un poste de
-bureau (vingt épreuves), et la vérification PHP accepte les vingt solutions. `sanity_escalade` passe
+Mesures, sur vingt épreuves de 16 bits : 0,33 s en moyenne à `client/sr-epreuve.js` sous Node 20 sur un
+poste de bureau, et la vérification PHP accepte les vingt solutions ; 0,94 s en moyenne et 3,34 s au
+pire dans Firefox sur un téléphone Android 16. Le plafond de 19 bits coûte donc environ 7,5 s en
+moyenne sur ce téléphone, pendant une attaque. `sanity_escalade` passe
 à 225 cas, `banc_stockage_pdo` à 192. Neuf canaris, chacun vu rouge sur son cas.
 
 ### Le squelette de MySelf-Live quitte le dépôt — 16 octobre 2026

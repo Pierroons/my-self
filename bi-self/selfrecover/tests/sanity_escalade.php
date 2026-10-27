@@ -869,7 +869,7 @@ echo "\n→ Les valeurs LIVRÉES sont celles que les textes annoncent\n";
 // resterait vert pendant que les textes publiés annonceraient l'ancienne valeur.
 // Ces cas sont donc les gardiens des chiffres publiés — c'est leur rôle, pas un
 // doublon.
-verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 10 s / 10 / 500 / épreuve 16, 10, 1, 20, 300 s',
+verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 10 s / 10 / 500 / épreuve 16, 10, 1, 19, 300 s',
     Escalade::REPONSE_MAXIMUM === 500 && Escalade::MESSAGE_MAXIMUM === 2000
     && (static function (): array {
         [, $e] = banc(ProfilDeploiement::TOR_ONION, 1_700_000_000);
@@ -890,7 +890,7 @@ verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 1
 
         return array_map(static fn (string $nom) => $r->getProperty($nom)->getValue($e),
             ['epreuveBase', 'epreuvePasService', 'epreuvePasCompte', 'epreuvePlafond', 'epreuveDuree']);
-    })() === [16, 10, 1, 20, 300],
+    })() === [16, 10, 1, 19, 300],
     json_encode([Escalade::REPONSE_MAXIMUM, Escalade::MESSAGE_MAXIMUM]));
 verifier('⭐ les règles du gel livrées sont celles des textes — 3 refus / 30 j / 7 j',
     (static function (): array {

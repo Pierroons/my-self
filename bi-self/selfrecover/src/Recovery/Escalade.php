@@ -129,10 +129,11 @@ final class Escalade
          * L'épreuve fait payer chaque ouverture à qui la demande ; la charge en
          * monte le prix, elle ne ferme la porte à personne.
          *
-         * 16 bits : 65 536 hachages en moyenne — 0,33 s par `client/sr-epreuve.js`
-         * sous Node 20, sur un poste de bureau (vingt épreuves, mesuré le
-         * 27/10/2026). Un téléphone est plus lent : `tools/mesure-epreuve.html`
-         * le mesure dans le navigateur qui servira.
+         * 16 bits : 65 536 hachages en moyenne. Mesuré le 27/10/2026 sur vingt
+         * épreuves : 0,33 s par `client/sr-epreuve.js` sous Node 20 sur un poste
+         * de bureau ; 0,94 s en moyenne, 3,34 s au pire, dans Firefox sur un
+         * téléphone Android 16. Tor Browser, même moteur, ne va pas plus vite.
+         * `tools/mesure-epreuve.html` mesure le navigateur qui servira.
          */
         private readonly int $epreuveBase = 16,
         /** Ouvertures sur tout le service, dans la fenêtre, qui ajoutent un bit. */
@@ -147,8 +148,12 @@ final class Escalade
          * compte le nom tapé, avant toute recherche.
          */
         private readonly int $epreuvePasCompte = 1,
-        /** Bits au plus : au-delà, un téléphone ne finirait plus l'épreuve. */
-        private readonly int $epreuvePlafond = 20,
+        /**
+         * Bits au plus. Chaque bit double le coût : 19 bits, c'est environ 7,5 s
+         * en moyenne sur le téléphone mesuré plus haut, et une demi-minute au
+         * pire — ce qu'attend un titulaire pendant une attaque, pas au calme.
+         */
+        private readonly int $epreuvePlafond = 19,
         /** Durée de vie d'une épreuve émise. */
         private readonly int $epreuveDuree = 300,
     ) {
