@@ -35,14 +35,14 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 
 - Un compte survit à la perte de son mot de passe (SelfRecover) : sa réputation et son historique aussi, au lieu de repartir de zéro sous un autre nom.
 - Le vote collectif (SelfModerate) répartit la modération entre les membres.
-- Les modérateurs restent, comme arbitres de ce que les votes ne tranchent pas : chaque ban, levée ou maintien porte leur nom au journal quand l'hébergeur en branche un ; sans journal, rien ne les trace.
+- Les modérateurs restent, comme arbitres de ce que les votes ne tranchent pas : chaque ban, levée ou maintien porte leur nom au journal, que l'hébergeur doit brancher : sans journal, aucun geste d'arbitre ne passe.
 
 ---
 
 ## Workflows croisés
 
 - **Nouveau membre arrive** → crée un compte avec un mot de récupération (SelfRecover). Zéro email. Pendant ce délai, SelfModerate ne le laisse voter que s'il a publié (période d'échauffement anti-Sybil).
-- **Comportement toxique signalé** → les membres votent (SelfModerate), sous les freins anti-Sybil décrits plus haut. Une réputation tombée à zéro bannit automatiquement si l'hébergeur a branché un journal ; sinon elle lève un drapeau et un arbitre décide.
+- **Comportement toxique signalé** → les membres votent (SelfModerate), sous les freins anti-Sybil décrits plus haut. Une réputation tombée à zéro bannit automatiquement si l'hébergeur a branché un journal ; sinon elle lève un drapeau, et aucun arbitre ne peut agir avant qu'un journal soit branché.
 - **Mot de passe perdu** → le membre récupère son compte au niveau 1 ou 2 (SelfRecover), sans email et sans rien demander à personne. Le niveau 3 passe par un admin humain, qui lit le dossier.
 
 ---

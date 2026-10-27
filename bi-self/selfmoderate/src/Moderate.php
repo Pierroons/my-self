@@ -122,14 +122,14 @@ class Moderate
     }
 
     /**
-     * Branche le journal, et avec lui le bannissement automatique.
+     * Branche le journal, et avec lui le bannissement automatique et les gestes
+     * d'arbitre.
      *
-     * 🔑 **C'est ce branchement qui arme la sanction automatique**, et rien
-     * d'autre. Un déploiement qui ne journalise pas garde le comportement
-     * d'avant : la réputation à zéro lève un signalement, un arbitre tranche.
-     * Le choix n'est pas une précaution de style — une peine prononcée sans
-     * humain et sans trace ne laisse personne pour en répondre, ni rien pour
-     * la contester.
+     * 🔑 **C'est ce branchement qui arme la sanction**, et rien d'autre. Un
+     * déploiement qui ne journalise pas signale la réputation à zéro, et aucun
+     * geste d'arbitre n'y passe (`refusSansJournal()`). Le choix n'est pas une
+     * précaution de style — une peine prononcée ou levée sans trace ne laisse
+     * personne pour en répondre, ni rien pour la contester.
      */
     public static function setJournal(?Journal $journal): void
     {
@@ -142,10 +142,58 @@ class Moderate
         return self::$journal;
     }
 
+    /**
+     * Une peine échue dont le journal a refusé la fin attend sa clôture
+     * (`journal_en_panne`) : `banned_until` la garde, alors que `banned` la dit
+     * finie. Ni un ban, ni une grâce, ni un classement ne passe par-dessus — le
+     * ban la recouvrirait, la grâce la refermerait sans que sa fin soit écrite
+     * nulle part, le classement effacerait le seul signal qui en reste. Le ban
+     * automatique tient la même règle.
+     *
+     * @param array{banned: bool, banned_until: int} $etat
+     * @return array{ok: false, message: string}|null
+     */
+    private static function refusFinEnAttente(array $etat): ?array
+    {
+        return $etat['banned_until'] > 0 && !$etat['banned']
+            ? ['ok' => false, 'message' => static::t('La peine précédente attend que le journal inscrive sa fin : aucun geste ne passe avant.')]
+            : null;
+    }
+
     /** Le bannissement automatique est-il armé sur ce déploiement ? */
     public static function banAutomatiqueArme(): bool
     {
         return self::$journal !== null;
+    }
+
+    /**
+     * Le refus commun aux quatre gestes d'arbitre quand aucun journal n'est
+     * branché. Un geste d'arbitre porte un nom et s'écrit au journal, comme le
+     * ban que la machine prononce seule ; celui qui passerait sans trace est
+     * celui qui efface — une grâce remet la réputation au départ et les strikes
+     * à zéro.
+     *
+     * @return array{ok: false, message: string}|null
+     */
+    private static function refusSansJournal(): ?array
+    {
+        return self::$journal === null
+            ? ['ok' => false, 'message' => static::t('Aucun journal de modération n\'est branché : un geste d\'arbitre ne se fait pas sans trace.')]
+            : null;
+    }
+
+    /**
+     * Un geste d'arbitre ne se fait pas dans la transaction d'un hôte : il
+     * rendrait `ok`, l'hôte pourrait encore annuler, et le journal dirait un
+     * ban ou une grâce que la base n'a jamais vu.
+     *
+     * @return array{ok: false, message: string}|null
+     */
+    private static function refusTransactionDeLHote(PDO $pdo): ?array
+    {
+        return self::dansLaTransactionDeLHote($pdo)
+            ? ['ok' => false, 'message' => static::t('Un geste d\'arbitre ne se fait pas dans la transaction de l\'hôte : le journal ne se défait pas avec elle.')]
+            : null;
     }
 
     /** Crée la ligne de modération si absente. */
@@ -170,7 +218,7 @@ class Moderate
         $row    = self::ligne($pdo, $accountId);
         $jusqua = $row === null ? 0 : (int) $row['banned_until'];
         if ($row === null || (int) $row['convalescent'] || ($jusqua > 0 && $jusqua <= time())) {
-            self::sousVerrou($pdo, static function () use ($pdo, $accountId): void {
+            self::transaction($pdo, static function () use ($pdo, $accountId): void {
                 $row = self::ligne($pdo, $accountId);
                 if ($row === null) {
                     self::ensureRow($pdo, $accountId);
@@ -237,7 +285,8 @@ class Moderate
      *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
      * rend l'inscription unique, parce que la clôture se décide sous le verrou
-     * d'écriture (`sousVerrou()`) — un seul lecteur la voit à faire. Défaite
+     * d'écriture (`transaction()`), à la lecture comme au balayage — un seul
+     * passage la voit à faire. Rend vrai s'il a refermé la peine. Défaite
      * avec la transaction qui la porte, elle se refait au passage suivant, et
      * le journal porte alors deux fins pour une peine, que `debut` et `jusqu_a`
      * identifient : `applyVote()` referme donc les peines échues du votant et
@@ -251,7 +300,7 @@ class Moderate
      * n'ajouterait aucune trace. La clôture se fait au passage suivant, le
      * journal revenu. Le planificateur, lui, fait remonter le refus.
      */
-    private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): void
+    private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): bool
     {
         $maintenant = time();
         $stmt = $pdo->prepare(
@@ -261,7 +310,7 @@ class Moderate
         $stmt->execute([$accountId, $maintenant]);
         $row = $stmt->fetch();
         if (!$row) {
-            return;
+            return false;
         }
         $origine = $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null;
 
@@ -283,7 +332,7 @@ class Moderate
             }
             error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
             self::signaler($pdo, $accountId, 'journal_en_panne');
-            return;
+            return false;
         }
 
         if ($origine === 'auto') {
@@ -304,6 +353,8 @@ class Moderate
                     ' . self::leveSignalSql() . '
               WHERE account_id = ?'
         )->execute([$maintenant, 'journal_en_panne', 'journal_en_panne', $accountId]);
+
+        return true;
     }
 
     /**
@@ -324,8 +375,9 @@ class Moderate
 
         $clos = 0;
         foreach ($stmt->fetchAll() as $row) {
-            self::cloreBanExpire($pdo, (int) $row['account_id']);
-            $clos++;
+            if (self::transaction($pdo, static fn (): bool => self::cloreBanExpire($pdo, (int) $row['account_id']))) {
+                $clos++;
+            }
         }
 
         return $clos;
@@ -577,24 +629,69 @@ class Moderate
             return $refus;
         }
 
-        // `BEGIN IMMEDIATE`, et non `BEGIN` : un vote lit avant d'écrire, et
-        // SQLite refuse sans attendre à une transaction en lecture de passer en
-        // écriture pendant qu'une autre écrit — deux votes simultanés rendraient
-        // « database is locked ». Le verrou pris d'emblée fait attendre, dans le
-        // délai que PDO accorde. Les ordres passent en SQL, jamais par
-        // `commit()` : toutes les versions de PDO ne voient pas une transaction
-        // ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même —
-        // d'où le marqueur `$transactionOuverteSur`. Dans la transaction de
-        // l'hôte, un point de reprise : le vote s'y défait seul, sans décider
-        // pour lui.
+        return self::transaction($pdo, static fn (): array =>
+            self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode));
+    }
+
+    /** Un nom par point de reprise posé dans la transaction d'un hôte. */
+    private static int $pointsDeReprise = 0;
+
+    /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
+    private static ?PDO $transactionOuverteSur = null;
+
+    /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
+    private static function enTransaction(PDO $pdo): bool
+    {
+        return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
+    }
+
+    /**
+     * La transaction ouverte sur cette connexion est-elle celle de l'hôte ? Le
+     * journal ne se défait pas avec elle : un acte que le moteur y inscrirait
+     * survivrait à une annulation que l'hôte décide après coup.
+     */
+    private static function dansLaTransactionDeLHote(PDO $pdo): bool
+    {
+        return $pdo->inTransaction() && self::$transactionOuverteSur !== $pdo;
+    }
+
+    /**
+     * Une écriture tenue d'un bloc, sous le verrou d'écriture : la seule forme
+     * de transaction du moteur.
+     *
+     * `BEGIN IMMEDIATE`, et non `BEGIN` : on lit avant d'écrire, et SQLite
+     * refuse sans attendre à une transaction en lecture de passer en écriture
+     * pendant qu'une autre écrit — deux écritures simultanées rendraient
+     * « database is locked ». Le verrou pris d'emblée fait attendre, dans le
+     * délai que PDO accorde, et l'état se relit sous lui avant toute décision
+     * et toute écriture au journal. Les ordres passent en SQL, jamais par
+     * `commit()` : toutes les versions de PDO ne voient pas une transaction
+     * ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même — d'où
+     * le marqueur `$transactionOuverteSur`. Dans une transaction déjà ouverte,
+     * celle de l'hôte ou la nôtre, un point de reprise : l'écriture s'y défait
+     * seule, sans décider pour la transaction qui la contient. Un point de
+     * reprise ne prend aucun verrou, et la transaction d'un hôte est souvent
+     * différée : une écriture qui ne touche rien le prend, avant toute lecture
+     * qui décide et tout acte au journal. Si une autre connexion le tient,
+     * SQLite refuse aussitôt, et rien n'est inscrit.
+     *
+     * @template T
+     * @param callable(): T $ecriture
+     * @return T
+     */
+    private static function transaction(PDO $pdo, callable $ecriture): mixed
+    {
         $propre = !self::enTransaction($pdo);
-        $point  = $propre ? null : 'selfmoderate_vote_' . ++self::$pointsDeReprise;
+        $point  = $propre ? null : 'selfmoderate_' . ++self::$pointsDeReprise;
         self::ordonner($pdo, $propre ? 'BEGIN IMMEDIATE' : 'SAVEPOINT ' . $point);
         if ($propre) {
             self::$transactionOuverteSur = $pdo;
         }
         try {
-            $resultat = self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode);
+            if (!$propre) {
+                self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');
+            }
+            $resultat = $ecriture();
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
 
             return $resultat;
@@ -611,50 +708,6 @@ class Moderate
             if ($propre) {
                 self::$transactionOuverteSur = null;
             }
-        }
-    }
-
-    /** Un nom par point de reprise posé dans la transaction d'un hôte. */
-    private static int $pointsDeReprise = 0;
-
-    /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
-    private static ?PDO $transactionOuverteSur = null;
-
-    /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
-    private static function enTransaction(PDO $pdo): bool
-    {
-        return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
-    }
-
-    /**
-     * Une écriture que décide une lecture, sous le verrou d'écriture : pris
-     * d'emblée (`BEGIN IMMEDIATE`), pour que des lecteurs simultanés attendent
-     * leur tour au lieu d'échouer en voulant promouvoir un verrou de lecture,
-     * et pour que l'état se relise sous lui avant toute écriture au journal.
-     * Dans une transaction déjà ouverte, par le vote ou par l'hôte, l'écriture
-     * passe telle quelle.
-     */
-    private static function sousVerrou(PDO $pdo, callable $ecriture): void
-    {
-        if (self::enTransaction($pdo)) {
-            $ecriture();
-
-            return;
-        }
-        self::ordonner($pdo, 'BEGIN IMMEDIATE');
-        self::$transactionOuverteSur = $pdo;
-        try {
-            $ecriture();
-            self::ordonner($pdo, 'COMMIT');
-        } catch (\Throwable $e) {
-            try {
-                self::ordonner($pdo, 'ROLLBACK');
-            } catch (\Throwable) {
-                // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
-            }
-            throw $e;
-        } finally {
-            self::$transactionOuverteSur = null;
         }
     }
 
@@ -1045,22 +1098,36 @@ class Moderate
                 // Le premier votant garde ses votes : c'est ce qu'un membre seul
                 // aurait obtenu, et le groupe n'obtient rien de plus.
                 $premier = (int) $votes[0]['voter_id'];
-                $voteIds = self::annulerVotes($pdo, array_map('intval', array_column(
+                $aAnnuler = array_map('intval', array_column(
                     array_filter($votes, static fn (array $v): bool =>
                         (int) $v['voter_id'] !== $premier && !(int) $v['blocked']),
                     'id'
-                )));
-                if (!$voteIds) {
+                ));
+                // L'annulation, les rangs qu'elle consigne et ce qu'elle rend
+                // tiennent ensemble : faits à moitié, aucun passage ne les
+                // rattraperait — les votes annulés ne s'annulent plus. Les rangs
+                // passent avant la restitution, qui peut écrire au journal : un
+                // échec sur eux défait tout avant que rien ne soit inscrit.
+                $episode = self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {
+                    $voteIds = self::annulerVotes($pdo, $aAnnuler);
+                    if (!$voteIds) {
+                        return null;
+                    }
+                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);
+                    self::restoreAfterCancel($pdo, $author, $voteIds);
+
+                    return ['votes' => $voteIds, 'rangs' => $rangs];
+                });
+                if ($episode === null) {
                     continue;
                 }
-                self::restoreAfterCancel($pdo, $author, $voteIds);
-                $cancelled += count($voteIds);
+                $cancelled += count($episode['votes']);
                 $packs[] = [
                     'target_author' => $author,
                     'voters'        => $groupe,
                     'premier'       => $premier,
-                    'cancelled'     => count($voteIds),
-                    'rangs'         => self::consignerMeute($pdo, $groupe, $author, $voteIds),
+                    'cancelled'     => count($episode['votes']),
+                    'rangs'         => $episode['rangs'],
                 ];
             }
         }
@@ -1370,6 +1437,9 @@ class Moderate
 
     /**
      * Réputation au plancher : bannir quand le journal le permet, signaler sinon.
+     * Dans la transaction d'un hôte, le journal ne le permet pas : l'hôte peut
+     * encore annuler, et l'acte survivrait à la base. La réputation à zéro y est
+     * signalée, comme sans journal ; le ban tombe au premier vote hors d'elle.
      *
      * ⚠️ **Le journal s'écrit AVANT la base**, et l'ordre n'est pas indifférent.
      * Les deux écritures ne peuvent pas tenir dans une même transaction : l'une
@@ -1382,7 +1452,7 @@ class Moderate
     {
         $maintenant = time();
 
-        if (self::$journal === null) {
+        if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {
             self::signaler($pdo, $accountId, 'reputation_zero');
 
             return;
@@ -1497,10 +1567,22 @@ class Moderate
      * reproche. Un ban en cours n'est pas remplacé — l'arbitre le lève d'abord,
      * et les deux gestes restent au journal.
      *
+     * La revue ouverte ne se ferme pas avec le ban : un signal de comportement
+     * attend qu'un arbitre le classe (`adminClasser()`), un signal d'état se
+     * lève quand l'état cesse. L'acte dit laquelle était ouverte.
+     *
      * @return array{ok: bool, message: string}
      */
     public static function adminBan(PDO $pdo, int $accountId, string $arbitre, string $motif, ?int $seconds = null): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -1509,36 +1591,48 @@ class Moderate
         if ($seconds <= 0) {
             return ['ok' => false, 'message' => static::t('Durée de ban invalide.')];
         }
-        $etat = self::getReputation($pdo, $accountId);
-        if ($etat['banned']) {
-            return ['ok' => false, 'message' => sprintf(
-                static::t('Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'),
-                date('d/m/Y H:i', $etat['banned_until'])
-            )];
-        }
+        // Une peine échue se referme avant le verrou, comme au vote. Sous lui,
+        // l'état se relit : la décision se prend sur ce qu'il est, pas sur ce
+        // qu'il était avant qu'un autre geste passe.
+        self::getReputation($pdo, $accountId);
 
-        $maintenant = time();
-        $jusqua     = $maintenant + $seconds;
-        $episode    = $etat['strikes'] + 1;
-        self::$journal?->inscrire([
-            'acte'    => 'ban_debut',
-            'compte'  => $accountId,
-            'origine' => 'admin',
-            'episode' => $episode,
-            'duree'   => $seconds,
-            'debut'   => $maintenant,
-            'jusqu_a' => $jusqua,
-            'motif'   => trim($motif),
-            'arbitre' => $arbitre,
-        ]);
-        $pdo->prepare(
-            "UPDATE member_moderation
-                SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,
-                    voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?
-              WHERE account_id = ?"
-        )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {
+            $etat = self::getReputation($pdo, $accountId);
+            if ($etat['banned']) {
+                return ['ok' => false, 'message' => sprintf(
+                    static::t('Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'),
+                    date('d/m/Y H:i', $etat['banned_until'])
+                )];
+            }
+            $enAttente = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
 
-        return ['ok' => true, 'message' => sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
+            $maintenant = time();
+            $jusqua     = $maintenant + $seconds;
+            $episode    = $etat['strikes'] + 1;
+            self::$journal->inscrire([
+                'acte'    => 'ban_debut',
+                'compte'  => $accountId,
+                'origine' => 'admin',
+                'episode' => $episode,
+                'duree'   => $seconds,
+                'debut'   => $maintenant,
+                'jusqu_a' => $jusqua,
+                'motif'   => trim($motif),
+                'arbitre' => $arbitre,
+                'raison'  => $etat['review_reason'],
+            ]);
+            $pdo->prepare(
+                "UPDATE member_moderation
+                    SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,
+                        voting_rights = 0, strikes = ?, updated_at = ?
+                  WHERE account_id = ?"
+            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
+
+            return ['ok' => true, 'message' => sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
+        });
     }
 
     /**
@@ -1558,6 +1652,14 @@ class Moderate
      */
     public static function adminPardon(PDO $pdo, int $accountId, string $arbitre, ?string $motif = null): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
         $motif = $motif !== null ? trim($motif) : '';
         if ($motif !== '') {
             [$motifOk, $pourquoi] = self::validateReason($motif);
@@ -1565,67 +1667,75 @@ class Moderate
                 return ['ok' => false, 'message' => $pourquoi];
             }
         }
-        $etat       = self::getReputation($pdo, $accountId);
-        $maintenant = time();
-        $anticipee  = false;
-        $rangEfface = self::rangDe($pdo, $accountId);
+        self::getReputation($pdo, $accountId);
 
-        if ($etat['banned']) {
-            $plancher  = $etat['ban_debut'] > 0
-                ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until'])
-                : null;
-            $anticipee = $plancher !== null && $maintenant < $plancher;
-            if ($anticipee && $motif === '') {
-                return ['ok' => false, 'message' => sprintf(
-                    static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'),
-                    date('d/m/Y H:i', $plancher)
-                )];
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+            $etat       = self::getReputation($pdo, $accountId);
+            $enAttente  = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
             }
-            self::$journal?->inscrire([
-                'acte'      => 'ban_leve',
-                'compte'    => $accountId,
-                'origine'   => $etat['ban_origine'],
-                'arbitre'   => $arbitre,
-                'motif'     => $motif !== '' ? $motif : null,
-                'cause'     => 'grace',
-                'anticipee' => $anticipee,
-                'reste'     => $etat['banned_until'] - $maintenant,
-                'plancher'  => $plancher,
-                'rang_efface'      => $rangEfface,
-                'suspension_levee' => $etat['vote_muted'],
-            ]);
-        } else {
-            self::$journal?->inscrire([
-                'acte'       => 'grace',
-                'compte'     => $accountId,
-                'arbitre'    => $arbitre,
-                'motif'      => $motif !== '' ? $motif : null,
-                'reputation' => $etat['reputation'],
-                'rang_efface'      => $rangEfface,
-                'suspension_levee' => $etat['vote_muted'],
-            ]);
-        }
+            $maintenant = time();
+            $anticipee  = false;
+            $rangEfface = self::rangDe($pdo, $accountId);
 
-        $pdo->prepare(
-            'UPDATE member_moderation
-                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
-                    voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
-                    convalescent = 0, vote_muted_until = 0, updated_at = ?
-              WHERE account_id = ?'
-        )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
-        self::effacerEffets($pdo, $accountId);
-        if ($rangEfface > 0) {
+            if ($etat['banned']) {
+                $plancher  = $etat['ban_debut'] > 0
+                    ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until'])
+                    : null;
+                $anticipee = $plancher !== null && $maintenant < $plancher;
+                if ($anticipee && $motif === '') {
+                    return ['ok' => false, 'message' => sprintf(
+                        static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'),
+                        date('d/m/Y H:i', $plancher)
+                    )];
+                }
+                self::$journal->inscrire([
+                    'acte'      => 'ban_leve',
+                    'compte'    => $accountId,
+                    'origine'   => $etat['ban_origine'],
+                    'arbitre'   => $arbitre,
+                    'motif'     => $motif !== '' ? $motif : null,
+                    'cause'     => 'grace',
+                    'anticipee' => $anticipee,
+                    'reste'     => $etat['banned_until'] - $maintenant,
+                    'plancher'  => $plancher,
+                    'rang_efface'      => $rangEfface,
+                    'suspension_levee' => $etat['vote_muted'],
+                ]);
+            } else {
+                self::$journal->inscrire([
+                    'acte'       => 'grace',
+                    'compte'     => $accountId,
+                    'arbitre'    => $arbitre,
+                    'motif'      => $motif !== '' ? $motif : null,
+                    'reputation' => $etat['reputation'],
+                    'rang_efface'      => $rangEfface,
+                    'suspension_levee' => $etat['vote_muted'],
+                ]);
+            }
+
             $pdo->prepare(
-                "INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
-                 VALUES (?, ?, 0, 'grace', NULL, ?)"
-            )->execute([$accountId, $accountId, $maintenant]);
-        }
+                'UPDATE member_moderation
+                    SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
+                        voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
+                        convalescent = 0, vote_muted_until = 0, updated_at = ?
+                  WHERE account_id = ?'
+            )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
+            self::effacerEffets($pdo, $accountId);
+            if ($rangEfface > 0) {
+                $pdo->prepare(
+                    "INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
+                     VALUES (?, ?, 0, 'grace', NULL, ?)"
+                )->execute([$accountId, $accountId, $maintenant]);
+            }
 
-        return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
-            $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),
-            $etat['banned'] => static::t('Ban levé.'),
-            default         => static::t('Réputation remise au point de départ.'),
-        }];
+            return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
+                $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),
+                $etat['banned'] => static::t('Ban levé.'),
+                default         => static::t('Réputation remise au point de départ.'),
+            }];
+        });
     }
 
     /**
@@ -1637,26 +1747,38 @@ class Moderate
      */
     public static function adminMaintenir(PDO $pdo, int $accountId, string $arbitre, string $motif): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
-        $etat = self::getReputation($pdo, $accountId);
-        if (!$etat['banned']) {
-            return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
-        }
-        self::$journal?->inscrire([
-            'acte'    => 'ban_maintenu',
-            'compte'  => $accountId,
-            'origine' => $etat['ban_origine'],
-            'arbitre' => $arbitre,
-            'motif'   => trim($motif),
-            'jusqu_a' => $etat['banned_until'],
-        ]);
-        $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
-            ->execute([time(), $accountId]);
+        self::getReputation($pdo, $accountId);
 
-        return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+            $etat = self::getReputation($pdo, $accountId);
+            if (!$etat['banned']) {
+                return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
+            }
+            self::$journal->inscrire([
+                'acte'    => 'ban_maintenu',
+                'compte'  => $accountId,
+                'origine' => $etat['ban_origine'],
+                'arbitre' => $arbitre,
+                'motif'   => trim($motif),
+                'jusqu_a' => $etat['banned_until'],
+            ]);
+            $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
+                ->execute([time(), $accountId]);
+
+            return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
+        });
     }
 
     /**
@@ -1669,25 +1791,41 @@ class Moderate
      */
     public static function adminClasser(PDO $pdo, int $accountId, string $arbitre, string $motif): array
     {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
-        $etat = self::getReputation($pdo, $accountId);
-        if (!$etat['needs_review']) {
-            return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
-        }
-        self::$journal?->inscrire([
-            'acte'    => 'revue_classee',
-            'compte'  => $accountId,
-            'arbitre' => $arbitre,
-            'motif'   => trim($motif),
-            'raison'  => $etat['review_reason'],
-        ]);
-        $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
-            ->execute([time(), $accountId]);
+        self::getReputation($pdo, $accountId);
 
-        return ['ok' => true, 'message' => static::t('Signalement classé.')];
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif): array {
+            $etat = self::getReputation($pdo, $accountId);
+            $enAttente = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
+            if (!$etat['needs_review']) {
+                return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
+            }
+            self::$journal->inscrire([
+                'acte'    => 'revue_classee',
+                'compte'  => $accountId,
+                'arbitre' => $arbitre,
+                'motif'   => trim($motif),
+                'raison'  => $etat['review_reason'],
+            ]);
+            $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
+                ->execute([time(), $accountId]);
+
+            return ['ok' => true, 'message' => static::t('Signalement classé.')];
+        });
     }
 
     /** Le compte purge-t-il un ban ? Pour l'hôte qui décide ce qu'un ban bloque au-delà du vote. */

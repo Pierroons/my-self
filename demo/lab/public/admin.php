@@ -33,9 +33,9 @@ $episodes = Admin::packEpisodes($pdo);
 $reports = Admin::reports($pdo);
 $demandes = Admin::pendingRequests($pdo);
 $disputes = \Pierroons\MySelfLab\RecoverL3::adminList($pdo)['disputes'] ?? [];
-// Les peines échues se referment ici : l'arbitre voit l'état réel, et un journal
-// qui refuse d'écrire se dit au niveau du site, même quand le compte porte déjà
-// un autre signal.
+// Les peines échues se referment ici : l'arbitre voit l'état réel, et un balayage
+// qui échoue — un journal qui refuse d'écrire, une base verrouillée — se dit au
+// niveau du site, même quand le compte porte déjà un autre signal.
 try {
     Moderate::balayerBansEchus($pdo);
     $finsEnPanne = null;
@@ -155,12 +155,12 @@ table.adm tr:last-child td{border-bottom:none}
   <h2>⛔ Bans en cours <span class="muted" style="font-size:12px">(vote et publication bloqués ; messages privés ouverts)</span></h2>
   <p class="muted" style="margin-top:0;font-size:12.5px">
     <?php if ($finsEnPanne !== null): ?>
-      <span style="color:var(--danger)">⚠ Des peines échues attendent leur clôture : le journal refuse d'écrire (<?= h($finsEnPanne) ?>).</span><br>
+      <span style="color:var(--danger)">⚠ Des peines échues attendent leur clôture : le balayage a échoué (<?= h($finsEnPanne) ?>).</span><br>
     <?php endif; ?>
     <?php if ($erreurJournal !== null): ?>
       <span style="color:var(--danger)">⚠ Journal de modération illisible : <?= h($erreurJournal) ?></span>
     <?php elseif ($etatJournal === null): ?>
-      <span style="color:var(--warn)">⚠ Aucun journal branché : le ban automatique ne tombe pas, une réputation à zéro est seulement signalée.</span>
+      <span style="color:var(--warn)">⚠ Aucun journal branché : ni le ban automatique ni les gestes d'arbitre ne passent ; une réputation à zéro est seulement signalée.</span>
     <?php elseif (!$etatJournal['ok']): ?>
       <span style="color:var(--danger)">⚠ Journal de modération rompu à l'entrée <?= (int) $etatJournal['brokenAt'] ?> sur <?= (int) $etatJournal['count'] ?>.</span>
     <?php else: ?>

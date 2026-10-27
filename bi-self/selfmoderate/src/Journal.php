@@ -13,9 +13,18 @@
  * pas être réécrite après coup. Un journal qui perd une entrée rend muette la
  * seule trace d'une sanction prononcée sans humain.
  *
- * Sans journal branché, `Moderate` ne bannit pas tout seul : il signale, et
- * l'arbitre tranche. Une sanction automatique qui ne laisse pas de trace n'est
+ * Sans journal branché, `Moderate` ne bannit pas tout seul — il signale — et
+ * aucun geste d'arbitre ne passe. Une sanction qui ne laisse pas de trace n'est
  * pas une sanction allégée, c'est une sanction dont personne ne répond.
+ *
+ * ⚠️ **Le moteur écrit au journal sous le verrou d'écriture de sa base.** Une
+ * implémentation qui écrirait dans cette même base par une autre connexion
+ * attendrait un verrou que le moteur tient ; une implémentation lente retarde
+ * d'autant les écritures concurrentes. Et le journal ne se défait pas avec la
+ * base : aucun geste d'arbitre ne se fait donc dans la transaction d'un hôte,
+ * et un vote n'y arme pas le ban automatique. Une clôture de peine ou une levée
+ * pour meute faites là, puis défaites avec elle, se refont au passage suivant,
+ * et s'inscrivent alors deux fois.
  */
 
 declare(strict_types=1);
@@ -47,7 +56,8 @@ interface Journal
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
      *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
-     *   raison     cause du signalement classé                 revue_classee
+     *   raison     cause du signalement classé ; pour un ban   revue_classee, ban_debut
+     *              d'arbitre, la revue ouverte, ou null
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.

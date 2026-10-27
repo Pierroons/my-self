@@ -263,6 +263,12 @@ return [
     'Il faut au moins %d mots différents.' => 'At least %d different words are needed.',
     'Un mot revient trop souvent : dis ce que tu reproches.' => 'A word comes back too often: say what you object to.',
     'Durée de ban invalide.' => 'Invalid ban duration.',
+    'Un geste d\'arbitre ne se fait pas dans la transaction de l\'hôte : le journal ne se défait pas avec elle.'
+        => 'An arbiter action is not taken inside the host\'s transaction: the journal is not rolled back with it.',
+    'La peine précédente attend que le journal inscrive sa fin : aucun geste ne passe avant.'
+        => 'The previous penalty is waiting for the journal to record its end: no action goes through before that.',
+    'Aucun journal de modération n\'est branché : un geste d\'arbitre ne se fait pas sans trace.'
+        => 'No moderation journal is plugged in: an arbiter action is never taken without a trace.',
     'Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'
         => 'Already banned until %s: lift this ban before setting another.',
     'Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'

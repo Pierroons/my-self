@@ -35,14 +35,14 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 - An account survives a lost password (SelfRecover), so its reputation and its history survive too, instead of starting over under a new name.
 - Collective voting (SelfModerate) spreads moderation across the members.
-- Moderators remain, as arbiters of what the votes do not settle: every ban they impose, lift or uphold carries their name in the journal, when the host plugs one in; without a journal, nothing records them.
+- Moderators remain, as arbiters of what the votes do not settle: every ban they impose, lift or uphold carries their name in the journal, which the host must plug in: without a journal, no arbiter action goes through.
 
 ---
 
 ## Cross-module workflows
 
 - **New member joins** → creates an account with a recovery word (SelfRecover). Zero email. During that delay, SelfModerate lets the account vote only if it has posted (anti-Sybil warm-up).
-- **Toxic behavior reported** → members vote (SelfModerate), under the anti-Sybil brakes described above. A reputation that reaches zero bans automatically if the host has plugged in a journal; otherwise it raises a flag and an arbiter decides.
+- **Toxic behavior reported** → members vote (SelfModerate), under the anti-Sybil brakes described above. A reputation that reaches zero bans automatically if the host has plugged in a journal; otherwise it raises a flag, and no arbiter can act until a journal is plugged in.
 - **Lost password** → the member recovers their account at level 1 or 2 (SelfRecover), with no email and no one to ask. Level 3 goes to a human admin, who reads the case.
 
 ---
