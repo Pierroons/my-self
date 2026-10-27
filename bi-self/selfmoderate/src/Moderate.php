@@ -1941,21 +1941,34 @@ class Moderate
      * alphabétique et non chronologique — à la seconde près, recoupée avec les
      * présences, elle désignerait son auteur. Limite qu'aucun tri ne lève : sur
      * un unique downvote reçu, la personne devine souvent qui l'a émis.
+     *
+     * Le jour est celui du fuseau de l'hôte, compté en PHP : SQLite ne connaît
+     * que le fuseau de son processus. Les jours rendus sont ceux des `$limit`
+     * motifs les plus récents, lus en entier pour que le dernier garde son ordre
+     * alphabétique.
      */
     public static function reasonsFor(PDO $pdo, int $accountId, int $limit = 50): array
     {
-        $stmt = $pdo->prepare("
-            SELECT value, reason, reason_code,
-                   strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour
-              FROM mod_votes
-             WHERE target_author = ? AND blocked = 0 AND reason IS NOT NULL AND reason <> ''
-          ORDER BY jour DESC, reason ASC
-             LIMIT ?
-        ");
+        $recus = "FROM mod_votes WHERE target_author = ? AND blocked = 0 AND reason IS NOT NULL AND reason <> ''";
+        $borne = $pdo->prepare("SELECT created_at $recus ORDER BY created_at DESC LIMIT 1 OFFSET ?");
+        $borne->bindValue(1, $accountId, PDO::PARAM_INT);
+        $borne->bindValue(2, max(0, $limit - 1), PDO::PARAM_INT);
+        $borne->execute();
+        $dernierLu = $borne->fetchColumn();
+        $borne->closeCursor();
+        $stmt = $pdo->prepare("SELECT value, reason, reason_code, created_at $recus AND created_at >= ?");
         $stmt->bindValue(1, $accountId, PDO::PARAM_INT);
-        $stmt->bindValue(2, $limit, PDO::PARAM_INT);
+        $stmt->bindValue(2, $dernierLu === false ? 0 : (int) strtotime(date('Y-m-d', (int) $dernierLu)), PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll();
+        $motifs = array_map(static fn (array $v): array => [
+            'value'       => $v['value'],
+            'reason'      => $v['reason'],
+            'reason_code' => $v['reason_code'],
+            'jour'        => date('Y-m-d', (int) $v['created_at']),
+        ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+        usort($motifs, static fn (array $a, array $b): int => [$b['jour'], $a['reason']] <=> [$a['jour'], $b['reason']]);
+
+        return array_slice($motifs, 0, $limit);
     }
 
     /**

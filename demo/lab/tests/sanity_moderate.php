@@ -3163,6 +3163,42 @@ $gestes79 === array_fill_keys(['ban', 'grace', 'maintenir', 'classer'], [false, 
         'gestes' => $gestes79, 'actes' => count($journalC->actes) - $actesAvant79,
     ], JSON_UNESCAPED_UNICODE));
 
+// ── 80. ⭐ Le jour des motifs est celui de l'hôte, et la borne garde l'ordre ──
+// Le jour se compte dans le fuseau de l'hôte : un motif reçu à 23:30 UTC est du
+// lendemain à Paris, où le lab affiche ses heures. Et la limite ne coupe pas le
+// dernier jour lu dans l'ordre d'arrivée : il reste alphabétique — B y arrive
+// après A, pour que les deux ordres se distinguent.
+$fuseauAvant80 = date_default_timezone_get();
+date_default_timezone_set('Europe/Paris');
+try {
+    $recoit80 = membre($pdo, 'recoit-tard-80');
+    $post80 = message($pdo, $recoit80, 'fil-tard-80');
+    $veille80 = intdiv(time(), 86400) * 86400 - 3 * 86400;
+    $poses80 = [
+        ['B — Une réponse qui détourne le fil vers un autre sujet sans rapport avec la question.', $veille80 + 7200],
+        ['A — Une affirmation présentée comme établie, sans aucune source pour l\'appuyer.', $veille80 + 3600],
+        ['C — Un ton méprisant envers la personne plutôt qu\'une critique de ce qu\'elle dit.', $veille80 + 86400 + 23 * 3600 + 1800],
+    ];
+    foreach ($poses80 as $k => [$texte80, $quand80]) {
+        $pdo->prepare(
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
+             VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)'
+        )->execute([membre($pdo, "tard-motif-$k-80"), 'post', $post80, $recoit80, $texte80, 'hors_sujet', $quand80]);
+    }
+    $tard80  = Moderate::reasonsFor($pdo, $recoit80);
+    $borne80 = Moderate::reasonsFor($pdo, $recoit80, 2);
+    $attenduTard80 = (new DateTimeImmutable('@' . $poses80[2][1]))->setTimezone(new DateTimeZone('Europe/Paris'))->format('Y-m-d');
+} finally {
+    date_default_timezone_set($fuseauAvant80);
+}
+($tard80[0]['jour'] ?? '') === $attenduTard80 && $attenduTard80 !== gmdate('Y-m-d', $poses80[2][1])
+    && array_map(static fn (array $m): string => mb_substr($m['reason'], 0, 1), $borne80) === ['C', 'A']
+    ? ok('⭐ un motif reçu tard est daté du jour de l\'hôte, et la limite garde le dernier jour dans l\'ordre alphabétique')
+    : nok('⭐ le jour des motifs suit UTC, ou la limite coupe dans l\'ordre d\'arrivée : ' . json_encode([
+        'jour' => $tard80[0]['jour'] ?? null, 'attendu' => $attenduTard80,
+        'borne' => array_map(static fn (array $m): string => mb_substr($m['reason'], 0, 1), $borne80),
+    ], JSON_UNESCAPED_UNICODE));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une

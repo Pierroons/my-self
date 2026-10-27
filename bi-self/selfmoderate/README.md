@@ -133,7 +133,7 @@ The engine is a static class; the host passes its `PDO` connection on every call
 
 **Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes` (including `effet`, what the vote actually changed to the reputation; a vote older than the column leaves it `NULL`, with no known effect: it is not given back and causes no ban), `mod_pack_flags`, `mod_signaux` (one row per open flag, per account and per cause; `needs_review` and `review_reason` remain, a summary the engine keeps for whoever reads the database and never reads back — a database from before 0.7.0 creates the table, then calls `migrerSignaux()` once, otherwise the engine refuses every account whose slot is open), `mod_sweeps` (one row per `balayagePeriodeSecondes` slot already swept; without it every downvote fails instead of letting the safety net go out), and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
 
-Dates in its messages follow the host's time zone (`date_default_timezone_set()`).
+Dates in its messages, and the day of the reasons `reasonsFor()` returns, follow the host's time zone (`date_default_timezone_set()`).
 
 ## Documentation
 

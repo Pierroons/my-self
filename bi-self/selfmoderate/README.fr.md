@@ -133,7 +133,7 @@ Le moteur est une classe statique ; l'hôte fournit la connexion `PDO` à chaque
 
 **Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes` (dont `effet`, ce que le vote a réellement changé à la réputation ; un vote antérieur à la colonne la laisse à `NULL`, sans effet connu : il ne se rend pas et ne compte comme cause d'aucun ban), `mod_pack_flags`, `mod_signaux` (une ligne par signalement ouvert, par compte et par cause ; `needs_review` et `review_reason` restent, résumé que le moteur tient pour qui lit la base et ne relit jamais — une base d'avant la 0.7.0 crée la table puis appelle `migrerSignaux()` une fois, sans quoi le moteur refuse tout compte dont la case est ouverte), `mod_sweeps` (une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ; sans elle, chaque vote négatif échoue au lieu de laisser le filet s'éteindre), et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
 
-Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_set()`).
+Les dates de ses messages, et le jour des motifs que `reasonsFor()` rend, suivent le fuseau de l'hôte (`date_default_timezone_set()`).
 
 ## Documentation
 

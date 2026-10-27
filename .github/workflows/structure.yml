@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 137/137 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 137 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 138/138 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 138 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2500,10 +2500,11 @@ jobs:
           # Trois promesses sans chiffre : la détection lit le contenu des
           # messages privés, nommé ou par `SELECT *` ; les motifs sortent dans leur
           # ordre d'arrivée ; ils sont datés au mois, ou portent leur horodatage
-          # sous un autre nom. Chaque défaut planté tour à tour, le banc doit
-          # rougir sur son cas.
+          # sous un autre nom ; le jour se compte en UTC et non dans le fuseau de
+          # l'hôte ; la limite coupe le dernier jour lu dans l'ordre d'arrivée.
+          # Chaque défaut planté tour à tour, le banc doit rougir sur son cas.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in contenu tout ordre mois horodatage; do
+          for cas in contenu tout ordre mois horodatage utc borne; do
             cp "$M" /tmp/moderate.promesse.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2512,9 +2513,11 @@ jobs:
           avant, apres = {
               'contenu':    ('SELECT DISTINCT sender_id, recipient_id FROM dm', 'SELECT DISTINCT sender_id, recipient_id, ciphertext FROM dm'),
               'tout':       ('SELECT DISTINCT sender_id, recipient_id FROM dm', 'SELECT DISTINCT * FROM dm'),
-              'ordre':      ('ORDER BY jour DESC, reason ASC', 'ORDER BY created_at DESC'),
-              'mois':       ("strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour", "strftime('%Y-%m', created_at, 'unixepoch') AS jour"),
-              'horodatage': ("strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour", "strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour, created_at AS ts"),
+              'ordre':      ("        usort($motifs, static fn (array $a, array $b): int => [$b['jour'], $a['reason']] <=> [$a['jour'], $b['reason']]);\n", ''),
+              'mois':       ("'jour'        => date('Y-m-d', (int) $v['created_at']),", "'jour'        => date('Y-m', (int) $v['created_at']),"),
+              'horodatage': ("'jour'        => date('Y-m-d', (int) $v['created_at']),", "'jour'        => date('Y-m-d', (int) $v['created_at']), 'ts' => $v['created_at'],"),
+              'utc':        ("'jour'        => date('Y-m-d', (int) $v['created_at']),", "'jour'        => gmdate('Y-m-d', (int) $v['created_at']),"),
+              'borne':      ("(int) strtotime(date('Y-m-d', (int) $dernierLu))", "(int) $dernierLu"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -2530,6 +2533,7 @@ jobs:
             fi
             case $cas in
               contenu|tout) attendu='✗ la détection lit le contenu des messages privés' ;;
+              utc|borne)    attendu='✗ ⭐ le jour des motifs suit UTC, ou la limite coupe dans l.ordre d.arrivée' ;;
               *)            attendu='✗ motifs mal datés ou rangés dans leur ordre d.arrivée' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
