@@ -231,6 +231,48 @@ $r['code'] === 2 && $deny['event']['reason'] === 'sealed-key-unreadable'
 
 // -----------------------------------------------------------------------------
 
+section('seed-witness — a witness that lost its store takes the head of a log found to hold its anchor');
+
+$seedLog     = "{$ws}/audit-seed.log";
+$headFile    = "{$ws}/temoin.head";
+$fileWitness = "{$ws}/temoin-fichier.php";
+file_put_contents($fileWitness, sprintf(<<<'PHP'
+    <?php
+    require %s;
+    return new class (%s) implements Pierroons\SelfDataGuard\Escrow\HeadWitness {
+        public function __construct(private readonly string $store) {}
+        public function witness(int $seq, string $hmac): void { file_put_contents($this->store, "{$seq}:{$hmac}"); }
+        public function lastHead(): ?string { return is_file($this->store) ? (string) file_get_contents($this->store) : null; }
+    };
+    PHP, var_export(__DIR__ . '/../src/autoload.php', true), var_export($headFile, true)));
+$seedEnv = ['DATAGUARD_AUDIT_LOG' => $seedLog, 'DATAGUARD_WITNESS_FILE' => $fileWitness] + $env;
+
+run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
+unlink($headFile);
+$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
+$r['code'] === 2 && !str_contains($r['out'], CONTACT) && str_contains($r['err'], 'seedWitness()')
+    ? ok('a witness that lost its store is refused, and the refusal names the seed')
+    : ko('a witness that lost its store was not refused', $r['code'] . ' ' . trim($r['err']));
+$r = run(['seed-witness'], '', $seedEnv);
+$r['code'] === 2 && !is_file($headFile)
+    ? ok('seed-witness without --ancre → exit 2, nothing seeded')
+    : ko('seed-witness ran without an anchor', $r['code'] . ' ' . trim($r['err']));
+$r = run(['seed-witness', '--ancre', '0:' . str_repeat('0', 64)], '', $seedEnv);
+$r['code'] === 2 && !is_file($headFile)
+    ? ok('seed-witness on an anchor the log does not hold → exit 2, nothing seeded')
+    : ko('seed-witness seeded on an anchor the log does not hold', $r['code'] . ' ' . trim($r['err']));
+preg_match('/tête : (\d+:[0-9a-f]{64})/', run(['verify-log'], '', $seedEnv)['out'], $seedHead);
+$r = run(['seed-witness', '--ancre', $seedHead[1] ?? ''], '', $seedEnv);
+$r['code'] === 0 && is_file($headFile)
+    ? ok('seed-witness on the anchor the log holds → exit 0, and the witness holds a head')
+    : ko('seed-witness refused the anchor the log holds', $r['code'] . ' ' . trim($r['err']));
+$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
+$r['code'] === 0 && str_contains($r['out'], CONTACT)
+    ? ok('the seeded witness serves the next ceremony')
+    : ko('the seeded witness did not serve the next ceremony', $r['code'] . ' ' . trim($r['err']));
+
+// -----------------------------------------------------------------------------
+
 section('Tampered audit log is caught by verify-log');
 
 $lines = file($auditLog, FILE_IGNORE_NEW_LINES);

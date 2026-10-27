@@ -22,9 +22,13 @@ interface HeadWitness
      * head. It throws when the head cannot be read back, and the ceremony stops.
      *
      * Once it has taken a head, it never answers null — the ceremony refuses one
-     * that does, when the log shows it took one — and witness() refuses a seq
-     * that is not above the last it took: restored from an old backup, it would
-     * vouch for a log cut back to that point.
+     * that does, when the log shows a witness took one — and witness() refuses
+     * a seq that is not above the last it took. Its store lives off this
+     * machine, append-only, and is never restored from a backup: put back to an
+     * older head, it vouches for a log cut back to that head, and nothing here
+     * can tell. A witness that holds no head on a log a witness already served
+     * — a new one, or one that lost its store — is seeded by the operator with
+     * EscrowCeremony::seedWitness().
      */
     public function lastHead(): ?string;
 }

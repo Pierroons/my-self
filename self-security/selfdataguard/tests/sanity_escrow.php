@@ -359,7 +359,7 @@ try {
     $readWith($forgetful, $forgetLog);
     ko('a witness that took heads, then holds none, let a ceremony go on: a log cut since would pass');
 } catch (RuntimeException $e) {
-    str_contains($e->getMessage(), 'lost what it held') && ($lastEvent($forgetLog)['reason'] ?? null) === 'witness-forgot'
+    str_contains($e->getMessage(), 'shows a witness took one') && ($lastEvent($forgetLog)['reason'] ?? null) === 'witness-forgot'
         ? ok('a witness that took heads and now holds none is refused, and the log says why')
         : ko('a forgetful witness refused for another reason, or not logged', $e->getMessage());
 }
@@ -394,6 +394,74 @@ try {
         : ko('a malformed head stopped the ceremony without a line in the log', $e->getMessage());
 } catch (Throwable $e) {
     ko('a malformed head from the witness escaped the ceremony, with no line in the log', get_class($e));
+}
+
+// The process stopped right after the witness took the head: the intention is the last line.
+$crashLog = $wLog();
+$crashed  = new BenchWitness();
+$readWith($crashed, $crashLog);
+file_put_contents($crashLog, file($crashLog)[0]);
+$crashed->forced = true;
+try {
+    $readWith($crashed, $crashLog);
+    ko('a witness that took the head of the last line, then holds none, let a ceremony go on');
+} catch (RuntimeException $e) {
+    ($lastEvent($crashLog)['reason'] ?? null) === 'witness-forgot'
+        ? ok('an intention on the last line counts as a head taken: the witness that then holds none is refused')
+        : ko('a witness that forgot the last line was refused for another reason', $e->getMessage());
+}
+
+// A new witness — of another class — on a log another witness served.
+$servedLog = $wLog();
+$readWith(new BenchWitness(), $servedLog);
+$successor = new class implements Pierroons\SelfDataGuard\Escrow\HeadWitness {
+    public ?string $head = null;
+    public function witness(int $seq, string $hmac): void { $this->head = "{$seq}:{$hmac}"; }
+    public function lastHead(): ?string { return $this->head; }
+};
+$successorCeremony = static fn () => benchCeremony($storage, Verdict::Open, $successor, $servedLog);
+$readSuccessor = static fn () => $successorCeremony()
+    ->readEscrow('alice', 'case-w', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+try {
+    $readSuccessor();
+    ko('a new witness of another class, holding no head, went on over a log another witness served');
+} catch (RuntimeException $e) {
+    ($lastEvent($servedLog)['reason'] ?? null) === 'witness-forgot'
+        ? ok('a new witness of another class, holding no head, is refused on a log another witness served')
+        : ko('a new witness was refused for another reason', $e->getMessage());
+}
+
+$servedHead = (new AuditLog($servedLog, str_repeat('s', 32)))->verifyUnanchored()['head'];
+$anchor     = "{$servedHead['seq']}:{$servedHead['hmac']}";
+try {
+    $successorCeremony()->seedWitness("{$servedHead['seq']}:" . str_repeat('0', 64));
+    ko('seedWitness() seeded the witness on an anchor the log does not hold');
+} catch (RuntimeException $e) {
+    $successor->head === null && ($lastEvent($servedLog)['reason'] ?? null) === 'log-behind-anchor'
+        ? ok('seedWitness() refuses an anchor the log does not hold, and the log says so')
+        : ko('seedWitness() refused a foreign anchor without saying so, or seeded anyway', $e->getMessage());
+}
+try {
+    $successorCeremony()->seedWitness($anchor);
+    $readSuccessor();
+    ($lastEvent($servedLog)['action'] ?? null) === 'escrow-unlock'
+        && in_array('seed-witness', array_map(static fn ($e) => $e['event']['action'] ?? null, (new AuditLog($servedLog, str_repeat('s', 32)))->readAll()), true)
+        ? ok('a new witness seeded on the anchor serves the next ceremony, and the seed is in the log')
+        : ko('the seeded witness served, but the log does not show the seed or the read', json_encode($lastEvent($servedLog)));
+} catch (Throwable $e) {
+    ko('a witness seeded on the anchor the log holds did not serve the next ceremony', $e->getMessage());
+}
+try {
+    $successorCeremony()->seedWitness($anchor);
+    ko('seedWitness() seeded again a witness that holds a head');
+} catch (RuntimeException $e) {
+    ok('seedWitness() leaves alone a witness that holds a head');
+}
+try {
+    benchCeremony($storage, Verdict::Open, new NoHeadWitness(), $servedLog)->seedWitness($anchor);
+    ko('seedWitness() accepted NoHeadWitness');
+} catch (RuntimeException $e) {
+    ok('seedWitness() refuses NoHeadWitness, which takes no head');
 }
 
 section('Cold seizure: wrong admin key cannot open the sealed escrow');

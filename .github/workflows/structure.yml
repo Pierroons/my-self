@@ -2798,7 +2798,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=28 [sanity_conformance]=52 [sanity_escrow]=57
+            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=52 [sanity_escrow]=63
             [sanity_facade]=116 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=37 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -2980,6 +2980,17 @@ jobs:
           canari $D/src/Escrow/EscrowCeremony.php 'if ($lastHead === null && !$this->witness instanceof NoHeadWitness && $this->witnessTookAHead()) {' \
             'if (false) {' \
             $D/tests/sanity_escrow.php 'a witness that took heads, then holds none, let a ceremony go on'
+          canari $D/src/Escrow/EscrowCeremony.php "                && (\$event['witness'] ?? NoHeadWitness::class) !== NoHeadWitness::class" \
+            "                && (\$event['witness'] ?? null) === get_class(\$this->witness)" \
+            $D/tests/sanity_escrow.php 'a new witness of another class, holding no head, went on over a log another witness served'
+          canari $D/src/Escrow/EscrowCeremony.php "                && (\$entries[\$i + 1]['event']['reason'] ?? null)" \
+            "                && isset(\$entries[\$i + 1]) && (\$entries[\$i + 1]['event']['reason'] ?? null)" \
+            $D/tests/sanity_escrow.php 'a witness that took the head of the last line, then holds none, let a ceremony go on'
+          canari $D/src/Escrow/EscrowCeremony.php "'witness' => get_class(\$this->witness)] + \$context, \$anchor);" \
+            "'witness' => get_class(\$this->witness)] + \$context);" \
+            $D/tests/sanity_escrow.php 'seedWitness() seeded the witness on an anchor the log does not hold'
+          canari $D/src/Escrow/EscrowCeremony.php '        if ($held !== null) {' '        if (false) {' \
+            $D/tests/sanity_escrow.php 'seedWitness() seeded again a witness that holds a head'
           canari $D/src/Escrow/EscrowCeremony.php '        } catch (InvalidArgumentException $e) {' '        } catch (\DomainException $e) {' \
             $D/tests/sanity_escrow.php 'a malformed head from the witness escaped the ceremony'
           canari $D/src/Escrow/EscrowCeremony.php '            // A case table that cannot be read is the answer Unavailable names.' '            throw $e;' \
@@ -3065,7 +3076,7 @@ jobs:
             $D/tests/sanity_facade.php 'a storage that never reads the profile back was trusted'
           canari $D/src/SelfDataGuard.php 'unset($cipher[EscrowVault::WRAP_AAD_TAG]);' '' \
             $D/tests/sanity_facade.php 'getFields() refused the whole account for one reserved row'
-          canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return; fwrite(STDERR, "❌ option inconnue : "' \
+          canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return null; fwrite(STDERR, "❌ option inconnue : "' \
             $D/tests/sanity_ceremony.php 'was accepted'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde

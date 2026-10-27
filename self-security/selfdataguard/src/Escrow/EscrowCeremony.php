@@ -127,6 +127,46 @@ final class EscrowCeremony
     }
 
     /**
+     * Hands the witness the log's head, once the log is found to hold $anchor —
+     * the head noted outside this machine at the last verification. The
+     * operator's act for a witness that holds no head on a log a witness
+     * already served: a new one, or one that lost its store. Logged like a
+     * ceremony: its intention, then the witness, then the act.
+     *
+     * @throws InvalidArgumentException when $anchor is not a head
+     * @throws RuntimeException         when the witness holds a head or takes none,
+     *                                  or the log no longer holds $anchor
+     */
+    public function seedWitness(string $anchor): void
+    {
+        if ($this->witness instanceof NoHeadWitness) {
+            throw new RuntimeException('NoHeadWitness takes no head: there is no witness to seed');
+        }
+        $held = $this->witness->lastHead();
+        if ($held !== null) {
+            throw new RuntimeException("The head witness holds a head ({$held}): it is seeded already");
+        }
+        $context = ['anchor' => $anchor, 'operator' => $this->operator];
+        try {
+            $intent = $this->log->append(['action' => 'seed-witness-intent', 'witness' => get_class($this->witness)] + $context, $anchor);
+        } catch (AuditAnchorException $e) {
+            $this->log->append(['action' => 'seed-witness-denied', 'reason' => 'log-behind-anchor', 'found' => $e->found] + $context);
+            throw new RuntimeException(
+                "The audit log no longer holds the anchor {$anchor}: it was {$e->found} — the witness is not seeded, "
+                . 'the log is an incident to examine',
+                previous: $e
+            );
+        }
+        try {
+            $this->witness->witness((int) $intent['seq'], (string) $intent['hmac']);
+        } catch (Throwable $e) {
+            $this->log->append(['action' => 'seed-witness-denied', 'reason' => 'witness-failed'] + $context);
+            throw new RuntimeException("The head witness did not take the log's head: it is not seeded", previous: $e);
+        }
+        $this->log->append(['action' => 'seed-witness'] + $context);
+    }
+
+    /**
      * @param array<string, mixed>                                  $detail
      * @param callable(): array{0: mixed, 1: array<string, mixed>} $work   the result, and what the log says of it
      */
@@ -148,10 +188,11 @@ final class EscrowCeremony
             throw new RuntimeException("The head witness did not give back the last head it took: nothing is unsealed", previous: $e);
         }
         if ($lastHead === null && !$this->witness instanceof NoHeadWitness && $this->witnessTookAHead()) {
-            // It took a head, and holds none: what it lost, a log cut since would hide in.
+            // A witness took a head, and this one holds none: a log cut since would hide in what it lacks.
             $this->log->append(['action' => "{$act}-denied", 'reason' => 'witness-forgot'] + $context);
             throw new RuntimeException(
-                'The head witness holds no head, though this log shows it took one: it lost what it held — nothing is unsealed'
+                'The head witness holds no head, though this log shows a witness took one — nothing is unsealed. '
+                . 'One that lost its store, or a new one, is seeded by the operator: seedWitness(), after verifying the log against its anchor'
             );
         }
         try {
@@ -195,17 +236,19 @@ final class EscrowCeremony
     }
 
     /**
-     * Whether this witness took a head here before: an intention naming its
-     * class, not followed by the refusal a witness that failed leaves.
+     * Whether a witness took a head here before: an intention naming any
+     * witness but NoHeadWitness, not followed by the refusal a witness that
+     * failed leaves. An intention on the last line counts: the process may have
+     * stopped right after the witness took it.
      */
     private function witnessTookAHead(): bool
     {
         $entries = $this->log->readAll();
-        $class   = get_class($this->witness);
         foreach ($entries as $i => $entry) {
             $event = $entry['event'] ?? [];
-            if (str_ends_with((string) ($event['action'] ?? ''), '-intent') && ($event['witness'] ?? null) === $class
-                && isset($entries[$i + 1]) && ($entries[$i + 1]['event']['reason'] ?? null) !== 'witness-failed') {
+            if (str_ends_with((string) ($event['action'] ?? ''), '-intent')
+                && ($event['witness'] ?? NoHeadWitness::class) !== NoHeadWitness::class
+                && ($entries[$i + 1]['event']['reason'] ?? null) !== 'witness-failed') {
                 return true;
             }
         }

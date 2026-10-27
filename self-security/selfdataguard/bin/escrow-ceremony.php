@@ -17,13 +17,17 @@ declare(strict_types=1);
  * autoloader et RENVOIE l'objet (un EscrowArbiter, un HeadWitness ; sans témoin,
  * `return new NoHeadWitness();`, choisi par son nom). Le témoin rend aussi la
  * dernière tête qu'il a prise : un journal coupé ou réécrit depuis arrête la
- * cérémonie avant son intention.
+ * cérémonie avant son intention. Sa réserve vit hors de cette machine, en ajout
+ * seul, et ne se restaure jamais d'une sauvegarde. Un témoin neuf, ou qui a
+ * perdu sa réserve, s'amorce par `seed-witness`, sur la tête notée à la
+ * dernière vérification : le journal doit encore la porter.
  *
  * Usage :
  *   php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]
  *   php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]
  *   php bin/escrow-ceremony.php archives <user> <dossier>
  *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
+ *   php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>
  *
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (coffres + escrow)
@@ -31,7 +35,9 @@ declare(strict_types=1);
  *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (v2:ops:mem:salt:blob ; salt:blob avant 0.6.0)
  *   DATAGUARD_AUDIT_LOG         chemin du journal d'audit
  *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal ; un secret neuf ouvre un journal
- *                               neuf : sous lui, l'ancien se rompt à sa première ligne
+ *                               neuf : sous lui, l'ancien se rompt à sa première ligne. L'ancien se
+ *                               vérifie une dernière fois avec son ancre et se garde ; le neuf part
+ *                               d'un fichier neuf, la réserve du témoin vidée
  *   DATAGUARD_ARBITER_FILE      fichier PHP qui renvoie l'EscrowArbiter
  *   DATAGUARD_WITNESS_FILE      fichier PHP qui renvoie le HeadWitness
  *   DATAGUARD_OPERATOR          (optionnel) identité opérateur pour le forensic
@@ -107,28 +113,68 @@ function objectFrom(string $key, string $interface): object
     return $object;
 }
 
+/**
+ * L'ancre que portent les options, ou null sans option. Une option mal écrite
+ * sort en 2 : elle ne doit pas rendre « intègre » sans ancre.
+ */
+function ancreDes(array $options, string $usage): ?string
+{
+    if ($options === []) {
+        return null;
+    }
+    if ($options[0] === '--ancre' && count($options) === 2) {
+        return $options[1];
+    }
+    if (str_starts_with($options[0], '--ancre=') && count($options) === 1) {
+        return substr($options[0], strlen('--ancre='));
+    }
+    fwrite(STDERR, "❌ option inconnue : " . implode(' ', $options) . " — usage : {$usage}\n");
+    exit(2);
+}
+
+/** La cérémonie sur la base, l'arbitre et le témoin que nomme la config. */
+function ceremonie(AuditLog $auditLog, array $ctx): EscrowCeremony
+{
+    $pdo = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    return new EscrowCeremony(
+        new SqliteAdapter($pdo),
+        $auditLog,
+        objectFrom('DATAGUARD_ARBITER_FILE', EscrowArbiter::class),
+        objectFrom('DATAGUARD_WITNESS_FILE', HeadWitness::class),
+        $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '')
+    );
+}
+
 // -----------------------------------------------------------------------------
 
 $cmd = $argv[1] ?? '';
 
 $auditLog = new AuditLog(envOrDie('DATAGUARD_AUDIT_LOG'), envOrDie('DATAGUARD_AUDIT_SECRET'));
 
+if ($cmd === 'seed-witness') {
+    $ancre = ancreDes(array_slice($argv, 2), 'seed-witness --ancre seq:hmac');
+    if ($ancre === null) {
+        fwrite(STDERR, "❌ seed-witness demande --ancre : la tête notée hors de cette machine à la dernière vérification\n");
+        exit(2);
+    }
+    try {
+        ceremonie($auditLog, operatorContext())->seedWitness($ancre);
+    } catch (InvalidArgumentException $e) {
+        fwrite(STDERR, "❌ ancre illisible : {$e->getMessage()}\n");
+        exit(2);
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "⛔ Témoin non amorcé — {$e->getMessage()}\n");
+        exit(2);
+    }
+    echo "✅ témoin amorcé : le journal porte l'ancre {$ancre}, et le témoin tient sa tête\n";
+    exit(0);
+}
+
 if ($cmd === 'verify-log') {
     // L'ancre est la tête notée lors d'une vérification précédente, hors de cette
     // machine : sans elle, un journal tronqué ou supprimé reste une chaîne valide.
-    $ancre = null;
-    $options = array_slice($argv, 2);
-    if ($options !== []) {
-        if ($options[0] === '--ancre' && count($options) === 2) {
-            $ancre = $options[1];
-        } elseif (str_starts_with($options[0], '--ancre=') && count($options) === 1) {
-            $ancre = substr($options[0], strlen('--ancre='));
-        } else {
-            // Une option mal écrite ne doit pas rendre « intègre » sans ancre.
-            fwrite(STDERR, "❌ option inconnue : " . implode(' ', $options) . " — usage : verify-log [--ancre seq:hmac]\n");
-            exit(2);
-        }
-    }
+    $ancre = ancreDes(array_slice($argv, 2), 'verify-log [--ancre seq:hmac]');
     try {
         $r = $ancre === null ? $auditLog->verifyUnanchored() : $auditLog->verify($ancre);
     } catch (InvalidArgumentException $e) {
@@ -166,7 +212,8 @@ if (!isset($arites[$cmd]) || count($argv) < 2 + $arites[$cmd]) {
         . "  php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]\n"
         . "  php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]\n"
         . "  php bin/escrow-ceremony.php archives <user> <dossier>\n"
-        . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n");
+        . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n"
+        . "  php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>\n");
     exit(3);
 }
 
@@ -174,17 +221,8 @@ $user    = $argv[2];
 $archive = $cmd === 'unlock-archive' ? $argv[3] : null;
 $dossier = $argv[$cmd === 'unlock-archive' ? 4 : 3];
 $fields  = array_slice($argv, $cmd === 'unlock-archive' ? 5 : 4);   // vide = tous les champs escrow
-$ctx     = operatorContext();
-$pdo     = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-$ceremony = new EscrowCeremony(
-    new SqliteAdapter($pdo),
-    $auditLog,
-    objectFrom('DATAGUARD_ARBITER_FILE', EscrowArbiter::class),
-    objectFrom('DATAGUARD_WITNESS_FILE', HeadWitness::class),
-    $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '')
-);
+$ctx      = operatorContext();
+$ceremony = ceremonie($auditLog, $ctx);
 
 $passphrase = '';
 try {
