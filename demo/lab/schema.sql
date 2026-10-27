@@ -186,8 +186,9 @@ CREATE TABLE IF NOT EXISTS mod_sweeps (
 );
 
 -- SelfModerate — les signaux OUVERTS à l'arbitre, une ligne par compte et par cause.
--- Un signal clos n'y est plus : l'acte qui l'a clos, au journal, le nomme. Un tiers
--- qui recommence sans fin fait monter `occurrences`, il n'ajoute pas de ligne.
+-- Un signal clos n'y est plus : un comportement, l'acte qui l'a classé le nomme au
+-- journal ; un état tombe avec son état. Un tiers qui recommence sans fin fait monter
+-- `occurrences`, il n'ajoute pas de ligne.
 CREATE TABLE IF NOT EXISTS mod_signaux (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
     account_id  INTEGER NOT NULL,
@@ -197,6 +198,8 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
     ouvert_le   INTEGER NOT NULL,
     derniere_le INTEGER NOT NULL,  -- dernière occurrence comptée
     occurrences INTEGER NOT NULL DEFAULT 1,
+    detections  INTEGER NOT NULL DEFAULT 1,  -- chaque détection, comptée ou non : un geste fondé sur
+                                             -- l'affichage d'avant refuse dès qu'elle a bougé
     vu_le       INTEGER,           -- un état vu par l'arbitre, qui court encore : hors de la file
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );

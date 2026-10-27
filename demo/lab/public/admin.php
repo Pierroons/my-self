@@ -186,7 +186,7 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= $b['plancher'] === null ? '—' : ($b['plancher'] <= time() ? 'passé' : $dt($b['plancher'])) ?></td>
           <td style="white-space:nowrap">
             <button class="btn mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="pardon">✅ lever</button>
-            <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir" data-signal="<?= (int) $b['revue']['signal'] ?>" data-occ="<?= (int) $b['revue']['occurrences'] ?>">⏳ maintenir</button><?php endif; ?>
+            <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir" data-signal="<?= (int) $b['revue']['signal'] ?>" data-det="<?= (int) $b['revue']['detections'] ?>">⏳ maintenir</button><?php endif; ?>
           </td></tr>
     <?php endforeach; ?>
   </table><?php endif; ?>
@@ -204,7 +204,7 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= h(date('d/m/Y H:i', $f['ouvert_le'])) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>
           <td style="white-space:nowrap">
-            <?php if ($f['cause'] !== 'journal_en_panne'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="classer" data-signal="<?= $f['signal'] ?>" data-occ="<?= $f['occurrences'] ?>">📁 classer</button><?php endif; ?>
+            <?php if ($f['cause'] !== 'journal_en_panne'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="classer" data-signal="<?= $f['signal'] ?>" data-det="<?= $f['detections'] ?>">📁 classer</button><?php endif; ?>
             <button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="ban">🔨 bannir</button>
             <button class="btn mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="pardon">✅ gracier</button>
           </td></tr>
@@ -439,9 +439,9 @@ function modAction(id,op,vu){
 document.querySelectorAll('.js-voirprofil').forEach(b=>b.addEventListener('click',()=>voirProfil(+b.dataset.id,b)));
 document.querySelectorAll('.js-voirrapport').forEach(b=>b.addEventListener('click',()=>voirRapport(+b.dataset.id,b)));
 document.querySelectorAll('.js-statut').forEach(b=>b.addEventListener('click',()=>statutRapport(+b.dataset.id,b.dataset.status)));
-// Le signal affiché et son compte d'occurrences : le moteur refuse s'il a changé depuis.
+// Le signal affiché et son compte de détections : le moteur refuse s'il a été redétecté depuis.
 document.querySelectorAll('.js-modaction').forEach(b=>b.addEventListener('click',()=>modAction(+b.dataset.id,b.dataset.op,
-  b.dataset.signal?{signal:+b.dataset.signal,occurrences:+b.dataset.occ}:null)));
+  b.dataset.signal?{signal:+b.dataset.signal,detections:+b.dataset.det}:null)));
 
 function deciderDispute(num, decision){
   // Confirmer n'ouvre AUCUN accès : la décision est enregistrée, et c'est le

@@ -1288,8 +1288,10 @@ $acte31 = $journal->de($auto31, 'ban_maintenu');
 $vus31 = array_column(array_filter($e['signaux'] ?? [], static fn (array $s): bool => $s['vu_le'] !== null), 'cause');
 !$surArbitre['ok'] && $m['ok'] && $e['banned'] && $e['review_reason'] === 'salve_rapide' && $vus31 === ['ban_auto']
     && count($acte31) === 1 && ($acte31[0]['raison'] ?? null) === 'ban_auto'
-    && array_column($acte31[0]['ferme'] ?? [], 'cause') === ['ban_auto']
+    && array_column(liste($acte31[0]['ferme'] ?? null) ?? [], 'cause') === ['ban_auto']
     && !Moderate::adminMaintenir($pdo, $auto31, 'arbitre-banc', motif())['ok']
+    && !in_array($auto31, array_column(array_filter(Moderate::bansEnCours($pdo, 1000), static fn (array $b): bool => $b['a_revoir']), 'account_id'), true)
+    && !in_array([$auto31, 'ban_auto'], array_map(static fn (array $s): array => [$s['account_id'], $s['cause']], Moderate::signauxOuverts($pdo, 1000)), true)
     ? ok('le maintien prend acte du ban automatique seul, la peine court, la salve reste à classer, et le journal le dit')
     : nok('maintien : ' . json_encode([$surArbitre, $m, $e, $acte31], JSON_UNESCAPED_UNICODE));
 
@@ -2157,7 +2159,7 @@ $acte52 = $journal52->de($recidiviste52, 'ban_debut');
 Moderate::setJournal($journalAvant52);
 $r52['ok'] && $e52['banned'] && $e52['needs_review'] && $e52['review_reason'] === 'meute_recidive'
     && count($acte52) === 1 && array_key_exists('raison', $acte52[0]) && $acte52[0]['raison'] === 'meute_recidive'
-    && ($acte52[0]['ouverts'] ?? null) === ['meute_recidive'] && ($acte52[0]['ferme'] ?? null) === []
+    && liste($acte52[0]['ouverts'] ?? null) === ['meute_recidive'] && liste($acte52[0]['ferme'] ?? null) === []
     ? ok('un ban d\'arbitre laisse la revue de meute ouverte, et son acte dit laquelle l\'était')
     : nok('un ban d\'arbitre efface la revue ou la tait : '
         . json_encode([$r52, $e52['review_reason'], $acte52[0]['raison'] ?? 'absente'], JSON_UNESCAPED_UNICODE));
@@ -2480,6 +2482,51 @@ Moderate::setJournal($journalAvant60);
 
 // ══ Un signal par cause : rien ne s'y perd, l'arbitre ferme ce qu'il a vu ═══
 
+/**
+ * Une liste du journal (`ouverts`, `ferme`), qui arrive en texte JSON. Toute autre
+ * forme rend null : une liste brute rangerait `Array` dans un journal clé par clé.
+ */
+function liste(mixed $valeur): ?array
+{
+    return is_string($valeur) ? json_decode($valeur, true) : null;
+}
+
+/**
+ * Ce qui doit tenir sur toute base : un signal d'état n'existe pas sans son état,
+ * un ban automatique en cours a son signal, et la case dit la table — le premier
+ * comportement à voir, sinon le dernier état.
+ *
+ * @return array{orphelins: list<array>, bans_sans_signal: list<array>, cases: list<array>}
+ */
+function invariantsSignaux(PDO $p): array
+{
+    return [
+        'orphelins' => $p->query(
+            "SELECT s.account_id, s.cause FROM mod_signaux s JOIN member_moderation m ON m.account_id = s.account_id
+              WHERE (s.cause = 'ban_auto' AND NOT (m.ban_origine = 'auto' AND m.banned_until > 0))
+                 OR (s.cause = 'journal_en_panne' AND m.banned_until = 0)
+                 OR (s.cause = 'reputation_zero' AND m.convalescent = 0)"
+        )->fetchAll(PDO::FETCH_ASSOC),
+        'bans_sans_signal' => $p->query(
+            "SELECT account_id FROM member_moderation m
+              WHERE ban_origine = 'auto' AND banned_until > " . time() . "
+                AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'ban_auto')"
+        )->fetchAll(PDO::FETCH_ASSOC),
+        'cases' => $p->query(
+            "SELECT account_id, needs_review, review_reason FROM (
+                SELECT m.account_id, m.needs_review, m.review_reason,
+                       EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
+                       COALESCE(
+                           (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
+                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne') ORDER BY id LIMIT 1),
+                           (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
+                       ) AS attendu_cause
+                  FROM member_moderation m)
+              WHERE needs_review <> attendu_besoin OR review_reason IS NOT attendu_cause"
+        )->fetchAll(PDO::FETCH_ASSOC),
+    ];
+}
+
 /** Les causes ouvertes sur un compte, dans l'ordre où elles ont été posées. */
 function causes(PDO $pdo, int $id): array
 {
@@ -2556,11 +2603,16 @@ $liste63  = array_column(Moderate::flaggedForReview($pdo, 50), 'account_id');
 $page63   = method_exists(Moderate::class, 'signauxOuverts') ? Moderate::signauxOuverts($pdo, 50) : [];
 $salves63 = array_values(array_filter($page63, static fn (array $s): bool => $s['cause'] === 'salve_rapide'));
 $meute63  = array_values(array_filter($page63, static fn (array $s): bool => $s['account_id'] === $grave63));
+$ordre63  = array_column($salves63, 'ouvert_le');
+$croissant63 = $ordre63;
+sort($croissant63);
 in_array($grave63, $liste63, true) && count($meute63) === 1 && count($salves63) === 50 && ($salves63[0]['total_cause'] ?? 0) >= 51
+    && $ordre63 === $croissant63
     ? ok('⭐ cinquante et une salves ne poussent pas la récidive hors de la vue ; la page des salves dit ce qu\'elle tait')
     : nok('⭐ un flot de salves enfouit le signal grave : ' . json_encode([
         'dans_la_liste' => in_array($grave63, $liste63, true), 'dans_sa_page' => count($meute63),
         'salves_affichees' => count($salves63), 'total' => $salves63[0]['total_cause'] ?? null,
+        'plus_anciennes_d_abord' => $ordre63 === $croissant63,
     ]));
 
 // ── 64. ⭐ Un ban automatique ne laisse pas de signal orphelin ───────────────
@@ -2581,7 +2633,7 @@ $apres64 = Moderate::getReputation($pdo, $orphelin64);
 $liste64 = in_array($orphelin64, array_column(Moderate::flaggedForReview($pdo, 1000), 'account_id'), true);
 $fin64   = $journalC->de($orphelin64, 'ban_fin');
 $pendant64 === ['ban_auto'] && !$apres64['banned'] && !$apres64['needs_review'] && ($apres64['signaux'] ?? null) === [] && !$liste64
-    && array_column($fin64[0]['ferme'] ?? [], 'cause') === ['ban_auto']
+    && array_column(liste($fin64[0]['ferme'] ?? null) ?? [], 'cause') === ['ban_auto']
     ? ok('⭐ un ban automatique ne porte qu\'un signal, et il tombe avec la peine : aucun orphelin')
     : nok('⭐ un signal survit à la fin du ban : ' . json_encode([
         'pendant' => $pendant64, 'apres' => [$apres64['banned'], $apres64['review_reason'], $apres64['signaux'] ?? 'absents'],
@@ -2601,28 +2653,33 @@ $fenetre65 = 2 * Moderate::config()->fenetreSalveSecondes;
 foreach (range(1, 5) as $i) {
     Moderate::applyVote($pdo, membre($pdo, "salve-$i-65"), 'post', $post65, -1, motif(), 'agressif');
 }
-$vu65 = Moderate::getReputation($pdo, $compte65)['signaux'][0] ?? ['signal' => 0, 'occurrences' => 0];
+$vu65 = Moderate::getReputation($pdo, $compte65)['signaux'][0] ?? ['signal' => 0, 'occurrences' => 0, 'detections' => 0];
+$jeton65 = ['signal' => $vu65['signal'], 'detections' => $vu65['detections']];
 $filetLe65 = time() - $fenetre65 + 30;
 $pdo->prepare('UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ?')->execute([$filetLe65, $compte65]);
 Moderate::applyVote($pdo, membre($pdo, 'salve-6-65'), 'post', $post65, -1, motif(), 'agressif');
 $filet65 = Moderate::getReputation($pdo, $compte65)['signaux'][0] ?? null;
+// Un votant de plus, après l'affichage, replié dans le même fait : le compte ne bouge
+// pas, le jeton si — l'arbitre ne le ferme pas sans l'avoir vu.
+$replie65 = Moderate::adminClasser($pdo, $compte65, 'arbitre-banc', motif(), $jeton65);
 $pdo->prepare('UPDATE mod_votes SET created_at = created_at - ? WHERE target_author = ?')->execute([3 * $fenetre65, $compte65]);
 $pdo->prepare('UPDATE mod_signaux SET derniere_le = derniere_le - ? WHERE account_id = ?')->execute([3 * $fenetre65, $compte65]);
 foreach (range(7, 9) as $i) {
     Moderate::applyVote($pdo, membre($pdo, "salve-$i-65"), 'post', $post65, -1, motif(), 'agressif');
 }
 $neuve65  = Moderate::getReputation($pdo, $compte65)['signaux'][0] ?? null;
-$perime65 = Moderate::adminClasser($pdo, $compte65, 'arbitre-banc', motif(), ['signal' => $vu65['signal'], 'occurrences' => $vu65['occurrences']]);
-$juste65  = Moderate::adminClasser($pdo, $compte65, 'arbitre-banc', motif(), ['signal' => $vu65['signal'], 'occurrences' => $neuve65['occurrences'] ?? 0]);
+$perime65 = Moderate::adminClasser($pdo, $compte65, 'arbitre-banc', motif(), ['signal' => $vu65['signal'], 'detections' => $filet65['detections'] ?? 0]);
+$juste65  = Moderate::adminClasser($pdo, $compte65, 'arbitre-banc', motif(), ['signal' => $vu65['signal'], 'detections' => $neuve65['detections'] ?? 0]);
 $acte65   = $journalC->de($compte65, 'revue_classee');
 $vu65['occurrences'] === 1 && ($filet65['occurrences'] ?? 0) === 1 && ($filet65['derniere_le'] ?? 0) === $filetLe65
+    && !$replie65['ok'] && str_contains($replie65['message'], 'changé')
     && ($neuve65['occurrences'] ?? 0) === 2 && ($neuve65['signal'] ?? 0) === $vu65['signal']
     && !$perime65['ok'] && str_contains($perime65['message'], 'changé') && $juste65['ok'] && causes($pdo, $compte65) === []
-    && count($acte65) === 1 && ($acte65[0]['ferme'][0]['occurrences'] ?? 0) === 2
-    ? ok('⭐ une salve redétectée reste un fait, une salve neuve en fait deux, et un classement sur l\'affichage d\'avant est refusé')
+    && count($acte65) === 1 && (liste($acte65[0]['ferme'] ?? null)[0]['occurrences'] ?? 0) === 2
+    ? ok('⭐ une salve redétectée reste un fait, une salve neuve en fait deux, et un classement sur l\'affichage d\'avant est refusé — même quand la détection a replié d\'autres votants')
     : nok('⭐ le signal compte les détections, ou l\'arbitre ferme ce qu\'il n\'a pas vu : ' . json_encode([
         'vu' => $vu65, 'filet' => $filet65, 'attendu_derniere_le' => $filetLe65, 'neuve' => $neuve65,
-        'perime' => $perime65, 'juste' => $juste65, 'actes' => count($acte65),
+        'replie' => $replie65, 'perime' => $perime65, 'juste' => $juste65, 'actes' => count($acte65),
     ], JSON_UNESCAPED_UNICODE));
 
 // ── 66. ⭐ Classer ferme UNE cause, que l'arbitre nomme ──────────────────────
@@ -2635,15 +2692,15 @@ planterSignal($pdo, $deux66, 'salve_rapide');
 planterSignal($pdo, $deux66, 'meute_recidive');
 $aveugle66 = Moderate::adminClasser($pdo, $deux66, 'arbitre-banc', motif());
 $salve66   = array_values(array_filter(Moderate::getReputation($pdo, $deux66)['signaux'] ?? [],
-    static fn (array $s): bool => $s['cause'] === 'salve_rapide'))[0] ?? ['signal' => 0, 'occurrences' => 0];
-$jeton66   = ['signal' => $salve66['signal'], 'occurrences' => $salve66['occurrences']];
+    static fn (array $s): bool => $s['cause'] === 'salve_rapide'))[0] ?? ['signal' => 0, 'detections' => 0];
+$jeton66   = ['signal' => $salve66['signal'], 'detections' => $salve66['detections']];
 $nomme66   = Moderate::adminClasser($pdo, $deux66, 'arbitre-banc', motif(), $jeton66);
 $rejoue66  = Moderate::adminClasser($pdo, $deux66, 'arbitre-banc', motif(), $jeton66);
 $actes66   = $journalC->de($deux66, 'revue_classee');
 !$aveugle66['ok'] && str_contains($aveugle66['message'], 'salve_rapide, meute_recidive') && $nomme66['ok'] && !$rejoue66['ok']
     && causes($pdo, $deux66) === ['meute_recidive'] && count($actes66) === 1
-    && ($actes66[0]['ouverts'] ?? null) === ['salve_rapide', 'meute_recidive']
-    && array_column($actes66[0]['ferme'] ?? [], 'cause') === ['salve_rapide'] && ($actes66[0]['raison'] ?? null) === 'salve_rapide'
+    && liste($actes66[0]['ouverts'] ?? null) === ['salve_rapide', 'meute_recidive']
+    && array_column(liste($actes66[0]['ferme'] ?? null) ?? [], 'cause') === ['salve_rapide'] && ($actes66[0]['raison'] ?? null) === 'salve_rapide'
     ? ok('⭐ classer ferme la cause nommée et elle seule ; sans nom, ou sur une cause close, le geste est refusé')
     : nok('⭐ un classement ferme ce que l\'arbitre n\'a pas nommé : ' . json_encode([
         $aveugle66, $nomme66, $rejoue66, causes($pdo, $deux66), $actes66,
@@ -2670,8 +2727,8 @@ poserReputation($pdo, $sansRang67, 20);
 planterSignal($pdo, $sansRang67, 'meute_recidive');
 Moderate::adminPardon($pdo, $sansRang67, 'arbitre-banc', motif());
 $g67['ok'] && causes($pdo, $gracie67) === ['salve_rapide']
-    && ($acte67[0]['ouverts'] ?? null) === ['reputation_zero', 'salve_rapide', 'meute_recidive']
-    && array_column($acte67[0]['ferme'] ?? [], 'cause') === ['reputation_zero', 'meute_recidive']
+    && liste($acte67[0]['ouverts'] ?? null) === ['reputation_zero', 'salve_rapide', 'meute_recidive']
+    && array_column(liste($acte67[0]['ferme'] ?? null) ?? [], 'cause') === ['reputation_zero', 'meute_recidive']
     && causes($pdo, $sansRang67) === ['meute_recidive']
     ? ok('⭐ la grâce ferme la chute et la récidive dont elle efface le rang, et laisse la salve à classer')
     : nok('⭐ la grâce ferme plus, ou moins, qu\'elle ne défait : ' . json_encode([
@@ -2689,6 +2746,8 @@ planterSignal($pdo, $vu68, 'reputation_zero');
 $c68 = Moderate::adminClasser($pdo, $vu68, 'arbitre-banc', motif());
 $e68 = Moderate::getReputation($pdo, $vu68);
 $enBase68 = (int) $pdo->query("SELECT COUNT(*) FROM mod_signaux WHERE account_id = $vu68 AND vu_le IS NOT NULL")->fetchColumn();
+$enFile68 = in_array($vu68, array_column(Moderate::signauxOuverts($pdo, 1000), 'account_id'), true)
+    || in_array($vu68, array_column(Moderate::flaggedForReview($pdo, 1000), 'account_id'), true);
 $pdo->prepare('UPDATE member_moderation SET last_regen_at = ? WHERE account_id = ?')
     ->execute([time() - 100 * Moderate::config()->intervalleConvalescenceSecondes, $vu68]);
 $remonte68 = Moderate::getReputation($pdo, $vu68);
@@ -2701,57 +2760,75 @@ $pdo->prepare("UPDATE member_moderation
                 WHERE account_id = ?")->execute([time() + 3600, time(), $auto68]);
 planterSignal($pdo, $auto68, 'ban_auto');
 $refus68 = Moderate::adminClasser($pdo, $auto68, 'arbitre-banc', motif());
-($c68['ok'] ?? false) && !$e68['needs_review'] && $enBase68 === 1 && !$remonte68['convalescent'] && $restant68 === 0
+($c68['ok'] ?? false) && !$e68['needs_review'] && $enBase68 === 1 && !$enFile68 && !$remonte68['convalescent'] && $restant68 === 0
     && !$refus68['ok'] && str_contains($refus68['message'], 'se maintient')
     ? ok('⭐ une chute classée reste en base, vue, puis tombe avec la remontée ; un ban automatique ne se classe pas')
     : nok('⭐ un état vu quitte la base trop tôt, ou un ban se classe : ' . json_encode([
-        $c68, $e68['needs_review'], $enBase68, $remonte68['convalescent'], $restant68, $refus68,
+        $c68, $e68['needs_review'], $enBase68, 'en_file' => $enFile68, $remonte68['convalescent'], $restant68, $refus68,
     ], JSON_UNESCAPED_UNICODE));
 
 // ── 69. ⭐ Une base d'avant la table migre une fois, sans perdre un signal ───
 // Une copie de la base, ramenée à la forme d'avant : la case seule, pas de
 // table, pas de marque. À l'ouverture, chaque case ouverte devient une ligne,
-// une case sans cause devient `signal_anterieur`, et un état dont l'état a
-// cessé ne passe pas. Rouverte, la base ne bouge plus — même quand un écrivain
+// une case sans cause devient `signal_anterieur`, un état dont l'état a cessé
+// ne passe pas, et un ban automatique en cours retrouve son signal même quand la
+// case portait autre chose — une salve qui l'a causé, ou la chute —, vu s'il
+// avait été maintenu. Rouverte, la base ne bouge plus — même quand un écrivain
 // resté à l'ancienne forme a écrit la case entre-temps : rejouée, la copie en
 // ferait un signal sans un mot.
-[$m1, $m2, $m3, $m4] = [membre($pdo, 'mig-salve-69'), membre($pdo, 'mig-sans-cause-69'),
-    membre($pdo, 'mig-ban-69'), membre($pdo, 'mig-orphelin-69')];
-foreach ([$m1, $m2, $m3, $m4] as $m69) {
-    Moderate::ensureRow($pdo, $m69);
+$formes69 = [
+    'salve'          => ['salve_rapide', null, 0, 0, 1],
+    'sans-cause'     => [null, null, 0, 0, 1],
+    'ban'            => ['ban_auto', 'auto', time() + 3600, 0, 1],
+    'orphelin'       => ['reputation_zero', null, 0, 0, 1],
+    'salve-ban'      => ['salve_rapide', 'auto', time() + 3600, 0, 1],
+    'ban-maintenu'   => [null, 'auto', time() + 3600, 0, 0],
+    'chute-ban'      => ['reputation_zero', 'auto', time() + 3600, 1, 1],
+    'case-close'     => ['salve_rapide', null, 0, 0, 0],
+];
+$comptes69 = [];
+foreach (array_keys($formes69) as $forme) {
+    $comptes69[$forme] = membre($pdo, "mig-$forme-69");
+    Moderate::ensureRow($pdo, $comptes69[$forme]);
 }
 $copie69 = $dir . '/ancienne-forme.db';
 $pdo->exec("VACUUM INTO '$copie69'");
 $ancienne69 = new PDO('sqlite:' . $copie69);
 $ancienne69->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $ancienne69->exec("DROP TABLE IF EXISTS mod_signaux; DELETE FROM lab_migrations WHERE nom = 'signaux-en-table'");
-$case69 = $ancienne69->prepare('UPDATE member_moderation SET needs_review = 1, review_reason = ?, ban_origine = ?, banned_until = ?, convalescent = ? WHERE account_id = ?');
-$case69->execute(['salve_rapide', null, 0, 0, $m1]);
-$case69->execute([null, null, 0, 0, $m2]);
-$case69->execute(['ban_auto', 'auto', time() + 3600, 0, $m3]);
-$case69->execute(['reputation_zero', null, 0, 0, $m4]);
+$case69 = $ancienne69->prepare(
+    'UPDATE member_moderation SET review_reason = ?, ban_origine = ?, banned_until = ?, ban_debut = ?, convalescent = ?, needs_review = ?
+      WHERE account_id = ?'
+);
+foreach ($formes69 as $forme => [$cause, $origine, $jusqua, $convalescent, $ouverte]) {
+    $case69->execute([$cause, $origine, $jusqua, $jusqua > 0 ? time() - 60 : 0, $convalescent, $ouverte, $comptes69[$forme]]);
+}
 $ancienne69 = null;
 $cheminBanc69 = getenv('LAB_DB_PATH');
 putenv("LAB_DB_PATH=$copie69");
 try {
     Db::fermer();
-    $lue69 = static function () use ($m1, $m2, $m3, $m4): array {
+    $lue69 = static function () use ($comptes69): array {
         $p = Db::pdo();
-        $lignes = [];
-        foreach ([$m1, $m2, $m3, $m4] as $m) {
-            $s = $p->prepare('SELECT cause FROM mod_signaux WHERE account_id = ? ORDER BY id');
+        $lu = ['signaux' => [], 'cases' => []];
+        foreach ($comptes69 as $forme => $m) {
+            $s = $p->prepare("SELECT cause || CASE WHEN vu_le IS NULL THEN '' ELSE ' (vu)' END AS cause FROM mod_signaux WHERE account_id = ? ORDER BY id");
             $s->execute([$m]);
             $c = $p->prepare('SELECT needs_review, review_reason FROM member_moderation WHERE account_id = ?');
             $c->execute([$m]);
-            $lignes[] = [array_column($s->fetchAll(), 'cause'), $c->fetch()];
+            $lu['signaux'][$forme] = array_column($s->fetchAll(), 'cause');
+            $lu['cases'][$forme] = $c->fetch();
         }
-        return [$lignes, (int) $p->query('SELECT COUNT(*) FROM mod_signaux')->fetchColumn()];
+        $lu['total'] = (int) $p->query('SELECT COUNT(*) FROM mod_signaux')->fetchColumn();
+        $lu['invariants'] = invariantsSignaux($p);
+
+        return $lu;
     };
     $premiere69 = $lue69();
-    Db::pdo()->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")->execute([$m4]);
+    Db::pdo()->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")
+        ->execute([$comptes69['orphelin']]);
     Db::fermer();
     $seconde69 = $lue69();
-    $seconde69[0][3][1] = $premiere69[0][3][1] ?? null;   // la case écrite à la main n'est pas ce qu'on compare
 } catch (Throwable $t69) {
     $premiere69 = $seconde69 = ['exception' => $t69->getMessage()];
 } finally {
@@ -2759,48 +2836,80 @@ try {
     putenv("LAB_DB_PATH=$cheminBanc69");
 }
 $attendu69 = [
-    [['salve_rapide'], ['needs_review' => 1, 'review_reason' => 'salve_rapide']],
-    [['signal_anterieur'], ['needs_review' => 1, 'review_reason' => 'signal_anterieur']],
-    [['ban_auto'], ['needs_review' => 1, 'review_reason' => 'ban_auto']],
-    [[], ['needs_review' => 0, 'review_reason' => null]],
+    'salve'        => [['salve_rapide'], ['needs_review' => 1, 'review_reason' => 'salve_rapide']],
+    'sans-cause'   => [['signal_anterieur'], ['needs_review' => 1, 'review_reason' => 'signal_anterieur']],
+    'ban'          => [['ban_auto'], ['needs_review' => 1, 'review_reason' => 'ban_auto']],
+    'orphelin'     => [[], ['needs_review' => 0, 'review_reason' => null]],
+    'salve-ban'    => [['salve_rapide', 'ban_auto'], ['needs_review' => 1, 'review_reason' => 'salve_rapide']],
+    'ban-maintenu' => [['ban_auto (vu)'], ['needs_review' => 0, 'review_reason' => null]],
+    'chute-ban'    => [['ban_auto'], ['needs_review' => 1, 'review_reason' => 'ban_auto']],
+    'case-close'   => [[], ['needs_review' => 0, 'review_reason' => null]],
 ];
-($premiere69[0] ?? null) === $attendu69 && $seconde69 === $premiere69
-    ? ok('⭐ une base d\'avant la table migre une fois : chaque case ouverte devient une ligne, l\'orphelin ne passe pas')
-    : nok('⭐ la migration perd un signal, en invente un, ou se rejoue : ' . json_encode([$premiere69, $seconde69], JSON_UNESCAPED_UNICODE));
+$obtenu69 = [];
+foreach (array_keys($attendu69) as $forme) {
+    $obtenu69[$forme] = [$premiere69['signaux'][$forme] ?? null, $premiere69['cases'][$forme] ?? null];
+}
+$obtenu69 === $attendu69 && ($premiere69['invariants'] ?? null) === ['orphelins' => [], 'bans_sans_signal' => [], 'cases' => []]
+    && ($seconde69['signaux'] ?? null) === $premiere69['signaux'] && ($seconde69['total'] ?? null) === $premiere69['total']
+    ? ok('⭐ une base d\'avant la table migre une fois : chaque case ouverte devient une ligne, chaque ban automatique retrouve son signal, l\'orphelin ne passe pas')
+    : nok('⭐ la migration perd un signal, en invente un, ou se rejoue : ' . json_encode([
+        'obtenu' => $obtenu69, 'invariants' => $premiere69['invariants'] ?? $premiere69, 'seconde' => $seconde69['signaux'] ?? $seconde69,
+    ], JSON_UNESCAPED_UNICODE));
 
 // ── 70. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre ; une case
 // qui ne suit plus la table tromperait qui lit la base sans le moteur. Tout ce
 // que le banc a joué jusqu'ici est relu.
-$orphelins70 = $pdo->query(
-    "SELECT s.account_id, s.cause FROM mod_signaux s JOIN member_moderation m ON m.account_id = s.account_id
-      WHERE (s.cause = 'ban_auto' AND NOT (m.ban_origine = 'auto' AND m.banned_until > 0))
-         OR (s.cause = 'journal_en_panne' AND m.banned_until = 0)
-         OR (s.cause = 'reputation_zero' AND m.convalescent = 0)"
-)->fetchAll();
-$sansSignal70 = $pdo->query(
-    "SELECT account_id FROM member_moderation m
-      WHERE ban_origine = 'auto' AND banned_until > " . time() . "
-        AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'ban_auto')"
-)->fetchAll();
-$cases70 = $pdo->query(
-    "SELECT account_id, needs_review, review_reason FROM (
-        SELECT m.account_id, m.needs_review, m.review_reason,
-               EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
-               COALESCE(
-                   (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
-                       AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne') ORDER BY id LIMIT 1),
-                   (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
-               ) AS attendu_cause
-          FROM member_moderation m)
-      WHERE needs_review <> attendu_besoin OR review_reason IS NOT attendu_cause"
-)->fetchAll();
-$orphelins70 === [] && $sansSignal70 === [] && $cases70 === []
+$inv70 = invariantsSignaux($pdo);
+$inv70 === ['orphelins' => [], 'bans_sans_signal' => [], 'cases' => []]
     ? ok('⭐ en fin de banc, chaque signal d\'état a son état, chaque ban automatique son signal, et chaque case dit sa table')
     : nok('⭐ un état et son signal se sont séparés, ou la case ment : ' . json_encode([
-        'orphelins' => $orphelins70, 'bans_sans_signal' => $sansSignal70, 'cases' => array_slice($cases70, 0, 5), 'nb_cases' => count($cases70),
+        'orphelins' => $inv70['orphelins'], 'bans_sans_signal' => $inv70['bans_sans_signal'],
+        'cases' => array_slice($inv70['cases'], 0, 5), 'nb_cases' => count($inv70['cases']),
     ], JSON_UNESCAPED_UNICODE));
+
+// ── 71. ⭐ Toute valeur d'un acte est scalaire ───────────────────────────────
+// Un journal qui range une colonne par clé — la forme que `Journal.php` nomme —
+// rangeait `Array` à la place d'une liste, avec un simple avertissement. Les
+// listes partent en texte JSON ; tous les actes que le banc a fait inscrire sont
+// relus.
+$nonScalaires71 = [];
+foreach ([...$journal->actes, ...$journalC->actes] as $acte71) {
+    foreach ($acte71 as $cle71 => $valeur71) {
+        if ($valeur71 !== null && !is_scalar($valeur71)) {
+            $nonScalaires71[] = ($acte71['acte'] ?? '?') . '.' . $cle71;
+        }
+    }
+}
+$nonScalaires71 === [] && count($journalC->actes) > 0
+    ? ok('⭐ aucune valeur d\'acte n\'est une liste : un journal clé par clé n\'a rien à sérialiser')
+    : nok('⭐ un acte porte une valeur non scalaire : ' . json_encode(array_values(array_unique($nonScalaires71))));
+
+// ── 72. ⭐ Un votant étendu ne prive pas l'arbitre du classement en votant encore ─
+// Ses votes neutralisés ne portent que lui-même : ils ne comptent qu'une fois par
+// tranche de balayage, et un classement fondé sur l'affichage tient tant qu'aucun
+// fait neuf n'est compté. La tranche passée, le vote suivant compte, et
+// l'affichage d'avant est refusé.
+$etendu72 = membre($pdo, 'etendu-72');
+poserReputation($pdo, $etendu72, 20);
+voterLarge($pdo, $etendu72, 'large-72');
+$vu72 = array_values(array_filter(Moderate::getReputation($pdo, $etendu72)['signaux'] ?? [],
+    static fn (array $s): bool => $s['cause'] === 'votant_etendu'))[0] ?? ['signal' => 0, 'detections' => 0];
+foreach (range(1, 3) as $k) {
+    Moderate::applyVote($pdo, $etendu72, 'member', membre($pdo, "encore-$k-72"), -1, motif(), 'agressif');
+}
+$classe72 = Moderate::adminClasser($pdo, $etendu72, 'arbitre-banc', motif(), ['signal' => $vu72['signal'], 'detections' => $vu72['detections']]);
+voterLarge($pdo, $etendu72, 'relance-72');
+$vu72b = array_values(array_filter(Moderate::getReputation($pdo, $etendu72)['signaux'] ?? [],
+    static fn (array $s): bool => $s['cause'] === 'votant_etendu'))[0] ?? ['signal' => 0, 'detections' => 0];
+$pdo->prepare('UPDATE mod_signaux SET derniere_le = derniere_le - ? WHERE account_id = ?')
+    ->execute([Moderate::config()->balayagePeriodeSecondes + 1, $etendu72]);
+Moderate::applyVote($pdo, $etendu72, 'member', membre($pdo, 'apres-tranche-72'), -1, motif(), 'agressif');
+$perime72 = Moderate::adminClasser($pdo, $etendu72, 'arbitre-banc', motif(), ['signal' => $vu72b['signal'], 'detections' => $vu72b['detections']]);
+($classe72['ok'] ?? false) && !($perime72['ok'] ?? true) && str_contains($perime72['message'] ?? '', 'changé')
+    ? ok('⭐ les votes neutralisés d\'un votant étendu ne bloquent pas le classement ; un fait compté après la tranche fait refuser l\'affichage d\'avant')
+    : nok('⭐ le votant étendu tient le classement, ou un fait neuf passe inaperçu : ' . json_encode([$classe72, $perime72], JSON_UNESCAPED_UNICODE));
 
 Moderate::setJournal($journalAvantC);
 

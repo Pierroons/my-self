@@ -59,14 +59,16 @@ interface Journal
      *   raison     cause du signal fermé ; pour un ban         revue_classee, ban_maintenu,
      *              d'arbitre, la cause ouverte que la case     ban_debut
      *              unique aurait portée, ou null
-     *   ouverts    liste des causes ouvertes sur le compte     tous
-     *              quand l'acte se décide, sous le verrou
-     *   ferme      liste des signaux que l'acte ferme, chacun  tous ; [] pour un ban
-     *              `{signal, cause, ouvert_le, occurrences}`   d'arbitre
+     *   ouverts    les causes ouvertes sur le compte quand     tous
+     *              l'acte se décide, sous le verrou
+     *   ferme      les signaux que l'acte ferme, ou retire de  tous ; `[]` pour un ban
+     *              la file sans les fermer (un état vu reste   d'arbitre
+     *              en base jusqu'à ce qu'il cesse), chacun
+     *              `{signal, cause, ouvert_le, occurrences, detections}`
      *
-     * ⚠️ `ouverts` et `ferme` sont des listes : les premières valeurs du journal
-     * qui ne sont pas scalaires. Une implémentation qui range une colonne par
-     * clé, ou écrit des lignes `clé=valeur`, les sérialise elle-même.
+     * `ouverts` et `ferme` sont des listes, passées en texte JSON : toute valeur
+     * d'un acte reste scalaire, et une implémentation qui range une colonne par
+     * clé n'a rien à sérialiser.
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.

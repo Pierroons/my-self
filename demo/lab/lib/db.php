@@ -584,36 +584,21 @@ final class Db
             }
         }
 
-        // SelfModerate — les signaux passent de la case à `mod_signaux`, UNE fois. Rejouée à
-        // chaque ouverture, la copie relirait le résumé que le moteur tient dans la case : un
-        // écrivain qui y écrirait encore à la main deviendrait un signal, sans un mot. Une case
-        // ouverte sans cause devient `signal_anterieur`, que seul un arbitre ferme ; sa date est
-        // celle de la dernière écriture de la ligne. Un signal d'état dont l'état a cessé n'a
-        // plus rien à montrer et ne passe pas — la case unique en laissait (un `reputation_zero`
-        // après la fin d'un ban automatique) —, et la case se recale sur ce qui a passé.
+        $cols = self::$pdo->query('PRAGMA table_info(mod_signaux)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('detections', $cols, true)) {
+            self::$pdo->exec('ALTER TABLE mod_signaux ADD COLUMN detections INTEGER NOT NULL DEFAULT 1');
+        }
+
+        // SelfModerate — les signaux passent de la case à `mod_signaux`, UNE fois, par le module
+        // (`migrerSignaux()`, qui dit ce qu'il reprend). La marque est au lab : rejouée à chaque
+        // ouverture, la copie relirait le résumé que le moteur tient dans la case, et un écrivain
+        // resté à l'ancienne forme y deviendrait un signal, sans un mot.
         if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'")->fetchColumn() === false) {
+            require_once __DIR__ . '/../vendor/autoload.php';
             self::$pdo->exec('BEGIN IMMEDIATE');
             try {
                 if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'")->fetchColumn() === false) {
-                    self::$pdo->exec(
-                        "INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le)
-                         SELECT account_id, COALESCE(review_reason, 'signal_anterieur'), updated_at, updated_at
-                           FROM member_moderation
-                          WHERE needs_review = 1
-                            AND CASE review_reason
-                                  WHEN 'ban_auto'         THEN ban_origine = 'auto' AND banned_until > 0
-                                  WHEN 'journal_en_panne' THEN banned_until > 0
-                                  WHEN 'reputation_zero'  THEN convalescent = 1
-                                  ELSE 1
-                                END"
-                    );
-                    self::$pdo->exec(
-                        "UPDATE member_moderation
-                            SET needs_review = 0, review_reason = NULL
-                          WHERE needs_review = 1
-                            AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = member_moderation.account_id)"
-                    );
-                    self::$pdo->exec("UPDATE member_moderation SET review_reason = 'signal_anterieur' WHERE needs_review = 1 AND review_reason IS NULL");
+                    \Pierroons\SelfModerate\Moderate::migrerSignaux(self::$pdo);
                     self::$pdo->prepare("INSERT INTO lab_migrations (nom, faite_le) VALUES ('signaux-en-table', ?)")
                         ->execute([time()]);
                 }

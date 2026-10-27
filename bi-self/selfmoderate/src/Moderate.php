@@ -339,8 +339,8 @@ class Moderate
                 'observe_a' => $maintenant,
                 'motif'     => $row['ban_motif'] ?? self::projection($signaux) ?? 'inconnu',
                 'arbitre'   => null,
-                'ouverts'   => array_column($signaux, 'cause'),
-                'ferme'     => array_map([self::class, 'pourJournal'], $tombent),
+                'ouverts'   => self::causesEnTexte($signaux),
+                'ferme'     => self::fermesEnTexte($tombent),
             ]);
         } catch (\Throwable $e) {
             if (!$contenir) {
@@ -1277,8 +1277,8 @@ class Moderate
                 'cause'     => 'meute_detectee',
                 'anticipee' => false,
                 'reste'     => $rep['banned_until'] - time(),
-                'ouverts'   => array_column($rep['signaux'], 'cause'),
-                'ferme'     => array_map([self::class, 'pourJournal'], self::deCause($rep['signaux'], 'ban_auto')),
+                'ouverts'   => self::causesEnTexte($rep['signaux']),
+                'ferme'     => self::fermesEnTexte(self::deCause($rep['signaux'], 'ban_auto')),
             ]);
             $pdo->prepare(
                 'UPDATE member_moderation
@@ -1415,7 +1415,7 @@ class Moderate
     {
         return match ($cause) {
             'salve_rapide'     => 2 * self::config()->fenetreSalveSecondes,
-            'votants_tronques' => self::config()->balayagePeriodeSecondes,
+            'votants_tronques', 'votant_etendu' => self::config()->balayagePeriodeSecondes,
             default            => 0,
         };
     }
@@ -1436,24 +1436,33 @@ class Moderate
         $maintenant = time();
         $pose = $pdo->prepare('INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, ?, ?, ?)');
         $pose->execute([$accountId, $cause, $maintenant, $maintenant]);
-        if ($pose->rowCount() === 0) {
-            if (self::famille($cause) === 'etat') {
-                return;
-            }
-            $suite = $pdo->prepare(
-                'UPDATE mod_signaux SET occurrences = occurrences + 1, derniere_le = ?
-                  WHERE account_id = ? AND cause = ? AND derniere_le <= ?'
-            );
-            $suite->bindValue(1, $maintenant, PDO::PARAM_INT);
-            $suite->bindValue(2, $accountId, PDO::PARAM_INT);
-            $suite->bindValue(3, $cause);
-            $suite->bindValue(4, $maintenant - self::regroupement($cause), PDO::PARAM_INT);
-            $suite->execute();
-            if ($suite->rowCount() === 0) {
-                return;
-            }
+        if ($pose->rowCount() === 1) {
+            self::resumer($pdo, $accountId);
+
+            return;
         }
-        self::resumer($pdo, $accountId);
+        if (self::famille($cause) === 'etat') {
+            return;
+        }
+        $suite = $pdo->prepare(
+            'UPDATE mod_signaux SET occurrences = occurrences + 1, derniere_le = ?
+              WHERE account_id = ? AND cause = ? AND derniere_le <= ?'
+        );
+        $suite->bindValue(1, $maintenant, PDO::PARAM_INT);
+        $suite->bindValue(2, $accountId, PDO::PARAM_INT);
+        $suite->bindValue(3, $cause);
+        $suite->bindValue(4, $maintenant - self::regroupement($cause), PDO::PARAM_INT);
+        $suite->execute();
+        // Une détection qui peut porter des votants neufs fait refuser un geste fondé
+        // sur l'affichage d'avant : une salve d'autres votants, repliée dans le compte
+        // faute d'être un fait neuf, n'en est pas moins arrivée après que l'arbitre a
+        // regardé. Un votant étendu ne porte que lui-même : chez lui, seule une
+        // occurrence comptée fait refuser — sinon chacun de ses votes neutralisés
+        // priverait l'arbitre du classement aussi longtemps qu'il vote.
+        if ($suite->rowCount() === 1 || $cause !== 'votant_etendu') {
+            $pdo->prepare('UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?')
+                ->execute([$accountId, $cause]);
+        }
     }
 
     /**
@@ -1503,12 +1512,12 @@ class Moderate
     /**
      * Le signal qu'un geste d'arbitre ferme, ou la raison de son refus. Avec
      * `$vu`, celui que la console a affiché, à condition qu'il soit encore
-     * ouvert, à voir, du ressort de ce geste, et au même compte d'occurrences ;
+     * ouvert, à voir, du ressort de ce geste, et pas redétecté depuis ;
      * sans lui, le seul signal du ressort de ce geste. Un geste ne ferme jamais
      * une cause que personne n'a désignée, ni un fait arrivé après l'affichage.
      *
-     * @param list<array{signal: int, cause: string, occurrences: int, vu_le: ?int}> $signaux
-     * @param array{signal?: int, occurrences?: int}|null $vu
+     * @param list<array{signal: int, cause: string, detections: int, vu_le: ?int}> $signaux
+     * @param array{signal?: int, detections?: int}|null $vu
      * @param callable(array): bool $duGeste
      * @return array{signal: int, cause: string, famille: string, ouvert_le: int, occurrences: int, vu_le: ?int}|string
      */
@@ -1524,7 +1533,7 @@ class Moderate
                     return $horsGeste;
                 }
 
-                return $s['occurrences'] === (int) ($vu['occurrences'] ?? 0)
+                return $s['detections'] === (int) ($vu['detections'] ?? 0)
                     ? $s
                     : static::t('Ce signalement a changé depuis ton affichage : recharge la console.');
             }
@@ -1567,15 +1576,64 @@ class Moderate
     }
 
     /**
+     * Reprend dans `mod_signaux` la case unique d'avant la 0.7.0. À appeler UNE
+     * fois, juste après avoir créé la table : le moteur ne lit plus la case, et
+     * ses signalements ouverts ne se verraient plus. La marque qui empêche de la
+     * rejouer est à l'hôte — rejouée, la copie relirait le résumé que le moteur
+     * tient dans la case, et un écrivain resté à l'ancienne forme y deviendrait
+     * un signal sans un mot. Rend le nombre de signaux repris.
+     *
+     * Une case ouverte devient une ligne ; sans cause, `signal_anterieur`, que seul
+     * un arbitre ferme ; sa date est la dernière écriture de la ligne. Un état ne
+     * passe que si son état tient. Un ban automatique en cours reçoit son signal
+     * même quand la case portait autre chose — elle laissait un comportement, ou
+     * la chute, recouvrir le ban —, vu si la case était close : il a été maintenu.
+     * La case se recale ensuite sur la table.
+     */
+    public static function migrerSignaux(PDO $pdo): int
+    {
+        $avant = (int) $pdo->query('SELECT COUNT(*) FROM mod_signaux')->fetchColumn();
+        $pdo->exec(
+            "INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le)
+             SELECT account_id, COALESCE(review_reason, 'signal_anterieur'), updated_at, updated_at
+               FROM member_moderation
+              WHERE needs_review = 1
+                AND CASE review_reason
+                      WHEN 'ban_auto'         THEN ban_origine = 'auto' AND banned_until > 0
+                      WHEN 'journal_en_panne' THEN banned_until > 0
+                      WHEN 'reputation_zero'  THEN convalescent = 1 AND banned_until = 0
+                      ELSE 1
+                    END"
+        );
+        $pdo->exec(
+            "INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le, vu_le)
+             SELECT account_id, 'ban_auto', ban_debut, ban_debut, CASE WHEN needs_review = 0 THEN updated_at END
+               FROM member_moderation
+              WHERE ban_origine = 'auto' AND banned_until > 0"
+        );
+        $pdo->exec(
+            "UPDATE member_moderation
+                SET review_reason = COALESCE(
+                        (SELECT cause FROM mod_signaux s WHERE s.account_id = member_moderation.account_id AND s.vu_le IS NULL
+                            AND s.cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne') ORDER BY s.id LIMIT 1),
+                        (SELECT cause FROM mod_signaux s WHERE s.account_id = member_moderation.account_id AND s.vu_le IS NULL
+                          ORDER BY s.id DESC LIMIT 1)),
+                    needs_review = EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = member_moderation.account_id AND s.vu_le IS NULL)"
+        );
+
+        return (int) $pdo->query('SELECT COUNT(*) FROM mod_signaux')->fetchColumn() - $avant;
+    }
+
+    /**
      * Les signaux ouverts sur un compte, dans l'ordre où ils ont été posés.
      *
      * @return list<array{signal: int, cause: string, famille: string, ouvert_le: int,
-     *                    derniere_le: int, occurrences: int, vu_le: ?int}>
+     *                    derniere_le: int, occurrences: int, detections: int, vu_le: ?int}>
      */
     private static function signauxDe(PDO $pdo, int $accountId): array
     {
         $stmt = $pdo->prepare(
-            'SELECT id, cause, ouvert_le, derniere_le, occurrences, vu_le FROM mod_signaux WHERE account_id = ? ORDER BY id'
+            'SELECT id, cause, ouvert_le, derniere_le, occurrences, detections, vu_le FROM mod_signaux WHERE account_id = ? ORDER BY id'
         );
         $stmt->execute([$accountId]);
 
@@ -1586,6 +1644,7 @@ class Moderate
             'ouvert_le'   => (int) $s['ouvert_le'],
             'derniere_le' => (int) $s['derniere_le'],
             'occurrences' => (int) $s['occurrences'],
+            'detections'  => (int) $s['detections'],
             'vu_le'       => $s['vu_le'] !== null ? (int) $s['vu_le'] : null,
         ], $stmt->fetchAll());
     }
@@ -1619,15 +1678,32 @@ class Moderate
     }
 
     /**
-     * Un signal tel que le journal le garde : l'instance, sa cause, depuis
-     * quand, et combien d'occurrences l'arbitre avait sous les yeux.
+     * Les causes ouvertes, telles que le journal les reçoit : du texte JSON. Une
+     * valeur d'acte reste scalaire, et un journal qui range une colonne par clé
+     * n'a rien à sérialiser — avec une liste, il rangeait `Array` sans un mot.
      *
-     * @param array{signal: int, cause: string, ouvert_le: int, occurrences: int} $s
-     * @return array{signal: int, cause: string, ouvert_le: int, occurrences: int}
+     * @param list<array{cause: string}> $signaux
      */
-    private static function pourJournal(array $s): array
+    private static function causesEnTexte(array $signaux): string
     {
-        return ['signal' => $s['signal'], 'cause' => $s['cause'], 'ouvert_le' => $s['ouvert_le'], 'occurrences' => $s['occurrences']];
+        return json_encode(array_column($signaux, 'cause'), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Les signaux qu'un acte ferme, en texte JSON : l'instance, sa cause, depuis
+     * quand, combien de faits et de détections l'arbitre avait sous les yeux.
+     *
+     * @param list<array{signal: int, cause: string, ouvert_le: int, occurrences: int, detections: int}> $signaux
+     */
+    private static function fermesEnTexte(array $signaux): string
+    {
+        return json_encode(array_map(static fn (array $s): array => [
+            'signal'      => $s['signal'],
+            'cause'       => $s['cause'],
+            'ouvert_le'   => $s['ouvert_le'],
+            'occurrences' => $s['occurrences'],
+            'detections'  => $s['detections'],
+        ], $signaux), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
     }
 
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation): void
@@ -1720,8 +1796,8 @@ class Moderate
             'jusqu_a' => $jusqua,
             'motif'   => 'reputation_zero',
             'arbitre' => null,
-            'ouverts' => array_column($signaux, 'cause'),
-            'ferme'   => array_map([self::class, 'pourJournal'], self::deCause($signaux, 'reputation_zero')),
+            'ouverts' => self::causesEnTexte($signaux),
+            'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero')),
         ]);
 
         $pdo->prepare(
@@ -1859,8 +1935,8 @@ class Moderate
                 'motif'   => trim($motif),
                 'arbitre' => $arbitre,
                 'raison'  => $etat['review_reason'],
-                'ouverts' => array_column($etat['signaux'], 'cause'),
-                'ferme'   => [],
+                'ouverts' => self::causesEnTexte($etat['signaux']),
+                'ferme'   => self::fermesEnTexte([]),
             ]);
             $pdo->prepare(
                 "UPDATE member_moderation
@@ -1925,8 +2001,8 @@ class Moderate
             $rangEfface = self::rangDe($pdo, $accountId);
             $fermes     = array_values(array_filter($etat['signaux'], static fn (array $s): bool =>
                 $s['famille'] === 'etat' || ($s['cause'] === 'meute_recidive' && $rangEfface > 0)));
-            $ouverts    = array_column($etat['signaux'], 'cause');
-            $ferme      = array_map([self::class, 'pourJournal'], $fermes);
+            $ouverts    = self::causesEnTexte($etat['signaux']);
+            $ferme      = self::fermesEnTexte($fermes);
 
             if ($etat['banned']) {
                 $plancher  = $etat['ban_debut'] > 0
@@ -2001,11 +2077,11 @@ class Moderate
      * fin de la peine. Le motif est exigé — un maintien sans raison ne se
      * distingue pas d'un oubli.
      *
-     * `$vu` est ce que la console a affiché, `['signal' => id, 'occurrences' => n]` :
-     * si le signal a changé depuis, le geste refuse. Sans lui, le geste vise le
-     * signal tel qu'il est au moment du clic.
+     * `$vu` est ce que la console a affiché, `['signal' => id, 'detections' => n]` :
+     * si le signal a été redétecté depuis, le geste refuse. Sans lui, le geste
+     * vise le signal tel qu'il est au moment du clic.
      *
-     * @param array{signal: int, occurrences: int}|null $vu
+     * @param array{signal: int, detections: int}|null $vu
      * @return array{ok: bool, message: string}
      */
     public static function adminMaintenir(PDO $pdo, int $accountId, string $arbitre, string $motif, ?array $vu = null): array
@@ -2042,8 +2118,8 @@ class Moderate
                 'motif'   => trim($motif),
                 'jusqu_a' => $etat['banned_until'],
                 'raison'  => $vise['cause'],
-                'ouverts' => array_column($etat['signaux'], 'cause'),
-                'ferme'   => [self::pourJournal($vise)],
+                'ouverts' => self::causesEnTexte($etat['signaux']),
+                'ferme'   => self::fermesEnTexte([$vise]),
             ]);
             self::retirerDeLaFile($pdo, $accountId, [$vise]);
 
@@ -2062,12 +2138,13 @@ class Moderate
      * se maintient, il ne se classe pas, et une fin de peine qui attend le
      * journal n'est pas au compte d'en répondre.
      *
-     * `$vu` est ce que la console a affiché, `['signal' => id, 'occurrences' => n]` :
-     * si le signal a été fermé ou a compté une occurrence depuis, le geste
-     * refuse — l'arbitre ne ferme pas un fait qu'il n'a pas vu. Sans lui, le
-     * geste vise le seul signal classable, et refuse s'il y en a plusieurs.
+     * `$vu` est ce que la console a affiché, `['signal' => id, 'detections' => n]` :
+     * si le signal a été fermé ou redétecté depuis, le geste refuse — même
+     * quand la détection n'a pas compté de fait neuf, une salve d'autres votants
+     * peut s'y être repliée : l'arbitre ne ferme pas ce qu'il n'a pas vu. Sans
+     * lui, le geste vise le seul signal classable, et refuse s'il y en a plusieurs.
      *
-     * @param array{signal: int, occurrences: int}|null $vu
+     * @param array{signal: int, detections: int}|null $vu
      * @return array{ok: bool, message: string}
      */
     public static function adminClasser(PDO $pdo, int $accountId, string $arbitre, string $motif, ?array $vu = null): array
@@ -2108,8 +2185,8 @@ class Moderate
                 'arbitre' => $arbitre,
                 'motif'   => trim($motif),
                 'raison'  => $vise['cause'],
-                'ouverts' => array_column($etat['signaux'], 'cause'),
-                'ferme'   => [self::pourJournal($vise)],
+                'ouverts' => self::causesEnTexte($etat['signaux']),
+                'ferme'   => self::fermesEnTexte([$vise]),
             ]);
             self::retirerDeLaFile($pdo, $accountId, [$vise]);
 
@@ -2133,7 +2210,7 @@ class Moderate
      *
      * @return list<array{account_id: int, username: string, origine: ?string, motif: ?string,
      *                    debut: int, jusqu_a: int, reste: int, plancher: ?int, episode: int, a_revoir: bool,
-     *                    revue: ?array{signal: int, occurrences: int},
+     *                    revue: ?array{signal: int, detections: int},
      *                    chute: ?array{votants: int, ages_jours: list<int>, etalement: int}}>
      */
     public static function bansEnCours(PDO $pdo, int $limite = 100): array
@@ -2141,7 +2218,7 @@ class Moderate
         $maintenant = time();
         $stmt = $pdo->prepare(
             "SELECT m.account_id, a.username, m.ban_origine, m.ban_motif, m.ban_debut, m.banned_until,
-                    m.strikes, s.id AS revue, s.occurrences
+                    m.strikes, s.id AS revue, s.detections
                FROM member_moderation m JOIN accounts a ON a.id = m.account_id
           LEFT JOIN mod_signaux s ON s.account_id = m.account_id AND s.cause = 'ban_auto' AND s.vu_le IS NULL
               WHERE m.banned_until > ? ORDER BY m.banned_until ASC LIMIT ?"
@@ -2165,7 +2242,7 @@ class Moderate
                 'plancher'   => $debut > 0 ? self::config()->plancherDe($debut, $fin) : null,
                 'episode'    => (int) $r['strikes'],
                 'a_revoir'   => $r['revue'] !== null,
-                'revue'      => $r['revue'] !== null ? ['signal' => (int) $r['revue'], 'occurrences' => (int) $r['occurrences']] : null,
+                'revue'      => $r['revue'] !== null ? ['signal' => (int) $r['revue'], 'detections' => (int) $r['detections']] : null,
                 'chute'      => $auto ? self::compositionChute($pdo, (int) $r['account_id'], $debut) : null,
             ];
         }, $stmt->fetchAll());
@@ -2239,10 +2316,10 @@ class Moderate
      * ancienne en tête de chaque page, au plus `$parCause` lignes par cause, et
      * `total_cause` pour dire ce que la page tait. Un tiers qui provoque cent
      * salves remplit la page des salves, et aucune autre cause ne sort de la vue.
-     * `signal` et `occurrences` sont ce qu'un geste rend en `$vu`.
+     * `signal` et `detections` sont ce qu'un geste rend en `$vu`.
      *
      * @return list<array{signal: int, account_id: int, username: string, cause: string, famille: string,
-     *                    ouvert_le: int, derniere_le: int, occurrences: int, reputation: ?int, total_cause: int}>
+     *                    ouvert_le: int, derniere_le: int, occurrences: int, detections: int, reputation: ?int, total_cause: int}>
      */
     public static function signauxOuverts(PDO $pdo, int $parCause = 50, ?string $cause = null): array
     {
@@ -2252,7 +2329,7 @@ class Moderate
         );
         $causes->execute($cause === null ? [] : [$cause]);
         $page = $pdo->prepare(
-            'SELECT s.id, s.account_id, a.username, s.cause, s.ouvert_le, s.derniere_le, s.occurrences, m.reputation
+            'SELECT s.id, s.account_id, a.username, s.cause, s.ouvert_le, s.derniere_le, s.occurrences, s.detections, m.reputation
                FROM mod_signaux s
                JOIN accounts a ON a.id = s.account_id
           LEFT JOIN member_moderation m ON m.account_id = s.account_id
@@ -2275,6 +2352,7 @@ class Moderate
                     'ouvert_le'   => (int) $s['ouvert_le'],
                     'derniere_le' => (int) $s['derniere_le'],
                     'occurrences' => (int) $s['occurrences'],
+                    'detections'  => (int) $s['detections'],
                     'reputation'  => $s['reputation'] !== null ? (int) $s['reputation'] : null,
                     'total_cause' => (int) $c['total'],
                 ];
