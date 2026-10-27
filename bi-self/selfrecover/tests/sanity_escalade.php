@@ -45,6 +45,12 @@ use Pierroons\SelfRecover\Langue;
 $passes = 0;
 $echecs = 0;
 
+/**
+ * Les instances qui éprouvent autre chose que l'épreuve du niveau 3 : aucune
+ * difficulté, quelle que soit la charge. L'épreuve a sa section.
+ */
+const SANS_EPREUVE = ['epreuveBase' => 0, 'epreuvePasService' => PHP_INT_MAX, 'epreuvePasCompte' => PHP_INT_MAX];
+
 function verifier(string $intitule, bool $condition, string $detail = ''): void
 {
     global $passes, $echecs;
@@ -89,7 +95,7 @@ function banc(
         'nombre_connexions'  => $connexions,
     ];
     $recovery = new Recovery($st, 'sel-de-la-sonde', $profil, Langue::FR, delaiRefusUs: 0);
-    $esc      = new Escalade($st, $recovery, delaiRefusUs: 0);
+    $esc      = new Escalade($st, $recovery, ...SANS_EPREUVE, delaiRefusUs: 0);
     // Un lot posé à la main — ce qu'on vérifie est qu'un refus ne le détruit pas,
     // pas la façon dont il est fabriqué. `emettreCodes()` coûterait dix Argon2id.
     for ($c = 1; $c <= Recovery::CODES_PAR_LOT; $c++) {
@@ -182,6 +188,7 @@ verifier('⭐ et la onzième est freinée — le chiffre publié est le chiffre 
 // L'énumération vise des noms différents : seul un plafond de service la voit.
 [$stS, $__] = banc(ProfilDeploiement::TOR_ONION, $now);
 $escServ = new Escalade($stS, new Recovery($stS, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    ...SANS_EPREUVE,
     delaiRefusUs: 0, maxOuverturesService: 2);
 
 $e1 = $escServ->ouvrir('inconnu1', Escalade::empreinteSesame('a'), maintenant: $now);
@@ -201,6 +208,7 @@ verifier('⭐ une fois le plafond atteint, un compte CONNU et un compte inconnu 
 // qui gouverne seul.
 [$stN, $___] = banc(ProfilDeploiement::TOR_ONION, $now);
 $escNul = new Escalade($stN, new Recovery($stN, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    ...SANS_EPREUVE,
     delaiRefusUs: 0, maxOuverturesIp: 0);
 $sansIp = $escNul->ouvrir('alice', Escalade::empreinteSesame('e'), null, $now);
 verifier('⭐ sans adresse, le frein par adresse ne freine pas',
@@ -212,6 +220,7 @@ verifier('⭐ sans adresse, le frein par adresse ne freine pas',
 // service. Les deux formes vides doivent se comporter comme `null`.
 [$stV, $__v] = banc(ProfilDeploiement::TOR_ONION, $now);
 $escV = new Escalade($stV, new Recovery($stV, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    ...SANS_EPREUVE,
     delaiRefusUs: 0, maxOuverturesIp: 1);
 $escV->ouvrir('v1', Escalade::empreinteSesame('a'), '', $now);
 $vide2 = $escV->ouvrir('v2', Escalade::empreinteSesame('b'), '   ', $now + 1);
@@ -775,6 +784,7 @@ $stT->comptes['alice'] = ['id' => 1, 'empreinte_mot' => 'emp'];
 $stT->comptes['bob']   = ['id' => 2, 'empreinte_mot' => 'emp'];
 $stT->gels[2]          = ['jusqua' => $now + 3600];
 $escT = new Escalade($stT, new Recovery($stT, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    ...SANS_EPREUVE,
     delaiRefusUs: 60000);
 $escT->ouvrir('alice', Escalade::empreinteSesame('premier'), maintenant: $now);
 $durees = [];
@@ -801,6 +811,7 @@ $stL = new class () extends StockageMemoire {
     }
 };
 $escL = new Escalade($stL, new Recovery($stL, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    ...SANS_EPREUVE,
     delaiRefusUs: 100000);
 $dureesL = [];
 foreach ([0, 40000, 0, 40000] as $i => $lenteur) {
@@ -858,7 +869,7 @@ echo "\n→ Les valeurs LIVRÉES sont celles que les textes annoncent\n";
 // resterait vert pendant que les textes publiés annonceraient l'ancienne valeur.
 // Ces cas sont donc les gardiens des chiffres publiés — c'est leur rôle, pas un
 // doublon.
-verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 10 s',
+verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 10 s / 10 / 500 / épreuve 16, 10, 1, 20, 300 s',
     Escalade::REPONSE_MAXIMUM === 500 && Escalade::MESSAGE_MAXIMUM === 2000
     && (static function (): array {
         [, $e] = banc(ProfilDeploiement::TOR_ONION, 1_700_000_000);
@@ -871,7 +882,15 @@ verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 1
 
         return [$lire('maxMessagesLitige'), $lire('attenteMessage'),
                 $lire('maxOuverturesIp'), $lire('maxOuverturesService')];
-    })() === [100, 10, 10, 20],
+    })() === [100, 10, 10, 500]
+    && (static function (): array {
+        $st = new StockageMemoire();
+        $e  = new Escalade($st, new Recovery($st, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR));
+        $r  = new ReflectionClass($e);
+
+        return array_map(static fn (string $nom) => $r->getProperty($nom)->getValue($e),
+            ['epreuveBase', 'epreuvePasService', 'epreuvePasCompte', 'epreuvePlafond', 'epreuveDuree']);
+    })() === [16, 10, 1, 20, 300],
     json_encode([Escalade::REPONSE_MAXIMUM, Escalade::MESSAGE_MAXIMUM]));
 verifier('⭐ les règles du gel livrées sont celles des textes — 3 refus / 30 j / 7 j',
     (static function (): array {
@@ -971,6 +990,7 @@ echo "\n→ Les trois refus de `recevable()` tiennent la même échéance\n";
 // donc ce que le message unique tait.
 [$stE] = banc(ProfilDeploiement::TOR_ONION, $now);
 $escE = new Escalade($stE, new Recovery($stE, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    ...SANS_EPREUVE,
     delaiRefusUs: 60000);
 $sE = 'sesame-echeance';
 $oE = $escE->ouvrir('alice', Escalade::empreinteSesame($sE), maintenant: $now);
@@ -999,21 +1019,22 @@ verifier('⭐ sésame faux, dossier expiré, accord périmé : la même durée, 
     min($tps) >= 60 && max($tps) - min($tps) < 20, json_encode($tps));
 
 echo "\n→ Le plafond de service ne travaille que là où l'adresse ne dit rien\n";
-// Sous un service caché, c'est le seul frein : il doit mordre au chiffre livré.
+// Sous un service caché, c'est le dernier recours derrière l'épreuve : il doit
+// mordre au chiffre livré.
 [$stO, $escO] = banc(ProfilDeploiement::TOR_ONION, $now);
-for ($i = 0; $i < 20; $i++) {
+for ($i = 0; $i < 500; $i++) {
     $escO->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), maintenant: $now + $i);
 }
-$vingtUn = $escO->ouvrir('alice', Escalade::empreinteSesame('la vraie'), maintenant: $now + 21);
-verifier('⭐ sous tor-onion, 20 ouvertures sur des noms inconnus ferment le service — le chiffre livré',
-    ($vingtUn['error'] ?? '') === 'trop_de_demandes', (string) ($vingtUn['error'] ?? 'accepté'));
-verifier('contre-témoin : à 19, le titulaire ouvre encore', (static function () use ($now): bool {
+$auDela = $escO->ouvrir('alice', Escalade::empreinteSesame('la vraie'), maintenant: $now + 501);
+verifier('⭐ sous tor-onion, 500 ouvertures sur des noms inconnus ferment le service — le chiffre livré',
+    ($auDela['error'] ?? '') === 'trop_de_demandes', (string) ($auDela['error'] ?? 'accepté'));
+verifier('contre-témoin : à 499, le titulaire ouvre encore', (static function () use ($now): bool {
     [, $e] = banc(ProfilDeploiement::TOR_ONION, $now);
-    for ($i = 0; $i < 19; $i++) {
+    for ($i = 0; $i < 499; $i++) {
         $e->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), maintenant: $now + $i);
     }
 
-    return ($e->ouvrir('alice', Escalade::empreinteSesame('la vraie'), maintenant: $now + 20)['ok'] ?? false) === true;
+    return ($e->ouvrir('alice', Escalade::empreinteSesame('la vraie'), maintenant: $now + 500)['ok'] ?? false) === true;
 })());
 // Sous clearweb, le profil EXIGE une adresse : le frein par adresse mord
 // toujours, et le plafond global n'ajoutait qu'un interrupteur général.
@@ -1237,6 +1258,102 @@ verifier('⭐ et deux cents tirages donnent deux cents valeurs distinctes',
     count(array_unique($tirages)) === 200);
 verifier('son empreinte passe le contrôle de forme d\'ouvrir()',
     preg_match('/^[a-f0-9]{64}$/', Escalade::empreinteSesame($tirages[0])) === 1);
+
+echo "\n→ L'épreuve du niveau 3 : là où l'adresse ne dit rien, une ouverture se paie\n";
+
+// Le solveur du banc, écrit à part de la bibliothèque : il vérifie la règle
+// publiée, pas la copie qu'en ferait `Escalade`.
+$resoudre = static function (array $e): string {
+    for ($n = 0; ; $n++) {
+        $h = hash('sha256', $e['epreuve'] . ':' . dechex($n));
+        $nuls = strlen($h) - strlen(ltrim($h, '0'));
+        $bits = $nuls * 4 + ($nuls < 64 ? 4 - strlen(decbin(hexdec($h[$nuls]))) : 0);
+        if ($bits >= $e['difficulte']) {
+            return dechex($n);
+        }
+    }
+};
+$stP  = new StockageMemoire();
+$stP->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash('mot memorise initial')];
+$escP = new Escalade($stP, new Recovery($stP, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    delaiRefusUs: 0, epreuveBase: 4, epreuvePasService: 3, epreuvePasCompte: 1, epreuvePlafond: 9);
+$sansP = $escP->ouvrir('inconnu', Escalade::empreinteSesame('a'), maintenant: $now);
+verifier('⭐ sous tor-onion, une ouverture sans épreuve est refusée, et le refus porte l\'épreuve à résoudre',
+    ($sansP['error'] ?? '') === 'epreuve_requise' && ($sansP['epreuve']['difficulte'] ?? 0) === 4,
+    json_encode($sansP['epreuve'] ?? null));
+verifier('⭐ au calme, un nom connu et un nom inconnu reçoivent la même difficulté',
+    $escP->epreuve('alice', $now)['difficulte'] === $escP->epreuve('personne', $now)['difficulte']);
+
+$e1 = $escP->epreuve('inconnu', $now);
+$s1 = $resoudre($e1);
+$r1 = $escP->ouvrir('inconnu', Escalade::empreinteSesame('a'), null, $now, $e1['epreuve'], $s1);
+verifier('l\'épreuve résolue passe : la suite est le refus ordinaire d\'un nom inconnu',
+    ($r1['error'] ?? '') === 'ouverture_refusee', (string) ($r1['error'] ?? ''));
+$r1bis = $escP->ouvrir('inconnu', Escalade::empreinteSesame('b'), null, $now + 1, $e1['epreuve'], $s1);
+verifier('rejouée sur le même nom, elle ne suffit déjà plus : le nom visé a monté son prix',
+    ($r1bis['error'] ?? '') === 'epreuve_trop_faible', (string) ($r1bis['error'] ?? ''));
+// Là où le prix ne bouge pas — ou quand deux remises se croisent avant qu'il
+// monte —, c'est la consommation qui tient.
+$stR  = new StockageMemoire();
+$escR = new Escalade($stR, new Recovery($stR, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    delaiRefusUs: 0, epreuveBase: 3, epreuvePasService: 1000, epreuvePasCompte: 1000);
+$eR = $escR->epreuve('inconnu', $now);
+$sR = $resoudre($eR);
+$escR->ouvrir('inconnu', Escalade::empreinteSesame('a'), null, $now, $eR['epreuve'], $sR);
+$rRejeu = $escR->ouvrir('inconnu', Escalade::empreinteSesame('b'), null, $now + 1, $eR['epreuve'], $sR);
+verifier('⭐ une épreuve ne sert qu\'une fois', ($rRejeu['error'] ?? '') === 'epreuve_deja_servie',
+    (string) ($rRejeu['error'] ?? 'acceptée'));
+
+$eBob = $escP->epreuve('bob', $now);
+$rAutre = $escP->ouvrir('carol', Escalade::empreinteSesame('c'), null, $now, $eBob['epreuve'], $resoudre($eBob));
+verifier('⭐ l\'épreuve tirée pour un nom ne vaut pas pour un autre', ($rAutre['error'] ?? '') === 'epreuve_invalide');
+
+$eF = $escP->epreuve('dora', $now);
+$forge = preg_replace('/^(e1\.\d+\.)\d+\./', '${1}1.', $eF['epreuve']);
+$rForge = $escP->ouvrir('dora', Escalade::empreinteSesame('d'), null, $now, $forge,
+    $resoudre(['epreuve' => $forge, 'difficulte' => 1]));
+verifier('⭐ une difficulté retouchée dans l\'épreuve est refusée : la signature la couvre',
+    ($rForge['error'] ?? '') === 'epreuve_invalide', (string) ($rForge['error'] ?? ''));
+$rCasse = $escP->ouvrir('dora', Escalade::empreinteSesame('d'), null, $now, strtoupper($eF['epreuve']), '0');
+verifier('une épreuve recopiée en majuscules n\'en est pas une', ($rCasse['error'] ?? '') === 'epreuve_requise');
+
+$eT = $escP->epreuve('emile', $now);
+$rT = $escP->ouvrir('emile', Escalade::empreinteSesame('e'), null, $now + 301, $eT['epreuve'], $resoudre($eT));
+verifier('⭐ une épreuve périmée est refusée', ($rT['error'] ?? '') === 'epreuve_perimee');
+$rFaux = $escP->ouvrir('emile', Escalade::empreinteSesame('e'), null, $now, $eT['epreuve'], 'zz');
+verifier('une solution qui n\'en est pas une est refusée', ($rFaux['error'] ?? '') === 'epreuve_non_resolue');
+
+$eAvant = $escP->epreuve('fanny', $now);
+for ($i = 0; $i < 3; $i++) {
+    $e = $escP->epreuve("charge$i", $now);
+    $escP->ouvrir("charge$i", Escalade::empreinteSesame("c$i"), null, $now, $e['epreuve'], $resoudre($e));
+}
+$eApres = $escP->epreuve('fanny', $now);
+verifier('⭐ la charge du service monte le prix pour tous', $eApres['difficulte'] === $eAvant['difficulte'] + 1,
+    "{$eAvant['difficulte']} → {$eApres['difficulte']}");
+$rVieille = $escP->ouvrir('fanny', Escalade::empreinteSesame('f'), null, $now, $eAvant['epreuve'], $resoudre($eAvant));
+verifier('⭐ une épreuve tirée avant la hausse ne suffit plus : on ne stocke pas des épreuves bon marché',
+    ($rVieille['error'] ?? '') === 'epreuve_trop_faible');
+
+$stN2  = new StockageMemoire();
+$escN2 = new Escalade($stN2, new Recovery($stN2, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    delaiRefusUs: 0, epreuveBase: 2, epreuvePasService: 1000, epreuvePasCompte: 1, epreuvePlafond: 6);
+$refusesNom = [];
+for ($i = 0; $i < 6; $i++) {
+    $e = $escN2->epreuve('paul', $now + $i);
+    $refusesNom[] = $escN2->ouvrir('paul', Escalade::empreinteSesame("p$i"), null, $now + $i, $e['epreuve'], $resoudre($e))['error'] ?? 'ok';
+}
+verifier('⭐ insister sur un nom en monte le prix pour ce nom-là seulement',
+    $escN2->epreuve('paul', $now + 6)['difficulte'] === 6 && $escN2->epreuve('zoe', $now + 6)['difficulte'] === 2);
+verifier('⭐ et le nom n\'est jamais refusé pour autant : un tiers ne ferme pas le niveau 3 d\'autrui',
+    !in_array('trop_de_demandes', $refusesNom, true), json_encode($refusesNom));
+verifier('le prix s\'arrête au plafond de bits', $escN2->epreuve('paul', $now + 7)['difficulte'] === 6);
+
+[, $escW2] = banc(ProfilDeploiement::CLEARWEB, $now);
+verifier('⭐ sous clearweb, l\'adresse freine : aucune épreuve n\'est demandée',
+    (new Escalade(new StockageMemoire(), new Recovery(new StockageMemoire(), 'sel', ProfilDeploiement::CLEARWEB, Langue::FR)))
+        ->epreuve('alice', $now)['difficulte'] === 0
+    && ($escW2->ouvrir('alice', Escalade::empreinteSesame('w'), '198.51.100.1', $now)['ok'] ?? false) === true);
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Escalade SelfRecover — %d passés, %d échoués\n", $passes, $echecs);

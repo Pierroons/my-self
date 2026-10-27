@@ -89,12 +89,14 @@ final class Escalade
         /** Ouvertures depuis une même adresse, quand l'appelant en fournit une. */
         private readonly int $maxOuverturesIp = 10,
         /**
-         * Ouvertures sur tout le service.
+         * Ouvertures sur tout le service, en dernier recours.
          *
-         * 🔑 C'est ce plafond qui tient quand l'adresse ne dit rien — derrière un
-         * service caché, où l'appelant passe `null` faute d'information à
-         * compter. Il est grossier par nature : il ralentit tout le monde
-         * ensemble, et c'est le prix d'un frein qui tienne sans adresses.
+         * 🔑 Quand l'adresse ne dit rien — derrière un service caché, où
+         * l'appelant passe `null` —, c'est l'épreuve qui freine : elle fait payer
+         * chaque ouverture, et la charge en monte le prix. Ce plafond ne tient
+         * plus que ce que l'arbitre peut lire : atteint, il ferme le niveau 3 à
+         * tous jusqu'à la fin de la fenêtre. Placé bas, il redeviendrait
+         * l'interrupteur que quelques épreuves payées suffiraient à tirer.
          *
          * ⚠️ **Il n'est lu que là où ce prix achète quelque chose**, c'est-à-dire
          * quand `ProfilDeploiement::adresseDiscriminante()` rend `false`. Sous
@@ -103,7 +105,7 @@ final class Escalade
          * interrupteur général que des requêtes anonymes suffisaient à tirer pour
          * tous les comptes à la fois.
          */
-        private readonly int $maxOuverturesService = 20,
+        private readonly int $maxOuverturesService = 500,
         /**
          * Messages qu'un dossier accepte **du demandeur**. L'arbitre n'est pas
          * borné : son canal est ce dont il a besoin quand le fil se remplit.
@@ -116,7 +118,151 @@ final class Escalade
         private readonly int $maxMessagesLitige = 100,
         /** Attente imposée entre deux messages d'un même dossier. */
         private readonly int $attenteMessage = 10,
+        /**
+         * Bits de l'épreuve quand rien ne presse. Une épreuve n'est exigée que
+         * sous un profil où l'adresse ne discrimine rien, et seulement quand la
+         * difficulté atteint un bit.
+         *
+         * 🔑 **Le coût remplace le refus.** Sans adresse à compter, le seul
+         * frein possible était un plafond sur tout le service, et vingt
+         * requêtes anonymes le tiraient pour tous les comptes à la fois.
+         * L'épreuve fait payer chaque ouverture à qui la demande ; la charge en
+         * monte le prix, elle ne ferme la porte à personne.
+         *
+         * 16 bits : 65 536 hachages en moyenne — 0,33 s par `client/sr-epreuve.js`
+         * sous Node 20, sur un poste de bureau (vingt épreuves, mesuré le
+         * 27/10/2026). Un téléphone est plus lent : `tools/mesure-epreuve.html`
+         * le mesure dans le navigateur qui servira.
+         */
+        private readonly int $epreuveBase = 16,
+        /** Ouvertures sur tout le service, dans la fenêtre, qui ajoutent un bit. */
+        private readonly int $epreuvePasService = 10,
+        /**
+         * Ouvertures pour un même nom, dans la fenêtre, qui ajoutent un bit.
+         *
+         * 🔑 **Le nom fait payer, il ne refuse jamais.** Un plafond par nom
+         * serait une porte qu'un tiers ferme chez autrui ; un prix par nom ne
+         * coûte qu'à qui insiste sur ce nom-là. Le prix se lit dans l'épreuve :
+         * il dit qu'un nom a été visé dans l'heure, pas qu'il existe — on
+         * compte le nom tapé, avant toute recherche.
+         */
+        private readonly int $epreuvePasCompte = 1,
+        /** Bits au plus : au-delà, un téléphone ne finirait plus l'épreuve. */
+        private readonly int $epreuvePlafond = 20,
+        /** Durée de vie d'une épreuve émise. */
+        private readonly int $epreuveDuree = 300,
     ) {
+    }
+
+    /**
+     * L'épreuve à résoudre avant d'ouvrir un dossier au nom de `$nomCompte` —
+     * sous un profil où l'adresse ne discrimine rien. Ailleurs, sa difficulté
+     * vaut 0 et `ouvrir()` ne la demande pas.
+     *
+     * Le navigateur cherche une solution — 1 à 32 caractères hexadécimaux —
+     * telle que SHA-256(`epreuve` . ':' . solution) commence par `difficulte`
+     * bits nuls (`client/sr-epreuve.js`), puis la remet avec l'épreuve à
+     * `ouvrir()`. L'épreuve est signée par le sel du déploiement, liée au nom,
+     * vit `expire` secondes et ne sert qu'une fois.
+     *
+     * N'écrit rien : la demander ne coûte qu'une lecture des deux compteurs.
+     *
+     * @return array{epreuve: string, difficulte: int, expire: int}
+     */
+    public function epreuve(string $nomCompte, ?int $maintenant = null): array
+    {
+        $maintenant = $maintenant ?? time();
+        $nomCompte  = strtolower(trim($nomCompte));
+        $bits       = $this->difficulte($nomCompte, $maintenant);
+        $charge     = sprintf(
+            'e1.%d.%d.%s.%s',
+            $maintenant,
+            $bits,
+            $this->recovery->indexRecherche('epreuve-nom:' . $nomCompte),
+            bin2hex(random_bytes(16))
+        );
+        return [
+            'epreuve'    => $charge . '.' . $this->recovery->indexRecherche('epreuve:' . $charge),
+            'difficulte' => $bits,
+            'expire'     => $maintenant + $this->epreuveDuree,
+        ];
+    }
+
+    /** Les bits qu'exige une ouverture au nom de `$nomCompte`, à cet instant. */
+    private function difficulte(string $nomCompte, int $maintenant): int
+    {
+        if ($this->recovery->profil()->adresseDiscriminante()) {
+            return 0;
+        }
+        $depuis  = $maintenant - $this->fenetreOuvertures;
+        $service = $this->stockage->compterEchecsCompte($this->etiquette('*'), $depuis);
+        $nom     = $this->stockage->compterEchecsCompte($this->etiquette('#' . $nomCompte), $depuis);
+        return min(
+            $this->epreuvePlafond,
+            $this->epreuveBase + intdiv($service, max(1, $this->epreuvePasService))
+                + intdiv($nom, max(1, $this->epreuvePasCompte))
+        );
+    }
+
+    /**
+     * Pourquoi l'épreuve remise ne vaut pas pour `$nomCompte`, ou `null` quand
+     * elle vaut. Elle n'est pas consommée ici.
+     *
+     * 🔑 **La difficulté se relit à la remise.** Une épreuve tirée quand tout
+     * était calme et gardée pour plus tard vaut celle de son émission : si la
+     * charge a monté depuis, elle ne suffit plus, et le demandeur en reprend
+     * une. Sans cette relecture, on stockerait des épreuves bon marché la nuit
+     * pour les servir en rafale le jour.
+     */
+    private function refusEpreuve(string $nomCompte, ?string $epreuve, ?string $solution, int $requis, int $maintenant): ?string
+    {
+        if ($epreuve === null || !preg_match('/^e1\.(\d{1,12})\.(\d{1,2})\.([0-9a-f]{64})\.[0-9a-f]{32}\.([0-9a-f]{64})$/', $epreuve, $m)) {
+            return 'epreuve_requise';
+        }
+        $charge = substr($epreuve, 0, -65);
+        if (!hash_equals($this->recovery->indexRecherche('epreuve:' . $charge), $m[4])
+            || !hash_equals($this->recovery->indexRecherche('epreuve-nom:' . $nomCompte), $m[3])) {
+            return 'epreuve_invalide';
+        }
+        $emise = (int) $m[1];
+        if ($emise > $maintenant || $maintenant - $emise > $this->epreuveDuree) {
+            return 'epreuve_perimee';
+        }
+        if ((int) $m[2] < $requis) {
+            return 'epreuve_trop_faible';
+        }
+        if ($solution === null || !preg_match('/^[0-9a-f]{1,32}$/', $solution)
+            || self::bitsNuls(hash('sha256', $epreuve . ':' . $solution, true)) < (int) $m[2]) {
+            return 'epreuve_non_resolue';
+        }
+        return null;
+    }
+
+    /** @return array{ok: false, error: string, message: string, epreuve: array{epreuve: string, difficulte: int, expire: int}} */
+    private function refusDEpreuve(string $pourquoi, string $nomCompte, int $maintenant): array
+    {
+        return ['ok' => false, 'error' => $pourquoi,
+                'message' => Messages::dire($this->langue(), 'l3.epreuve'),
+                'epreuve' => $this->epreuve($nomCompte, $maintenant)];
+    }
+
+    /** Les bits nuls en tête d'une empreinte binaire. */
+    private static function bitsNuls(string $empreinte): int
+    {
+        $bits = 0;
+        foreach (str_split($empreinte) as $octet) {
+            $o = ord($octet);
+            if ($o === 0) {
+                $bits += 8;
+                continue;
+            }
+            while ($o < 0x80) {
+                $o <<= 1;
+                $bits++;
+            }
+            return $bits;
+        }
+        return $bits;
     }
 
     /**
@@ -172,9 +318,10 @@ final class Escalade
      * qui portait l'adresse consommerait le quota du niveau 1, du niveau 2 et de
      * l'enrôlement d'appareil — ouvrir des dossiers chez autrui lui fermerait
      * ses propres portes, et l'échec redeviendrait l'arme que cette classe
-     * existe pour désamorcer. Aucun nom de compte n'y entre non plus :
-     * l'ouverture est comptée, pas attribuée. Le dépôt, lui, est nominatif —
-     * c'est un fait, pas une sonde.
+     * existe pour désamorcer. Le nom tapé n'y entre que sous HMAC, pour le prix
+     * par nom de l'épreuve : il ne freine aucune autre porte, et ne dit rien de
+     * l'existence du compte. Le dépôt, lui, est nominatif — c'est un fait, pas
+     * une sonde.
      */
     private function etiquette(string $quoi): string
     {
@@ -287,8 +434,8 @@ final class Escalade
      * demandant aucun identifiant ; ici la réponse utile EST la distinction —
      * un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre.
      * Ce qui s'oppose à l'énumération n'est donc pas le silence mais le COÛT :
-     * les freins ci-dessous, et une preuve de travail que l'intégrateur pose
-     * devant la route.
+     * les freins ci-dessous, et l'épreuve qu'`epreuve()` émet et que cette
+     * méthode vérifie, là où l'adresse ne dit rien.
      *
      * 🔑 **Elle ne dit rien de plus.** Un nom inconnu, un dossier déjà ouvert, une
      * procédure gelée reçoivent le même refus, au même délai : la route est
@@ -298,8 +445,12 @@ final class Escalade
      * 🔑 `$ip` vaut `null` quand l'adresse ne dit rien de l'appelant — derrière
      * un service caché, où tout arrive de la même adresse, la passer ferait d'un
      * frein par client un plafond global au seuil du client, plus bas que le
-     * plafond de service et le masquant. Passer `null` laisse le plafond de
-     * service gouverner seul, ce qui est le comportement voulu là-bas.
+     * plafond de service et le masquant. Passer `null` laisse l'épreuve et le
+     * plafond de service gouverner, ce qui est le comportement voulu là-bas.
+     *
+     * 🔑 `$epreuve` et `$solution` viennent d'`epreuve()` et du navigateur. Un
+     * refus de l'épreuve porte une épreuve neuve (`epreuve`), et ne dit rien du
+     * compte : il tombe avant la recherche.
      *
      * @return array{ok: bool, message: string, numero?: string, questions?: array, expire_le?: int, error?: string}
      */
@@ -308,6 +459,8 @@ final class Escalade
         string $empreinteSesame,
         ?string $ip = null,
         ?int $maintenant = null,
+        ?string $epreuve = null,
+        ?string $solution = null,
     ): array {
         $this->recovery->profil()->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
@@ -339,14 +492,28 @@ final class Escalade
         // 🔑 Freiner AVANT de chercher le compte. Après, le frein ne mordrait
         // que sur les comptes existants, et être freiné deviendrait à son tour
         // la réponse qu'on refuse de donner.
+        // L'épreuve se juge avant les freins : elle ne dépend que du nom tapé.
+        $requis = $this->difficulte($nomCompte, $maintenant);
+        if ($requis > 0
+            && ($pourquoi = $this->refusEpreuve($nomCompte, $epreuve, $solution, $requis, $maintenant)) !== null) {
+            return $this->refusDEpreuve($pourquoi, $nomCompte, $maintenant);
+        }
+
         if ($frein = $this->freinerOuverture($ip, $maintenant)) {
             return $frein;
+        }
+
+        // Consommée après les freins : une épreuve freinée reste à servir.
+        if ($requis > 0
+            && !$this->stockage->consommerEpreuve(substr((string) $epreuve, -64), $maintenant + $this->epreuveDuree, $maintenant)) {
+            return $this->refusDEpreuve('epreuve_deja_servie', $nomCompte, $maintenant);
         }
 
         // Tracé avant la recherche, donc identique que le compte existe ou non.
         // Une ligne par compteur, et l'adresse dans l'étiquette, jamais dans la
         // colonne : ces lignes ne doivent alimenter aucun autre frein.
         $this->stockage->tracerTentative($this->etiquette('*'), false, null, $maintenant);
+        $this->stockage->tracerTentative($this->etiquette('#' . $nomCompte), false, null, $maintenant);
         if ($ip !== null) {
             $this->stockage->tracerTentative($this->etiquette('@' . $ip), false, null, $maintenant);
         }

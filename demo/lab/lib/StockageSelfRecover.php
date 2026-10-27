@@ -263,6 +263,14 @@ final class StockageSelfRecover implements StorageInterface
         $this->pdo->prepare('DELETE FROM device_challenges WHERE challenge = ?')->execute([$defi]);
     }
 
+    public function consommerEpreuve(string $empreinte, int $expire, int $maintenant): bool
+    {
+        $this->pdo->prepare('DELETE FROM l3_epreuves WHERE expire_at < ?')->execute([$maintenant]);
+        $insere = $this->pdo->prepare('INSERT OR IGNORE INTO l3_epreuves (empreinte, expire_at) VALUES (?, ?)');
+        $insere->execute([$empreinte, $expire]);
+        return $insere->rowCount() === 1;
+    }
+
     // ── Codes de récupération ──────────────────────────────────────────────
 
     public function purgerCodes(int $compteId): void

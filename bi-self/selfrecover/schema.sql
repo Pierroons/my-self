@@ -49,12 +49,13 @@
 --
 --   INTEGER PRIMARY KEY AUTOINCREMENT  → BIGINT AUTO_INCREMENT / BIGSERIAL
 --   TEXT UNIQUE  (quatre colonnes)     → un index unique sur TEXT veut une longueur
---   TEXT PRIMARY KEY  (device_challenges) → même refus
+--   TEXT PRIMARY KEY  (device_challenges, l3_epreuves) → même refus
 --   CREATE INDEX IF NOT EXISTS         → inconnu de MySQL (MariaDB l'accepte)
 --
 -- Dans l'adaptateur, quatre constructions :
 --
 --   INSERT OR REPLACE     (deux fois)  → ON DUPLICATE KEY UPDATE / ON CONFLICT
+--   INSERT OR IGNORE  (consommerEpreuve) → INSERT IGNORE / ON CONFLICT DO NOTHING
 --   ON CONFLICT … excluded (poserGel)  → inconnu de MariaDB
 --   LIMIT ?  paramétré    (listerLitiges) → refusé par MySQL en requête préparée
 --   INSERT … SELECT … WHERE NOT EXISTS, sans FROM (ouvrirLitige) → MySQL et
@@ -212,6 +213,15 @@ CREATE TABLE IF NOT EXISTS device_challenges (
 );
 
 CREATE INDEX IF NOT EXISTS idx_challenges_age ON device_challenges(created_at);
+
+-- Une épreuve du niveau 3, servie une fois : la clé primaire refuse la seconde.
+-- Pas de compte ici, exprès : l'épreuve est payée avant qu'on cherche le compte.
+CREATE TABLE IF NOT EXISTS l3_epreuves (
+    empreinte TEXT PRIMARY KEY,   -- la signature de l'épreuve, hex
+    expire_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_epreuves_expire ON l3_epreuves(expire_at);
 
 -- ── Niveau 3 : le dossier et l'arbitrage humain ─────────────────────────────
 

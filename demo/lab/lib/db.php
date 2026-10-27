@@ -503,6 +503,14 @@ final class Db
             )'
         );
 
+        // Une épreuve du niveau 3 ne se sert qu'une fois : la clé primaire le tient.
+        self::$pdo->exec(
+            'CREATE TABLE IF NOT EXISTS l3_epreuves (
+                empreinte TEXT PRIMARY KEY,
+                expire_at INTEGER NOT NULL
+            )'
+        );
+
         // `gele_par` est arrivée avec le gel manuel : une base montée avant lui
         // a la table sans la colonne, et `CREATE TABLE IF NOT EXISTS` ne la
         // rattrape pas.

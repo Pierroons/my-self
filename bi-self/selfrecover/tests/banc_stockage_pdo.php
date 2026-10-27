@@ -24,6 +24,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/epreuve_fixture.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Diceware\Wordlist;
@@ -183,7 +184,7 @@ verifier('aucune méthode du contrat ne manque', $manquantes === [], (string) co
 // ⚠️ Compter ne suffit pas : une méthode qui rend toujours `null` compte pareil.
 // Ce décompte sert à faire ROUGIR le banc si le contrat gagne une méthode que
 // l'adaptateur n'a pas suivie — c'est le seul cas où le compte dit quelque chose.
-verifier('le contrat en porte 45, comme annoncé partout ailleurs', count($attendues) === 45,
+verifier('le contrat en porte 46, comme annoncé partout ailleurs', count($attendues) === 46,
     (string) count($attendues));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -318,12 +319,21 @@ verifier('et c\'est la nouvelle clé qui répond',
     $stockage->trouverAppareil($credId)?->clePubliqueB64url === 'nouvelle-cle-publique');
 
 // ═══════════════════════════════════════════════════════════════════════════
+section('épreuve du niveau 3');
+
+verifier('une épreuve se consomme une fois', $stockage->consommerEpreuve('aa', $T0 + 300, $T0) === true);
+verifier('la seconde consommation est refusée par la clé', $stockage->consommerEpreuve('aa', $T0 + 300, $T0 + 1) === false);
+verifier('une épreuve expirée est effacée, et la même empreinte se reconsomme',
+    $stockage->consommerEpreuve('aa', $T0 + 900, $T0 + 301) === true);
+
+// ═══════════════════════════════════════════════════════════════════════════
 section('niveau 3');
 
 $escalade = new Escalade($stockage, $recovery, delaiRefusUs: 0);
 
 $sesame = bin2hex(random_bytes(16));
-$ouvert = $escalade->ouvrir('alice', hash('sha256', $sesame), null, $T0);
+$epreuve = $escalade->epreuve('alice', $T0);
+$ouvert = $escalade->ouvrir('alice', hash('sha256', $sesame), null, $T0, $epreuve['epreuve'], resoudreEpreuve($epreuve));
 verifier('le dossier s\'ouvre', ($ouvert['ok'] ?? false) === true, (string) $ouvert['message']);
 
 $numero = (string) ($ouvert['numero'] ?? '');

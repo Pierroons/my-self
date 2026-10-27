@@ -118,6 +118,19 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         unset($this->defis[$defi]);
     }
 
+    /** @var array<string, int> empreinte => expiration */
+    public array $epreuves = [];
+
+    public function consommerEpreuve(string $empreinte, int $expire, int $maintenant): bool
+    {
+        $this->epreuves = array_filter($this->epreuves, static fn (int $e): bool => $e >= $maintenant);
+        if (isset($this->epreuves[$empreinte])) {
+            return false;
+        }
+        $this->epreuves[$empreinte] = $expire;
+        return true;
+    }
+
     public function remplacerEmpreinteMotDePasse(int $compteId, string $empreinte): void
     {
         $this->empreintes[$compteId] = $empreinte;

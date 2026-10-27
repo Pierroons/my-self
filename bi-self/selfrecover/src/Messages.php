@@ -358,6 +358,10 @@ final class Messages
             'fr' => "Trop de demandes d'arbitrage récemment. Réessaie plus tard.",
             'en' => 'Too many arbitration requests recently. Try again later.',
         ],
+        'l3.epreuve' => [
+            'fr' => "Ton navigateur doit d'abord résoudre une épreuve de calcul. Elle est jointe : renvoie ta demande avec sa solution.",
+            'en' => 'Your browser must first solve a computation challenge. It is attached: send your request again with its solution.',
+        ],
         'l3.message_vide' => [
             'fr' => 'Le message est vide.',
             'en' => 'The message is empty.',

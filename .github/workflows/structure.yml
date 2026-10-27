@@ -634,6 +634,27 @@ jobs:
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ la rétention passée'
           canari $E '        if ($litige->expire($maintenant)) {' '        if (false) {' \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ un dossier périmé ne s'accepte plus"
+          # L'épreuve du niveau 3 : là où l'adresse ne dit rien, chaque garde de
+          # l'épreuve doit pouvoir céder seule.
+          canari $E "&& (\$pourquoi = \$this->refusEpreuve(" "&& false && (\$pourquoi = \$this->refusEpreuve(" \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ sous tor-onion, une ouverture sans épreuve est refusée"
+          canari $E "if (!hash_equals(\$this->recovery->indexRecherche('epreuve:' . \$charge), \$m[4])" 'if (false' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une difficulté retouchée dans l'épreuve est refusée"
+          canari $E "|| !hash_equals(\$this->recovery->indexRecherche('epreuve-nom:' . \$nomCompte), \$m[3])) {" ') {' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'épreuve tirée pour un nom ne vaut pas pour un autre"
+          canari $E 'if ($emise > $maintenant || $maintenant - $emise > $this->epreuveDuree) {' 'if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ une épreuve périmée est refusée'
+          canari $E 'if ((int) $m[2] < $requis) {' 'if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ une épreuve tirée avant la hausse ne suffit plus'
+          canari $E '&& !$this->stockage->consommerEpreuve(' '&& false && !$this->stockage->consommerEpreuve(' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une épreuve ne sert qu'une fois"
+          canari $E "        \$this->stockage->tracerTentative(\$this->etiquette('#' . \$nomCompte), false, null, \$maintenant);" '' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ insister sur un nom en monte le prix pour ce nom-là seulement'
+          canari $E 'if ($this->recovery->profil()->adresseDiscriminante()) {' 'if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ sous clearweb, l'adresse freine"
+          canari $P "'INSERT OR IGNORE INTO l3_epreuves (empreinte, expire_at) VALUES (?, ?)'" \
+            "'INSERT OR REPLACE INTO l3_epreuves (empreinte, expire_at) VALUES (?, ?)'" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ la seconde consommation est refusée par la clé'
           # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
           # d'un autre. Depuis que son frein ne ferme plus par compte, quatre
           # propriétés le remplacent, et chacune doit pouvoir céder seule.
@@ -830,8 +851,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 209 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 209 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 225 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 225 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -3173,8 +3194,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
-          echo "$sortie" | grep -qE '^✅ 189 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 189 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 192 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 192 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)

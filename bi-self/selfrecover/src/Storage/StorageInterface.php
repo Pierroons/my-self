@@ -119,6 +119,17 @@ interface StorageInterface
      */
     public function consommerDefi(string $defi): void;
 
+    /**
+     * Inscrit une épreuve du niveau 3 comme servie : `true` la première fois,
+     * `false` ensuite, jusqu'à `$expire`. Efface au passage celles qui ont
+     * expiré avant `$maintenant`.
+     *
+     * ⚠️ **Atomique, par une clé unique.** Lire puis écrire laisserait deux
+     * requêtes simultanées servir la même solution : une épreuve payée une fois
+     * ouvrirait autant de dossiers que la course en tient.
+     */
+    public function consommerEpreuve(string $empreinte, int $expire, int $maintenant): bool;
+
     /** Remplace le mot de passe du compte par cette empreinte. */
     public function remplacerEmpreinteMotDePasse(int $compteId, string $empreinte): void;
 

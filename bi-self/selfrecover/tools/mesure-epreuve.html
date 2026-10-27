@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesure de l'épreuve du niveau 3</title>
+    <style>
+        :root { --fond: #fafafa; --texte: #1a1a1a; --bord: #ccc; }
+        @media (prefers-color-scheme: dark) { :root { --fond: #161616; --texte: #eaeaea; --bord: #444; } }
+        body { background: var(--fond); color: var(--texte); font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 0 auto; padding: 1rem; }
+        label, button { display: block; margin: .75rem 0; }
+        input { width: 5rem; }
+        button { padding: .5rem 1rem; }
+        pre { border: 1px solid var(--bord); padding: .75rem; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+<h1>Mesure de l'épreuve du niveau 3</h1>
+<p>Cette page résout des épreuves comme le fait <code>client/sr-epreuve.js</code> sur un service caché, et dit
+combien de temps ce navigateur y passe. Elle n'envoie rien : les épreuves sont tirées au hasard ici même,
+et leur coût ne dépend que de leur difficulté.</p>
+<label>Difficulté, en bits : <input id="bits" type="number" min="1" max="24" value="16"></label>
+<label>Nombre d'épreuves : <input id="nombre" type="number" min="1" max="100" value="20"></label>
+<button id="lancer">Mesurer</button>
+<pre id="sortie">—</pre>
+<script src="../client/sr-epreuve.js"></script>
+<script>
+    document.getElementById('lancer').addEventListener('click', async () => {
+        const bits = Number(document.getElementById('bits').value);
+        const nombre = Number(document.getElementById('nombre').value);
+        const sortie = document.getElementById('sortie');
+        const temps = [];
+        for (let i = 0; i < nombre; i++) {
+            const alea = Array.from(crypto.getRandomValues(new Uint8Array(16)), o => o.toString(16).padStart(2, '0')).join('');
+            const t0 = performance.now();
+            await srResoudreEpreuve({ epreuve: 'mesure.' + alea, difficulte: bits });
+            temps.push(performance.now() - t0);
+            sortie.textContent = `${i + 1} / ${nombre}…`;
+        }
+        temps.sort((a, b) => a - b);
+        const s = ms => (ms / 1000).toFixed(2) + ' s';
+        const moyenne = temps.reduce((a, b) => a + b, 0) / temps.length;
+        sortie.textContent = `${bits} bits, ${nombre} épreuves\n`
+            + `moyenne ${s(moyenne)} · médiane ${s(temps[Math.floor(temps.length / 2)])} · pire ${s(temps[temps.length - 1])}\n`
+            + `navigateur : ${navigator.userAgent}`;
+    });
+</script>
+</body>
+</html>

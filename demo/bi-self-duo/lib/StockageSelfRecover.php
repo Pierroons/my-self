@@ -311,6 +311,11 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $this->pasDeNiveau3('trouverLitigeParNumero');
     }
 
+    public function consommerEpreuve(string $empreinte, int $expire, int $maintenant): bool
+    {
+        $this->pasDeNiveau3('consommerEpreuve');
+    }
+
     public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige
     {
         $this->pasDeNiveau3('litigeActifDuCompte');

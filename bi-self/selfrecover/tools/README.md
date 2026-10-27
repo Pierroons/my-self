@@ -11,6 +11,7 @@ efface des lignes.
 | `entropy-lab/` | méthode Diceware aux dés, tables imprimables | page statique |
 | `offline-validator/` | vérification d'une passphrase hors ligne | autonome, zéro requête |
 | `comparison.html` | comparatif des méthodes de récupération | page statique |
+| `mesure-epreuve.html` | ce que coûte l'épreuve du niveau 3 dans le navigateur qui l'ouvre | autonome, zéro requête |
 | `reference/` | une implémentation conservée pour lecture | non exécuté |
 | `purger.php` | dossiers de niveau 3 périmés, lignes d'échec anciennes | CLI, `SELFRECOVER_DSN` requis, efface |
 

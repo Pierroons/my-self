@@ -19,6 +19,7 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/../../../self-security/selfdataguard/src/autoload.php';
 require __DIR__ . '/StockageMemoire.php';
+require __DIR__ . '/epreuve_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -192,7 +193,8 @@ $MDP = $r['mot_de_passe'];
 echo "\n→ Niveau 3 — aucun ancien secret : l'ancien coffre est archivé\n";
 
 $sesame = bin2hex(random_bytes(32));
-$o = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), maintenant: $now + 200);
+$ep = $esc->epreuve('alice', $now + 200);
+$o = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), null, $now + 200, $ep['epreuve'], resoudreEpreuve($ep));
 $esc->trancher((string) $o['numero'], 'accepte', 'arbitre', $now + 300);
 $MOT3 = str_repeat('c3', 32);
 $MDP3 = 'un mot de passe choisi par elle';
