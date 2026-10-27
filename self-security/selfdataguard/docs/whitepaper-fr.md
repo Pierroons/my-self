@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 15 octobre 2026 — décrit SelfDataGuard v0.6.2*
+*Édition du 27 octobre 2026 — décrit SelfDataGuard v0.7.0*
 
 ---
 
@@ -390,7 +390,8 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **v0.6.0** (03/10/2026) : profil Argon2id enregistré avec chaque coffre et la clé admin scellée, scellé administrateur lié à son compte, journal de séquestre ancrable, nom de champ `escrow` réservé, vecteurs Argon2id figés
 - **v0.6.1** (14/10/2026) : les clés déverrouillées et les secrets du serveur masqués dans `var_dump()` et `print_r()`, des objets déverrouillés qui refusent d'être clonés, des paramètres secrets tenus hors des traces d'exception
 - **v0.6.2** (15/10/2026) : une entrée du journal de séquestre forcée sur le disque (`fsync()`), et le total exact de chaque suite exigé en CI
-- **v0.7.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v0.7.0** (27/10/2026) : chaque écriture liée à son contexte (AAD, format de blob v3), le profil Argon2id et les enveloppes scellés sous la clé serveur, des clés qu'aucun objet ne tend, un séquestre lu seulement par une cérémonie arbitrée, journalisée et témoignée, une base qui garde sa clé d'index aveugle et ne l'adopte que sur preuve, et une suite de conformité du stockage
+- **v0.8.0** (à venir) : rotation de la clé d'index aveugle par une transition à deux clés, extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---

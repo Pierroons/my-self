@@ -5,8 +5,8 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.6.2 disponible](https://img.shields.io/badge/statut-v0.6.2%20disponible-brightgreen.svg)](#statut)
-[![Tests : 388 passants](https://img.shields.io/badge/tests-388%20passants-brightgreen.svg)](#tests)
+[![Statut : v0.7.0 disponible](https://img.shields.io/badge/statut-v0.7.0%20disponible-brightgreen.svg)](#statut)
+[![Tests : 605 passants](https://img.shields.io/badge/tests-605%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -105,7 +105,7 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 
 ---
 
-## Modes opérationnels — la v0.6.2 n'en implémente qu'un
+## Modes opérationnels — la v0.7.0 n'en implémente qu'un
 
 | Mode | Accès serveur aux données | Compromis | Dans le code |
 |------|---------------------------|-----------|--------------|
@@ -113,7 +113,7 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 | **Hybrid** *(visé pour l'e-commerce)* | Champs opérationnels (`email`, `adresse_livraison`) encapsulés avec une clé opérationnelle admin. Champs sensibles (`tel`, `doc_KYC`) nécessitent une session utilisateur | L'admin peut traiter les commandes ; les données sensibles restent zero-knowledge | ❌ spécifié, pas écrit — le `wrap_admin` du coffre vaut `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge pour services à forte exigence)* | Le serveur ne déchiffre JAMAIS. Toute la crypto tourne dans le navigateur, par libsodium compilé en WebAssembly — WebCrypto n'offre ni Argon2id ni XChaCha20-Poly1305 | Certains workflows à redessiner (pas de mails transactionnels asynchrones, notifications push à la place) | ❌ spécifié, pas écrit — le module ne porte aucun code client |
 
-Un déploiement qui installe la v0.6.2 est donc en **Lite**, quel que soit le mode visé : les deux autres sont décrits au whitepaper (§4.2, §4.3) comme une cible, et aucun paramètre de l'API ne les choisit.
+Un déploiement qui installe la v0.7.0 est donc en **Lite**, quel que soit le mode visé : les deux autres sont décrits au whitepaper (§4.2, §4.3) comme une cible, et aucun paramètre de l'API ne les choisit.
 
 Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** (`src/Escrow/`), compartiment à clé propre qu'un administrateur ne rouvre que par `EscrowCeremony` — le verdict d'un arbitre que tu écris, l'intention dans un journal signé, la tête du journal sortie de la machine par un témoin, et seulement ensuite la passphrase de séquestre. Il ne rend que ce compartiment, jamais le coffre privé, et il n'est pas le mode Hybrid : rien n'y est déchiffré au fil de l'eau. Le séquestre d'un coffre archivé part avec l'archive, et l'administrateur le rouvre de la même façon (`readArchiveEscrow()`).
 
@@ -145,9 +145,9 @@ Ce que le séquestre tient :
 
 ## Statut
 
-**v0.6.2 — une entrée du journal de séquestre est forcée sur le disque**, 15 octobre 2026, sur la **v0.6.1 — les clés déverrouillées et les secrets du serveur restent hors des vidages et des traces**, 14 octobre 2026, et la **v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable**, 3 octobre 2026.
+**v0.7.0 — un coffre scellé, des clés qu'aucun objet ne tend, un séquestre lu par une cérémonie témoignée**, 27 octobre 2026, sur la **v0.6.2 — une entrée du journal de séquestre est forcée sur le disque**, 15 octobre 2026, et la **v0.6.1 — les clés déverrouillées et les secrets du serveur restent hors des vidages et des traces**, 14 octobre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 986 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **388 contrôles répartis sur 11 suites** sous PHP 8.2 et 8.4, et 384 sous PHP 8.1, où quatre contrôles de trace deviennent des limites déclarées, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (6 893 lignes réparties sur 42 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **605 contrôles répartis sur 13 suites** sous PHP 8.2 et 8.4, et 601 sous PHP 8.1, où quatre contrôles de trace deviennent des limites déclarées, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Une base 0.5.x se migre en place à sa première ouverture par la 0.6.0 (colonnes `kdf_opslimit` et `kdf_memlimit`, au profil d'avant), une base 0.4.0 aussi, en une fois. ⚠️ Un retour à la 0.5.x garde l'accès aux coffres et au séquestre côté titulaire, mais l'administrateur n'ouvre plus un séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin générée par la 0.6.0 : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
 

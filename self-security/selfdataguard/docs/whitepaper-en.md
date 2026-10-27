@@ -3,7 +3,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
 
-*Edition of 15 October 2026 — describes SelfDataGuard v0.6.2. The French edition is authoritative where the two differ.*
+*Edition of 27 October 2026 — describes SelfDataGuard v0.7.0. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -368,7 +368,8 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **v0.6.0** (2026-10-03): Argon2id profile stored with each vault and the sealed admin key, admin seal bound to its account, anchorable escrow log, reserved field name `escrow`, frozen Argon2id vectors
 - **v0.6.1** (2026-10-14): the unlocked keys and the server's secrets masked in `var_dump()` and `print_r()`, unlocked objects that refuse to be cloned, secret parameters kept out of exception traces
 - **v0.6.2** (2026-10-15): an escrow log entry forced to disk (`fsync()`), and each suite's exact total required in CI
-- **v0.7.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
+- **v0.7.0** (2026-10-27): every write bound to its context (AAD, blob format v3), the Argon2id profile and the envelopes sealed under the server key, keys that no object hands out, an escrow read only through a ceremony that is arbitrated, logged and witnessed, a database that records its blind-index key and adopts it only on proof, and a storage conformance suite
+- **v0.8.0** (upcoming): rotation of the blind-index key through a two-key transition, advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
 ---

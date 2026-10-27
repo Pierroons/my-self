@@ -3,7 +3,7 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.7.0] — 2026-10-27
 
 The AAD becomes a required argument, and a ciphertext bound to nothing says so. This is a hardening
 by construction, not the fix of an exploitable flaw: the uses that shared a flat AAD were sealed under
