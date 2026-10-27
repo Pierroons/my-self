@@ -26,7 +26,7 @@ use Pierroons\SelfDataGuard\Crypto\Aad;
  * The Argon2id profile travels with the sealed secret, so that changing
  * Primitives::ARGON2_* never locks out a key sealed earlier. The format before
  * 0.6.0, "salt:blob", is still opened, under Primitives::LEGACY_*; a secret sealed
- * before 0.4.0 carries an AES-256-GCM blob, which unseal() still opens too.
+ * before 0.4.0 carries an AES-256-GCM blob, which EscrowCeremony still opens too.
  *
  * Threat model consequence: a server seized cold gives the attacker the DB, the
  * blindKey, the admin PUBLIC key and this sealed blob — but WITHOUT the admin
@@ -57,7 +57,7 @@ final class AdminKey
     public static function generate(#[\SensitiveParameter] string $passphrase): array
     {
         // This passphrase guards the escrow of every account: it gets at least the
-        // vault's floor. Applied when sealing only — unseal() must still open a key
+        // vault's floor. Applied when sealing only — the ceremony must still open a key
         // sealed under a shorter passphrase.
         if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {
             throw new InvalidArgumentException(sprintf(
@@ -87,39 +87,6 @@ final class AdminKey
         ];
     }
 
-    /**
-     * Unseal the admin secret key using the passphrase. Returns the RAW 32-byte
-     * secret key — the caller MUST zeroize it after use (sodium_memzero).
-     *
-     * @throws \RuntimeException on wrong passphrase (auth tag mismatch)
-     */
-    public static function unseal(string $sealedSecret, #[\SensitiveParameter] string $passphrase): string
-    {
-        if ($passphrase === '') {
-            throw new InvalidArgumentException('Admin passphrase must not be empty');
-        }
-        [$ops, $mem, $saltB64, $blobB64] = self::parse($sealedSecret);
-        $salt = base64_decode($saltB64, true);
-        if ($salt === false || strlen($salt) < Primitives::SALT_LEN) {
-            throw new InvalidArgumentException('Malformed sealed secret (invalid salt)');
-        }
-
-        try {
-            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);
-        } catch (\SodiumException $e) {
-            throw new InvalidArgumentException('Malformed sealed secret (Argon2id profile out of range)', previous: $e);
-        }
-        try {
-            return Primitives::decryptAcrossFormats(
-                EncryptedBlob::fromBase64($blobB64),
-                $sealKey,
-                Aad::of(self::SEAL_AAD),
-                self::SEAL_AAD
-            );
-        } finally {
-            Primitives::zeroize($sealKey);
-        }
-    }
 
     /**
      * Split a sealed secret into its Argon2id profile, salt and blob. A base64 salt
@@ -128,7 +95,7 @@ final class AdminKey
      *
      * @return array{0: int, 1: int, 2: string, 3: string}
      */
-    private static function parse(string $sealedSecret): array
+    public static function components(string $sealedSecret): array
     {
         $parts = explode(':', $sealedSecret);
         if (preg_match('/^v\d+\z/', $parts[0]) !== 1) {
@@ -146,6 +113,11 @@ final class AdminKey
         }
         if (count($parts) !== 5 || preg_match('/^\d+:\d+\z/', $parts[1] . ':' . $parts[2]) !== 1) {
             throw new InvalidArgumentException('Malformed sealed secret (expected "v2:ops:mem:salt:blob")');
+        }
+        if (!Primitives::profileIsWithinBounds((int) $parts[1], (int) $parts[2])) {
+            throw new InvalidArgumentException(
+                "Sealed secret claims an Argon2id profile no version of SelfDataGuard writes ({$parts[1]} / {$parts[2]} bytes)"
+            );
         }
 
         return [(int) $parts[1], (int) $parts[2], $parts[3], $parts[4]];

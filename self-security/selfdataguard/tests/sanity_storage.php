@@ -16,12 +16,15 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
+use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 
 $failures = 0;
@@ -114,15 +117,15 @@ section('Vault — duplicate insert protection');
 try {
     $storage->saveVault($record);
     ko('duplicate saveVault should throw');
-} catch (RuntimeException) {
-    ok('duplicate saveVault throws RuntimeException');
+} catch (VaultExistsException) {
+    ok('duplicate saveVault throws VaultExistsException — an insert never replaces a vault');
 }
 
 // -----------------------------------------------------------------------------
 
 section('Vault — update after password rotation');
 
-$rotated = $vault->changePassword($record, $unlocked, 'new-much-stronger-passphrase');
+$rotated = $vault->setLock($record, $unlocked, Lock::Password, 'new-much-stronger-passphrase');
 $storage->updateVault($rotated);
 ok('updateVault accepted');
 
@@ -160,7 +163,7 @@ foreach ($plaintexts as $name => $value) {
     ];
 }
 
-$storage->saveFields('user-cosmo', $encrypted);
+$storage->saveFields($record->generation(), $encrypted);
 ok('saveFields batch (4 fields)');
 
 $loaded = $storage->loadFields('user-cosmo');
@@ -190,7 +193,7 @@ $updated = [
         'blindIndex' => BlindIndex::compute('new@example.com', $blindKey, 'email'),
     ],
 ];
-$storage->saveFields('user-cosmo', $updated);
+$storage->saveFields($record->generation(), $updated);
 $reloaded = $storage->loadFields('user-cosmo', ['email']);
 FieldCrypter::decrypt($unlocked, 'email', $reloaded['email']) === 'new@example.com'
     ? ok('upsert overwrites existing field')
@@ -206,7 +209,7 @@ $bobRecord = $bobResult['record'];
 $bobUnlocked = $bobResult['unlocked'];
 
 $storage->saveVault($bobRecord);
-$storage->saveFields('user-bob', [
+$storage->saveFields($bobRecord->generation(), [
     'email' => [
         'ciphertext' => FieldCrypter::encrypt($bobUnlocked, 'email', 'bob@example.com'),
         'blindIndex' => BlindIndex::compute('bob@example.com', $blindKey, 'email'),
@@ -215,17 +218,17 @@ $storage->saveFields('user-bob', [
 
 // Lookup by blind index
 $lookupNew = BlindIndex::compute('new@example.com', $blindKey, 'email');
-$found = $storage->findUserIdByBlindIndex('email', $lookupNew);
-$found === 'user-cosmo' ? ok('findUserIdByBlindIndex → cosmo by his email index') : ko("got: " . var_export($found, true));
+$found = $storage->findUserIdsByIndex('email', $lookupNew);
+$found === ['user-cosmo'] ? ok('findUserIdsByIndex → cosmo by his email index') : ko("got: " . var_export($found, true));
 
 $lookupBob = BlindIndex::compute('bob@example.com', $blindKey, 'email');
-$foundBob = $storage->findUserIdByBlindIndex('email', $lookupBob);
-$foundBob === 'user-bob' ? ok('findUserIdByBlindIndex → bob by his email index') : ko('bob lookup failed');
+$foundBob = $storage->findUserIdsByIndex('email', $lookupBob);
+$foundBob === ['user-bob'] ? ok('findUserIdsByIndex → bob by his email index') : ko('bob lookup failed');
 
 // Miss
 $missLookup = BlindIndex::compute('nobody@example.com', $blindKey, 'email');
-$miss = $storage->findUserIdByBlindIndex('email', $missLookup);
-$miss === null ? ok('findUserIdByBlindIndex returns null on miss') : ko('false hit on miss');
+$miss = $storage->findUserIdsByIndex('email', $missLookup);
+$miss === [] ? ok('findUserIdsByIndex returns no account on a miss') : ko('false hit on miss');
 
 // -----------------------------------------------------------------------------
 
@@ -255,7 +258,7 @@ echo "    (DB file size: {$dumpLen} bytes — fully encrypted user data)\n";
 
 section('Delete — cascade vault + fields');
 
-$storage->deleteVault('user-cosmo');
+$storage->deleteVault($record->generation());
 
 !$storage->vaultExists('user-cosmo') ? ok('deleteVault removes the vault') : ko('vault still exists');
 
@@ -269,7 +272,7 @@ $storage->vaultExists('user-bob') ? ok('other users untouched') : ko('cascade wa
 
 section('Edge — empty fields batch is no-op');
 
-$storage->saveFields('user-bob', []);
+$storage->saveFields($bobRecord->generation(), []);
 ok('saveFields([]) does not throw');
 
 // -----------------------------------------------------------------------------
@@ -278,11 +281,12 @@ section('Atomicity — an error midway leaves nothing written and no transaction
 
 $pdo = new PDO('sqlite::memory:');
 $own = new SqliteAdapter($pdo);
-$own->saveVault((new UserVault())->register('user-tx', 'tx-password-0001')['record']);
+$tx = (new UserVault())->register('user-tx', 'tx-password-0001')['record'];
+$own->saveVault($tx);
 
 $thrown = false;
 try {
-    $own->saveFields('user-tx', ['first' => ['ciphertext' => 'c1'], 'second' => []]);
+    $own->saveFields($tx->generation(), ['first' => ['ciphertext' => 'c1'], 'second' => []]);
 } catch (RuntimeException) {
     $thrown = true;
 }
@@ -299,10 +303,10 @@ $own->loadFields('user-tx') === []
 section('Nesting — inside the caller\'s transaction, the caller decides');
 
 $pdo->beginTransaction();
-$own->saveFields('user-tx', ['kept' => ['ciphertext' => 'k1']]);
+$own->saveFields($tx->generation(), ['kept' => ['ciphertext' => 'k1']]);
 $thrown = false;
 try {
-    $own->saveFields('user-tx', ['bad' => []]);
+    $own->saveFields($tx->generation(), ['bad' => []]);
 } catch (RuntimeException) {
     $thrown = true;
 }
@@ -316,7 +320,7 @@ array_keys($own->loadFields('user-tx')) === ['kept']
     : ko('unexpected fields after commit', implode(',', array_keys($own->loadFields('user-tx'))));
 
 $pdo->beginTransaction();
-$own->saveFields('user-tx', ['rolled' => ['ciphertext' => 'r1']]);
+$own->saveFields($tx->generation(), ['rolled' => ['ciphertext' => 'r1']]);
 $pdo->rollBack();
 !array_key_exists('rolled', $own->loadFields('user-tx'))
     ? ok('the caller rolls back: our write goes with it')
@@ -332,7 +336,7 @@ $loaded = $own->loadVault('user-phrase');
 $loaded->wrapPhrase?->toBase64() === $withPhrase['record']->wrapPhrase->toBase64()
     ? ok('saveVault() then loadVault() round-trips wrap_phrase')
     : ko('wrap_phrase lost on insert');
-$own->updateVault((new UserVault())->removePassphrase($loaded, $withPhrase['unlocked']));
+$own->updateVault((new UserVault())->removeLock($loaded, $withPhrase['unlocked'], Lock::Passphrase));
 !$own->loadVault('user-phrase')->hasPassphrase()
     ? ok('updateVault() writes wrap_phrase too (here: its removal)')
     : ko('updateVault() left the old wrap_phrase in place');
@@ -344,7 +348,7 @@ section('A caller transaction opened in plain SQL — PDO before 8.4 does not se
 $pdo->exec('BEGIN');
 $thrown = null;
 try {
-    $own->saveFields('user-tx', ['raw' => ['ciphertext' => 'r1']]);
+    $own->saveFields($tx->generation(), ['raw' => ['ciphertext' => 'r1']]);
 } catch (Throwable $e) {
     $thrown = $e;
 }
@@ -363,7 +367,7 @@ try {
 
 section('Committed, and the write lock released, for every connection');
 
-$storage->saveFields('user-bob', ['seen' => ['ciphertext' => 's1']]);
+$storage->saveFields($bobRecord->generation(), ['seen' => ['ciphertext' => 's1']]);
 $second = new PDO("sqlite:{$dbPath}");
 $second->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $second->setAttribute(PDO::ATTR_TIMEOUT, 1);
@@ -385,13 +389,13 @@ $uv = new UserVault();
 $first = $uv->register('user-cas', 'cas-password-0001');
 $own->saveVault($first['record']);
 $stale = $own->loadVault('user-cas');
-$own->deleteVault('user-cas');
+$own->deleteVault($first['record']->generation());
 $second = $uv->register('user-cas', 'cas-password-0002');
 $own->saveVault($second['record']);
 
 $thrown = null;
 try {
-    $own->updateVault($uv->changePassword($stale, $first['unlocked'], 'cas-password-0003'));
+    $own->updateVault($uv->setLock($stale, $first['unlocked'], Lock::Password, 'cas-password-0003'));
 } catch (StaleVaultException $e) {
     $thrown = $e;
 }
@@ -409,7 +413,7 @@ try {
 $thrown = null;
 try {
     $own->updateVault($second['record']->withWrapPwd($second['record']->wrapPwd, new DateTimeImmutable()));
-    $own->deleteVault('user-cas');
+    $own->deleteVault($second['record']->generation());
     $own->updateVault($second['record']);
 } catch (VaultNotFoundException $e) {
     $thrown = $e;
@@ -424,13 +428,13 @@ $rv = (new UserVault())->register('user-rev', 'rev-password-0001', null, 'cheval
 $own->saveVault($rv['record']);
 $readA = $own->loadVault('user-rev');
 $readB = $own->loadVault('user-rev');
-$own->updateVault((new UserVault())->changePassword($readA, $rv['unlocked'], 'rev-password-0002'));
-$own->loadVault('user-rev')->revision === 1
+$own->updateVault((new UserVault())->setLock($readA, $rv['unlocked'], Lock::Password, 'rev-password-0002')) === 1
+    && $own->loadVault('user-rev')->revision === 1
     ? ok('an update bumps the revision')
     : ko('revision not bumped', (string) $own->loadVault('user-rev')->revision);
 $thrown = null;
 try {
-    $own->updateVault((new UserVault())->removePassphrase($readB, $rv['unlocked']));
+    $own->updateVault((new UserVault())->removeLock($readB, $rv['unlocked'], Lock::Passphrase));
 } catch (StaleVaultException $e) {
     $thrown = $e;
 }
@@ -451,12 +455,14 @@ section('Generation — checked inside the write, not only before it');
 
 $gen = (new UserVault())->register('user-genw', 'genw-password-001');
 $own->saveVault($gen['record']);
-$otherSalt = random_bytes(16);
+$other = new VaultGeneration('user-genw', random_bytes(16));
 $refused = [];
 foreach ([
-    'saveFields'       => static fn () => $own->saveFields('user-genw', ['f' => ['ciphertext' => 'c']], $otherSalt),
-    'saveEscrowFields' => static fn () => $own->saveEscrowFields('user-genw', ['e' => 'c'], $otherSalt),
-    'deleteArchive'    => static fn () => $own->deleteArchive('user-genw', 'no-such-archive', $otherSalt),
+    'saveFields'         => static fn () => $own->saveFields($other, ['f' => ['ciphertext' => 'c']]),
+    'saveEscrowFields'   => static fn () => $own->saveEscrowFields($other, ['e' => 'c']),
+    'deleteArchive'      => static fn () => $own->deleteArchive($other, 'no-such-archive'),
+    'deleteVault'        => static fn () => $own->deleteVault($other),
+    'replaceWithArchive' => static fn () => $own->replaceWithArchive($other, (new UserVault())->register('user-genw', 'genw-password-002')['record']),
 ] as $name => $call) {
     try {
         $call();
@@ -464,16 +470,54 @@ foreach ([
         $refused[] = $name;
     }
 }
-count($refused) === 3
+count($refused) === 5
     ? ok('a write naming another vault\'s salt is refused: ' . implode(', ', $refused))
     : ko('a write went through with the wrong salt', implode(', ', $refused));
 $own->loadFields('user-genw') === [] && $own->loadEscrowFields('user-genw') === [] && !$pdo->inTransaction()
     ? ok('nothing was written, no transaction left open')
     : ko('a refused write left data or a transaction behind');
-$own->saveFields('user-genw', ['f' => ['ciphertext' => 'c']], $gen['record']->userSalt);
+$own->vaultExists('user-genw') && $own->listArchives('user-genw') === []
+    ? ok('the vault is still there, and nothing was archived')
+    : ko('a refused deleteVault or replaceWithArchive changed the vault');
+$own->saveFields($gen['record']->generation(), ['f' => ['ciphertext' => 'c']]);
 array_keys($own->loadFields('user-genw')) === ['f']
     ? ok('the right salt writes')
     : ko('the right salt was refused');
+
+$thrown = null;
+try {
+    $own->saveFields(new VaultGeneration('user-nobody', random_bytes(16)), ['f' => ['ciphertext' => 'c']]);
+} catch (VaultNotFoundException $e) {
+    $thrown = $e;
+}
+$thrown !== null && !$own->vaultExists('user-nobody') && $own->loadFields('user-nobody') === []
+    ? ok('a write for a userId without a live vault is VaultNotFoundException, not an orphan field')
+    : ko('a field was written for a userId that holds no vault');
+
+// -----------------------------------------------------------------------------
+section('replaceWithArchive — archives exactly the generation it is given');
+
+$g1 = (new UserVault())->register('user-reenrol', 'reenrol-password-01');
+$own->saveVault($g1['record']);
+$g2 = (new UserVault())->register('user-reenrol', 'reenrol-password-02');
+$g3 = (new UserVault())->register('user-reenrol', 'reenrol-password-03');
+$own->replaceWithArchive($g1['record']->generation(), $g2['record']);
+$thrown = null;
+try {
+    $own->replaceWithArchive($g1['record']->generation(), $g3['record']);
+} catch (StaleVaultException $e) {
+    $thrown = $e;
+}
+$thrown !== null
+    && count($own->listArchives('user-reenrol')) === 1
+    && hash_equals($g2['record']->userSalt, $own->loadVault('user-reenrol')->userSalt)
+    ? ok('a second re-enrolment naming the same generation is refused: one archive, the first new vault stays')
+    : ko('a second re-enrolment archived the vault the first one made');
+
+$own->deleteVault($g2['record']->generation());
+$own->eraseAccount('user-reenrol') === 1 && $own->listArchives('user-reenrol') === []
+    ? ok('eraseAccount() erases the archives of a userId left without a live vault')
+    : ko('eraseAccount() left archives behind, or miscounted');
 
 // -----------------------------------------------------------------------------
 

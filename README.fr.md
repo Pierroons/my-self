@@ -24,7 +24,7 @@ ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.12.5** — bibliothèque + implémentation déployée |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.6.2** — documenté, clé en hexadécimal |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.6.2** — disponible, trois serrures, l'archive au niveau 3, un séquestre lié à son compte |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.7.0** — disponible, trois serrures, un coffre scellé, un séquestre lu par une cérémonie témoignée |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — droit français en vigueur (LEGI), textes UE/CEDH, jurisprudence administrative |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.3 bêta** — plus de 1 800 ressources officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.6.1** — votants liés qui ne pèsent pas plus qu'un seul, convalescence, motif de vote, ban gradué tracé au journal ; 2 mécanismes pas encore codés |

@@ -13,18 +13,25 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
+require __DIR__ . '/storage_doubles.php';
+require __DIR__ . '/ceremony_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
-use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
-use Pierroons\SelfDataGuard\Storage\StorageInterface;
-use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
+use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 $failures = 0;
@@ -187,7 +194,7 @@ $cosmoStill === 'user-cosmo' ? ok('cosmo still findable after bob registered') :
 
 section('Password rotation via façade');
 
-$dg->changePassword($session2, 'new-much-stronger-passphrase');
+$dg->setLock($session2, Lock::Password, 'new-much-stronger-passphrase');
 
 $sessionNew = $dg->loginWithPassword('user-cosmo', 'new-much-stronger-passphrase');
 $plain2 = $dg->getFields($sessionNew);
@@ -206,7 +213,7 @@ try {
 
 section('Memorized rotation via façade');
 
-$dg->changeMemorized($sessionNew, 'autumn-leaves-quiet');
+$dg->setLock($sessionNew, Lock::Memorized, 'autumn-leaves-quiet');
 
 $sessionMem = $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
 $plain3 = $dg->getFields($sessionMem);
@@ -215,7 +222,7 @@ $plain3['email'] === 'alice@example.com'
     : ko('memorized rotation broke recovery');
 
 // Remove memorized recovery
-$dg->changeMemorized($sessionMem, null);
+$dg->removeLock($sessionMem, Lock::Memorized);
 try {
     $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
     ko('login by memorized should fail after removal');
@@ -251,7 +258,7 @@ $plain4 = $dg->getFields($sessionPwdAfter);
 
 section('Delete user');
 
-$dg->delete('user-cosmo');
+$dg->delete($sessionPwdAfter->generation());
 !$dg->userExists('user-cosmo') ? ok('delete removes vault') : ko('delete failed');
 
 try {
@@ -321,16 +328,18 @@ section('Generation — a session from a replaced vault is refused everywhere');
 $admin = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the facade bench');
 $stale = $dg->register('user-gen', 'gen-password-0001', 'gen-memorized');
 $dg->setFields($stale, ['a' => '1']);
-$dg->delete('user-gen');
-$dg->register('user-gen', 'gen-password-0002', 'gen-memorized');
+$dg->delete($stale->generation());
+$fresh = $dg->register('user-gen', 'gen-password-0002', 'gen-memorized');
 
 $guarded = [
     'setFields'              => static fn () => $dg->setFields($stale, ['a' => '2']),
     'getFields'              => static fn () => $dg->getFields($stale),
     'setEscrowFields'        => static fn () => $dg->setEscrowFields($stale, $admin['publicKey'], ['c' => 'd']),
     'getEscrowFieldsAsUser'  => static fn () => $dg->getEscrowFieldsAsUser($stale),
-    'changePassword'         => static fn () => $dg->changePassword($stale, 'gen-password-0003'),
-    'changePassphrase'       => static fn () => $dg->changePassphrase($stale, $PH1),
+    'changePassword'         => static fn () => $dg->setLock($stale, Lock::Password, 'gen-password-0003'),
+    'changePassphrase'       => static fn () => $dg->setLock($stale, Lock::Passphrase, $PH1),
+    'hasEscrow'              => static fn () => $dg->hasEscrow($stale),
+    'listArchives'           => static fn () => $dg->listArchives($stale),
 ];
 $refused = [];
 foreach ($guarded as $name => $call) {
@@ -343,7 +352,7 @@ foreach ($guarded as $name => $call) {
 $refused === array_keys($guarded)
     ? ok('StaleVaultException on ' . implode(', ', $refused))
     : ko('a stale session went through', implode(', ', array_diff(array_keys($guarded), $refused)));
-!$dg->hasEscrow('user-gen')
+!$dg->hasEscrow($fresh)
     ? ok('no escrow was created under the old master key')
     : ko('an escrow was sealed with a stale session');
 
@@ -356,15 +365,22 @@ $l3old = $dg->register('user-l3', 'l3-password-0001', 'l3-memorized', $PH1);
 $dg->setFields($l3old, ['email' => $EMAIL, 'note' => 'ancienne note'], indexed: ['email']);
 $dg->setEscrowFields($l3old, $admin['publicKey'], ['contact' => 'contact de secours']);
 
-$l3 = $dg->reEnroll('user-l3', 'l3-password-0002', 'l3-memorized-new', $PH2);
+$replaced = $dg->generationOf('user-l3');
+$l3 = $dg->reEnroll($replaced, 'l3-password-0002', 'l3-memorized-new', $PH2);
 $current = $l3['unlocked'];
 $archiveId = $l3['archiveId'];
 is_string($archiveId) && $dg->getFields($current) === []
     ? ok('reEnroll() returns the archive id and an empty new vault')
     : ko('reEnroll() did not set the old vault aside');
-($dg->listArchives('user-l3')[0]['id'] ?? null) === $archiveId
-    ? ok('listArchives() lists it')
-    : ko('the archive is not listed');
+try {
+    $dg->reEnroll($replaced, 'l3-password-0009');
+    ko('a second reEnroll() naming the replaced vault archived the new one');
+} catch (StaleVaultException) {
+    ok('a second reEnroll() naming the same generation is refused — no second archive, the new vault stays');
+}
+array_column($dg->listArchives($current), 'id') === [$archiveId]
+    ? ok('listArchives() lists it, from a session on the current vault')
+    : ko('the archive is not listed, or a second one was made');
 
 // -----------------------------------------------------------------------------
 
@@ -387,18 +403,15 @@ $opened = $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
 $read = $dg->readArchive($opened);
 ($read['private'] ?? null) == ['email' => $EMAIL, 'note' => 'ancienne note']
     && ($read['escrow'] ?? null) === ['contact' => 'contact de secours']
-    && ($read['indexed'] ?? null) === ['email']
-    ? ok('the old passphrase opens it: private fields, escrow, and which fields were indexed')
+    && !isset($read['indexed'])
+    ? ok('the old passphrase opens it: private fields and escrow — no index list an SQL writer could extend')
     : ko('readArchive() returned something else', json_encode($read));
 
-try {
-    $dg->setFields($opened->session(), ['x' => 'y']);
-    ko('an archive session wrote into the live vault');
-} catch (StaleVaultException) {
-    ok('an archive session handed to a write path by hand is refused');
-}
+!method_exists($opened, 'session')
+    ? ok('an opened archive hands out no session to write with')
+    : ko('an opened archive still hands out its session');
 
-$dg->setFields($current, $read['private'], indexed: $read['indexed']);
+$dg->setFields($current, $read['private'], indexed: ['email']);
 $dg->findUserByField('email', $EMAIL) === 'user-l3'
     && ($dg->getFields($current)['note'] ?? null) === 'ancienne note'
     ? ok('restored into the new vault, re-indexed: the old email finds the account again')
@@ -442,71 +455,99 @@ $setOps = static fn (int $ops) => $pdoForProfile->prepare(
 )->execute([':ops' => $ops, ':id' => $archiveId]);
 $setOps(Primitives::ARGON2_OPSLIMIT + 1);
 try {
-    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
-    ko('the stored profile is ignored — the archive opened under the current one');
-} catch (WrongSecretException) {
-    ok('with another profile recorded, the same secret no longer opens it: the stored profile is the one used');
+    ($dg->readArchive($dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1))['private'] ?? []) !== []
+        ? ok('a profile changed in the archive package: the archive opens under the profile its seal vouches for')
+        : ko('the archive opened under the vouched profile, and read nothing');
+} catch (Throwable $e) {
+    ko('a profile changed in the archive package closed the archive, though its seal vouches for the true one', $e->getMessage());
 }
+
+// An archive written by this version is sealed: one without its seal had it removed.
+$archiveSeal = (string) $pdoForProfile->query(
+    "SELECT json_extract(package, '$.vault.profile_seal') FROM selfdataguard_archives WHERE archive_id = '{$archiveId}'"
+)->fetchColumn();
+$setArchiveSeal = static fn (?string $seal) => $pdoForProfile->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.vault.profile_seal\', :s) WHERE archive_id = :id'
+)->execute([':s' => $seal, ':id' => $archiveId]);
+$setArchiveSeal(null);
+try {
+    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+    ko('an archive of this version opened without its seal, as one from before 0.7.0 would');
+} catch (VaultTamperedException $e) {
+    str_contains($e->getMessage(), 'removed')
+        ? ok('an archive of this version whose seal was removed is tampering, not an archive from before 0.7.0')
+        : ko('refused, but not as a removed seal', $e->getMessage());
+} catch (Throwable $e) {
+    ko('an archive of this version opened without its seal, as one from before 0.7.0 would', get_class($e));
+}
+$setArchiveSeal($archiveSeal);
 $setOps(Primitives::ARGON2_OPSLIMIT);
+$dg->readArchive($dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1))['private'] !== []
+    ? ok('the profile and the seal put back, the archive opens again')
+    : ko('the archive did not reopen once its profile and seal were put back');
+
+$archivedRecov = (string) $pdoForProfile->query(
+    "SELECT json_extract(package, '$.vault.wrap_recov') FROM selfdataguard_archives WHERE archive_id = '{$archiveId}'"
+)->fetchColumn();
+$setArchiveRecov = static fn (?string $wrap) => $pdoForProfile->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.vault.wrap_recov\', :w) WHERE archive_id = :id'
+)->execute([':w' => $wrap, ':id' => $archiveId]);
+$listed = static fn (): array => array_column($dg->listArchives($current), 'locks', 'id')[$archiveId] ?? [];
+$archivedRecov !== '' && in_array(Lock::Memorized, $listed(), true)
+    ? ok('fixture: the archive holds a memorized lock, and the listing says so')
+    : ko('fixture: no memorized lock in the archive — the checks below would prove nothing');
+$setArchiveRecov(null);
+!in_array(Lock::Memorized, $listed(), true)
+    ? ok('the listing reads the locks from the archive itself: an envelope removed no longer shows')
+    : ko('the listing still announces an envelope the archive no longer holds');
+try {
+    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+    ko('an archive opened with an envelope removed from it');
+} catch (VaultTamperedException) {
+    ok('an envelope removed from an archive is tampering: the archive does not open by another lock around it');
+}
+$setArchiveRecov($archivedRecov);
 
 // -----------------------------------------------------------------------------
 
 section('The admin reaches the archived escrow; deletion is explicit');
 
-$sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], 'admin passphrase for the facade bench');
-$dg->getArchiveEscrowFieldsAsAdmin('user-l3', $archiveId, $sk, $admin['publicKey']) === ['contact' => 'contact de secours']
-    ? ok('getArchiveEscrowFieldsAsAdmin() reads the backup memo of the archive')
+benchCeremony($storage)->readArchiveEscrow(
+    'user-l3', $archiveId, 'case-l3', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
+) === ['contact' => 'contact de secours']
+    ? ok('the ceremony reads the backup memo of the archive')
     : ko('the admin cannot reach the archived escrow');
-sodium_memzero($sk);
 
+$openedBefore = $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+$again = $dg->reEnroll($current->generation(), 'l3-password-0003');
 try {
-    $dg->deleteArchive($l3old, $archiveId);
-    ko('a session on the replaced vault deleted the archive');
+    $dg->deleteArchive($openedBefore);
+    ko('an archive opened under a vault replaced since was deleted');
 } catch (StaleVaultException) {
-    ok('deleteArchive() refuses a session on the replaced vault');
+    ok('deleteArchive() refuses an archive opened under a vault replaced since');
 }
-$dg->delete('user-l3');
-count($dg->listArchives('user-l3')) === 1
+$reopened = $dg->openArchive($again['unlocked'], $archiveId, Lock::Passphrase, $PH1);
+$dg->deleteArchive($reopened) && array_column($storage->listArchives('user-l3'), 'id') === [$again['archiveId']]
+    ? ok('deleteArchive() deletes the archive it was given, opened with one of its old locks')
+    : ko('deleteArchive() did not delete that archive, or deleted another');
+$dg->delete($again['unlocked']->generation());
+count($storage->listArchives('user-l3')) === 1
     ? ok('delete() leaves the archive')
     : ko('delete() took the archive with it');
-$dg->purgeArchives('user-l3') === 1 && $dg->listArchives('user-l3') === []
-    ? ok('purgeArchives() is the explicit erasure')
-    : ko('purgeArchives() did not erase it');
+$dg->eraseAccount('user-l3') === 1 && $storage->listArchives('user-l3') === []
+    ? ok('eraseAccount() is the explicit erasure, with no live vault left')
+    : ko('eraseAccount() did not erase it');
 
 // -----------------------------------------------------------------------------
 
 section('A storage that drops wrap_phrase is caught, not trusted');
 
-/** Delegates everything to a real storage; the fakes below override one or two methods. */
-abstract class DelegatingStorage implements StorageInterface
-{
-    public function __construct(protected readonly StorageInterface $inner) {}
-    public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r); }
-    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r); }
-    public function loadVault(string $u): VaultRecord { return $this->inner->loadVault($u); }
-    public function findVault(string $u): ?VaultRecord { return $this->inner->findVault($u); }
-    public function vaultExists(string $u): bool { return $this->inner->vaultExists($u); }
-    public function deleteVault(string $u): void { $this->inner->deleteVault($u); }
-    public function saveFields(string $u, array $f, ?string $s = null): void { $this->inner->saveFields($u, $f, $s); }
-    public function loadFields(string $u, array $n = []): array { return $this->inner->loadFields($u, $n); }
-    public function findUserIdByBlindIndex(string $f, string $b): ?string { return $this->inner->findUserIdByBlindIndex($f, $b); }
-    public function saveEscrow(EscrowRecord $r, ?string $s = null): void { $this->inner->saveEscrow($r, $s); }
-    public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
-    public function saveEscrowFields(string $u, array $f, ?string $s = null): void { $this->inner->saveEscrowFields($u, $f, $s); }
-    public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
-    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r); }
-    public function listArchives(string $u): array { return $this->inner->listArchives($u); }
-    public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
-    public function deleteArchive(string $u, string $id, ?string $s = null): bool { return $this->inner->deleteArchive($u, $id, $s); }
-    public function purgeArchives(string $u): int { return $this->inner->purgeArchives($u); }
-}
-
 /** A StorageInterface implementation that drops wrap_phrase on every write. */
 final class ForgetfulStorage extends DelegatingStorage
 {
     public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r->withWrapPhrase(null, $r->updatedAt)); }
-    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
-    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function updateVault(VaultRecord $r): int { return $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($g, $r->withWrapPhrase(null, $r->updatedAt)); }
 }
 
 $forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey);
@@ -529,7 +570,7 @@ final class ProfileLosingStorage extends DelegatingStorage
             userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
             wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
             wrapPhrase: $r->wrapPhrase, revision: $r->revision,
-            kdfOpslimit: $r->kdfOpslimit + 1, kdfMemlimit: $r->kdfMemlimit
+            kdfOpslimit: $r->kdfOpslimit + 1, kdfMemlimit: $r->kdfMemlimit, profileSeal: $r->profileSeal
         );
     }
 }
@@ -553,7 +594,7 @@ final class ProfileBlindStorage extends DelegatingStorage
         return new VaultRecord(
             userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
             wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
-            wrapPhrase: $r->wrapPhrase, revision: $r->revision
+            wrapPhrase: $r->wrapPhrase, revision: $r->revision, profileSeal: $r->profileSeal
         );
     }
 }
@@ -570,19 +611,400 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('Two gestures on a lock: setLock() seals or replaces it, removeLock() takes it off');
+
+$locks = $dg->register('user-locks', 'locks-password-0001');
+$revision = static fn (): int => $storage->loadVault('user-locks')->revision;
+$dg->setLock($locks, Lock::Passphrase, $PH2);
+$dg->recover('user-locks', Lock::Passphrase, $PH2, 'locks-password-0002')->userId === 'user-locks'
+    ? ok('setLock() adds a lock the vault did not have, and it opens')
+    : ko('setLock() did not add the passphrase lock');
+$before = $revision();
+$dg->removeLock($locks, Lock::Memorized) === false && $revision() === $before
+    ? ok('removeLock() of a lock the vault does not have: false, and nothing written')
+    : ko('removing an absent lock wrote, or said it removed something');
+$dg->removeLock($locks, Lock::Passphrase) === true && $revision() === $before + 1
+    ? ok('removeLock() of a lock the vault has: true, one write')
+    : ko('removeLock() did not remove the passphrase lock');
+try {
+    $dg->recover('user-locks', Lock::Passphrase, $PH2, 'locks-password-0003');
+    ko('a removed passphrase still opens the vault');
+} catch (WrongSecretException) {
+    ok('the removed passphrase no longer opens the vault');
+}
+try {
+    $dg->removeLock($locks, Lock::Password);
+    ko('the password lock was removed');
+} catch (InvalidArgumentException) {
+    ok('the password lock is never removed — it is replaced with setLock()');
+}
+
+section('A profile changed in the database is tampering, not a wrong secret — and the operator repairs it');
+
+$PW_SEAL = 'seal-password-0001';
+$sealed  = $dg->register('user-seal', $PW_SEAL, 'seal-memorized', $PH1);
+$dg->setFields($sealed, ['note' => 'sous sceau']);
+$pdoSeal = new PDO("sqlite:{$dbPath}");
+$setRow  = static fn (string $set) => $pdoSeal->exec("UPDATE selfdataguard_vaults SET {$set} WHERE user_id = 'user-seal'");
+$sealBefore = (string) $pdoSeal->query("SELECT profile_seal FROM selfdataguard_vaults WHERE user_id = 'user-seal'")->fetchColumn();
+$refusal = static function (callable $call) {
+    $t0 = microtime(true);
+    try {
+        $call();
+        return 'opened';
+    } catch (VaultTamperedException $e) {
+        return microtime(true) - $t0 < 0.05 ? 'tampered' : 'tampered after a derivation';
+    } catch (Throwable $e) {
+        return get_class($e);
+    }
+};
+$threeLocks = static fn () => [
+    $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)),
+    $refusal(static fn () => $dg->loginWithMemorized('user-seal', 'seal-memorized')),
+    $refusal(static fn () => $dg->recover('user-seal', Lock::Passphrase, $PH1, 'seal-password-0002')),
+];
+
+$setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
+$threeLocks() === ['tampered', 'tampered', 'tampered']
+    ? ok('a profile changed within the bounds: password, memorized word and passphrase each say tampered, before any derivation')
+    : ko('a changed profile was taken for something else', implode(', ', $threeLocks()));
+$dg->repairProfile('user-seal') && !$dg->repairProfile('user-seal')
+    && ($dg->getFields($dg->loginWithPassword('user-seal', $PW_SEAL))['note'] ?? null) === 'sous sceau'
+    ? ok('repairProfile() finds the profile the seal vouches for, without the holder\'s secret: the vault opens as before')
+    : ko('the repair did not bring the vault back');
+
+$setRow('kdf_opslimit = 1');
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered' && $dg->repairProfile('user-seal')
+    ? ok('a profile out of bounds is refused before any derivation, and repaired the same way')
+    : ko('a profile out of bounds was not refused, or not repaired');
+
+$dg->register('user-seal-other', 'seal-other-password-01');
+$otherSeal = (string) $pdoSeal->query("SELECT profile_seal FROM selfdataguard_vaults WHERE user_id = 'user-seal-other'")->fetchColumn();
+$otherSeal !== ''
+    ? ok('fixture: the other account carries a seal to copy')
+    : ko('fixture: no seal to copy — the next check would prove nothing');
+$setRow("profile_seal = '{$otherSeal}'");
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
+    ? ok('a seal copied from another account does not vouch for this one')
+    : ko('a seal copied from another account was accepted');
+$setRow("profile_seal = '" . base64_encode(random_bytes(32)) . "'");
+try {
+    $dg->repairProfile('user-seal');
+    ko('a vault whose seal was changed too was repaired against nothing');
+} catch (VaultTamperedException) {
+    ok('a changed seal matches no published profile: repairProfile() says so instead of guessing');
+}
+
+$setRow('profile_seal = NULL');
+try {
+    $dg->sealProfile('user-seal');
+    ko('sealProfile() sealed a vault of this version whose seal was removed: it would vouch for whatever the row now says');
+} catch (VaultTamperedException $e) {
+    $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered' && str_contains($e->getMessage(), 'removed')
+        ? ok('a vault of this version without its seal opens to no one, and sealProfile() refuses it: the seal was removed, not never set')
+        : ko('a removed seal was not reported as such', $e->getMessage());
+}
+$setRow("profile_seal = '{$sealBefore}'");
+($dg->getFields($dg->loginWithPassword('user-seal', $PW_SEAL))['note'] ?? null) === 'sous sceau'
+    ? ok('the seal put back from a backup, the vault opens as before')
+    : ko('the vault did not reopen with its seal put back');
+
+$phraseBefore = (string) $pdoSeal->query("SELECT wrap_phrase FROM selfdataguard_vaults WHERE user_id = 'user-seal'")->fetchColumn();
+$pdoSeal->exec("UPDATE selfdataguard_vaults SET wrap_phrase = NULL WHERE user_id = 'user-seal'");
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
+    ? ok('an envelope removed in the database is tampering: the password, untouched, does not open around it')
+    : ko('an envelope was removed and the vault still opened, or failed as another error');
+$otherWrap = (string) $pdoSeal->query("SELECT wrap_pwd FROM selfdataguard_vaults WHERE user_id = 'user-seal-other'")->fetchColumn();
+$pdoSeal->prepare("UPDATE selfdataguard_vaults SET wrap_phrase = ? WHERE user_id = 'user-seal'")->execute([$otherWrap]);
+$refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)) === 'tampered'
+    ? ok('an envelope brought from another account is tampering, before any derivation')
+    : ko('an envelope from another account went unnoticed by the seal');
+$pdoSeal->prepare("UPDATE selfdataguard_vaults SET wrap_phrase = ? WHERE user_id = 'user-seal'")->execute([$phraseBefore]);
+
+$open = $dg->loginWithPassword('user-seal', $PW_SEAL);
+$setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
+try {
+    $dg->setLock($open, Lock::Password, 'seal-password-0003');
+    ko('a re-seal went ahead on a profile changed under an open session');
+} catch (VaultTamperedException) {
+    ok('a profile changed under an open session stops the re-seal: nothing is sealed under a profile the session never proved');
+}
+$dg->repairProfile('user-seal');
+
+$setRow('kdf_opslimit = ' . (Primitives::ARGON2_OPSLIMIT + 1));
+$archivesBefore = count($storage->listArchives('user-seal'));
+try {
+    $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
+    ko('a level 3 archived a vault whose seal does not hold: nothing could repair that archive');
+} catch (VaultTamperedException) {
+    count($storage->listArchives('user-seal')) === $archivesBefore
+        ? ok('a level 3 on a vault whose seal does not hold is refused before anything is archived: repairProfile() first')
+        : ko('the refused level 3 archived the vault anyway');
+}
+$dg->repairProfile('user-seal');
+$setRow('profile_seal = NULL');
+try {
+    $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
+    ko('a level 3 archived a vault without a seal');
+} catch (VaultTamperedException $e) {
+    str_contains($e->getMessage(), 'removed')
+        ? ok('a level 3 on a vault whose seal was removed is refused the same way')
+        : ko('refused, without naming the removed seal', $e->getMessage());
+}
+$setRow("profile_seal = '{$sealBefore}'");
+$l3 = $dg->reEnroll($dg->generationOf('user-seal'), 'seal-password-l3-01');
+($dg->readArchive($dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, $PW_SEAL))['private']['note'] ?? null) === 'sous sceau'
+    ? ok('sealed again, the level 3 goes through, and its archive opens under its seal')
+    : ko('the archive of a sealed vault did not open');
+
+$sealRecord = $storage->loadVault('user-seal');
+$sealed     = (new ReflectionMethod(ProfileSeal::class, 'message'))->invoke(null, $sealRecord, 4, 1 << 28);
+base64_decode(BlindIndex::compute($sealed, $blindKey, 'selfdataguard/profile-seal'))
+    !== ProfileSeal::of(ProfileSeal::key($blindKey), $sealRecord, 4, 1 << 28)
+    ? ok('the blind index of a field named after the seal domain is not a seal: the application cannot be made to compute one')
+    : ko('a blind index the application computes is a valid profile seal');
+BlindIndex::keyCheck($blindKey) !== base64_encode(hash_hmac('sha256', 'selfdataguard/blind-key-check', $blindKey, true))
+    ? ok('the key check is not the key BlindIndex derives for a field of its name: the database holds no field key')
+    : ko('the key check stored in the database is the field key of a field named after it');
+
+// -----------------------------------------------------------------------------
+
+section('A deleted account keeps its archives, and its name until they are erased');
+
+$reused = $dg->register('user-reuse', 'reuse-password-0001', null, $PH1);
+$dg->setFields($reused, ['iban' => 'FR76 PREMIER']);
+$l3r = $dg->reEnroll($dg->generationOf('user-reuse'), 'reuse-password-0002');
+$dg->delete($l3r['unlocked']->generation());
+try {
+    $dg->register('user-reuse', 'reuse-password-tiers');
+    ko('a name that still holds archives was registered again: they would open to the new holder with an old secret');
+} catch (VaultExistsException $e) {
+    str_contains($e->getMessage(), 'eraseAccount()')
+        ? ok('a name that still holds archives is not registered again, and the refusal names the operator\'s act')
+        : ko('refused, without naming the remedy', $e->getMessage());
+}
+$dg->eraseAccount('user-reuse') === 1
+    && $dg->listArchives($dg->register('user-reuse', 'reuse-password-tiers')) === []
+    ? ok('once the operator erases them, the name registers again, with no archive behind it')
+    : ko('the name did not register again after eraseAccount(), or archives were left');
+
+section('An indexed value names one account; a field declared shared names none');
+
+$owner = $dg->register('user-owner', 'owner-password-0001');
+$dg->setFields($owner, ['email' => 'owner@example.org'], indexed: ['email']);
+$squat = $dg->register('user-squat', 'squat-password-0001');
+try {
+    $dg->setFields($squat, ['email' => 'owner@example.org', 'note' => 'n'], indexed: ['email']);
+    ko('a second account indexed a value another account holds');
+} catch (DuplicateIndexException $e) {
+    $e->fields === ['email'] && $dg->getFields($squat) === []
+        ? ok('setFields(): a value another account holds is refused, the field named, nothing of the batch written')
+        : ko('wrong refusal', implode(',', $e->fields));
+}
+$dg->findUserByField('email', 'owner@example.org') === 'user-owner'
+    ? ok('the value still names its holder')
+    : ko('the refused write moved the value');
+
+// A field is shared or not for the whole database: the façade that shares
+// 'phone' opens a database of its own.
+$sharedStorage = new SqliteAdapter('sqlite::memory:');
+$dgShared = new SelfDataGuard($sharedStorage, $blindKey, sharedIndexes: ['phone']);
+$sharedOwner = $dgShared->register('user-owner', 'owner-password-0001');
+$sharedOther = $dgShared->register('user-squat', 'squat-password-0001');
+$dgShared->setFields($sharedOwner, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
+$dgShared->setFields($sharedOther, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
+$holders = $dgShared->findUsersByField('phone', '+33 6 00 00 00 01');
+sort($holders);
+$holders === ['user-owner', 'user-squat']
+    ? ok('a field declared shared takes the same value from two accounts, and findUsersByField() lists both')
+    : ko('the shared field did not list both holders', implode(',', $holders));
+try {
+    $dgShared->findUserByField('phone', '+33 6 00 00 00 01');
+    ko('a field declared shared was used to name one account');
+} catch (InvalidArgumentException) {
+    ok('findUserByField() refuses a field declared shared: it names no single account');
+}
+
+try {
+    new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
+    ko('a façade that shares a field opened a database where that field names one account');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'sharedIndexes')
+        ? ok('a façade given other shared fields than the database records is refused: one field, one rule')
+        : ko('refused for another reason', $e->getMessage());
+}
+$twoShared = new SqliteAdapter('sqlite::memory:');
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['phone', 'address']);
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['address', 'phone']) instanceof SelfDataGuard
+    ? ok('the same shared fields in another order are the same list')
+    : ko('the order of the shared fields was taken for another list');
+try {
+    new SelfDataGuard($storage, Primitives::randomBytes(32));
+    ko('a façade opened a database under another blind-index key: every vault would report tampering');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'not the one this database recorded')
+        ? ok('another blind-index key is refused when the façade is built, named as such — not as tampering, vault after vault')
+        : ko('another key refused for another reason', $e->getMessage());
+}
+
+/** A storage holding a value under two accounts, as a database written before 0.7.0 can. */
+final class DoubledIndexStorage extends DelegatingStorage
+{
+    public function findUserIdsByIndex(string $f, string $i): array { return ['user-a', 'user-b']; }
+}
+
+try {
+    (new SelfDataGuard(new DoubledIndexStorage($storage), $blindKey))->findUserByField('email', 'x@example.org');
+    ko('the lookup picked one of two accounts');
+} catch (AmbiguousLookupException) {
+    ok('findUserByField() refuses to pick when two accounts hold the value');
+}
+
+$ownerL3 = $dg->reEnroll($dg->generationOf('user-owner'), 'owner-password-0002');
+$dg->setFields($squat, ['email' => 'owner@example.org'], indexed: ['email']);
+$restored = $dg->readArchive($dg->openArchive($ownerL3['unlocked'], $ownerL3['archiveId'], Lock::Password, 'owner-password-0001'));
+try {
+    $dg->setFields($ownerL3['unlocked'], $restored['private'], indexed: ['email']);
+    ko('a restore re-indexed a value another account took meanwhile');
+} catch (DuplicateIndexException $e) {
+    $dg->setFields($ownerL3['unlocked'], $restored['private'], indexed: array_diff(['email'], $e->fields));
+    ($dg->getFields($ownerL3['unlocked'])['email'] ?? null) === 'owner@example.org'
+        ? ok('a restore whose value was taken during the level 3 names the field, then goes through without that index')
+        : ko('the restore without the taken index lost the field');
+}
+
+// -----------------------------------------------------------------------------
+
+section('A database that holds its settings is read, not written, when a façade opens it');
+
+$roPath = sys_get_temp_dir() . '/sdg-readonly-' . bin2hex(random_bytes(4)) . '.sqlite';
+copy($dbPath, $roPath);
+chmod($roPath, 0444);
+register_shutdown_function(static function () use ($roPath): void {
+    @chmod($roPath, 0644);
+    @unlink($roPath);
+});
+$roStore = new SqliteAdapter("sqlite:{$roPath}");
+try {
+    (new SelfDataGuard($roStore, $blindKey))->userExists('user-owner')
+        ? ok('a read-only copy of a database that recorded its key opens, and reads')
+        : ko('the read-only copy opened and lost an account');
+} catch (Throwable $e) {
+    ko('a read-only copy of a database that recorded its key does not open', $e->getMessage());
+}
+try {
+    $roStore->claimSetting(SelfDataGuard::SETTING_BLIND_KEY, 'another value') === BlindIndex::keyCheck($blindKey)
+        ? ok('claimSetting() on a database that holds the value reads it, and writes nothing')
+        : ko('claimSetting() returned another value than the one held');
+} catch (Throwable $e) {
+    ko('claimSetting() wrote to a database that already held the value', $e->getMessage());
+}
+$noClaim = new class ($storage) extends DelegatingStorage {
+    public function claimSetting(string $n, string $v): string
+    {
+        throw new RuntimeException("claimed {$n}");
+    }
+};
+try {
+    new SelfDataGuard($noClaim, $blindKey);
+    ok('a façade on a database that holds its settings claims nothing: it reads them');
+} catch (RuntimeException $e) {
+    ko('a façade claimed a setting the database already holds', $e->getMessage());
+}
+$writer = new PDO("sqlite:{$dbPath}");
+$writer->exec('BEGIN IMMEDIATE');
+$host = new PDO("sqlite:{$dbPath}");
+$host->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$host->beginTransaction();
+$host->query('SELECT 1 FROM selfdataguard_vaults LIMIT 1')->fetchAll();
+try {
+    (new SelfDataGuard(new SqliteAdapter($host), $blindKey))->userExists('user-owner')
+        ? ok('a façade built inside a host transaction, while another connection writes, opens at once')
+        : ko('the façade built inside a host transaction lost an account');
+} catch (Throwable $e) {
+    ko('a façade built inside a host transaction fell under another writer', $e->getMessage());
+} finally {
+    $host->rollBack();
+    $writer->exec('ROLLBACK');
+}
+
+section('The read-back compares the salt, the revision and every wrap; the userId is echoed');
+
+/** A storage with a case-insensitive user_id: asked for 'USER-CI', it answers with 'user-ci'. */
+final class CaseFoldingStorage extends DelegatingStorage
+{
+    public function loadVault(string $u): VaultRecord { return $this->inner->loadVault(strtolower($u)); }
+}
+
+$folding = new SelfDataGuard(new CaseFoldingStorage($storage), $blindKey);
+$folding->register('user-ci', 'case-password-0001');
+try {
+    $folding->loginWithPassword('USER-CI', 'case-password-0001');
+    ko('another spelling of the userId opened its vault');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'another userId than the one asked for')
+        ? ok('a vault returned for another userId than the one asked for is refused')
+        : ko('wrong failure', $e->getMessage());
+}
+
+/** An insert that another insert overwrites before the first one is read back — an upsert under a race. */
+final class OverwrittenInsertStorage extends DelegatingStorage
+{
+    public ?VaultRecord $overwriteWith = null;
+    public function saveVault(VaultRecord $r): void
+    {
+        $this->inner->saveVault($r);
+        if ($this->overwriteWith !== null) {
+            $this->inner->deleteVault($r->generation());
+            $this->inner->saveVault($this->overwriteWith);
+            $this->overwriteWith = null;
+        }
+    }
+}
+
+$overwritten = new OverwrittenInsertStorage($storage);
+$overwritten->overwriteWith = (new UserVault())->register('user-upsert', 'other-insert-0001')['record'];
+try {
+    (new SelfDataGuard($overwritten, $blindKey))->register('user-upsert', 'first-insert-0001');
+    ko('register() reported a vault the storage no longer holds');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'holds another vault than the one written')
+        ? ok('register(): an insert overwritten before its read-back is detected by its salt')
+        : ko('wrong failure', $e->getMessage());
+}
+
+/** An update that reports the next revision and writes nothing. */
+final class UpdateDroppingStorage extends DelegatingStorage
+{
+    public function updateVault(VaultRecord $r): int { return $r->revision + 1; }
+}
+
+$dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey);
+$droppedSession = $dropping->register('user-dropped', 'dropped-password-01');
+try {
+    $dropping->setLock($droppedSession, Lock::Password, 'dropped-password-02');
+    ko('a password change the storage never wrote was reported as stored');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'did not persist revision 1')
+        ? ok('setLock(): an update reported but never written is detected by its revision')
+        : ko('wrong failure', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
 section('A re-enrolment landing between the check and the write');
 
 /** Runs one re-enrolment of the userId right before the next field write reaches the storage. */
 final class RacingStorage extends DelegatingStorage
 {
     public ?Closure $before = null;
-    public function saveFields(string $u, array $f, ?string $s = null): void
+    public function saveFields(VaultGeneration $g, array $f): void
     {
         if ($this->before !== null) {
             ($this->before)();
             $this->before = null;
         }
-        $this->inner->saveFields($u, $f, $s);
+        $this->inner->saveFields($g, $f);
     }
 }
 
@@ -591,7 +1013,7 @@ $dgRace = new SelfDataGuard($racing, $blindKey);
 $oldSession = $dgRace->register('user-race', 'race-password-0001', 'race-memorized');
 $newSession = null;
 $racing->before = static function () use ($dgRace, &$newSession): void {
-    $newSession = $dgRace->reEnroll('user-race', 'race-password-0002', 'race-memorized-2')['unlocked'];
+    $newSession = $dgRace->reEnroll($dgRace->generationOf('user-race'), 'race-password-0002', 'race-memorized-2')['unlocked'];
 };
 try {
     $dgRace->setFields($oldSession, ['note' => 'written with the old key']);
@@ -627,7 +1049,7 @@ try {
 // still carries: a field row named "escrow" would share it.
 $planted = blobV2(
     'escrow key bytes',
-    $reserve->getMasterKey(),
+    heldKey($reserve),
     'reserved-name' . \Pierroons\SelfDataGuard\Escrow\EscrowVault::WRAP_AAD_SUFFIX
 )->toBase64();
 (new PDO("sqlite:{$dbPath}"))->prepare(
@@ -644,7 +1066,7 @@ try {
 // is refused before any AAD is built, so the format of the planted row is moot.
 $plantedV3 = Primitives::encrypt(
     'escrow key bytes',
-    $reserve->getMasterKey(),
+    heldKey($reserve),
     \Pierroons\SelfDataGuard\Escrow\EscrowVault::wrapAad('reserved-name')
 )->toBase64();
 (new PDO("sqlite:{$dbPath}"))->prepare(
@@ -667,7 +1089,7 @@ try {
     ko('getFields() refused the whole account for one reserved row', $e->getMessage());
 }
 try {
-    ['unlocked' => $neuf, 'archiveId' => $idReserve] = $dg->reEnroll('reserved-name', 'mot de passe réservé 2');
+    ['unlocked' => $neuf, 'archiveId' => $idReserve] = $dg->reEnroll($dg->generationOf('reserved-name'), 'mot de passe réservé 2');
     $lu = $dg->readArchive($dg->openArchive($neuf, $idReserve, Lock::Password, 'mot de passe réservé'));
     $lu['private'] === ['note' => 'une note']
         ? ok('an archive holding the reserved row still restores the other fields')

@@ -31,7 +31,7 @@ $log->append(['action' => 'escrow-unlock', 'target' => 'alice', 'seq_hint' => 1]
 $log->append(['action' => 'escrow-unlock-denied', 'reason' => 'no-open-litige', 'target' => 'bob']);
 $log->append(['action' => 'escrow-unlock', 'target' => 'carol']);
 
-$r = $log->verify();
+$r = $log->verifyUnanchored();
 $r['ok'] && $r['count'] === 3 ? ok('3 entries, chain + signatures valid') : ko('clean chain should verify', json_encode($r));
 
 $entries = $log->readAll();
@@ -48,7 +48,7 @@ $rec1['event']['target'] = 'mallory';                 // forge the target
 $lines[1] = json_encode($rec1, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 file_put_contents($path, implode("\n", $lines) . "\n");
 
-$r = $log->verify();
+$r = $log->verifyUnanchored();
 !$r['ok'] && $r['brokenAt'] === 1 ? ok('edited payload → chain broken at #1') : ko('tamper not detected', json_encode($r));
 
 // -----------------------------------------------------------------------------
@@ -64,7 +64,7 @@ $lines = file($path, FILE_IGNORE_NEW_LINES);
 unset($lines[1]);                                     // drop the middle entry
 file_put_contents($path, implode("\n", array_values($lines)) . "\n");
 
-$r = $log2->verify();
+$r = $log2->verifyUnanchored();
 !$r['ok'] ? ok('deleted middle entry → chain broken') : ko('deletion not detected');
 
 // -----------------------------------------------------------------------------
@@ -75,7 +75,7 @@ section('Wrong secret cannot verify');
 $log3 = new AuditLog($path, $secret);
 $log3->append(['action' => 'x']);
 $forged = new AuditLog($path, str_repeat('z', 32));
-!$forged->verify()['ok'] ? ok('verification fails under a different secret') : ko('HMAC not binding the secret');
+!$forged->verifyUnanchored()['ok'] ? ok('verification fails under a different secret') : ko('HMAC not binding the secret');
 
 @unlink($path);
 
@@ -123,7 +123,7 @@ if (posix_getuid() === 0) {
     }
     // And the consequence that made the defect severe: verify() must not answer ok.
     try {
-        (new AuditLog($cache, $secret32))->verify();
+        (new AuditLog($cache, $secret32))->verifyUnanchored();
         ko('verify() must not report a valid chain it could not read');
     } catch (RuntimeException) {
         ok('verify() refuses instead of reporting {ok: true, count: 0}');
@@ -173,7 +173,7 @@ $childFailures = 0;
 foreach ($procs as $proc) {
     $childFailures += proc_close($proc) === 0 ? 0 : 1;
 }
-$r = (new AuditLog($shared, $secret))->verify();
+$r = (new AuditLog($shared, $secret))->verifyUnanchored();
 $childFailures === 0 && $r['ok'] && $r['count'] === $writers * $each
     ? ok(sprintf('%d writers × %d appends: one unbroken chain of %d entries', $writers, $each, $r['count']))
     : ko('concurrent appends broke the chain', json_encode($r + ['child_failures' => $childFailures]));
@@ -188,7 +188,7 @@ $alog = new AuditLog($anchored, $secret);
 foreach (['un', 'deux', 'trois'] as $n) {
     $alog->append(['action' => 'escrow-unlock', 'target' => $n]);
 }
-$head = $alog->verify()['head'];
+$head = $alog->verifyUnanchored()['head'];
 $head !== null && $head['seq'] === 2 ? ok('verify() returns the head of the chain') : ko('no head returned', json_encode($head));
 $anchor = $head['seq'] . ':' . $head['hmac'];
 
@@ -197,7 +197,7 @@ $alog->verify($anchor)['ok'] ? ok('an intact log matches its anchor') : ko('inta
 // Cut the last entry: the remaining two still form a valid chain.
 $lines = file($anchored, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 file_put_contents($anchored, implode("\n", array_slice($lines, 0, 2)) . "\n");
-$r = $alog->verify();
+$r = $alog->verifyUnanchored();
 $r['ok'] && $r['count'] === 2
     ? ok('without the anchor, a cut tail still verifies (the limit the anchor closes)')
     : ko('the chain was expected to verify once cut', json_encode($r));
@@ -205,6 +205,14 @@ $r = $alog->verify($anchor);
 !$r['ok'] && $r['reason'] === 'truncated'
     ? ok('with the anchor, the cut tail is refused as truncated')
     : ko('a truncated log passed its anchor', json_encode($r));
+try {
+    $alog->append(['action' => 'after the cut'], $anchor);
+    ko('an entry was appended to a log that no longer holds the anchor it was given');
+} catch (RuntimeException $e) {
+    count(file($anchored, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)) === 2 && str_contains($e->getMessage(), 'truncated')
+        ? ok('append() given the anchor writes nothing to a log cut before it, and says how it lost it')
+        : ko('append() refused for another reason, or wrote', $e->getMessage());
+}
 
 unlink($anchored);
 $r = $alog->verify($anchor);
@@ -219,6 +227,106 @@ try {
     ok('a malformed anchor is refused');
 }
 
+section('A tail a crash leaves is quarantined; an entry that does not hold, or a break in the middle, is not');
+
+$qpath = tempnam(sys_get_temp_dir(), 'dg_audit_q_');
+register_shutdown_function(static fn () => @unlink($qpath));
+$qlog = new AuditLog($qpath, $secret);
+$qlog->append(['action' => 'a']);
+$qlog->append(['action' => 'b']);
+$lines = static fn (): int => count(file($qpath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES));
+$signedTwo = file_get_contents($qpath);
+
+file_put_contents($qpath, json_encode(['seq' => 2, 'ts' => 'x', 'event' => ['action' => 'forged'], 'prev' => 'p', 'hmac' => str_repeat('0', 64)]) . "\n", FILE_APPEND);
+$r = $qlog->verifyUnanchored();
+!$r['ok'] && $r['reason'] === 'chain' && $r['brokenAt'] === 2
+    ? ok('an entry whose signature does not hold, at the end: a break at line 2, not a tail')
+    : ko('a forged entry at the end was reported as something else', json_encode($r));
+try {
+    $qlog->append(['action' => 'over it']);
+    ko('an entry was appended over a forged one: the forgery would have been set aside in silence');
+} catch (RuntimeException) {
+    $lines() === 3
+        ? ok('nothing is appended over it: no crash writes an entry whose signature does not hold')
+        : ko('the refused append wrote to the log');
+}
+
+file_put_contents($qpath, $signedTwo . '{"seq":2,"ts":"cut sho');
+$r = $qlog->verifyUnanchored();
+!$r['ok'] && $r['reason'] === 'unsigned-tail' && $r['brokenAt'] === 2 && ($r['head']['seq'] ?? null) === 1
+    ? ok('a write cut short by a crash, without its end of line: unsigned-tail, from line 2, the head still the last signed entry')
+    : ko('a cut tail was not reported as such', json_encode($r));
+
+$act = $qlog->append(['action' => 'c']);
+$r = $qlog->verifyUnanchored();
+$act['seq'] === 3 && $r['ok'] && $r['quarantined'] === 1 && $r['count'] === 4 && $lines() === 5
+    ? ok('the next append ends the cut line, quarantines it in a signed entry, then writes its act: the log verifies, and says one line was set aside')
+    : ko('the cut tail was not quarantined on its own line', json_encode($r));
+try {
+    $qlog->append(['action' => 'c2']);
+    $qlog->verifyUnanchored()['ok']
+        ? ok('and the append after it goes on: the log is not broken for good')
+        : ko('the log broke after the quarantine of a cut line');
+} catch (RuntimeException $e) {
+    ko('the log broke after the quarantine of a cut line', $e->getMessage());
+}
+
+file_put_contents($qpath, '{"seq":5,"ts":"cut' . "\n" . '{"seq":5,"ts":"cut again', FILE_APPEND);
+$qlog->append(['action' => 'd']);
+$r = $qlog->verifyUnanchored();
+$r['ok'] && $r['quarantined'] === 3
+    ? ok('two crashes in a row — a cut line, then a cut write after it — are quarantined together')
+    : ko('two cut lines blocked the log', json_encode($r));
+
+try {
+    count($qlog->readAll()) === $r['count']
+        ? ok('readAll() lists the chain: the lines a quarantine sets aside are not entries, and do not stop it')
+        : ko('readAll() does not list the chain verify() walks');
+} catch (RuntimeException $e) {
+    ko('readAll() does not list the chain verify() walks', $e->getMessage());
+}
+
+$all = file($qpath, FILE_IGNORE_NEW_LINES);
+$all[2] = str_replace('cut sho', 'cut shx', $all[2]);
+file_put_contents($qpath, implode("\n", $all) . "\n");
+$r = $qlog->verifyUnanchored();
+!$r['ok'] && $r['reason'] === 'chain'
+    ? ok('a quarantined line changed afterwards breaks the chain: a second incident, not the first one again')
+    : ko('a change to quarantined bytes went unnoticed', json_encode($r));
+try {
+    $qlog->readAll();
+    ko('readAll() listed a log broken mid-chain');
+} catch (RuntimeException) {
+    ok('readAll() refuses a log broken mid-chain, as append() does');
+}
+
+$mpath = tempnam(sys_get_temp_dir(), 'dg_audit_m_');
+register_shutdown_function(static fn () => @unlink($mpath));
+$mlog = new AuditLog($mpath, $secret);
+foreach (['a', 'b', 'c'] as $action) {
+    $mlog->append(['action' => $action]);
+}
+$all = file($mpath, FILE_IGNORE_NEW_LINES);
+$all[1] = str_replace('"b"', '"B"', $all[1]);
+file_put_contents($mpath, implode("\n", $all) . "\n");
+try {
+    $mlog->append(['action' => 'over it']);
+    ko('an entry was appended over a break in the middle of the chain');
+} catch (RuntimeException $e) {
+    $r = $mlog->verifyUnanchored();
+    count(file($mpath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)) === 3 && !$r['ok'] && $r['reason'] === 'chain' && $r['brokenAt'] === 1
+        ? ok('a signed entry after a changed one is a break in the middle: never quarantined, nothing appended, reported at line 1')
+        : ko('the break in the middle was handled as a tail', json_encode($r));
+}
+
+try {
+    $qlog->append([AuditLog::RESERVED_KEY => 'quarantine', 'lines' => 1]);
+    ko('an application event carried the key the log reserves for itself');
+} catch (InvalidArgumentException) {
+    ok('an application event cannot carry the key the log reserves for itself');
+}
+
+// -----------------------------------------------------------------------------
 section('An entry that cannot be forced to disk is reported as failed');
 
 /**

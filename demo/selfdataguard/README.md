@@ -50,7 +50,9 @@ To use a different port: `PORT=9000 ./run.sh`.
   DATAGUARD_ADMIN_SEALED_FILE=storage/admin-recovery.sealed \
   DATAGUARD_AUDIT_LOG=storage/escrow-audit.log \
   DATAGUARD_AUDIT_SECRET="$(openssl rand -hex 32)" \
-  php ../../self-security/selfdataguard/bin/escrow-ceremony.php unlock <user> <litige_id>
+  DATAGUARD_ARBITER_FILE=arbitre-essai.php \
+  DATAGUARD_WITNESS_FILE=temoin-essai.php \
+  php ../../self-security/selfdataguard/bin/escrow-ceremony.php unlock <user> essai-local
   ```
 
   `DATAGUARD_AUDIT_SECRET` signs the escrow audit chain: the floor is **32 characters**
@@ -59,8 +61,32 @@ To use a different port: `PORT=9000 ./run.sh`.
   differs from its neighbours is never caught by a test, because a floor that is too low
   does not fail: it accepts.
 
-  (requires a `litiges` table with an open row for `<user>` — the calling application
-  wires its own; see the ceremony CLI header for details).
+  The arbiter and the witness belong to whoever runs the ceremony: SelfDataGuard ships
+  neither. Each is a PHP file that returns the object. For a try on your own demo base,
+  outside `storage/`, an arbiter that opens the one case you name, and no witness, chosen
+  by name — never what a deployment runs:
+
+  ```php
+  <?php // arbitre-essai.php
+  require __DIR__ . '/../../self-security/selfdataguard/src/autoload.php';
+  use Pierroons\SelfDataGuard\Escrow\{EscrowArbiter, Verdict};
+  return new class implements EscrowArbiter {
+      public function verdict(string $userId, string $caseRef, ?string $archiveId): Verdict
+      {
+          return $caseRef === 'essai-local' ? Verdict::Open : Verdict::Unknown;
+      }
+  };
+  ```
+
+  ```php
+  <?php // temoin-essai.php
+  require __DIR__ . '/../../self-security/selfdataguard/src/autoload.php';
+  return new Pierroons\SelfDataGuard\Escrow\NoHeadWitness();
+  ```
+
+  A witness of your own takes each head out of the machine and gives back the last one
+  it took: the ceremony refuses a log cut or rewritten since. The ceremony CLI header
+  says the rest.
 
 The demo uses PHP's built-in web server, no Apache/nginx required, no `composer install` needed.
 

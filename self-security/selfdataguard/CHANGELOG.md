@@ -3,14 +3,29 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.7.0] — 2026-10-27
 
 The AAD becomes a required argument, and a ciphertext bound to nothing says so. This is a hardening
 by construction, not the fix of an exploitable flaw: the uses that shared a flat AAD were sealed under
 different keys, and the only same-key case, a field named `escrow`, was already refused by name.
 
-The façade's signatures do not change. Code that calls `Primitives` or builds an `EncryptedBlob`
-directly does.
+Every write to a live vault now names the vault it is meant for. The check was optional: a storage
+implementation could leave it out, and a write from a replaced vault then landed in the new one, under
+a key that cannot read it. It is now a required parameter of the contract, and the façade reads back
+the salt, the revision and every wrap it wrote. An indexed value now names one account: a second
+account can no longer take the address of the first, and a lookup no longer picks between them.
+A vault's Argon2id profile and envelopes are sealed under a server key: changed in the database, they
+are reported as tampering before any derivation, instead of failing every lock as a wrong secret —
+which sent the holder down to level 3. A database records which blind-index key and which shared
+fields it was first opened with, and refuses a façade that brings others. No object that holds a key has an accessor for it any more. Two first escrow
+deposits made at once no longer lose one of them. A ceremony checks the audit log against the last head
+its witness took before it writes anything. A deleted account's name no longer brings its archives to
+whoever registers it next.
+
+Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInterface` or `HeadWitness`,
+or calls `reEnroll()`, `delete()`, `listArchives()`, `deleteArchive()`, `purgeArchives()`, `hasEscrow()`
+or `readArchive()` changes; `findUserByField()`, `setFields()`, `register()` and `reEnroll()` throw where
+they did not.
 
 ### Changed
 
@@ -26,6 +41,152 @@ directly does.
 - Each use binds its own domain: `vault-wrap`, `escrow-wrap`, `field`, `escrow-field`, and the sealed
   admin key. Each segment is prefixed with its length, so `(alice, escrow|email)` and
   `(alice, escrow, email)` no longer give the same bytes.
+- **BREAKING** — `StorageInterface`: every write to a live vault takes a `VaultGeneration` first
+  (`saveFields`, `createEscrow`, `replaceEscrow`, `saveEscrowFields`, `deleteVault`, `deleteArchive`), compared inside the
+  write's own transaction. It was `?string $vaultSalt = null`, and `null` skipped the check.
+  `replaceWithArchive(VaultGeneration $replacing, VaultRecord $new): string` archives exactly that
+  generation: two re-enrolments that read the same vault no longer both succeed, each archiving what
+  the other made. `updateVault()` returns the revision it stored; `saveVault()` throws
+  `VaultExistsException`, never an upsert.
+- **BREAKING** — `StorageInterface::saveEscrow()`, an upsert, becomes `createEscrow()` — insert only,
+  `EscrowExistsException` — and `replaceEscrow()`, which needs an escrow there (`EscrowNotFoundException`)
+  and re-seals the same escrow key. Measured before: two first `setEscrowFields()` at once each drew an
+  escrow key, the second replaced the first, and the fields of the first deposit no longer opened, for
+  the holder or through the ceremony — both calls having returned. The deposit that loses the creation
+  now reads the escrow that won, and writes under its key.
+- **BREAKING** — `reEnroll(VaultGeneration $replacing, …)`: the generation comes from
+  `generationOf($userId)`. A userId with no live vault goes through `register()`, and the archive id is
+  never null. The vault it sets aside goes through the seal check of an opening: one without a seal, or
+  whose seal does not hold, is refused (`VaultTamperedException`) until an operator runs `sealProfile()`
+  or `repairProfile()`. Measured before: a level 3 archived a vault under a profile changed in the
+  database, and nothing could repair the archive.
+- **BREAKING** — `register()` refuses a userId that still holds archives (`VaultExistsException`). After
+  `delete()`, whoever registered the name next listed its archives and read them through the service
+  with an old secret of the first holder. `eraseAccount()` erases them first — an operator's decision.
+- **BREAKING** — `delete(VaultGeneration $generation)`: the holder passes `$session->generation()`, an
+  operator `generationOf($userId)`.
+- **BREAKING** — `listArchives(UnlockedVault $current)` and `hasEscrow(UnlockedVault $session)` need a
+  session on the current vault. Without one, they told anyone how many times an account had been
+  re-enrolled, which locks open each archive, and whether it holds an escrow.
+- **BREAKING** — `deleteArchive(UnlockedArchive $opened)`: the archive must be opened with one of its old
+  locks. A session on the current vault was enough, and after a fraudulent level 3 that session is the
+  fraudster's.
+- **BREAKING** — a blind index names one account. `StorageInterface::saveFields()` refuses a value
+  another account holds for the same field (`DuplicateIndexException`, naming every such field of the
+  batch; nothing of it is written), and the shipped adapter enforces it with a unique index.
+  A third party who knew the victim's address indexed it on their own account, and after the
+  victim's level 3 the lookup named them. `findUserIdByBlindIndex(): ?string` becomes
+  `findUserIdsByIndex(): list<string>`: the storage no longer picks a row.
+- **BREAKING** — `findUserByField()` throws `AmbiguousLookupException` when several accounts hold the
+  value — a database written before 0.7.0, or a storage without the constraint — and
+  `InvalidArgumentException` on a field declared shared.
+- **BREAKING** — `readArchive()` no longer returns `indexed`. It came from the archive package, which
+  whoever writes the database can extend to a field never meant to be looked up: restore with the
+  fields your application indexes.
+- **BREAKING** — a vault carries a seal (`profile_seal`, an HMAC over the userId, the salt, the
+  Argon2id profile and every envelope, present or absent, under a key derived from the blind-index key
+  by HKDF). The façade checks it before any derivation and throws `VaultTamperedException` — not
+  `WrongSecretException` — when it does not hold, or is missing; every write seals the envelopes it
+  leaves. Measured before: a profile changed within the bounds made password, memorized word and
+  passphrase each fail as a wrong secret, and the archive made at level 3 kept the false profile; an
+  envelope removed from the row, or from an archive, answered as an absent lock while the others
+  opened. An archive keeps the row as it was, and so a seal over all of it.
+  **A vault written before 0.7.0 opens to no one until an operator runs `sealProfile()` on it.** A
+  vault or an archive with an envelope in format v3 was written by a version that seals everything:
+  without a seal, the seal was removed — tampering, which `sealProfile()` refuses to seal over.
+- **BREAKING** — a database records a check of its blind-index key (an HKDF output, from which the key
+  is not computed back) and its `sharedIndexes`, through `StorageInterface::claimSetting()`. A façade
+  that brings another key, or another list, is refused when it is built (`InvalidArgumentException`,
+  naming which). An empty database records those of the first façade opened on it. **A database that
+  already holds vaults and recorded no key — written before 0.7.0 — is not opened until an operator
+  adopts its key with `SelfDataGuard::adoptBlindKey()`**, which proves it first: by a lookup the
+  database answers (this value, indexed under this key, names this account), by a seal that holds
+  under it, or — for a database where no field carries an index — on the operator's word. A database
+  that indexes a field refuses that word, and refuses a `sharedIndexes` that omits a field carrying
+  shared indexes; a refused lookup names its four possible causes — the key, the field, the value or
+  the account.
+  Measured before: under another key, every vault and every archive reported tampering one after the
+  other, and lookups answered "absent"; under another list, one field was written under two rules; and
+  a first façade brought to a 0.6 database with the wrong key recorded it, its lookups answered
+  "absent" without an error, and the right key was refused afterwards. A façade reads the settings of a
+  database that holds them, and writes nothing there: a read-only copy opens.
+- **BREAKING** — no derivation runs under a profile outside `Primitives::PROFILE_FLOOR_*` (the lowest
+  profile ever written) and `PROFILE_CEILING_*` (four times the current one): `VaultTamperedException`,
+  or `InvalidArgumentException` for a sealed admin key. A stored profile was unbounded, and its cost
+  escapes PHP's limits: measured, 3 / 256 MiB took the process from 33 to 296 MiB of resident memory
+  under `memory_limit=32M`, and `max_execution_time` only fired once the derivation was over. That
+  profile is the ceiling itself: size the host for it, per concurrent derivation.
+- **BREAKING** — `UnlockedVault` carries the profile it was opened under (`kdfOpslimit`, `kdfMemlimit`,
+  required by its constructor), and a re-seal uses it instead of the profile read from the database
+  at that moment. A record claiming another profile than its session stops the re-seal.
+- **BREAKING** — `UnlockedVault::getMasterKey()`, `UnlockedEscrow::getEscrowKey()` and
+  `UnlockedArchive::session()` are gone. The object that holds the key does the operation:
+  `UnlockedVault::encryptField()` / `decryptField()` / `sealLock()` / `createEscrow()` /
+  `openEscrow()`, `UnlockedEscrow::encryptField()` / `decryptField()` / `sealToAdmin()`,
+  `UnlockedArchive::decryptFields()` / `openEscrow()`. None takes an AAD or a key from the caller.
+  What goes is the accessor, not every way out: a key still leaves its object sealed under a secret.
+  `sealLock()` under a secret of the caller's choosing, then `UserVault::keyFor()`, gives the master key
+  back, as the stored wrap and the password do; `sealToAdmin()` to a key pair of the caller's gives the
+  escrow key. Within the process, this is an interface, not a boundary. `FieldCrypter` and
+  `EscrowFieldCrypter` keep their signatures and delegate.
+- **BREAKING** — `EscrowCeremony` is the only path of the library to an escrow on the administrator's
+  side. The admin key is unsealed there, in private methods, after the arbiter's verdict, after the
+  intention is written to the audit log and forced to disk, and after the head witness took that
+  head out of the machine. `SelfDataGuard::unsealAdminRecoveryKey()`, `getEscrowFieldsAsAdmin()`,
+  `getArchiveEscrowFieldsAsAdmin()`, `EscrowVault::unlockAsAdmin()` and `AdminKey::unseal()` are
+  gone. Its pieces: `EscrowArbiter` (a named `Verdict` — open, closed, expired, unknown,
+  unavailable; only open unseals), of which SelfDataGuard ships none: an arbiter written for every
+  deployment would say yes to all of them, and one that throws answers `Unavailable`, the exception's
+  class in the intention; `HeadWitness`, required, which takes each head out of the machine and gives
+  back the last one it took (`lastHead()`) — never `null` once it took one, and refusing a head that
+  does not advance —, and `NoHeadWitness` naming its absence; `EscrowRefusedException`. The intention
+  is appended only if the log still holds the witness's last head, checked under the write's lock: a
+  log cut or rewritten since stops the ceremony, and the refusal is logged (`log-behind-witness`). A
+  witness that holds no head where the log shows a witness took one — of any class but `NoHeadWitness`,
+  an intention on the last line included — is refused (`witness-forgot`), and so is a head that is not
+  one (`witness-failed`). `EscrowCeremony::seedWitness($anchor)` (`seed-witness --ancre` in the CLI)
+  is the operator's act for a new witness, or one that lost its store: once the log is found to hold
+  the anchor noted outside, the witness takes the log's head, logged as a ceremony is.
+  Measured before: the next ceremony chained on what was left, and handed the witness a lower head
+  that `verify-log` then found intact. The arbiter's class, its verdict and the witness's class are in
+  the log. Against the administrator alone — the sealed file and its passphrase — it holds nothing:
+  a second secret is a later lot.
+- **BREAKING** — `bin/escrow-ceremony.php` takes the arbiter and the witness from files the operator
+  names (`DATAGUARD_ARBITER_FILE`, `DATAGUARD_WITNESS_FILE`), and builds no façade: the blind-index
+  key of zeros it fell back on is gone with it. It read a `litiges` table SelfRecover never had —
+  every ceremony against a real SelfRecover database was refused. New commands: `archives <user>
+  <case>` and `unlock-archive <user> <archive> <case>`, arbitrated and logged like a read.
+- **BREAKING** — two gestures on a lock, in place of five methods that did not mirror one another:
+  `setLock(UnlockedVault, Lock, string $secret)` seals a lock or replaces it, and
+  `removeLock(UnlockedVault, Lock): bool` takes it off — never the password, and without a write when
+  the vault does not have that lock. `changePassword()`, `changeMemorized()` (whose `null` removed),
+  `changePassphrase()` and `removePassphrase()` are gone, from the façade and from `UserVault`.
+- An absent lock answers as a wrong secret does: `MissingEnvelopeException` now extends
+  `WrongSecretException`, carries the same message byte for byte, and is raised after the same
+  derivation. Measured before: no derivation and a message naming the missing lock — whoever knew a
+  name learned which locks the account carries, from the reply or from its time (42 ms against
+  42 ms now). The class still tells them apart for the integrator's own log; a reply that differs on
+  it gives the oracle back. Code that caught `MissingEnvelopeException` after `WrongSecretException`
+  no longer reaches that branch.
+- **BREAKING** — `AuditLog::verify(string $anchor)` takes its anchor; `verifyUnanchored()` names the
+  check that cannot see a cut tail. Both report `quarantined`.
+- `AuditLog::append()` puts in quarantine a tail of lines that do not have the shape of an entry — what
+  a write cut short by a crash leaves —: a signed entry, chained on the last verified one, that records
+  how many lines it sets aside and their SHA-256, then its act. It first writes the end of line the cut
+  write lacks. Measured before: a line that was not JSON made every append throw, and a JSON line signed
+  with the wrong key, at the end, had the next acts chain on it. An entry whose signature does not hold,
+  or a signed entry where the chain does not lead, is a break: never quarantined, `append()` refuses,
+  `verify()` says `chain`. Bytes changed after their quarantine break it too. The event key
+  `AuditLog::RESERVED_KEY` is the log's own.
+- `AuditLog::append(array $event, ?string $anchor = null)`: given a head, it appends only if the log
+  still holds it, checked under the write's lock, and throws `AuditAnchorException` (`truncated` or
+  `rewritten`) otherwise. `readAll()` returns the chain `verify()` walks —
+  quarantined lines are not entries — and refuses a log broken in the middle.
+- `StorageInterface::updateVault()` writes the record's profile and seal as well as its wraps.
+- The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
+  `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
+  `changeMemorized()` were not read back. A vault returned for another userId than the one asked for
+  is refused: a case-insensitive collation on `user_id` opens it under another spelling.
 
 ### Added
 
@@ -39,13 +200,64 @@ directly does.
 - `EncryptedBlob::bindsItsContext()`, true for a format v3 blob, whose AAD carries a domain.
 - `FieldCrypter::aadFor()`, `EscrowFieldCrypter::aadFor()` and `EscrowVault::wrapAad()` are public, for
   tools that read or migrate stored blobs.
+- `VaultGeneration` (userId + user_salt), from `UnlockedVault::generation()`, `VaultRecord::generation()`
+  or `SelfDataGuard::generationOf()` — the last one for an operator or a level-3 flow, never for a
+  route a visitor reaches.
+- `eraseAccount(string $userId): int` erases the live vault and every archive in one transaction, and
+  works on a userId left with archives only.
+- `sealProfile(string $userId): bool` — the operator's step after upgrading: it seals a vault written
+  before 0.7.0, trusting the row as it stands. `repairProfile(string $userId): bool` puts back the
+  profile a seal vouches for, trying `Primitives::PUBLISHED_PROFILES` — an HMAC each, no Argon2id, no
+  secret of the holder. An archive keeps the seal of its vault; one taken before 0.7.0 has none, and
+  is opened under its recorded profile as before. `openArchive()` derives under the profile the seal
+  vouches for, trying the published profiles when the recorded one does not hold: an archive whose
+  profile was changed in the database, while it was taken or since, opens under the true one, and
+  nothing reports the change. `listArchives()` reads the locks of an
+  archive from the archive itself, the bytes its opening uses; a package that no longer reads is
+  refused as tampering, naming the archive, where a `JsonException` or a `TypeError` reached even
+  `register()`. `adoptBlindKey()`, `StorageInterface::loadSetting()`, `hasVaults()` and
+  `indexedFields()` are new.
+- `Storage\Conformance` and `bin/storage-conformance.php <connection.php>`: the contract played against
+  an implementation — 21 cases, six of them racing four processes and each played ten times, among them
+  a first escrow created twice at once, writes that name the generation a level 3 replaces at the same
+  instant, and one setting claimed by several at once. One race let a storage that checks, then writes
+  without a pause, through about once in ten: a pass stays a presumption, which ten rounds make a strong
+  one. A storage
+  that compared the generation outside its write's transaction passed every case of the first version
+  of the suite. An implementation that does not
+  pass it is not conformant. It writes under random `conformance-<hex>-…` userIds and erases each of
+  them, so it runs against a database that already holds accounts; the three settings it claims stay,
+  under names of the same form, which nothing reads.
+
+- `new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone'])`: the indexed fields several
+  accounts may hold the same value of. They are stored as `sharedIndex`, never name one account, and
+  are looked up with `findUsersByField(): list<string>`.
+- `SqliteAdapter` gains `selfdataguard_fields.shared_index` and the unique index
+  `selfdataguard_fields_blind_unique`, in place on opening. A database where one value is held by
+  several accounts is refused, with the fields named: see below.
+
+### Removed
+
+- **BREAKING** — `purgeArchives()`: `eraseAccount()` replaces it.
 
 ### Tests
 
-- 402 checks across the eleven suites on PHP 8.4 (was 388): primitives 46 → 56, escrow 36 → 37,
-  facade 67 → 70. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
+- 605 checks across thirteen suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 63, audit 23 → 35, ceremony 22 → 33, facade 67 → 116, storage 60 → 64, migration 15 → 37, archive 26 → 30, vault 58 → 64, `sanity_keys` (20) —
+  a closed list of the public methods of each key-holding class, each of them called with a known
+  key inside and the key looked for in what comes back, and no public method of the object layer
+  taking a key but `adoptBlindKey()`, which takes the server key as the constructor does; seen failing
+  on four planted defects —, and
+  `sanity_conformance` (52), which plays the suite against the shipped adapter and against twenty-one
+  storages that each break one clause: each fails on the case that names it. The racing cases catch the five that check, then
+  write in a second statement — they pass every sequential case. Three storages written wrong on purpose — a case-insensitive
+  `user_id`, an insert overwritten before its read-back, an update reported and never written — are
+  each refused by the façade. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
   also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
-  because `reEnroll()` draws a new master key. Five canaries were seen failing, each on its own case.
+  because `reEnroll()` draws a new master key. The vaults "written before 0.7.0" of `sanity_migration`
+  are written as 0.6.x wrote them, format v2 under the bare userId; they were format v3, which no
+  released version wrote. Five canaries were seen failing, each on its own case, and forty more,
+  one per fix made after review, each on its line.
 - The libsodium/OpenSSL cross-check in `sanity_primitives` gives each read its own `try`: a regression
   in the legacy path no longer stops the suite before the checks that follow.
 
@@ -66,6 +278,67 @@ misread. Do not roll back after a write.
 
 - Code that calls `Primitives` directly passes an `Aad::of(...)` for every new write. Data written
   before 0.7.0 is read with `decryptAcrossFormats()` and the flat string used before.
+- A `StorageInterface` implementation of your own takes the new signatures, and compares the
+  generation inside each write's transaction — throwing `VaultNotFoundException` when the userId has
+  no live vault, `StaleVaultException` when it has another. A generation received and not compared
+  breaks nothing visible: run `bin/storage-conformance.php` against it before it serves anyone.
+  `saveEscrow()` splits into `createEscrow()`, enforced as an insert by the storage itself (a unique
+  key on `user_id`), and `replaceEscrow()`. `claimSetting()`, `loadSetting()`, `hasVaults()` and
+  `indexedFields()` are new: the first value written under a name stays, enforced by a unique name,
+  and a database that holds it is read without a write.
+- A `HeadWitness` of your own implements `lastHead()`: the last head it took, as `seq:hmac`, or `null`
+  before its first — never after. Its `witness()` refuses a head that does not advance. Its store lives
+  off the machine, append-only, and is never restored from a backup: put back to an older head, it
+  vouches for a log cut back to that head. A new witness, or one that lost its store, is seeded with
+  `seed-witness --ancre <seq:hmac>`, the head noted at the last verification. A new log secret opens a
+  new log: verify the old one a last time against its anchor and keep it, start the new one in a new
+  file, and empty the witness's store — a log with no intention takes a witness that holds none.
+- **A database written before 0.7.0 adopts its blind-index key first**, before any façade opens it:
+  `SelfDataGuard::adoptBlindKey($storage, $blindKey, $sharedIndexes, $userId, $field, $value)`, with a
+  value you know is indexed for that account, written exactly as it was indexed; `$sharedIndexes` names
+  every field that carries shared indexes. Only a database where no field carries an index adopts
+  `adoptBlindKey($storage, $blindKey, $sharedIndexes)` on your word. A wrong key is refused there,
+  before it can be recorded.
+  Keep the key with the database's backups: every seal and every index is computed under it, and a
+  façade that brings another is refused. A read-only copy of a database that recorded its key opens.
+- Every write of a vault row goes through the façade: one written beside it, through `UserVault` and
+  the storage, is refused as tampering.
+- Changing the shared fields later is a migration: move the values of the field between
+  `blind_index` and `shared_index`, and write the new list, sorted, as JSON, under
+  `selfdataguard.shared-indexes` in `selfdataguard_settings`, in one transaction.
+- **After upgrading, before serving**: call `sealProfile($userId)` once for every account. Until then
+  its vault opens to no one, as a tampered one would. The call trusts each row as it stands: run it on
+  a database nobody else is writing to.
+- **Before opening a database with 0.7.0**, find the values several accounts hold — the adapter
+  refuses to open while any is left. On a table written before 0.7.0, add the column the second remedy
+  below writes to first: `ALTER TABLE selfdataguard_fields ADD COLUMN shared_index TEXT;`
+
+  ```sql
+  SELECT field_name, blind_index, GROUP_CONCAT(user_id) FROM selfdataguard_fields
+  WHERE blind_index IS NOT NULL GROUP BY field_name, blind_index HAVING COUNT(*) > 1;
+  ```
+
+  For each, either leave the value to its holder (`UPDATE selfdataguard_fields SET blind_index = NULL
+  WHERE user_id = :other AND field_name = :field`), or declare the field shared — move every value of
+  it (`UPDATE selfdataguard_fields SET shared_index = blind_index, blind_index = NULL WHERE field_name
+  = :field`) and pass it in `sharedIndexes`. Which account owns a value is not something the library
+  can decide.
+- Index a value once the account has proven it holds it (a confirmation mail, a code): whoever
+  indexes it first keeps it, and `DuplicateIndexException` tells the second one it is taken.
+- `changePassword($s, $p)` → `setLock($s, Lock::Password, $p)`; `changeMemorized($s, $m)` →
+  `setLock($s, Lock::Memorized, $m)`, and with `null` → `removeLock($s, Lock::Memorized)`;
+  `changePassphrase()` and `removePassphrase()` alike.
+- Code that read the master key or the escrow key calls the method that does the operation instead;
+  a test that compared keys compares what they open.
+- `AuditLog::verify()` without an anchor → `verifyUnanchored()`.
+- An admin read goes through `new EscrowCeremony($storage, $log, $arbiter, $witness, $operator)` and
+  its `readEscrow()` / `readArchiveEscrow()` / `listArchives()`; the CLI needs
+  `DATAGUARD_ARBITER_FILE` and `DATAGUARD_WITNESS_FILE`, and no longer reads `DATAGUARD_BLINDKEY_FILE`.
+- Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
+  `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
+  `eraseAccount($id)` for `purgeArchives($id)`.
+- An application that gives a name back after `delete()` has an operator run `eraseAccount()` first:
+  `register()` refuses a name that still holds archives.
 
 ## [v0.6.2] — 2026-10-15
 

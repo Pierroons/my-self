@@ -60,6 +60,38 @@ final class Primitives
      */
     public const LEGACY_OPSLIMIT = 3;
     public const LEGACY_MEMLIMIT = 65536 * 1024;
+
+    /**
+     * The lowest profile ever written. A stored profile below it was not
+     * written by SelfDataGuard: it is refused when read, instead of opening —
+     * or sealing a new envelope — under a cost an attacker chose. It goes down
+     * only by an explicit decision, the day a lower profile is published.
+     */
+    public const PROFILE_FLOOR_OPSLIMIT = 3;
+    public const PROFILE_FLOOR_MEMLIMIT = 65536 * 1024;
+
+    /**
+     * Four times the current profile. libsodium allocates outside PHP's
+     * memory_limit, and max_execution_time only fires once the derivation is
+     * over: a stored profile far above the current one would make each read
+     * of it cost what its writer chose. The host is sized for this ceiling per
+     * concurrent derivation.
+     */
+    public const PROFILE_CEILING_OPSLIMIT = 4 * self::ARGON2_OPSLIMIT;
+    public const PROFILE_CEILING_MEMLIMIT = 4 * self::ARGON2_MEMLIMIT;
+
+    /**
+     * Every profile a version of SelfDataGuard has sealed under: what a repair
+     * tries against a vault's seal. A profile goes in here the day it is first
+     * written, and never comes out.
+     *
+     * @var list<array{0: int, 1: int}>
+     */
+    public const PUBLISHED_PROFILES = [
+        [self::ARGON2_OPSLIMIT, self::ARGON2_MEMLIMIT],
+        [self::LEGACY_OPSLIMIT, self::LEGACY_MEMLIMIT],
+    ];
+
     public const SALT_LEN        = 16;
     public const KEY_LEN         = 32;
     public const NONCE_LEN       = EncryptedBlob::NONCE_LEN_V2;
@@ -172,7 +204,7 @@ final class Primitives
 
     /**
      * Authenticated encryption with XChaCha20-Poly1305 (IETF) and a fresh random
-     * nonce. Always writes a v2 blob.
+     * nonce.
      *
      * libsodium computes it in software, in constant time, on every CPU. AES-256-GCM
      * does not travel that well: libsodium serves it only with hardware support,
@@ -358,6 +390,16 @@ final class Primitives
     /**
      * Cryptographically secure random bytes from the OS CSPRNG.
      */
+    /**
+     * Is this a profile SelfDataGuard may have written — between the floor and
+     * the ceiling?
+     */
+    public static function profileIsWithinBounds(int $opslimit, int $memlimit): bool
+    {
+        return $opslimit >= self::PROFILE_FLOOR_OPSLIMIT && $opslimit <= self::PROFILE_CEILING_OPSLIMIT
+            && $memlimit >= self::PROFILE_FLOOR_MEMLIMIT && $memlimit <= self::PROFILE_CEILING_MEMLIMIT;
+    }
+
     public static function randomBytes(int $length): string
     {
         if ($length < 1) {

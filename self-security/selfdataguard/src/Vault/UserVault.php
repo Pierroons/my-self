@@ -137,7 +137,9 @@ final class UserVault
             kdfMemlimit: $mem
         );
 
-        $unlocked = new UnlockedVault(userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt);
+        $unlocked = new UnlockedVault(
+            userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem
+        );
         Primitives::zeroize($dataMasterKey);
 
         return ['record' => $record, 'unlocked' => $unlocked];
@@ -149,8 +151,10 @@ final class UserVault
      * The Argon2id profile is the record's own. An archive passes the profile its
      * package recorded.
      *
-     * @throws MissingEnvelopeException if the vault was never sealed for $lock
-     * @throws WrongSecretException     if the secret does not open the envelope
+     * @throws WrongSecretException     if the secret does not open the envelope — or
+     *                                  the vault was never sealed for $lock
+     *                                  (MissingEnvelopeException, same message)
+     * @throws VaultTamperedException   if the profile is out of bounds — before any derivation
      * @throws LegacyCipherUnavailableException if the envelope is an AES blob
      *         this machine cannot decrypt — the secret may well be right
      */
@@ -165,26 +169,26 @@ final class UserVault
             throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
         }
         $wrap = self::wrapOf($record, $lock);
-        if ($wrap === null) {
-            throw new MissingEnvelopeException(match ($lock) {
-                Lock::Password   => 'Vault has no password wrap',
-                Lock::Memorized  => 'Vault has no recovery wrap — memorized secret was not configured',
-                Lock::Passphrase => 'Vault has no passphrase wrap — passphrase was not configured',
-            });
+        $ops = $opslimit ?? $record->kdfOpslimit;
+        $mem = $memlimit ?? $record->kdfMemlimit;
+        if (!Primitives::profileIsWithinBounds($ops, $mem)) {
+            throw new VaultTamperedException(
+                "The vault of '{$record->userId}' claims an Argon2id profile no version of SelfDataGuard writes "
+                . "({$ops} / {$mem} bytes): nothing is derived under it"
+            );
         }
-
-        $key = self::deriveKey(
-            $lock,
-            $secret,
-            $record->userSalt,
-            $opslimit ?? $record->kdfOpslimit,
-            $memlimit ?? $record->kdfMemlimit
-        );
+        $key = self::keyFor($lock, $secret, $record->userSalt, $ops, $mem);
+        if ($wrap === null) {
+            // After the derivation, under the same message: an absent lock
+            // answers as a wrong secret does, in content and in time.
+            Primitives::zeroize($key);
+            throw new MissingEnvelopeException(self::wrongSecret($lock));
+        }
         try {
             $masterKey = Primitives::decryptAcrossFormats(
                 $wrap,
                 $key,
-                self::wrapAad($record->userId),
+                self::wrapAadFor($record->userId),
                 $record->userId
             );
         } catch (LegacyCipherUnavailableException $e) {
@@ -200,21 +204,20 @@ final class UserVault
                 throw new RuntimeException(
                     'This vault predates the Argon2id recovery derivation '
                     . '(SelfDataGuard < 0.3.0). The memorized secret is correct; '
-                    . 'unlock with another lock and call changeMemorized() to re-seal. '
+                    . 'unlock with another lock and call setLock(Lock::Memorized, …) to re-seal. '
                     . 'Access is refused here on purpose: the legacy derivation is '
                     . 'about 78 000 times cheaper to attack.',
                     previous: $e
                 );
             }
-            throw new WrongSecretException(
-                'Invalid ' . self::secretName($lock) . ' — could not unwrap vault',
-                previous: $e
-            );
+            throw new WrongSecretException(self::wrongSecret($lock), previous: $e);
         } finally {
             Primitives::zeroize($key);
         }
 
-        $unlocked = new UnlockedVault(userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt);
+        $unlocked = new UnlockedVault(
+            userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem
+        );
         Primitives::zeroize($masterKey);
         return $unlocked;
     }
@@ -232,7 +235,6 @@ final class UserVault
     /**
      * Unwrap data_master_key using the user's memorized secret (recovery flow).
      *
-     * @throws MissingEnvelopeException if the vault has no recovery wrap
      * @throws WrongSecretException     on wrong memorized secret
      */
     public function unlockWithMemorized(VaultRecord $record, #[\SensitiveParameter] string $memorized): UnlockedVault
@@ -243,7 +245,6 @@ final class UserVault
     /**
      * Unwrap data_master_key using the SelfRecover passphrase.
      *
-     * @throws MissingEnvelopeException if the vault has no passphrase wrap
      * @throws WrongSecretException     on wrong passphrase
      */
     public function unlockWithPassphrase(VaultRecord $record, #[\SensitiveParameter] string $passphrase): UnlockedVault
@@ -252,67 +253,57 @@ final class UserVault
     }
 
     /**
-     * Re-seal the password wrap with a new password. The data does not need to
-     * be re-encrypted — only the password_wrap is regenerated.
+     * Seal the envelope of $lock with $secret — a new lock, or one replaced: the
+     * same gesture either way. The data is not re-encrypted; only that
+     * envelope is.
      *
-     * Caller must already hold an UnlockedVault opened on this very vault
-     * (any lock) to prove they currently know enough to access the data.
+     * The caller must hold a session opened on this very vault (any lock): it
+     * proves they can already reach the data.
      */
-    public function changePassword(
+    public function setLock(
         VaultRecord $record,
         UnlockedVault $unlocked,
-        #[\SensitiveParameter] string $newPassword
+        Lock $lock,
+        #[\SensitiveParameter] string $secret
     ): VaultRecord {
-        self::assertPasswordLength($newPassword, 'newPassword');
+        match ($lock) {
+            Lock::Password   => self::assertPasswordLength($secret),
+            Lock::Passphrase => self::assertPassphraseLength($secret),
+            Lock::Memorized  => $secret === ''
+                ? throw new InvalidArgumentException('memorized secret must not be empty')
+                : null,
+        };
         self::assertSameVault($record, $unlocked);
-
-        $newWrap = self::resealIn($record, Lock::Password, $newPassword, $unlocked);
-        return $record->withWrapPwd($newWrap, $this->now());
+        return self::withWrap($record, $lock, $unlocked->sealLock($lock, $secret), $this->now());
     }
 
     /**
-     * Re-seal the recovery wrap with a new memorized secret. Pass null to remove
-     * the recovery wrap entirely (degrades to single-factor — discouraged).
+     * Remove the envelope of $lock. The password lock is never removed — it is
+     * replaced, with setLock(). A lock the vault does not have leaves the
+     * record as it is: the caller compares, and writes nothing.
+     *
+     * ⚠️ The memorized lock is the one SelfRecover's level 2 opens the vault
+     * with: removing it leaves that path without the data.
      */
-    public function changeMemorized(
-        VaultRecord $record,
-        UnlockedVault $unlocked,
-        #[\SensitiveParameter] ?string $newMemorized
-    ): VaultRecord {
-        self::assertSameVault($record, $unlocked);
-        if ($newMemorized !== null && $newMemorized === '') {
-            throw new InvalidArgumentException('newMemorized, if provided, must not be empty');
-        }
-
-        if ($newMemorized === null) {
-            return $record->withWrapRecov(null, $this->now());
-        }
-
-        $newWrap = self::resealIn($record, Lock::Memorized, $newMemorized, $unlocked);
-        return $record->withWrapRecov($newWrap, $this->now());
-    }
-
-    /**
-     * Seal (or re-seal) the passphrase wrap. To remove it, removePassphrase():
-     * no null here, so that a recovery result without a new passphrase — the
-     * device path returns none — cannot drop the lock by accident.
-     */
-    public function changePassphrase(
-        VaultRecord $record,
-        UnlockedVault $unlocked,
-        #[\SensitiveParameter] string $newPassphrase
-    ): VaultRecord {
-        self::assertPassphraseLength($newPassphrase, 'newPassphrase');
-        self::assertSameVault($record, $unlocked);
-
-        $newWrap = self::resealIn($record, Lock::Passphrase, $newPassphrase, $unlocked);
-        return $record->withWrapPhrase($newWrap, $this->now());
-    }
-
-    public function removePassphrase(VaultRecord $record, UnlockedVault $unlocked): VaultRecord
+    public function removeLock(VaultRecord $record, UnlockedVault $unlocked, Lock $lock): VaultRecord
     {
+        if ($lock === Lock::Password) {
+            throw new InvalidArgumentException('The password lock is replaced with setLock(), never removed');
+        }
         self::assertSameVault($record, $unlocked);
-        return $record->withWrapPhrase(null, $this->now());
+        if (self::wrapOf($record, $lock) === null) {
+            return $record;
+        }
+        return self::withWrap($record, $lock, null, $this->now());
+    }
+
+    private static function withWrap(VaultRecord $record, Lock $lock, ?EncryptedBlob $wrap, DateTimeImmutable $now): VaultRecord
+    {
+        return match ($lock) {
+            Lock::Password   => $record->withWrapPwd($wrap ?? throw new InvalidArgumentException('The password lock cannot be empty'), $now),
+            Lock::Memorized  => $record->withWrapRecov($wrap, $now),
+            Lock::Passphrase => $record->withWrapPhrase($wrap, $now),
+        };
     }
 
     /**
@@ -332,7 +323,7 @@ final class UserVault
             $probe = Primitives::decryptAcrossFormats(
                 $record->wrapRecov,
                 $legacy,
-                self::wrapAad($record->userId),
+                self::wrapAadFor($record->userId),
                 $record->userId
             );
             Primitives::zeroize($probe);
@@ -344,12 +335,17 @@ final class UserVault
         }
     }
 
-    private static function deriveKey(
+    /**
+     * The key that opens the envelope of $lock, derived from its secret. Public
+     * so that a session can re-seal its own envelope: it derives what the caller
+     * already holds the secret to, and holds nothing itself.
+     */
+    public static function keyFor(
         Lock $lock,
         #[\SensitiveParameter] string $secret,
         string $userSalt,
-        int $opslimit = Primitives::ARGON2_OPSLIMIT,
-        int $memlimit = Primitives::ARGON2_MEMLIMIT
+        int $opslimit,
+        int $memlimit
     ): string {
         return match ($lock) {
             Lock::Password   => Primitives::deriveFromPassword($secret, $userSalt, $opslimit, $memlimit),
@@ -369,9 +365,9 @@ final class UserVault
     }
 
     /**
-     * register() passes the current profile; a re-seal passes the vault's own
-     * (resealIn), never the current constants: a vault keeps one profile across
-     * all its envelopes.
+     * A new vault's envelopes, under the current profile. A re-seal goes through
+     * UnlockedVault::sealLock(), under the profile the session was opened under:
+     * a vault keeps one profile across all its envelopes.
      */
     private static function seal(
         Lock $lock,
@@ -382,9 +378,9 @@ final class UserVault
         int $opslimit,
         int $memlimit
     ): EncryptedBlob {
-        $key = self::deriveKey($lock, $secret, $userSalt, $opslimit, $memlimit);
+        $key = self::keyFor($lock, $secret, $userSalt, $opslimit, $memlimit);
         try {
-            return Primitives::encrypt($masterKey, $key, aad: self::wrapAad($userId));
+            return Primitives::encrypt($masterKey, $key, aad: self::wrapAadFor($userId));
         } finally {
             Primitives::zeroize($key);
         }
@@ -397,26 +393,9 @@ final class UserVault
      * user-wrap of "alice" are both read under "alice|escrow" — under different
      * keys, so they do not open one another.
      */
-    private static function wrapAad(string $userId): Aad
+    public static function wrapAadFor(string $userId): Aad
     {
         return Aad::of('vault-wrap', $userId);
-    }
-
-    private static function resealIn(
-        VaultRecord $vault,
-        Lock $lock,
-        #[\SensitiveParameter] string $secret,
-        UnlockedVault $unlocked
-    ): EncryptedBlob {
-        return self::seal(
-            $lock,
-            $secret,
-            $vault->userSalt,
-            $vault->userId,
-            $unlocked->getMasterKey(),
-            $vault->kdfOpslimit,
-            $vault->kdfMemlimit
-        );
     }
 
     private static function wrapOf(VaultRecord $record, Lock $lock): ?EncryptedBlob
@@ -426,6 +405,11 @@ final class UserVault
             Lock::Memorized  => $record->wrapRecov,
             Lock::Passphrase => $record->wrapPhrase,
         };
+    }
+
+    private static function wrongSecret(Lock $lock): string
+    {
+        return 'Invalid ' . self::secretName($lock) . ' — could not unwrap vault';
     }
 
     private static function secretName(Lock $lock): string
@@ -441,6 +425,11 @@ final class UserVault
      * The session must come from this very vault, not merely from this userId:
      * after a re-enrolment the userId holds a new vault, and sealing the old
      * master key into it would make everything written there since unreadable.
+     *
+     * And the vault must still claim the profile the session opened it under. A
+     * record that claims another was changed in the database since: re-sealing
+     * into it would write an envelope beside the others under a profile the
+     * session never proved.
      */
     private static function assertSameVault(VaultRecord $record, UnlockedVault $unlocked): void
     {
@@ -450,6 +439,11 @@ final class UserVault
         if (!hash_equals($record->userSalt, $unlocked->vaultSalt)) {
             throw new StaleVaultException(
                 'This session was opened on a vault that has since been replaced — unlock the current one'
+            );
+        }
+        if ($record->kdfOpslimit !== $unlocked->kdfOpslimit || $record->kdfMemlimit !== $unlocked->kdfMemlimit) {
+            throw new VaultTamperedException(
+                'The vault claims another Argon2id profile than the one this session opened it under'
             );
         }
     }

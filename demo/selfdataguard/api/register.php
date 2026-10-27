@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/_bootstrap.php';
 
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail('POST only', 405);
@@ -36,11 +37,16 @@ try {
         $dataGuard->setFields($session, $clean, $indexed);
     }
     ok(['userId' => $userId]);
-} catch (InvalidArgumentException $e) {
-    // Un refus de la bibliothèque sur une entrée, pas un conflit : sans ce
-    // catch, il sortait en 500 sans JSON.
+} catch (InvalidArgumentException | DuplicateIndexException $e) {
+    // Une entrée refusée par la bibliothèque, ou un index tenu par un autre
+    // compte : le compte est déjà inscrit, et sans ce retrait il resterait, sans
+    // ses champs — un second essai le trouverait pris. Sans ce catch, une entrée
+    // refusée sortait en 500 sans JSON.
+    isset($session) && $dataGuard->delete($session->generation());
     $baseNeuve && demo_effacer_base_neuve();
-    fail($e->getMessage(), 400);
+    $e instanceof DuplicateIndexException
+        ? fail('Already held by another account: ' . implode(', ', $e->fields), 409)
+        : fail($e->getMessage(), 400);
 } catch (RuntimeException $e) {
     $baseNeuve && demo_effacer_base_neuve();
     fail($e->getMessage(), 409);

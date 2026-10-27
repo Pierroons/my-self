@@ -17,9 +17,10 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *
  *   - The blindKey is a SERVER-SIDE secret, NOT user-derived.
  *   - It must NOT be confused with the per-user data_master_key.
- *   - Two users with the same email will share the same blind index value
- *     (necessary for unique-email constraints, but it leaks duplicate
- *     equality across rows — this is an accepted, documented trade-off).
+ *   - The same value gives the same index for every account. The storage
+ *     builds on it: an indexed value names one account (saveFields() refuses
+ *     a second holder), unless the field is declared shared — then equality
+ *     across the accounts that hold it is visible to whoever reads the table.
  *   - Range queries, sort order, and substring search are NOT supported.
  *     Only equality lookups.
  *
@@ -35,6 +36,16 @@ final class BlindIndex
 {
     private function __construct()
     {
+    }
+
+    /**
+     * What a database records of the blind-index key it was opened with: an
+     * HKDF output, from which the key is not computed back, and which no index
+     * or seal equals.
+     */
+    public static function keyCheck(#[\SensitiveParameter] string $blindKey): string
+    {
+        return base64_encode(hash_hkdf(Primitives::HMAC_ALGO, $blindKey, 32, 'selfdataguard/blind-key-check'));
     }
 
     /**

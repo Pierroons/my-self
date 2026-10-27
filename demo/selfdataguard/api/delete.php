@@ -14,10 +14,10 @@ if ($userId === '' || $password === '') fail('userId and password are required')
 
 try {
     // Verify ownership before deletion
-    $dataGuard->loginWithPassword($userId, $password);
-} catch (RuntimeException) {
-    fail('Authentication failed', 401);
+    $session = $dataGuard->loginWithPassword($userId, $password);
+} catch (RuntimeException $e) {
+    fail_vault($e);
 }
 
-$dataGuard->delete($userId);
+$dataGuard->delete($session->generation());
 ok(['userId' => $userId, 'deleted' => true]);

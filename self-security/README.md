@@ -7,7 +7,7 @@
 > *Dump my database — and get encrypted noise.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfDataGuard: v0.6.2](https://img.shields.io/badge/SelfDataGuard-v0.6.2-brightgreen.svg)](./selfdataguard/)
+[![SelfDataGuard: v0.7.0](https://img.shields.io/badge/SelfDataGuard-v0.7.0-brightgreen.svg)](./selfdataguard/)
 [![SelfRecover-LUKS: v0.6.2](https://img.shields.io/badge/SelfRecover--LUKS-v0.6.2-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -53,7 +53,7 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.6.2** — available, test suites listed in its README |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.7.0** — available, test suites listed in its README |
 | [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.2** — reproducible install; earlier releases validated on a Debian 13 LNMP server, a laptop, an encrypted-LVM root and an arm64 machine |
 
 ---

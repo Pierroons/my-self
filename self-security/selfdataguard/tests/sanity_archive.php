@@ -21,6 +21,9 @@ use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 
 $failures = 0;
 $passes = 0;
@@ -71,7 +74,7 @@ $emailIndex = BlindIndex::compute(EMAIL, $blindKey, 'email');
 section('replaceWithArchive — the live vault is set aside, the new one takes its place');
 
 $new = $uv->register('user-arch', 'arch-password-0002', 'arch-memorized-2', 'tapis girafe lundi orage piment velours');
-$id1 = $storage->replaceWithArchive($new['record']);
+$id1 = $storage->replaceWithArchive($oldRecord->generation(), $new['record']);
 
 is_string($id1) && preg_match('/^[0-9a-f]{32}$/', $id1) === 1
     ? ok('returns a random 128-bit archive id')
@@ -125,7 +128,7 @@ try {
 
 section('What the archive does not keep — the blind index');
 
-$storage->findUserIdByBlindIndex('email', $emailIndex) === null
+$storage->findUserIdsByIndex('email', $emailIndex) === []
     ? ok('the old email no longer finds the account')
     : ko('a lookup still finds data that is only archived');
 $pkg = (string) $pdo->query("SELECT package FROM selfdataguard_archives WHERE archive_id = '{$id1}'")->fetchColumn();
@@ -138,7 +141,7 @@ $pkg = (string) $pdo->query("SELECT package FROM selfdataguard_archives WHERE ar
 section('Several archives, and another account cannot reach them');
 
 $third = $uv->register('user-arch', 'arch-password-0003');
-$id2 = $storage->replaceWithArchive($third['record']);
+$id2 = $storage->replaceWithArchive($new['record']->generation(), $third['record']);
 $ids = array_column($storage->listArchives('user-arch'), 'id');
 $ids === [$id1, $id2] && $storage->loadArchive('user-arch', $id1) !== null
     ? ok('a second re-enrolment adds an archive and leaves the first intact')
@@ -147,17 +150,25 @@ $storage->listArchives('user-arch')[1]['locks'] === [Lock::Password, Lock::Memor
     ? ok('each archive lists its own locks')
     : ko('wrong locks on the second archive');
 
-$dg->register('user-other', 'other-password-01');
+$otherSession = $dg->register('user-other', 'other-password-01');
 $storage->loadArchive('user-other', $id1) === null
     ? ok('loadArchive() with another userId finds nothing')
     : ko('an archive was read through another account');
-!$storage->deleteArchive('user-other', $id1) && $storage->loadArchive('user-arch', $id1) !== null
+!$storage->deleteArchive($otherSession->generation(), $id1) && $storage->loadArchive('user-arch', $id1) !== null
     ? ok('deleteArchive() with another userId deletes nothing')
     : ko('an archive was deleted through another account');
 
-$storage->replaceWithArchive($uv->register('user-fresh', 'fresh-password-01')['record']) === null
-    && $storage->vaultExists('user-fresh')
-    ? ok('no live vault: nothing archived, the new vault is inserted, null returned')
+$thrown = null;
+try {
+    $storage->replaceWithArchive(
+        new VaultGeneration('user-fresh', random_bytes(16)),
+        $uv->register('user-fresh', 'fresh-password-01')['record']
+    );
+} catch (VaultNotFoundException $e) {
+    $thrown = $e;
+}
+$thrown !== null && !$storage->vaultExists('user-fresh')
+    ? ok('no live vault: VaultNotFoundException, nothing inserted — a first vault goes through saveVault()')
     : ko('replaceWithArchive() on a userId without vault misbehaved');
 
 // -----------------------------------------------------------------------------
@@ -179,7 +190,8 @@ $holder->exec("UPDATE selfdataguard_vaults SET updated_at = updated_at WHERE use
 $child = proc_open([PHP_BINARY, '-r', sprintf(
     'require %s; $t = microtime(true);'
     . ' try { $s = new Pierroons\SelfDataGuard\Storage\SqliteAdapter(%s);'
-    . ' $s->replaceWithArchive((new Pierroons\SelfDataGuard\Vault\UserVault())->register("user-wait", "wait-password-0002")["record"]);'
+    . ' $s->replaceWithArchive($s->loadVault("user-wait")->generation(),'
+    . ' (new Pierroons\SelfDataGuard\Vault\UserVault())->register("user-wait", "wait-password-0002")["record"]);'
     . ' printf("ok %%d", (microtime(true) - $t) * 1000); }'
     . ' catch (Throwable $e) { echo $e->getMessage(); exit(1); }',
     var_export(__DIR__ . '/../src/autoload.php', true),
@@ -196,7 +208,7 @@ $rc === 0 && $waited >= 0
 $waited >= 300
     ? ok('it did wait — the lock was really contended')
     : ko('the child never waited: the race was not exercised', $out);
-count($wdg->listArchives('user-wait')) === 1
+count((new SqliteAdapter("sqlite:{$wfile}"))->listArchives('user-wait')) === 1
     ? ok('the archive is there')
     : ko('no archive after the contended re-enrolment');
 
@@ -217,7 +229,7 @@ $pdo->exec(
 );
 $thrown = false;
 try {
-    $storage->replaceWithArchive($uv->register('user-boom', 'boom-password-002')['record']);
+    $storage->replaceWithArchive($boomOld->generation(), $uv->register('user-boom', 'boom-password-002')['record']);
 } catch (Throwable) {
     $thrown = true;
 }
@@ -231,24 +243,24 @@ $storage->listArchives('user-boom') === []
 
 // -----------------------------------------------------------------------------
 
-section('Deleting the account leaves the archives; purging them is explicit');
+section('Deleting the live vault leaves the archives; erasing the account is explicit');
 
-$dg->delete('user-arch');
-count($storage->listArchives('user-arch')) === 2
+$storage->deleteArchive($third['record']->generation(), $id1) && $storage->loadArchive('user-arch', $id1) === null
+    ? ok('deleteArchive() removes one archive, under the live generation')
+    : ko('deleteArchive() did not remove it');
+$dg->delete($dg->generationOf('user-arch'));
+count($storage->listArchives('user-arch')) === 1
     ? ok('deleteVault() does not touch the archives')
     : ko('deleting the live vault erased archives');
-$storage->deleteArchive('user-arch', $id1) && $storage->loadArchive('user-arch', $id1) === null
-    ? ok('deleteArchive() removes one archive')
-    : ko('deleteArchive() did not remove it');
-$storage->purgeArchives('user-arch') === 1 && $storage->listArchives('user-arch') === []
-    ? ok('purgeArchives() removes the rest and says how many')
-    : ko('purgeArchives() left archives behind');
+$storage->eraseAccount('user-arch') === 1 && $storage->listArchives('user-arch') === []
+    ? ok('eraseAccount() removes the rest and says how many')
+    : ko('eraseAccount() left archives behind');
 
 // -----------------------------------------------------------------------------
 
 section('A package from a newer version is refused, not misread');
 
-$id3 = $storage->replaceWithArchive($uv->register('user-boom', 'boom-password-003')['record']);
+$id3 = $storage->replaceWithArchive($boomOld->generation(), $uv->register('user-boom', 'boom-password-003')['record']);
 $pdo->prepare('UPDATE selfdataguard_archives SET package = json_set(package, \'$.format\', 99) WHERE archive_id = :id')
     ->execute([':id' => $id3]);
 try {
@@ -258,6 +270,24 @@ try {
     str_contains($e->getMessage(), 'newer SelfDataGuard')
         ? ok('format 99 → "written by a newer SelfDataGuard"')
         : ko('wrong refusal', $e->getMessage());
+}
+
+section('A package that no longer reads is tampering, named — not a JsonException or a TypeError');
+
+foreach (['pas du json' => 'a package that is not JSON', '{"vault":null}' => 'a package without its vault row'] as $package => $what) {
+    $pdo->prepare('UPDATE selfdataguard_archives SET package = :p WHERE archive_id = :id')->execute([':p' => $package, ':id' => $id3]);
+    foreach (['listArchives' => static fn () => $storage->listArchives('user-boom'), 'loadArchive' => static fn () => $storage->loadArchive('user-boom', $id3)] as $how => $call) {
+        try {
+            $call();
+            ko("{$what}: {$how}() read it");
+        } catch (VaultTamperedException $e) {
+            str_contains($e->getMessage(), $id3)
+                ? ok("{$what}: {$how}() refuses it as tampering, naming the archive")
+                : ko("{$what}: {$how}() refused without naming the archive", $e->getMessage());
+        } catch (Throwable $e) {
+            ko("{$what}: {$how}() threw " . get_class($e) . ', which no caller expects', $e->getMessage());
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------

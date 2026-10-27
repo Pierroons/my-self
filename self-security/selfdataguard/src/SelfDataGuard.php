@@ -5,19 +5,26 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard;
 
 use InvalidArgumentException;
+use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use RuntimeException;
 
 /**
@@ -25,7 +32,7 @@ use RuntimeException;
  *
  * Wraps the Vault + Fields + Storage layers behind a minimal API:
  *
- *     $dg = new SelfDataGuard($storage, $blindKey);
+ *     $dg = new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
  *
  *     // New user. Passwords are refused below UserVault::PASSWORD_MIN_LEN.
  *     $session = $dg->register('user-1', 'a-long-generated-password', 'memorized-secret', 'six word passphrase');
@@ -40,10 +47,12 @@ use RuntimeException;
  *     $session = $dg->recover('user-1', Lock::Passphrase, $old, $newPassword, $newPassphrase);
  *
  *     // Level 3, no old secret left: the vault is archived, a new one created.
- *     ['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('user-1', $pwd, $memorized, $passphrase);
+ *     $live = $dg->generationOf('user-1');
+ *     ['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll($live, $pwd, $memorized, $passphrase);
  *
  *     // Find a user by an indexed field (no plaintext lookup needed)
- *     $userId = $dg->findUserByField('email', 'a@b.c');
+ *     $userId  = $dg->findUserByField('email', 'a@b.c');
+ *     $holders = $dg->findUsersByField('phone', '+33 6 …');   // a shared field: a list
  *
  * The blindKey is a server-side secret used to derive deterministic field
  * indexes (HMAC). Store it in env/Vault/etc., separate from any per-user
@@ -54,17 +63,180 @@ final class SelfDataGuard
     private UserVault $vault;
     private EscrowVault $escrow;
 
+    /** @var array<string, true> */
+    private array $shared = [];
+
+    private readonly string $sealKey;
+
+    /** Settings the façade claims in the database: what the first façade opened on it recorded. */
+    public const SETTING_BLIND_KEY      = 'selfdataguard.blind-key-check';
+    public const SETTING_SHARED_INDEXES = 'selfdataguard.shared-indexes';
+
+    /**
+     * The first façade opened on an empty database records there which
+     * blind-index key it holds and which fields it shares; every later one is
+     * refused when it differs. Under another key, every seal would read as
+     * tampering and every lookup would miss; under another list, one field would
+     * be written under two rules. A database that already holds vaults and never
+     * recorded a key — one written before 0.7.0 — is refused until an operator
+     * adopts its key with adoptBlindKey(), which proves it first: a wrong key
+     * recorded there would make every lookup miss in silence.
+     *
+     * @param list<string> $sharedIndexes the indexed fields several accounts may
+     *        hold the same value of (a household phone). Every other indexed
+     *        field names one account.
+     *
+     * @throws InvalidArgumentException when the key, or the shared fields, are
+     *         not the ones the database recorded, or when it recorded none and
+     *         holds vaults
+     */
     public function __construct(
         private readonly StorageInterface $storage,
-        #[\SensitiveParameter] private readonly string $blindKey
+        #[\SensitiveParameter] private readonly string $blindKey,
+        array $sharedIndexes = []
     ) {
         if (strlen($blindKey) < 32) {
             throw new InvalidArgumentException(
                 'blindKey must be ≥32 bytes of server-side secret'
             );
         }
-        $this->vault  = new UserVault();
-        $this->escrow = new EscrowVault();
+        $declared = self::sharedList($sharedIndexes);
+        foreach (json_decode($declared, true) as $fieldName) {
+            $this->shared[$fieldName] = true;
+        }
+        $check   = BlindIndex::keyCheck($blindKey);
+        $keyHeld = $storage->loadSetting(self::SETTING_BLIND_KEY);
+        if ($keyHeld === null) {
+            if ($storage->hasVaults()) {
+                throw new InvalidArgumentException(
+                    'This database holds vaults and never recorded its blind-index key: an operator adopts it '
+                    . 'once with SelfDataGuard::adoptBlindKey(), which proves the key against what the database holds'
+                );
+            }
+            $keyHeld = $storage->claimSetting(self::SETTING_BLIND_KEY, $check);
+        }
+        if (!hash_equals($keyHeld, $check)) {
+            throw new InvalidArgumentException(
+                'This blind-index key is not the one this database recorded: every profile seal and every '
+                . 'blind index in it is computed under the recorded one'
+            );
+        }
+        $recorded = $storage->loadSetting(self::SETTING_SHARED_INDEXES)
+            ?? $storage->claimSetting(self::SETTING_SHARED_INDEXES, $declared);
+        if ($recorded !== $declared) {
+            throw new InvalidArgumentException(
+                "This database shares the fields {$recorded}, and this façade was given {$declared}: "
+                . 'every façade opened on one database receives the same sharedIndexes'
+            );
+        }
+        $this->sealKey = ProfileSeal::key($blindKey);
+        $this->vault   = new UserVault();
+        $this->escrow  = new EscrowVault();
+    }
+
+    /**
+     * Record the blind-index key of a database that holds vaults and never
+     * recorded one — written before 0.7.0 — after proving it against what the
+     * database already holds. The operator's step, once, before any façade
+     * opens the database:
+     *
+     *   - $proofUserId, $proofField and $proofValue: the blind index of that
+     *     value under this key must name that account — the lookup a database
+     *     written under this key answers;
+     *   - $proofUserId alone: that account's seal must hold under this key;
+     *   - no proof: for a database where no field carries an index, so that
+     *     the key decides no lookup yet. The operator vouches for it; a
+     *     database that indexes a field refuses it.
+     *
+     * It then records the key and $sharedIndexes, which names every field that
+     * carries a shared index in the database, as the first façade on an empty
+     * database does. Adopting the key already recorded does nothing.
+     *
+     * @param list<string> $sharedIndexes
+     * @throws InvalidArgumentException when the proof does not hold, or is
+     *         missing on a database that indexes a field; when $sharedIndexes
+     *         omits a field that carries shared indexes; when the database
+     *         recorded another key
+     */
+    public static function adoptBlindKey(
+        StorageInterface $storage,
+        #[\SensitiveParameter] string $blindKey,
+        array $sharedIndexes = [],
+        ?string $proofUserId = null,
+        ?string $proofField = null,
+        #[\SensitiveParameter] ?string $proofValue = null
+    ): void {
+        if (strlen($blindKey) < 32) {
+            throw new InvalidArgumentException('blindKey must be ≥32 bytes of server-side secret');
+        }
+        $check = BlindIndex::keyCheck($blindKey);
+        $held  = $storage->loadSetting(self::SETTING_BLIND_KEY);
+        if ($held !== null) {
+            if (!hash_equals($held, $check)) {
+                throw new InvalidArgumentException('This database already recorded another blind-index key');
+            }
+            return;
+        }
+        $indexed = $storage->indexedFields();
+        if ($proofField !== null || $proofValue !== null) {
+            if ($proofUserId === null || $proofField === null || $proofValue === null) {
+                throw new InvalidArgumentException('A lookup proof names the account, the field and the value');
+            }
+            $index = BlindIndex::compute($proofValue, $blindKey, $proofField);
+            if (!in_array($proofUserId, $storage->findUserIdsByIndex($proofField, $index), true)) {
+                throw new InvalidArgumentException(
+                    "Under this key, the value given for '{$proofField}' does not lead to '{$proofUserId}': the key, "
+                    . 'the field name, the value — compared exactly, case and spaces included — or the account is not '
+                    . 'the one the database indexed. Nothing was recorded'
+                );
+            }
+        } elseif ($proofUserId !== null) {
+            $record = $storage->loadVault($proofUserId);
+            if ($record->profileSeal === null) {
+                throw new InvalidArgumentException(
+                    "'{$proofUserId}' carries no seal — a database written before 0.7.0 holds none: prove the key by a lookup"
+                );
+            }
+            if (!ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {
+                throw new InvalidArgumentException(
+                    "The seal of '{$proofUserId}' does not hold under this key: the key is not the one this database "
+                    . 'sealed under, or the row was changed since. Nothing was recorded'
+                );
+            }
+        } elseif ($indexed !== []) {
+            throw new InvalidArgumentException(
+                'This database indexes ' . implode(', ', array_keys($indexed)) . ', and the key decides every lookup '
+                . 'of them: it is adopted only on proof — an account, one of these fields and its value'
+            );
+        }
+        $unshared = array_diff(array_keys(array_filter($indexed)), json_decode(self::sharedList($sharedIndexes), true));
+        if ($unshared !== []) {
+            throw new InvalidArgumentException(
+                'The fields ' . implode(', ', $unshared) . ' carry shared indexes in this database: sharedIndexes names them'
+            );
+        }
+        if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {
+            throw new InvalidArgumentException('Another blind-index key was recorded meanwhile');
+        }
+        $storage->claimSetting(self::SETTING_SHARED_INDEXES, self::sharedList($sharedIndexes));
+    }
+
+    /**
+     * The shared fields as the database records them: sorted, without
+     * duplicates, JSON.
+     *
+     * @param array<mixed> $sharedIndexes
+     */
+    private static function sharedList(array $sharedIndexes): string
+    {
+        foreach ($sharedIndexes as $fieldName) {
+            if (!is_string($fieldName) || $fieldName === '') {
+                throw new InvalidArgumentException('sharedIndexes lists field names');
+            }
+        }
+        $shared = array_values(array_unique($sharedIndexes));
+        sort($shared, SORT_STRING);
+        return json_encode($shared, JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -81,11 +253,18 @@ final class SelfDataGuard
         #[\SensitiveParameter] ?string $passphrase = null
     ): UnlockedVault {
         if ($this->storage->vaultExists($userId)) {
-            throw new RuntimeException("User '{$userId}' already exists");
+            throw new VaultExistsException("User '{$userId}' already exists");
+        }
+        if ($this->storage->listArchives($userId) !== []) {
+            throw new VaultExistsException(
+                "User '{$userId}' still holds the archives of a deleted vault: they would open to whoever registers "
+                . 'the name with an old secret. eraseAccount() erases them first — an operator\'s decision'
+            );
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
-        $this->storage->saveVault($result['record']);
-        $this->assertVaultPersisted($result['record'], 0);
+        $record = $this->sealed($result['record']);
+        $this->storage->saveVault($record);
+        $this->assertVaultPersisted($record, 0);
         return $result['unlocked'];
     }
 
@@ -97,7 +276,7 @@ final class SelfDataGuard
      */
     public function loginWithPassword(string $userId, #[\SensitiveParameter] string $password): UnlockedVault
     {
-        $record = $this->storage->loadVault($userId);
+        $record = $this->load($userId);
         return $this->vault->unlockWithPassword($record, $password);
     }
 
@@ -105,12 +284,11 @@ final class SelfDataGuard
      * Authenticate by memorized secret (recovery flow).
      *
      * @throws Vault\WrongSecretException     on wrong secret
-     * @throws Vault\MissingEnvelopeException on a vault without recovery wrap
      * @throws Vault\VaultNotFoundException   on missing user
      */
     public function loginWithMemorized(string $userId, #[\SensitiveParameter] string $memorized): UnlockedVault
     {
-        $record = $this->storage->loadVault($userId);
+        $record = $this->load($userId);
         return $this->vault->unlockWithMemorized($record, $memorized);
     }
 
@@ -140,20 +318,25 @@ final class SelfDataGuard
         #[\SensitiveParameter] string $newPassword,
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): UnlockedVault {
-        $record  = $this->storage->loadVault($userId);
+        $record  = $this->load($userId);
         $session = $this->vault->unlock($record, $lock, $secret);
-        $record  = $this->vault->changePassword($record, $session, $newPassword);
+        $record  = $this->vault->setLock($record, $session, Lock::Password, $newPassword);
         if ($newPassphrase !== null) {
-            $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
+            $record = $this->vault->setLock($record, $session, Lock::Passphrase, $newPassphrase);
         }
-        $this->storage->updateVault($record);
-        $this->assertVaultPersisted($record, $record->revision + 1);
+        $this->persist($record);
         return $session;
     }
 
     /**
      * Encrypt and persist a batch of field values for the user.
      * Optionally compute and store blind indexes for lookup-able fields.
+     *
+     * An indexed value names one account, unless its field is declared shared.
+     * If another account holds it, DuplicateIndexException names the fields and
+     * nothing of the batch is written. Index a value once the account has
+     * proven it holds it (a confirmation mail, a code): whoever indexes it
+     * first keeps it.
      *
      * @param UnlockedVault         $session  Active session
      * @param array<string, string> $fields   field_name => plaintext
@@ -168,14 +351,14 @@ final class SelfDataGuard
         $indexed = array_flip($indexed);
         $payload = [];
         foreach ($fields as $name => $value) {
+            $index = isset($indexed[$name]) ? BlindIndex::compute($value, $this->blindKey, $name) : null;
             $payload[$name] = [
-                'ciphertext' => FieldCrypter::encrypt($session, $name, $value),
-                'blindIndex' => isset($indexed[$name])
-                    ? BlindIndex::compute($value, $this->blindKey, $name)
-                    : null,
+                'ciphertext'  => FieldCrypter::encrypt($session, $name, $value),
+                'blindIndex'  => isset($this->shared[$name]) ? null : $index,
+                'sharedIndex' => isset($this->shared[$name]) ? $index : null,
             ];
         }
-        $this->storage->saveFields($session->userId, $payload, $session->vaultSalt);
+        $this->storage->saveFields($session->generation(), $payload);
     }
 
     /**
@@ -199,85 +382,133 @@ final class SelfDataGuard
     }
 
     /**
-     * Lookup a userId by a known field value (e.g. email).
-     * The field must have been registered as indexed via setFields(..., indexed: [...]).
+     * The account a field value names (e.g. email), or null. The field must
+     * have been indexed via setFields(..., indexed: [...]).
      *
-     * @return string|null userId if found, null otherwise.
+     * An index is only a pointer: whoever can write the database can move it.
+     * The account it names still authenticates.
+     *
+     * @throws InvalidArgumentException  on a field declared shared — it names no single account
+     * @throws AmbiguousLookupException  when several accounts hold the value
      */
     public function findUserByField(string $fieldName, #[\SensitiveParameter] string $value): ?string
     {
-        $index = BlindIndex::compute($value, $this->blindKey, $fieldName);
-        return $this->storage->findUserIdByBlindIndex($fieldName, $index);
+        if (isset($this->shared[$fieldName])) {
+            throw new InvalidArgumentException(
+                "'{$fieldName}' is declared shared: it names no single account — use findUsersByField()"
+            );
+        }
+        $userIds = $this->findUsersByField($fieldName, $value);
+        if (count($userIds) > 1) {
+            throw new AmbiguousLookupException(
+                count($userIds) . " accounts hold this value of '{$fieldName}': the lookup names none of them"
+            );
+        }
+        return $userIds[0] ?? null;
     }
 
     /**
-     * Re-seal the password wrap with a new password. Session must be active.
+     * Every account that holds a field value — the lookup for a shared field.
+     * Each call tells whoever makes it how many accounts hold a value: expose
+     * it behind authentication and a rate limit.
+     *
+     * @return list<string>
      */
-    public function changePassword(UnlockedVault $session, #[\SensitiveParameter] string $newPassword): void
+    public function findUsersByField(string $fieldName, #[\SensitiveParameter] string $value): array
     {
-        $rotated = $this->vault->changePassword($this->currentRecord($session), $session, $newPassword);
-        $this->storage->updateVault($rotated);
+        return $this->storage->findUserIdsByIndex($fieldName, BlindIndex::compute($value, $this->blindKey, $fieldName));
     }
 
     /**
-     * Re-seal the recovery wrap. Pass null to remove recovery entirely.
+     * Seal a lock with a new secret — a new password, a memorized word renewed,
+     * the passphrase SelfRecover just issued, or a lock the vault did not have
+     * yet. One gesture for all three: the session must be on the current vault.
      */
-    public function changeMemorized(UnlockedVault $session, #[\SensitiveParameter] ?string $newMemorized): void
+    public function setLock(UnlockedVault $session, Lock $lock, #[\SensitiveParameter] string $secret): void
     {
-        $rotated = $this->vault->changeMemorized($this->currentRecord($session), $session, $newMemorized);
-        $this->storage->updateVault($rotated);
+        $this->persist($this->vault->setLock($this->currentRecord($session), $session, $lock, $secret));
     }
 
     /**
-     * Seal the passphrase wrap with a new passphrase — after SelfRecover issued
-     * one, or to add the lock to an existing vault.
+     * Remove a lock. The password is replaced with setLock(), never removed.
+     * ⚠️ Removing the memorized lock leaves SelfRecover's level 2 without the
+     * data.
+     *
+     * @return bool false if the vault did not have that lock — then nothing is written
      */
-    public function changePassphrase(UnlockedVault $session, #[\SensitiveParameter] string $newPassphrase): void
+    public function removeLock(UnlockedVault $session, Lock $lock): bool
     {
-        $rotated = $this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase);
-        $this->storage->updateVault($rotated);
-        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
-    }
-
-    public function removePassphrase(UnlockedVault $session): void
-    {
-        $rotated = $this->vault->removePassphrase($this->currentRecord($session), $session);
-        $this->storage->updateVault($rotated);
-        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
+        $record  = $this->currentRecord($session);
+        $removed = $this->vault->removeLock($record, $session, $lock);
+        if ($removed === $record) {
+            return false;
+        }
+        $this->persist($removed);
+        return true;
     }
 
     // -- Re-enrolment and archives ---------------------------------------------
 
     /**
-     * Give the userId a new vault and set the current one aside as an archive
-     * — SelfRecover's level 3, where no old secret is left to re-seal with.
-     * Every Argon2id runs first, then one transaction archives and inserts:
-     * a failure leaves the old vault live. With no live vault, it simply
-     * creates one.
+     * Which vault the userId holds now, read without any secret — for an
+     * operator or a level-3 flow, never for a route a visitor reaches. Null
+     * when the userId has no live vault.
+     */
+    public function generationOf(string $userId): ?VaultGeneration
+    {
+        $record = $this->storage->findVault($userId);
+        if ($record === null) {
+            return null;
+        }
+        $this->assertSameUser($userId, $record->userId);
+        return $record->generation();
+    }
+
+    /**
+     * Give the userId a new vault and set the one $replacing names aside as an
+     * archive — SelfRecover's level 3, where no old secret is left to re-seal
+     * with. Every Argon2id runs first, then one transaction archives and
+     * inserts: a failure leaves the old vault live.
+     *
+     * Only the vault $replacing names is archived. A second call with the same
+     * generation — a retry, or a concurrent request — throws
+     * StaleVaultException instead of archiving the vault the first call made.
+     * After a StaleVaultException, read the generation again before retrying:
+     * the userId may already hold the vault that was meant.
      *
      * The new vault starts empty; the old data comes back through
-     * openArchive().
+     * openArchive(). A userId with no live vault goes through register().
      *
-     * @return array{unlocked: UnlockedVault, archiveId: ?string}
+     * @return array{unlocked: UnlockedVault, archiveId: string}
      */
     public function reEnroll(
-        string $userId,
+        VaultGeneration $replacing,
         #[\SensitiveParameter] string $newPassword,
         #[\SensitiveParameter] ?string $newMemorized = null,
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): array {
-        $result    = $this->vault->register($userId, $newPassword, $newMemorized, $newPassphrase);
-        $archiveId = $this->storage->replaceWithArchive($result['record']);
-        $this->assertVaultPersisted($result['record'], 0);
+        // The vault set aside keeps its seal: one that does not hold would make
+        // an archive nothing can repair, as an unsealed one would make one
+        // without a seal.
+        $this->load($replacing->userId);
+        $result    = $this->vault->register($replacing->userId, $newPassword, $newMemorized, $newPassphrase);
+        $record    = $this->sealed($result['record']);
+        $archiveId = $this->storage->replaceWithArchive($replacing, $record);
+        $this->assertVaultPersisted($record, 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
 
     /**
+     * The archives of the account, from a session on its current vault: how
+     * many times it was re-enrolled, and which locks open each archive, are
+     * the holder's to know.
+     *
      * @return list<array{id: string, archivedAt: \DateTimeImmutable, locks: list<Lock>}> oldest first
      */
-    public function listArchives(string $userId): array
+    public function listArchives(UnlockedVault $current): array
     {
-        return $this->storage->listArchives($userId);
+        $this->currentRecord($current);
+        return $this->storage->listArchives($current->userId);
     }
 
     /**
@@ -304,77 +535,135 @@ final class SelfDataGuard
         $this->currentRecord($current);
         $archive = $this->storage->loadArchive($current->userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
-        $session = $this->vault->unlock(
-            $archive->record,
-            $lock,
-            $oldSecret,
-            $archive->kdfOpslimit,
-            $archive->kdfMemlimit
-        );
-        return new UnlockedArchive($archive, $session);
+        $this->assertSameUser($current->userId, $archive->record->userId);
+        [$opslimit, $memlimit] = [$archive->kdfOpslimit, $archive->kdfMemlimit];
+        if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {
+            [$opslimit, $memlimit] = $this->vouchedProfile($archive->record, $opslimit, $memlimit);
+        }
+        $session = $this->vault->unlock($archive->record, $lock, $oldSecret, $opslimit, $memlimit);
+        return new UnlockedArchive($archive, $session, $current->generation());
     }
 
     /**
-     * Decrypt an opened archive. `indexed` names the fields that had a blind
-     * index: hand it back to setFields() when restoring into the new vault.
+     * Decrypt an opened archive.
      *
-     * @return array{private: array<string, string>, escrow: array<string, string>, indexed: list<string>}
+     * To restore it, write the private fields back with the fields your
+     * application indexes — not a list read from the archive, which whoever
+     * writes the database can extend to a field never meant to be looked up.
+     * A DuplicateIndexException names the values another account took since
+     * the archive was made: restore those fields without their index, and
+     * settle who owns the value.
+     *
+     * @return array{private: array<string, string>, escrow: array<string, string>}
      */
     public function readArchive(UnlockedArchive $opened): array
     {
         $archive = $opened->archive;
         $fields  = array_diff_key($archive->privateFields, [EscrowVault::WRAP_AAD_TAG => true]);
-        $private = FieldCrypter::decryptBatch(
-            $opened->session(),
-            array_map(static fn (array $f): string => $f['ciphertext'], $fields)
-        );
-        $escrow = [];
+        $private = $opened->decryptFields(array_map(static fn (array $f): string => $f['ciphertext'], $fields));
+        $escrow  = [];
         if ($archive->escrow !== null) {
-            $unlocked = $this->escrow->unlockAsUser($archive->escrow, $opened->session());
+            $unlocked = $opened->openEscrow($archive->escrow);
             $escrow   = EscrowFieldCrypter::decryptBatch($unlocked, $archive->escrowFields);
             $unlocked->lock();
         }
-        return [
-            'private' => $private,
-            'escrow'  => $escrow,
-            'indexed' => array_keys(array_filter($fields, static fn (array $f): bool => $f['wasIndexed'])),
-        ];
+        return ['private' => $private, 'escrow' => $escrow];
     }
 
     /**
-     * Delete one archive, from a session on the current vault.
+     * Delete one archive, opened with one of its old locks. A session on the
+     * current vault is not enough: after a fraudulent level 3, that session is
+     * the fraudster's, and the archives hold the real holder's data.
      */
-    public function deleteArchive(UnlockedVault $current, string $archiveId): bool
+    public function deleteArchive(UnlockedArchive $opened): bool
     {
-        $this->currentRecord($current);
-        return $this->storage->deleteArchive($current->userId, $archiveId, $current->vaultSalt);
+        return $this->storage->deleteArchive($opened->openedFrom, $opened->archive->archiveId);
     }
 
     /**
-     * Delete every archive of the userId, without a session — account erasure.
+     * Erase the account — its live vault and every archive — without a
+     * session. Works on a userId left with archives only.
      *
-     * delete() leaves archives on purpose, and erasing an account calls both.
      * Whoever exposes this decides who may call it: after a level-3 recovery,
      * the holder of the account is not necessarily the person the archives
      * belong to.
+     *
+     * @return int how many vaults were erased, live and archived
      */
-    public function purgeArchives(string $userId): int
+    public function eraseAccount(string $userId): int
     {
-        return $this->storage->purgeArchives($userId);
+        return $this->storage->eraseAccount($userId);
     }
 
     /**
-     * Delete the user's live vault and all its encrypted fields. Archives stay:
-     * see purgeArchives().
+     * Delete the live vault $generation names and all its encrypted fields.
+     * Archives stay: see eraseAccount(). The holder passes
+     * $session->generation(), an operator generationOf().
      */
-    public function delete(string $userId): void
+    public function delete(VaultGeneration $generation): void
     {
-        $this->storage->deleteVault($userId);
+        $this->storage->deleteVault($generation);
     }
 
     public function userExists(string $userId): bool
     {
         return $this->storage->vaultExists($userId);
+    }
+
+    /**
+     * Seal the profile of a vault written before 0.7.0 — the operator's step,
+     * once per vault, after upgrading and before serving: until then, the vault
+     * opens to no one. It trusts the row as it stands, so it runs on a database
+     * nobody else is writing to.
+     *
+     * @return bool true if a seal was written; false if the vault already had a
+     *              valid one, or the userId has no live vault
+     * @throws VaultTamperedException if the vault carries a seal that does not hold
+     */
+    public function sealProfile(string $userId): bool
+    {
+        $record = $this->storage->findVault($userId);
+        if ($record === null) {
+            return false;
+        }
+        $this->assertSameUser($userId, $record->userId);
+        if ($record->profileSeal !== null || ProfileSeal::expected($record)) {
+            $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
+            return false;
+        }
+        $this->persist($record);
+        return true;
+    }
+
+    /**
+     * Put back the profile a vault's seal vouches for, after the database was
+     * made to claim another: each published profile is tried against the seal,
+     * an HMAC apiece — no Argon2id, no secret of the holder. For an operator,
+     * after a VaultTamperedException; the holder's locks open again as they were.
+     *
+     * @return bool true if the true profile was written back; false if the seal already holds
+     * @throws VaultTamperedException if the vault has no seal, or no published profile matches it
+     */
+    public function repairProfile(string $userId): bool
+    {
+        $record = $this->storage->loadVault($userId);
+        $this->assertSameUser($userId, $record->userId);
+        if ($record->profileSeal === null) {
+            throw new VaultTamperedException("The vault of '{$userId}' carries no profile seal to repair against");
+        }
+        if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {
+            return false;
+        }
+        foreach (Primitives::PUBLISHED_PROFILES as [$opslimit, $memlimit]) {
+            if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $opslimit, $memlimit)) {
+                $this->persist($record->withProfile($opslimit, $memlimit));
+                return true;
+            }
+        }
+        throw new VaultTamperedException(
+            "No published Argon2id profile matches the seal of '{$userId}': the seal itself was changed, "
+            . 'or an envelope was — restore the row from a backup'
+        );
     }
 
     // -- Escrow compartment (consented, admin-recoverable sub-vault) -----------
@@ -394,19 +683,11 @@ final class SelfDataGuard
         return AdminKey::generate($passphrase);
     }
 
-    /**
-     * Unseal the admin recovery secret key with the passphrase. Returns the raw
-     * 32-byte secret key — caller MUST sodium_memzero() it after use. Meant for
-     * the recovery-ceremony CLI, not for web request paths.
-     */
-    public static function unsealAdminRecoveryKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase): string
-    {
-        return AdminKey::unseal($sealedSecret, $passphrase);
-    }
 
-    public function hasEscrow(string $userId): bool
+    public function hasEscrow(UnlockedVault $session): bool
     {
-        return $this->storage->loadEscrow($userId) !== null;
+        $this->currentRecord($session);
+        return $this->storage->loadEscrow($session->userId) !== null;
     }
 
     /**
@@ -427,18 +708,24 @@ final class SelfDataGuard
         }
         $this->currentRecord($session);
 
-        $record = $this->storage->loadEscrow($session->userId);
+        $record   = $this->storage->loadEscrow($session->userId);
+        $unlocked = null;
         if ($record === null) {
-            $created  = $this->escrow->create($session, $adminPublicKey);
-            $record   = $created['record'];
-            $unlocked = $created['unlocked'];
-            $this->storage->saveEscrow($record, $session->vaultSalt);
-        } else {
-            $unlocked = $this->escrow->unlockAsUser($record, $session);
+            $created = $this->escrow->create($session, $adminPublicKey);
+            try {
+                $this->storage->createEscrow($session->generation(), $created['record']);
+                $unlocked = $created['unlocked'];
+            } catch (EscrowExistsException) {
+                // Another request created it first: its key is the one to write under.
+                $created['unlocked']->lock();
+                $record = $this->storage->loadEscrow($session->userId)
+                    ?? throw new RuntimeException("The escrow of '{$session->userId}' was created, then is gone");
+            }
         }
+        $unlocked ??= $this->escrow->unlockAsUser($record, $session);
 
         $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);
-        $this->storage->saveEscrowFields($session->userId, $ciphertexts, $session->vaultSalt);
+        $this->storage->saveEscrowFields($session->generation(), $ciphertexts);
         $unlocked->lock();
     }
 
@@ -461,7 +748,7 @@ final class SelfDataGuard
         $unlocked = $this->escrow->unlockAsUser($record, $session);
         $rebound  = $this->escrow->rebindAdmin($record, $unlocked, $adminPublicKey);
         $unlocked->lock();
-        $this->storage->saveEscrow($rebound, $session->vaultSalt);
+        $this->storage->replaceEscrow($session->generation(), $rebound);
         return true;
     }
 
@@ -485,62 +772,7 @@ final class SelfDataGuard
         return $plain;
     }
 
-    /**
-     * Decrypt escrow fields as the ADMIN during a recovery ceremony, using the
-     * recovery secret key (from unsealAdminRecoveryKey) + public key.
-     *
-     * SCOPE: yields ONLY escrow fields, never the private zone. The caller
-     * (adapter/CLI) is responsible for the POLICY gates — an open litige and
-     * writing the SU audit log. This method performs no policy check itself.
-     *
-     * @param array<string> $fieldNames Empty = all escrow fields
-     * @return array<string, string>    field_name => plaintext
-     */
-    public function getEscrowFieldsAsAdmin(
-        string $userId,
-        #[\SensitiveParameter] string $adminSecretKey,
-        string $adminPublicKey,
-        array $fieldNames = []
-    ): array {
-        $record = $this->storage->loadEscrow($userId);
-        if ($record === null) {
-            throw new RuntimeException("No escrow compartment for user '{$userId}'");
-        }
-        $unlocked    = $this->escrow->unlockAsAdmin($record, $adminSecretKey, $adminPublicKey);
-        $ciphertexts = $this->storage->loadEscrowFields($userId, $fieldNames);
-        $plain       = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
-        $unlocked->lock();
-        return $plain;
-    }
 
-    /**
-     * getEscrowFieldsAsAdmin() for an archived vault. A user who lost every
-     * secret is the one the backup memo exists for, and level 3 is when that
-     * happens. Same scope, same policy duty for the caller.
-     *
-     * @param array<string> $fieldNames Empty = all escrow fields
-     * @return array<string, string>    field_name => plaintext
-     */
-    public function getArchiveEscrowFieldsAsAdmin(
-        string $userId,
-        string $archiveId,
-        #[\SensitiveParameter] string $adminSecretKey,
-        string $adminPublicKey,
-        array $fieldNames = []
-    ): array {
-        $archive = $this->storage->loadArchive($userId, $archiveId)
-            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for user '{$userId}'");
-        if ($archive->escrow === null) {
-            throw new RuntimeException("No escrow compartment in archive '{$archiveId}'");
-        }
-        $ciphertexts = $fieldNames === []
-            ? $archive->escrowFields
-            : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
-        $unlocked = $this->escrow->unlockAsAdmin($archive->escrow, $adminSecretKey, $adminPublicKey);
-        $plain    = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
-        $unlocked->lock();
-        return $plain;
-    }
 
     // -------------------------------------------------------------------------
 
@@ -555,7 +787,7 @@ final class SelfDataGuard
      */
     private function currentRecord(UnlockedVault $session): VaultRecord
     {
-        $record = $this->storage->loadVault($session->userId);
+        $record = $this->load($session->userId);
         if (!hash_equals($record->userSalt, $session->vaultSalt)) {
             throw new StaleVaultException(
                 'This session was opened on a vault that has since been replaced — unlock the current one'
@@ -565,19 +797,128 @@ final class SelfDataGuard
     }
 
     /**
+     * The live vault of $userId — refused if the storage answers with another
+     * account's. A case-insensitive collation on user_id finds 'alice' when
+     * asked for 'ALICE', and the vault would open for that other spelling.
+     */
+    private function load(string $userId): VaultRecord
+    {
+        $record = $this->storage->loadVault($userId);
+        $this->assertSameUser($userId, $record->userId);
+        $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
+        return $record;
+    }
+
+    /**
+     * Before any derivation, the profile is the one the seal vouches for. A
+     * profile changed in the database fails here, as tampering, instead of
+     * failing every lock as a wrong secret.
+     */
+    private function assertProfileSealed(VaultRecord $record, int $opslimit, int $memlimit, bool $archive = false): void
+    {
+        $what = $archive ? "An archive of '{$record->userId}'" : "The vault of '{$record->userId}'";
+        if ($record->profileSeal === null) {
+            throw new VaultTamperedException(ProfileSeal::expected($record)
+                ? "{$what} carries no seal, though its envelopes were written by a version that seals every vault "
+                    . 'it writes through its façade: the seal was removed in the database, or the row was written '
+                    . 'outside the façade — restore it from a backup'
+                : "{$what} carries no profile seal: an operator seals the vaults written before 0.7.0 with "
+                    . 'sealProfile(), once, before serving');
+        }
+        if (!ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $opslimit, $memlimit)) {
+            throw new VaultTamperedException(
+                "{$what} does not match its seal: its Argon2id profile or its envelopes were changed in the database"
+                . ($archive ? '' : ' — repairProfile() puts back a profile the seal vouches for; an envelope changed is restored from a backup')
+            );
+        }
+    }
+
+    /**
+     * The profile an archive's seal vouches for: the one it records, or else
+     * the published profile the seal holds under. A profile changed in the
+     * database, while the archive was taken or since, is not followed, and
+     * nothing reports it: the seal covers the true one.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function vouchedProfile(VaultRecord $record, int $opslimit, int $memlimit): array
+    {
+        if ($record->profileSeal !== null && !ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $opslimit, $memlimit)) {
+            foreach (Primitives::PUBLISHED_PROFILES as [$publishedOps, $publishedMem]) {
+                if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $publishedOps, $publishedMem)) {
+                    return [$publishedOps, $publishedMem];
+                }
+            }
+        }
+        $this->assertProfileSealed($record, $opslimit, $memlimit, archive: true);
+        return [$opslimit, $memlimit];
+    }
+
+    private function sealed(VaultRecord $record): VaultRecord
+    {
+        return $record->withProfileSeal(ProfileSeal::of($this->sealKey, $record, $record->kdfOpslimit, $record->kdfMemlimit));
+    }
+
+    private function assertSameUser(string $asked, string $returned): void
+    {
+        if ($returned !== $asked) {
+            throw new RuntimeException(
+                'The storage returned the vault of another userId than the one asked for — '
+                . 'does it compare user_id byte for byte?'
+            );
+        }
+    }
+
+    /**
+     * Seal an updated record over its envelopes as they now are, store it, then
+     * read it back. Every record reaching here was loaded through its seal, but
+     * the one sealProfile() passes: a row the operator trusts as it stands.
+     */
+    private function persist(VaultRecord $updated): void
+    {
+        $sealed = $this->sealed($updated);
+        $this->assertVaultPersisted($sealed, $this->storage->updateVault($sealed));
+    }
+
+    /**
      * A StorageInterface implementation can drop a column without a word — an
      * update that does not name it, say. Without wrap_phrase, the passphrase
      * SelfRecover just consumed would keep opening the vault, or the new one
      * would not; without the Argon2id profile, the vault would be read under the
      * current constants and stop opening the day they change. Read it back once.
-     * A higher revision than $expectedRevision means a later write landed in
-     * between: then there is nothing left to compare.
+     *
+     * The salt is compared first, whatever the revision: another salt means the
+     * storage holds another vault than the one written — an insert that
+     * overwrote, an archive of the wrong generation. A higher revision than
+     * $expectedRevision means a later write landed in between: then the salt is
+     * all there is left to compare.
      */
     private function assertVaultPersisted(VaultRecord $written, int $expectedRevision): void
     {
         $stored = $this->storage->loadVault($written->userId);
+        $this->assertSameUser($written->userId, $stored->userId);
+        if (!hash_equals($written->userSalt, $stored->userSalt)) {
+            throw new RuntimeException(
+                'The storage holds another vault than the one written — does its saveVault() refuse '
+                . 'an existing userId, and its replaceWithArchive() archive the generation it is given?'
+            );
+        }
         if ($stored->revision > $expectedRevision) {
             return;
+        }
+        if ($stored->revision < $expectedRevision) {
+            throw new RuntimeException(
+                "The storage did not persist revision {$expectedRevision} — does its updateVault() bump it?"
+            );
+        }
+        $wraps = [
+            'wrap_pwd'   => [$written->wrapPwd, $stored->wrapPwd],
+            'wrap_recov' => [$written->wrapRecov, $stored->wrapRecov],
+        ];
+        foreach ($wraps as $column => [$asWritten, $asStored]) {
+            if ($asStored?->toBase64() !== $asWritten?->toBase64()) {
+                throw new RuntimeException("The storage did not persist {$column} as written");
+            }
         }
         if ($stored->wrapPhrase?->toBase64() !== $written->wrapPhrase?->toBase64()) {
             throw new RuntimeException(
@@ -591,11 +932,14 @@ final class SelfDataGuard
                 . 'do its saveVault() and replaceWithArchive() write kdf_opslimit and kdf_memlimit?'
             );
         }
+        if ($stored->profileSeal !== $written->profileSeal) {
+            throw new RuntimeException('The storage did not persist profile_seal as written');
+        }
     }
 
-    /** Keep the blind-index key out of var_dump() and print_r(). */
+    /** Keep the blind-index key and the seal key out of var_dump() and print_r(). */
     public function __debugInfo(): array
     {
-        return ['blindKey' => '[redacted]'];
+        return ['blindKey' => '[redacted]', 'sealKey' => '[redacted]'];
     }
 }

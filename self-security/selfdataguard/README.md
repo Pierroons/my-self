@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.2 available](https://img.shields.io/badge/status-v0.6.2%20available-brightgreen.svg)](#status)
-[![Tests: 388 passing](https://img.shields.io/badge/tests-388%20passing-brightgreen.svg)](#testing)
+[![Status: v0.7.0 available](https://img.shields.io/badge/status-v0.7.0%20available-brightgreen.svg)](#status)
+[![Tests: 605 passing](https://img.shields.io/badge/tests-605%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -86,18 +86,18 @@ Every SelfRecover recovery replaces secrets. The vault follows if the integrator
 | Level 1 — passphrase | the old passphrase | `recover($user, Lock::Passphrase, $old, $newPassword, $newPassphrase)` |
 | Level 2 — code + memorized word | the word's digest | `recover($user, Lock::Memorized, $digest, $newPassword, $newPassphrase)` |
 | Level 2 — enrolled device | a signature, nothing that opens the vault | at the next secret given: `recover($user, $lock, $secret, $currentPassword)`, rate-limited like the login |
-| Level 3 — human escalation | no old secret | `reEnroll($user, $password, $digest, $passphrase)`: the old vault is **archived** |
+| Level 3 — human escalation | no old secret | `reEnroll($dg->generationOf($user), $password, $digest, $passphrase)`: the old vault is **archived** |
 
 `recover()` opens and re-seals in a single conditional write. The same call catches up a vault whose password wrap has fallen behind. Called on its own, it is an Argon2id oracle with no rate limit: call it right after a recovery SelfRecover has accepted, behind its counters, and rate-limit the level-2 device catch-up like the login.
 
-**At level 3, the old vault is archived.** `reEnroll()` sets it aside, sealed under its old locks, with no expiry, and creates a new one. If the user later finds an old lock again, `openArchive($session, $id, Lock::Passphrase, $old)` then `readArchive()` give the data back. The session must be one on the current vault: through the service, an old lock alone opens nothing, because those secrets are precisely the ones that may have leaked. Given a database dump, it opens the archive offline. An archive is destroyed only by `deleteArchive()` or `purgeArchives()`; `delete()` leaves it.
+**At level 3, the old vault is archived.** `reEnroll()` sets it aside, sealed under its old locks, with no expiry, and creates a new one. If the user later finds an old lock again, `openArchive($session, $id, Lock::Passphrase, $old)` then `readArchive()` give the data back. The session must be one on the current vault: through the service, an old lock alone opens nothing, because those secrets are precisely the ones that may have leaked. Given a database dump, it opens the archive offline. Restore the fields with `setFields()` and the fields your application indexes — `readArchive()` gives no index list, since whoever writes the database could extend it; a `DuplicateIndexException` names a value another account took since. An archive is destroyed only by `deleteArchive()`, which takes it opened with one of its old locks, or by `eraseAccount()`; `delete()` leaves it, and `register()` then refuses the name until `eraseAccount()` has run: whoever registered it next would hold the archives.
 
 > ⚠️ **A password-only vault does not survive a SelfRecover recovery.** Levels 1 and 2 replace the account password (`Recovery::parPassphrase()`, `Recovery::parCode()`). A vault registered as `register($user, $password)` alone has a single envelope, sealed on the old password: after the recovery it can no longer be opened, by anyone, and nothing in either library says so. When the two modules share an account:
 > - pass `$memorized` and `$passphrase` to `register()`;
 > - after every accepted recovery, call `recover()` as in the table above;
 > - at level 3, call `reEnroll()`. The archive's memorized lock depends on the SelfRecover salt of that time, which level 3 replaces: keep it — as a field of the new vault, say — if that lock is to stay usable.
 
-Recoveries are not the only paths that change a secret: when your service changes the password or renews the memorized word, call `changePassword()` or `changeMemorized()` as well, **after** SelfRecover's write. A forgotten path leaves a lock on a secret SelfRecover has already replaced.
+Recoveries are not the only paths that change a secret: when your service changes the password or renews the memorized word, call `setLock()` as well, **after** SelfRecover's write. A forgotten path leaves a lock on a secret SelfRecover has already replaced.
 
 > ⚠️ **`userId` is compared byte for byte.** It enters the AAD of every envelope and keys the database row: "Alice" and "alice" are two vaults. If your accounts ignore case, map the name to the account's own before every call; otherwise a vault created under one spelling escapes the re-seals called under the other, and nothing says so.
 
@@ -105,7 +105,7 @@ Without SelfRecover, SelfDataGuard still works, with whatever locks the applicat
 
 ---
 
-## Operational modes — v0.6.2 implements one of them
+## Operational modes — v0.7.0 implements one of them
 
 | Mode | Server access to data | Trade-off | In the code |
 |------|----------------------|-----------|-------------|
@@ -113,14 +113,15 @@ Without SelfRecover, SelfDataGuard still works, with whatever locks the applicat
 | **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser, through libsodium compiled to WebAssembly — WebCrypto offers neither Argon2id nor XChaCha20-Poly1305 | Some workflows redesigned (no async transactional emails, push notifications instead) | ❌ specified, not written — the module carries no client-side code |
 
-A deployment installing v0.6.2 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
+A deployment installing v0.7.0 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
 
-One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens under ceremony — open dispute, escrow passphrase, signed log. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine. The escrow of an archived vault goes with the archive, and the administrator reopens it the same way (`getArchiveEscrowFieldsAsAdmin()`).
+One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens through `EscrowCeremony` alone — the verdict of an arbiter you write, the intention in a signed log, the log's head taken off the machine by a witness, and only then the escrow passphrase. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine. The escrow of an archived vault goes with the archive, and the administrator reopens it the same way (`readArchiveEscrow()`).
 
-What the escrow guarantees as of 0.6.0:
+What the escrow guarantees:
+- **no arbiter ships**: `EscrowArbiter` returns a named `Verdict`, and only `Open` unseals. One written for every deployment would say yes to all of them; SelfRecover's arrives with its level-3 window. The arbiter's class, its verdict and the witness's are in the log. `HeadWitness` is required: it gives back the last head it took, and the ceremony checks the log against it before writing anything — a log cut or rewritten since stops it. `NoHeadWitness` says by name that the head stays on this machine. An arbiter that throws answers `Unavailable`. Against the administrator alone — the sealed key file and its passphrase — none of this holds: they open the escrow outside the library;
 - **the admin seal names its account**: copied into another account's row, it is refused. It does not authenticate the escrow content: whoever writes to the database can, with the public key, seal and fill a new compartment. A seal from before 0.6.0 still opens; `rebindEscrowAdmin($session, $publicKey)` re-seals it, to the key you pass — pass the one the escrow was created with, nothing can check it without the secret key;
 - **the admin passphrase is at least 12 bytes** when sealing (`UserVault::PASSWORD_MIN_LEN`); a key sealed earlier under a shorter passphrase still opens. The sealed key carries its Argon2id profile (`v2:…`);
-- **the ceremony log can be anchored off the machine**: `bin/escrow-ceremony.php verify-log` prints its head `seq:hmac`, which you write down elsewhere, and `verify-log --ancre seq:hmac` then refuses a log truncated before the anchor or rewritten up to it. Without an anchor, verification cannot see that the end of the log was cut off. The log secret lives on the ceremony machine, and whoever holds it can rewrite what follows the last anchor: anchor the log after every ceremony;
+- **the ceremony log can be anchored off the machine**: `bin/escrow-ceremony.php verify-log` prints its head `seq:hmac`, which you write down elsewhere, and `verify-log --ancre seq:hmac` then refuses a log truncated before the anchor or rewritten up to it. Without an anchor, verification cannot see that the end of the log was cut off. The log secret lives on the ceremony machine, and whoever holds it can rewrite what follows the last anchor: the witness takes the head out at every ceremony. Lines without the shape of an entry — a write cut short — are quarantined by the next entry, which records them; an entry whose signature does not hold, or a signed entry out of place, is a break that nothing is appended over;
 - **the field name `escrow` is reserved**: it is the context of the escrow envelope. `setFields()` refuses it; `getFields()` refuses it when asked for by name, and leaves it out, undecrypted, of a read of every field.
 
 ---
@@ -129,22 +130,24 @@ What the escrow guarantees as of 0.6.0:
 
 | Adversary | Without SelfDataGuard | With SelfDataGuard |
 |-----------|----------------------|---------------------|
-| SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted values. Readable: field names, modification dates, lengths, accounts that share an indexed value |
+| SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted values. Readable: field names, modification dates, lengths, accounts that share a value of a field declared shared |
 | Backup tape stolen | Plain-text PII exposed | The same, as long as the backup does not hold the blind-index key (a server-side secret, shared by every account). With it, indexed values that can be enumerated (phone numbers, email addresses) are found by dictionary, for every account |
 | Insider DBA | Reads everything | As for a dump: encrypted values, no unwrapping without one of a user's secrets; field names, modification dates and lengths readable |
 | Application root compromise (RCE) | Reads everything | Lite, the only mode in service: reads the vaults of sessions open during the compromise, and keeps their keys, which do not rotate afterwards. With the blind-index key, finds by dictionary the indexed values that can be enumerated, for every account |
 | Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
 | Stolen passphrase paper | Account access through level 1 | The same, plus that user's data — offline too, given a dump. The passphrase is consumed at its first legitimate use, which replaces it |
 | Coercion of admin to decrypt | All data at admin's discretion | Private vaults have no admin key: opening them would take a secret from every user. The escrow has one, and it is permanent: whoever coerces the holder of its passphrase obtains, ceremony after ceremony, the escrow compartment of every account with an escrow compartment — never the private vault |
+| Blind-index key lost, or replaced by a new one | — | **Limit.** The database records a check of its key: a façade that brings another is refused, naming it; a database written before 0.7.0 adopts its key only on proof (`adoptBlindKey()`), or on the operator's word where no field carries an index. Every seal and every index is computed under that key: until it is back, nothing opens. Keep it with the database's backups |
+| A third party who knows a name | Learns whether the account exists | The same, from the response time; and whether its vault is sealed yet. Not which locks it carries (whitepaper, §8.1) |
 | Database write: an old vault row put back | — | **Limit.** The restored row opens with the secrets it carried, a passphrase consumed since included. Nothing in the vault tells a restored revision apart: the defence is the integrity of the database and its backups (whitepaper, §8.1) |
 
 ---
 
 ## Status
 
-**v0.6.2 — an escrow log entry is forced to disk**, 15 October 2026, on top of **v0.6.1 — the unlocked keys and the server's secrets stay out of dumps and traces**, 14 October 2026, and **v0.6.0 — the Argon2id profile stored, an escrow bound to its account, an anchorable log**, 3 October 2026.
+**v0.7.0 — a sealed vault, keys that no object hands out, an escrow read through a witnessed ceremony**, 27 October 2026, on top of **v0.6.2 — an escrow log entry is forced to disk**, 15 October 2026, and **v0.6.1 — the unlocked keys and the server's secrets stay out of dumps and traces**, 14 October 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (3 986 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **388 checks across 11 suites** on PHP 8.2 and 8.4, and 384 on PHP 8.1, where four trace checks become declared limits, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (6 893 lines across 42 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **605 checks across 13 suites** on PHP 8.2 and 8.4, and 601 on PHP 8.1, where four trace checks become declared limits, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
 
 A 0.5.x database migrates in place the first time 0.6.0 opens it (`kdf_opslimit` and `kdf_memlimit` columns, at the former profile), and so does a 0.4.0 one, in one go. ⚠️ Rolling back to 0.5.x keeps access to the vaults and to the escrow on the holder's side, but the administrator can no longer open an escrow that 0.6.0 created or re-sealed, and 0.5.x cannot unseal an admin key generated by 0.6.0: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
 
@@ -194,33 +197,37 @@ $fields  = $dg->getFields($session);  // ['email' => 'a@b.c', 'iban' => 'FR76...
 $session = $dg->recover('alice', Lock::Passphrase, $oldPassphrase, $newPassword, $newPassphrase);
 
 // Level 3: the old vault is archived, a new one created
-['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('alice', $password, $digest, $passphrase);
+['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll($dg->generationOf('alice'), $password, $digest, $passphrase);
 
 // Indexed lookup, no plaintext required
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' or null
 ```
 
-Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). Each failure has its own exception type: `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced).
+Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). An implementation of `StorageInterface` of your own is conformant when `php bin/storage-conformance.php <connection.php>` passes against it, and not otherwise: a storage can match every signature and lose a vault in silence. Each failure has its own exception type: `WrongSecretException` (and `MissingEnvelopeException`, with the same message: an absent lock answers as a wrong secret), `VaultTamperedException` (a profile or an envelope that does not match the seal, or a seal missing), `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced), `DuplicateIndexException`, `AmbiguousLookupException`.
+
+> ⚠️ **After upgrading a database to 0.7.0, before serving**: call `sealProfile($userId)` once for every account. A vault written before 0.7.0 carries no profile seal, and opens to no one until it is sealed — as a tampered one would; a level 3 (`reEnroll()`) refuses it the same way. Then index a value only once the account has proven it holds it: whoever indexes it first keeps it.
 
 ---
 
 ## Testing
 
-Eleven sanity test suites, runnable directly with `php` (no PHPUnit required):
+Thirteen sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
-php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
-php tests/sanity_vault.php        # 58 tests — three locks, rotation, context separation, AAD binding, vault generation and profile
+php tests/sanity_primitives.php   # 56 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness, AAD
+php tests/sanity_vault.php        # 64 tests — three locks, rotation, context separation, AAD binding, generation, profile bounds, absent lock
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
-php tests/sanity_storage.php      # 60 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
-php tests/sanity_migration.php    # 15 tests — 0.4.0 and 0.5.x databases migrated in place, two concurrent migrators
-php tests/sanity_archive.php      # 26 tests — archive: content, isolation, all-or-nothing, concurrent writer waited for
-php tests/sanity_facade.php       # 67 tests — full API end-to-end, recover(), level 3, write race, storage that loses or ignores the profile, reserved name
-php tests/sanity_audit.php        # 23 tests — audit log, anchor against truncation, forced to disk
-php tests/sanity_ceremony.php     # 22 tests — key ceremony, verify-log options, unreadable sealed file
-php tests/sanity_escrow.php       # 36 tests — escrow compartment, v2 admin key, seal bound to its account, explicit re-seal
+php tests/sanity_storage.php      # 64 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
+php tests/sanity_migration.php    # 37 tests — the key adopted on proof, 0.4.0 and 0.5.x databases migrated in place, unique blind index, profile sealed by the operator
+php tests/sanity_archive.php      # 30 tests — a package that no longer reads, archive: content, isolation, all-or-nothing, concurrent writer waited for
+php tests/sanity_facade.php       # 116 tests — a database read without a write, full API end-to-end, recover(), level 3 under the seal, seal over profile and envelopes, repair, the database's key and shared fields, unique index, write race, a name that keeps its archives
+php tests/sanity_conformance.php  # 52 tests — the storage conformance suite, against the shipped adapter and twenty-one broken ones, each race played ten times
+php tests/sanity_keys.php         # 20 tests — no object that holds a key has an accessor for it
+php tests/sanity_audit.php        # 35 tests — audit log, anchor against truncation, forced to disk, quarantine of what a crash leaves
+php tests/sanity_ceremony.php     # 33 tests — ceremony CLI, operator arbiter and witness, a witness seeded, archives, verify-log options
+php tests/sanity_escrow.php       # 63 tests — a witness that forgot its heads, escrow compartment, first deposits at once, v2 admin key, seal bound to its account, ceremony order, log checked against the witness
 php tests/sanity_vecteurs.php     # 9 tests — keys of the three locks against frozen vectors
-# Total: 388 tests, 0 failures — counted by running them, 2026-10-15
+# Total: 605 tests, 0 failures — counted by running them, 2026-10-27
 python3 tests/vecteurs_argon2.py  # recomputes the vectors with argon2-cffi, a second implementation
 ```
 

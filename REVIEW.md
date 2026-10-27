@@ -83,11 +83,13 @@ Cinq règles en découlent pour le code tel qu'il est.
 
 **1. Une clé ne sort pas du composant qui la détient.** Une méthode publique rend le résultat
 d'une opération — un coffre ouvert, un texte chiffré —, pas une clé maîtresse ou dérivée.
-> Deux méthodes de SelfDataGuard le font : `UnlockedVault::getMasterKey()` et
-> `UnlockedEscrow::getEscrowKey()`. Leurs propres classes s'en servent, et leur documentation
-> demande à l'appelant de ne pas conserver la clé : un garde-fou déclaré que rien n'applique, le
-> motif 1. La cartographie (`docs/architecture/CURRENT_ARCHITECTURE.md`, §6) le relève. C'est une
-> dette connue ; une troisième méthode de ce genre est un constat.
+> Depuis SelfDataGuard 0.7.0, `UnlockedVault`, `UnlockedEscrow` et `UnlockedArchive` font
+> l'opération elles-mêmes — chiffrer un champ, ouvrir le séquestre, resceller une serrure — et
+> `self-security/selfdataguard/tests/sanity_keys.php` rougit si une méthode publique de la couche
+> objet, constructeurs exceptés, rend ou reçoit une clé. Une clé n'en sort plus que scellée sous un
+> secret, et dans un même processus PHP c'est une interface, pas une frontière. La clé admin n'est descellée que dans `EscrowCeremony`, par des
+> méthodes privées, après l'arbitre, le journal et le témoin de tête : une méthode publique qui la
+> rendrait ou la recevrait est un constat.
 
 **2. Une dérivation porte un contexte nommé, propre à son usage.** Chaque chaîne de séparation de
 domaine est une constante, et deux usages ne partagent pas une chaîne par coïncidence.

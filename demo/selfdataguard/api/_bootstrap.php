@@ -16,6 +16,10 @@ require __DIR__ . '/../../../self-security/selfdataguard/src/autoload.php';
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\StaleVaultException;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
+use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -84,7 +88,14 @@ $blindKeyPath = getenv('DATAGUARD_BLINDKEY_PATH')
     ?: ($_SERVER['DATAGUARD_BLINDKEY_PATH'] ?? '')
     ?: (__DIR__ . '/../storage/blindkey.bin');
 
+// Une clé neuve rendrait chaque coffre scellé sous l'ancienne « falsifié » : elle
+// ne naît que tant qu'aucune base n'existe.
 if (!is_file($blindKeyPath)) {
+    if ((glob($repertoireBases . '/*.sqlite') ?: []) !== []) {
+        http_response_code(500);
+        echo json_encode(['error' => 'The blind-index key is missing while demo bases sealed under it exist: restore it']);
+        exit;
+    }
     file_put_contents($blindKeyPath, Primitives::randomBytes(32));
     chmod($blindKeyPath, 0600);
 }
@@ -98,7 +109,14 @@ if ($blindKey === false || strlen($blindKey) < 32) {
 // Sans base, une lecture passe par une base vide en mémoire : rien n'est écrit, et
 // chaque page vue n'occupe pas une place jusqu'à son expiration.
 $storage     = new SqliteAdapter($baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
-$dataGuard   = new SelfDataGuard($storage, $blindKey);
+try {
+    $dataGuard = new SelfDataGuard($storage, $blindKey);
+} catch (InvalidArgumentException) {
+    // La base a été ouverte sous une autre clé d'index : chaque coffre s'y dirait falsifié.
+    http_response_code(500);
+    echo json_encode(['error' => 'The blind-index key is not the one this demo base was opened with: restore it']);
+    exit;
+}
 
 // Une action sur un coffre suppose une base : sans elle, le dire, plutôt qu'un
 // « mauvais mot de passe » qui enverrait chercher une faute de frappe.
@@ -200,6 +218,22 @@ function fail(string $message, int $status = 400): never
     http_response_code($status);
     echo json_encode(['error' => $message]);
     exit;
+}
+
+/**
+ * La réponse à un refus du coffre, selon ce qu'il veut dire. Un secret faux et un
+ * compte inconnu se répondent pareil ; un coffre dit falsifié, une session qu'un
+ * niveau 3 a dépassée ou un coffre illisible se disent tels quels : pris pour un
+ * secret faux, ils enverraient le titulaire chercher un mot de passe qu'il a juste.
+ */
+function fail_vault(Throwable $e): never
+{
+    match (true) {
+        $e instanceof VaultTamperedException => fail('Vault tampered: its Argon2id profile does not match its seal — an operator repairs it', 409),
+        $e instanceof StaleVaultException    => fail('The vault was replaced since this session opened: log in again', 409),
+        $e instanceof WrongSecretException, $e instanceof VaultNotFoundException => fail('Authentication failed', 401),
+        default                              => fail('The vault could not be read', 500),
+    };
 }
 
 function ok(array $data): never

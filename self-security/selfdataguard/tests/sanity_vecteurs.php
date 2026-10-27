@@ -34,7 +34,6 @@ $vecteurs['profil'] === ['opslimit' => Primitives::ARGON2_OPSLIMIT, 'memlimit' =
 
 // The composition under test is UserVault's own: which secret, which context,
 // which normalisation goes to which derivation.
-$deriver = new ReflectionMethod(UserVault::class, 'deriveKey');
 
 foreach ($vecteurs['cas'] as $cas) {
     echo "\n→ {$cas['nom']}\n";
@@ -49,7 +48,7 @@ foreach ($vecteurs['cas'] as $cas) {
         [Lock::Memorized, 'mot_memorise', 'attendu_mot_memorise'],
         [Lock::Passphrase, 'phrase', 'attendu_phrase'],
     ] as [$serrure, $secret, $cle]) {
-        $obtenu = bin2hex($deriver->invoke(null, $serrure, $cas[$secret], $sel));
+        $obtenu = bin2hex(UserVault::keyFor($serrure, $cas[$secret], $sel, Primitives::ARGON2_OPSLIMIT, Primitives::ARGON2_MEMLIMIT));
         $obtenu === $cas[$cle]
             ? ok("{$serrure->name}: key matches the second implementation")
             : ko("{$serrure->name}: key differs from the second implementation", $obtenu);

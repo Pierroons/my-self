@@ -14,12 +14,20 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/key_fixture.php';
+require __DIR__ . '/blob_v2_fixture.php';
+require __DIR__ . '/storage_doubles.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Fields\BlindIndex;
+use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
+use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
+use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 $failures = 0;
 $passes = 0;
@@ -95,9 +103,10 @@ function scelleAvant060(string $userId, string $password, ?string $memorized = n
 {
     $base = (new UserVault())->register($userId, $password)['record'];
     $mk   = random_bytes(Primitives::KEY_LEN);
-    $seal = new ReflectionMethod(UserVault::class, 'seal');
-    $sous = static fn (Lock $l, ?string $s) => $s === null ? null : $seal->invoke(
-        null, $l, $s, $base->userSalt, $userId, $mk, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
+    // As 0.6.x wrote a wrap: format v2, under the bare userId. One written by
+    // this version would be format v3, which no version before 0.7.0 wrote.
+    $sous = static fn (Lock $l, ?string $s) => $s === null ? null : blobV2(
+        $mk, UserVault::keyFor($l, $s, $base->userSalt, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT), $userId);
     return new VaultRecord(
         userId: $userId, userSalt: $base->userSalt,
         wrapPwd: $sous(Lock::Password, $password), wrapRecov: $sous(Lock::Memorized, $memorized), wrapAdmin: null,
@@ -172,7 +181,7 @@ try {
     exit(1);
 }
 
-$storage->updateVault($uv->changePassphrase($record, $session, $PHRASE));
+$storage->updateVault($uv->setLock($record, $session, Lock::Passphrase, $PHRASE));
 try {
     $uv->unlockWithPassphrase($storage->loadVault('user-old'), $PHRASE);
     ok('a passphrase added to the migrated vault is persisted and opens it');
@@ -245,10 +254,11 @@ try {
 }
 
 // The profile goes through the table and back: a vault sealed under another one.
-$OPS = 2;
-$MEM = 32 * 1024 * 1024;
+// Another profile than the current one, within the floor and the ceiling.
+$OPS = Primitives::ARGON2_OPSLIMIT + 1;
+$MEM = Primitives::ARGON2_MEMLIMIT;
 $base = $uv->register('user-profile', 'profile-password-01');
-$mk   = $base['unlocked']->getMasterKey();
+$mk   = heldKey($base['unlocked']);
 $wrap = (new ReflectionMethod(UserVault::class, 'seal'))->invoke(
     null, Lock::Password, 'profile-password-01', $base['record']->userSalt, 'user-profile', $mk, $OPS, $MEM);
 $storage05->saveVault(new VaultRecord(
@@ -259,7 +269,7 @@ $storage05->saveVault(new VaultRecord(
 $relu = $storage05->loadVault('user-profile');
 try {
     $relu->kdfOpslimit === $OPS && $relu->kdfMemlimit === $MEM
-        && $uv->unlockWithPassword($relu, 'profile-password-01')->getMasterKey() === $mk
+        && heldKey($uv->unlockWithPassword($relu, 'profile-password-01')) === $mk
         ? ok('a vault saved under another profile reads back with it, and opens')
         : ko('the profile did not survive the table', "{$relu->kdfOpslimit}/{$relu->kdfMemlimit}");
 } catch (Throwable $e) {
@@ -347,6 +357,210 @@ $storage->loadVault('user-old')->wrapPhrase?->toBase64() === $before->wrapPhrase
     : ko('a 0.4.0 UPDATE altered wrap_phrase');
 
 // -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+
+section('A vault written before 0.7.0 opens to no one until the operator seals its profile');
+
+$avantSceau = oldDatabase('user-unsealed', 'unsealed-password-01', 'unsealed-memorized');
+$avantStore = new SqliteAdapter($avantSceau);
+$avantKey   = random_bytes(32);
+// Nothing indexed, nothing sealed: the key decides nothing that exists yet.
+SelfDataGuard::adoptBlindKey($avantStore, $avantKey);
+$dgAvant = new SelfDataGuard($avantStore, $avantKey);
+try {
+    $dgAvant->loginWithPassword('user-unsealed', 'unsealed-password-01');
+    ko('a vault without a profile seal was opened');
+} catch (VaultTamperedException $e) {
+    str_contains($e->getMessage(), 'sealProfile()')
+        ? ok('the unsealed vault is refused, and the refusal names the operator\'s step')
+        : ko('wrong refusal', $e->getMessage());
+}
+$dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-never')
+    ? ok('sealProfile(): true once, false after, false for a userId without a vault')
+    : ko('sealProfile() did not seal once and only once');
+$dgAvant->loginWithMemorized('user-unsealed', 'unsealed-memorized')->userId === 'user-unsealed'
+    ? ok('sealed, the vault written before 0.7.0 opens under its legacy profile')
+    : ko('the sealed vault did not open');
+
+section('A database that holds vaults records its blind-index key only on proof');
+
+$pinPdo   = oldDatabase('user-pin', 'pin-password-0001', 'pin-memorized');
+$rightKey = random_bytes(32);
+$wrongKey = random_bytes(32);
+$pinPdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at) VALUES (?, ?, ?, ?, ?)')
+    ->execute(['user-pin', 'email', 'c-email', BlindIndex::compute('pin@example.org', $rightKey, 'email'), '2026-01-01']);
+$pinStore = new SqliteAdapter($pinPdo);
+try {
+    new SelfDataGuard($pinStore, $wrongKey);
+    ko('a façade recorded the first key it brought to a database written before 0.7.0');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'adoptBlindKey()') && $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('a database written before 0.7.0 is not opened, and records nothing, until its key is adopted')
+        : ko('refused for another reason, or a key was recorded', $e->getMessage());
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $wrongKey, [], 'user-pin', 'email', 'pin@example.org');
+    ko('a wrong key was adopted against a lookup it does not answer');
+} catch (InvalidArgumentException) {
+    $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('a wrong key is not adopted: the lookup it should answer does not lead to the account, and nothing is recorded')
+        : ko('the refused key was recorded anyway');
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $wrongKey);
+    ko('a key was adopted on the operator\'s word over a database that indexes a field: its lookups would answer "absent"');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'indexes email') && $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('a database that indexes a field adopts no key without proof, and the refusal names the field')
+        : ko('refused for another reason, or a key was recorded', $e->getMessage());
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'Pin@example.org');
+    ko('the right key was adopted against a value the database never indexed');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'the field name, the value')
+        ? ok('a value mistyped under the right key is refused, and the refusal names the value as a cause, not the key alone')
+        : ko('a mistyped value is refused as if the key were wrong', $e->getMessage());
+}
+try {
+    SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin');
+    ko('a seal proof was accepted from a vault written before 0.7.0, which carries none');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'carries no seal')
+        ? ok('a seal proof on a vault written before 0.7.0 is refused for what it is: the vault carries no seal')
+        : ko('a missing seal is refused as if the key were wrong', $e->getMessage());
+}
+SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'pin@example.org');
+$dgPin = new SelfDataGuard($pinStore, $rightKey);
+$dgPin->sealProfile('user-pin') && $dgPin->findUserByField('email', 'pin@example.org') === 'user-pin'
+    ? ok('the key the lookup proves is adopted: the vault is sealed under it, and the lookup answers')
+    : ko('the adopted key did not seal the vault, or the lookup does not answer');
+try {
+    new SelfDataGuard($pinStore, $wrongKey);
+    ko('another key opened the database once its key was adopted');
+} catch (InvalidArgumentException) {
+    ok('once adopted, another key is refused');
+}
+
+$sealPdo = new PDO('sqlite::memory:');
+$sealPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$sealStore = new SqliteAdapter($sealPdo);
+(new SelfDataGuard($sealStore, $rightKey))->register('user-sealproof', 'sealproof-password-01');
+$sealPdo->exec('DELETE FROM selfdataguard_settings');
+try {
+    SelfDataGuard::adoptBlindKey($sealStore, $wrongKey, [], 'user-sealproof');
+    ko('a wrong key was adopted against a seal that does not hold under it');
+} catch (InvalidArgumentException) {
+    ok('a database whose vaults are sealed adopts no key their seals deny');
+}
+SelfDataGuard::adoptBlindKey($sealStore, $rightKey, [], 'user-sealproof');
+(new SelfDataGuard($sealStore, $rightKey))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
+    ? ok('the key a seal proves is adopted, and the vault opens')
+    : ko('the key a seal proves did not open the vault');
+
+$sharePdo   = oldDatabase('user-share', 'share-password-001', 'share-memorized');
+$shareStore = new SqliteAdapter($sharePdo);
+$sharePdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, shared_index, updated_at) VALUES (?, ?, ?, ?, ?)')
+    ->execute(['user-share', 'phone', 'c-phone', BlindIndex::compute('+33 6 00', $rightKey, 'phone'), '2026-01-01']);
+try {
+    SelfDataGuard::adoptBlindKey($shareStore, $rightKey, [], 'user-share', 'phone', '+33 6 00');
+    ko('sharedIndexes were adopted without a field that carries shared indexes: every façade that shares it would be refused');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'phone') && $shareStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
+        ? ok('sharedIndexes that omit a field carrying shared indexes are refused, and nothing is recorded')
+        : ko('refused for another reason, or a key was recorded', $e->getMessage());
+}
+SelfDataGuard::adoptBlindKey($shareStore, $rightKey, ['phone'], 'user-share', 'phone', '+33 6 00');
+(new SelfDataGuard($shareStore, $rightKey, ['phone']))->findUsersByField('phone', '+33 6 00') === ['user-share']
+    ? ok('sharedIndexes that name the shared field are adopted, and the field\'s lookup answers')
+    : ko('the shared field adopted does not answer its lookup');
+
+$racePdo = new PDO('sqlite::memory:');
+$racePdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$raceStore = new SqliteAdapter($racePdo);
+new SelfDataGuard($raceStore, $rightKey);
+try {
+    SelfDataGuard::adoptBlindKey(new SettingRecordedMeanwhileStorage($raceStore), $wrongKey);
+    ko('adoptBlindKey() went on over a key another writer recorded meanwhile');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'meanwhile')
+        ? ok('adoptBlindKey() refuses when another key was recorded between its read and its claim')
+        : ko('refused for another reason', $e->getMessage());
+}
+
+section('An archive written before 0.7.0 carries no seal, and opens under the profile it recorded');
+
+$legacyPdo   = oldDatabase('user-legacy-l3', 'legacy-password-01', 'legacy-memorized');
+$legacyStore = new SqliteAdapter($legacyPdo);
+$legacyKey   = random_bytes(32);
+SelfDataGuard::adoptBlindKey($legacyStore, $legacyKey);
+$dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey);
+// Archived as 0.6.x did: without a seal, the new vault sealed as this version seals it.
+$fresh = (new UserVault())->register('user-legacy-l3', 'legacy-password-02')['record'];
+$fresh = $fresh->withProfileSeal(ProfileSeal::of(ProfileSeal::key($legacyKey), $fresh, $fresh->kdfOpslimit, $fresh->kdfMemlimit));
+$legacyArchive = $legacyStore->replaceWithArchive($legacyStore->loadVault('user-legacy-l3')->generation(), $fresh);
+$legacyCurrent = $dgLegacy->loginWithPassword('user-legacy-l3', 'legacy-password-02');
+$dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, 'legacy-memorized') instanceof Pierroons\SelfDataGuard\Vault\UnlockedArchive
+    ? ok('an archive whose envelopes predate 0.7.0, without a seal, opens under the profile it recorded')
+    : ko('a legacy archive did not open');
+$legacyPdo->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.kdf.opslimit\', :ops) WHERE archive_id = :id'
+)->execute([':ops' => Primitives::LEGACY_OPSLIMIT + 1, ':id' => $legacyArchive]);
+try {
+    $dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, 'legacy-memorized');
+    ko('the recorded profile is ignored: the legacy archive opened under another one');
+} catch (WrongSecretException) {
+    ok('its recorded profile is the one used — and nothing vouches for it: a profile changed fails as a wrong secret (declared)');
+}
+
+section('Blind indexes become unique when a database written before 0.7.0 is opened');
+
+/** @return list<string> the indexes of selfdataguard_fields, by name */
+function fieldIndexes(PDO $pdo): array
+{
+    return $pdo->query(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'selfdataguard_fields'
+         AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    )->fetchAll(PDO::FETCH_COLUMN);
+}
+
+$held = oldDatabase('user-a', 'a-password-0001', 'a-memorized');
+$held->exec(
+    "INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at) VALUES
+     ('user-a', 'email', 'c1', 'IdxSame=', '2026-01-01'), ('user-b', 'email', 'c2', 'IdxSame=', '2026-01-01'),
+     ('user-a', 'phone', 'c3', 'IdxHome=', '2026-01-01'), ('user-b', 'phone', 'c4', 'IdxHome=', '2026-01-01')"
+);
+try {
+    new SqliteAdapter($held);
+    ko('a database holding one blind-index value under two accounts was opened');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'email: 1, phone: 1')
+        ? ok('values held by two accounts: the adapter refuses to open, and names each field and how many values')
+        : ko('wrong refusal', $e->getMessage());
+}
+fieldIndexes($held) === ['selfdataguard_fields_blind', 'selfdataguard_fields_shared']
+    ? ok('nothing half-built: the old index is still there, no unique index')
+    : ko('the refused migration left the indexes changed', implode(',', fieldIndexes($held)));
+
+$held->exec("UPDATE selfdataguard_fields SET blind_index = NULL WHERE user_id = 'user-b' AND field_name = 'email'");
+$held->exec("UPDATE selfdataguard_fields SET shared_index = blind_index, blind_index = NULL WHERE field_name = 'phone'");
+$opened = new SqliteAdapter($held);
+fieldIndexes($held) === ['selfdataguard_fields_blind_unique', 'selfdataguard_fields_shared']
+    ? ok('once each value is settled, the adapter opens: the unique index is built, the old one dropped')
+    : ko('the indexes after migration are not the expected ones', implode(',', fieldIndexes($held)));
+$opened->findUserIdsByIndex('email', 'IdxSame=') === ['user-a'] && $opened->findUserIdsByIndex('phone', 'IdxHome=') === ['user-a', 'user-b']
+    ? ok('the value left to its holder names it alone; the field moved to shared_index lists both holders')
+    : ko('the settled values do not resolve as the CHANGELOG remedies say');
+$freshFields = new PDO('sqlite::memory:');
+new SqliteAdapter($freshFields);
+$columns = static fn (PDO $pdo): array => array_map(
+    static fn (array $c): string => implode('|', [$c['name'], $c['type'], $c['notnull'], (string) $c['dflt_value'], $c['pk']]),
+    $pdo->query('PRAGMA table_info(selfdataguard_fields)')->fetchAll(PDO::FETCH_ASSOC)
+);
+$columns($held) === $columns($freshFields) && fieldIndexes($held) === fieldIndexes($freshFields)
+    ? ok('migrated fields table == freshly created one: same columns, same indexes')
+    : ko('the migrated fields table differs from a fresh one');
 
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";

@@ -2990,9 +2990,9 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=26 [sanity_audit]=23 [sanity_ceremony]=22 [sanity_escrow]=37
-            [sanity_facade]=70 [sanity_fields]=26 [sanity_migration]=15 [sanity_primitives]=56
-            [sanity_storage]=60 [sanity_vault]=58 [sanity_vecteurs]=9
+            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=52 [sanity_escrow]=63
+            [sanity_facade]=116 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=37 [sanity_primitives]=56
+            [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -3038,7 +3038,9 @@ jobs:
 
       # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
       # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
-      # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
+      # perd Secure par défaut, un quota par adresse levé, une clé d'index régénérée
+      # sous des bases existantes, un coffre falsifié rendu comme un mot de passe faux,
+      # un compte gardé après une inscription refusée — le banc doit rougir sur chacun.
       - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
         run: |
           # @plante
@@ -3062,6 +3064,12 @@ jobs:
             "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
           canari "=== '1';" "!== '0';" 'attributs du cookie'
           canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
+          canari "if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" 'if (false) {' \
+            'une clé neuve a remplacé celle des coffres existants'
+          F=demo/selfdataguard/api/login.php
+          canari '    fail_vault($e);' "    fail('Authentication failed', 401);" 'un coffre falsifié est rendu comme autre chose'
+          F=demo/selfdataguard/api/register.php
+          canari '    isset($session) && $dataGuard->delete($session->generation());' '' "le compte d'une inscription refusée est resté"
 
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce
@@ -3113,8 +3121,8 @@ jobs:
           F=self-security/selfdataguard/src/SelfDataGuard.php
           cp "$F" /tmp/SelfDataGuard.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
-          sed -i '/\$record = \$this->vault->changePassphrase(\$record, \$session, \$newPassphrase);/d' "$F"
-          ! grep -q 'record = $this->vault->changePassphrase($record, $session, $newPassphrase);' "$F" \
+          sed -i '/\$record = \$this->vault->setLock(\$record, \$session, Lock::Passphrase, \$newPassphrase);/d' "$F"
+          ! grep -q 'record = $this->vault->setLock($record, $session, Lock::Passphrase, $newPassphrase);' "$F" \
             || { echo "::error::canari non planté — motif introuvable"; exit 1; }
           if sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php 2>&1); then
             cp /tmp/SelfDataGuard.intact "$F"
@@ -3150,21 +3158,107 @@ jobs:
             $D/tests/sanity_facade.php 'a planted "escrow" row was decrypted'
           canari $D/src/Escrow/AdminKey.php 'if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {' 'if (false) {' \
             $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
-          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null) {' 'if (false) {' \
+          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null && ($found = self::anchorFound($entries, $anchorAt)) !== null) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'a truncated log passed its anchor'
+          canari $D/src/Escrow/AuditLog.php "if (\$anchorAt !== null && (\$found = self::anchorFound(\$state['chain'], \$anchorAt)) !== null) {" 'if (false) {' \
+            $D/tests/sanity_audit.php 'an entry was appended to a log that no longer holds the anchor it was given'
+          canari $D/src/Escrow/AuditLog.php "\$out = \$cutOff ? \"\\n\" : '';" "\$out = '';" \
+            $D/tests/sanity_audit.php 'the cut tail was not quarantined on its own line'
+          canari $D/src/Escrow/AuditLog.php '            if (!$shaped) {' \
+            '            if (!$shaped || !hash_equals($this->hmac(["seq" => $rec["seq"], "ts" => $rec["ts"], "event" => $rec["event"], "prev" => $rec["prev"]]), $rec["hmac"])) {' \
+            $D/tests/sanity_audit.php 'an entry was appended over a forged one'
+          canari $D/src/Escrow/EscrowCeremony.php '+ $failure + $context, $lastHead);' '+ $failure + $context);' \
+            $D/tests/sanity_escrow.php 'the refusal over a cut log is not in the log'
+          canari $D/src/Escrow/EscrowCeremony.php 'if ($lastHead === null && !$this->witness instanceof NoHeadWitness && $this->witnessTookAHead()) {' \
+            'if (false) {' \
+            $D/tests/sanity_escrow.php 'a witness that took heads, then holds none, let a ceremony go on'
+          canari $D/src/Escrow/EscrowCeremony.php "                && (\$event['witness'] ?? NoHeadWitness::class) !== NoHeadWitness::class" \
+            "                && (\$event['witness'] ?? null) === get_class(\$this->witness)" \
+            $D/tests/sanity_escrow.php 'a new witness of another class, holding no head, went on over a log another witness served'
+          canari $D/src/Escrow/EscrowCeremony.php "                && (\$entries[\$i + 1]['event']['reason'] ?? null)" \
+            "                && isset(\$entries[\$i + 1]) && (\$entries[\$i + 1]['event']['reason'] ?? null)" \
+            $D/tests/sanity_escrow.php 'a witness that took the head of the last line, then holds none, let a ceremony go on'
+          canari $D/src/Escrow/EscrowCeremony.php "'witness' => get_class(\$this->witness)] + \$context, \$anchor);" \
+            "'witness' => get_class(\$this->witness)] + \$context);" \
+            $D/tests/sanity_escrow.php 'seedWitness() seeded the witness on an anchor the log does not hold'
+          canari $D/src/Escrow/EscrowCeremony.php '        if ($held !== null) {' '        if (false) {' \
+            $D/tests/sanity_escrow.php 'seedWitness() seeded again a witness that holds a head'
+          canari $D/src/Escrow/EscrowCeremony.php '        } catch (InvalidArgumentException $e) {' '        } catch (\DomainException $e) {' \
+            $D/tests/sanity_escrow.php 'a malformed head from the witness escaped the ceremony'
+          canari $D/src/Escrow/EscrowCeremony.php '            // A case table that cannot be read is the answer Unavailable names.' '            throw $e;' \
+            $D/tests/sanity_escrow.php 'an arbiter that throws escaped the ceremony'
+          canari $D/src/SelfDataGuard.php "\$created['unlocked']->lock();" \
+            "\$this->storage->replaceEscrow(\$session->generation(), \$created['record']); \$unlocked = \$created['unlocked'];" \
+            $D/tests/sanity_escrow.php 'the escrow no longer reads in full'
+          canari $D/src/Storage/Conformance.php "            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment'," '' \
+            $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
+          canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
+            "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
+            $D/tests/sanity_conformance.php 'processes claimed one setting at once: each must be given the value the database holds'
+          canari $D/src/Storage/Conformance.php "        \$this->assert(!\$empty || \$this->storage->hasVaults(), 'hasVaults() is false on a database that keeps only an archive');" '' \
+            $D/tests/sanity_conformance.php 'LiveOnlyHasVaultsStorage passed a case it breaks'
+          canari $D/src/Storage/SqliteAdapter.php "            \$out[(string) \$row['field_name']] = (bool) \$row['shared'];" '' \
+            $D/tests/sanity_conformance.php 'indexedFields() did not name exactly the fields that carry an index'
+          canari $D/src/Storage/SqliteAdapter.php '            $package = $this->package($row, $userId);' \
+            "            \$package = json_decode((string) \$row['package'], true, flags: JSON_THROW_ON_ERROR);" \
+            $D/tests/sanity_archive.php 'listArchives() threw JsonException, which no caller expects'
+          canari $D/src/SelfDataGuard.php 'if (!hash_equals($keyHeld, $check)) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a façade opened a database under another blind-index key'
+          canari $D/src/SelfDataGuard.php 'if (!hash_equals($storage->claimSetting(self::SETTING_BLIND_KEY, $check), $check)) {' \
+            '$storage->claimSetting(self::SETTING_BLIND_KEY, $check); if (false) {' \
+            $D/tests/sanity_migration.php 'adoptBlindKey() went on over a key another writer recorded meanwhile'
+          canari $D/src/SelfDataGuard.php '        } elseif ($indexed !== []) {' '        } elseif (false) {' \
+            $D/tests/sanity_migration.php 'over a database that indexes a field: its lookups would answer'
+          canari $D/src/SelfDataGuard.php '        if ($unshared !== []) {' '        if (false) {' \
+            $D/tests/sanity_migration.php 'sharedIndexes were adopted without a field that carries shared indexes'
+          canari $D/src/SelfDataGuard.php 'if ($recorded !== $declared) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a façade that shares a field opened a database where that field names one account'
+          canari $D/src/Storage/SqliteAdapter.php '        $held = $this->loadSetting($name);' '        $held = null;' \
+            $D/tests/sanity_facade.php 'claimSetting() wrote to a database that already held the value'
+          canari $D/src/SelfDataGuard.php '$keyHeld = $storage->loadSetting(self::SETTING_BLIND_KEY);' \
+            '$keyHeld = $storage->claimSetting(self::SETTING_BLIND_KEY, $check);' \
+            $D/tests/sanity_facade.php 'a façade claimed a setting the database already holds'
+          canari $D/src/SelfDataGuard.php '            if ($storage->hasVaults()) {' '            if (false) {' \
+            $D/tests/sanity_migration.php 'a façade recorded the first key it brought to a database written before 0.7.0'
+          canari $D/src/SelfDataGuard.php 'if (!in_array($proofUserId, $storage->findUserIdsByIndex($proofField, $index), true)) {' 'if (false) {' \
+            $D/tests/sanity_migration.php 'a wrong key was adopted against a lookup it does not answer'
+          canari $D/src/SelfDataGuard.php '            if (!ProfileSeal::holds(ProfileSeal::key($blindKey), $record->profileSeal, $record, $record->kdfOpslimit, $record->kdfMemlimit)) {' \
+            '            if (false) {' \
+            $D/tests/sanity_migration.php 'a wrong key was adopted against a seal that does not hold under it'
+          canari $D/src/SelfDataGuard.php '            foreach (Primitives::PUBLISHED_PROFILES as [$publishedOps, $publishedMem]) {' \
+            '            foreach ([] as [$publishedOps, $publishedMem]) {' \
+            $D/tests/sanity_facade.php 'a profile changed in the archive package closed the archive'
+          canari $D/src/Fields/BlindIndex.php "return base64_encode(hash_hkdf(Primitives::HMAC_ALGO, \$blindKey, 32, 'selfdataguard/blind-key-check'));" \
+            "return base64_encode(hash_hmac('sha256', 'selfdataguard/blind-key-check', \$blindKey, true));" \
+            $D/tests/sanity_facade.php 'the key check stored in the database is the field key of a field named after it'
+          canari $D/src/Vault/ProfileSeal.php '            . $part($record->wrapPhrase?->toBase64()) . $part($record->wrapAdmin?->toBase64());' '            ;' \
+            $D/tests/sanity_facade.php 'an envelope was removed and the vault still opened'
+          canari $D/src/Vault/ProfileSeal.php '            if ($wrap !== null && $wrap->bindsItsContext()) {' '            if (false) {' \
+            $D/tests/sanity_facade.php 'sealProfile() sealed a vault of this version whose seal was removed'
+          canari $D/src/SelfDataGuard.php 'if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {' \
+            'if ($archive->record->profileSeal !== null) {' \
+            $D/tests/sanity_facade.php 'an archive of this version opened without its seal'
+          canari $D/src/SelfDataGuard.php '        $sealed = $this->sealed($updated);' '        $sealed = $updated;' \
+            $D/tests/sanity_facade.php "The vault of 'user-cosmo' does not match its seal"
+          canari $D/src/SelfDataGuard.php 'if ($this->storage->listArchives($userId) !== []) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a name that still holds archives was registered again'
+          canari $D/src/SelfDataGuard.php '        $this->load($replacing->userId);' '' \
+            $D/tests/sanity_facade.php 'a level 3 archived a vault whose seal does not hold'
+          canari $D/src/Vault/ProfileSeal.php "return hash_hkdf('sha256', \$blindKey, 32, self::DOMAIN);" "return hash_hmac('sha256', self::DOMAIN, \$blindKey, true);" \
+            $D/tests/sanity_facade.php 'a blind index the application computes is a valid profile seal'
           canari $D/src/Escrow/AuditLog.php 'if (!@fsync($handle)) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'an append was reported written on a stream that cannot be synced'
           canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \
             "public const HMAC_CONTEXT_SUFFIX = '/dataguarD';" \
             $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
-          canari $D/src/Vault/UserVault.php '$opslimit ?? $record->kdfOpslimit,' '$opslimit ?? Primitives::ARGON2_OPSLIMIT,' \
+          canari $D/src/Vault/UserVault.php '$ops = $opslimit ?? $record->kdfOpslimit;' '$ops = $opslimit ?? Primitives::ARGON2_OPSLIMIT;' \
             $D/tests/sanity_vault.php 'a vault sealed under another profile no longer opens'
-          canari $D/src/Escrow/AdminKey.php '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
+          canari $D/src/Escrow/EscrowCeremony.php '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
             '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt);' \
             $D/tests/sanity_escrow.php 'a v2 key sealed under another profile no longer unseals'
           canari $D/src/SelfDataGuard.php 'if ($stored->kdfOpslimit !== $written->kdfOpslimit' 'if (false && $stored->kdfOpslimit !== $written->kdfOpslimit' \
             $D/tests/sanity_facade.php 'a vault read back under another Argon2id profile was reported as stored'
-          canari $D/src/Escrow/EscrowVault.php '$head = self::adminHead($record->userId);' \
+          canari $D/src/Escrow/EscrowCeremony.php '$head = EscrowVault::adminHead($record->userId);' \
             '$head = substr($plain, 0, strlen($plain) - Primitives::KEY_LEN);' \
             $D/tests/sanity_escrow.php "alice's wrap_admin, moved into bob's record, opened as bob's"
           canari $D/src/SelfDataGuard.php 'if ($record === null || EscrowVault::isAccountBound($record)) {' 'if (true) {' \
@@ -3174,7 +3268,7 @@ jobs:
             $D/tests/sanity_facade.php 'a storage that never reads the profile back was trusted'
           canari $D/src/SelfDataGuard.php 'unset($cipher[EscrowVault::WRAP_AAD_TAG]);' '' \
             $D/tests/sanity_facade.php 'getFields() refused the whole account for one reserved row'
-          canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return; fwrite(STDERR, "❌ option inconnue : "' \
+          canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return null; fwrite(STDERR, "❌ option inconnue : "' \
             $D/tests/sanity_ceremony.php 'was accepted'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
