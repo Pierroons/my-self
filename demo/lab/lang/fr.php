@@ -124,7 +124,7 @@ return [
     'rt.scope.in.h3'  => '✅ Dans le périmètre',
     'rt.scope.in'     => '<li>L\'application web MySelf-Lab (ce site) et tous ses chemins</li>'
         . '<li>L\'authentification <strong>SelfRecover</strong> (inscription, connexion, récupération)</li>'
-        . '<li>Les messages privés et profils chiffrés <strong>SelfDataGuard</strong></li>'
+        . '<li>Les messages privés et les profils, chiffrés au repos sous une clé du serveur (<strong>SelfDataGuard</strong>)</li>'
         . '<li>La réputation et le vote <strong>SelfModerate</strong></li>'
         . '<li>Le formulaire de soumission de rapport ci-dessous</li>',
     'rt.scope.out.h3' => '⛔ Hors périmètre',

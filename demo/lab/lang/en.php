@@ -126,7 +126,7 @@ return [
     'rt.scope.in.h3'  => '✅ In scope',
     'rt.scope.in'     => '<li>The MySelf-Lab web application (this site) and all its paths</li>'
         . '<li><strong>SelfRecover</strong> authentication (sign-up, log-in, recovery)</li>'
-        . '<li><strong>SelfDataGuard</strong> encrypted private messages and profiles</li>'
+        . '<li>Private messages and profiles, encrypted at rest under a server key (<strong>SelfDataGuard</strong>)</li>'
         . '<li><strong>SelfModerate</strong> reputation and voting</li>'
         . '<li>The report submission form below</li>',
     'rt.scope.out.h3' => '⛔ Out of scope',
