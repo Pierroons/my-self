@@ -686,9 +686,9 @@ final class StockageSelfRecover implements StorageInterface
      * d'émission : à la seconde, recoupée, une date désigne. En cours
      * seulement : une peine purgée ne dit rien de qui demande le compte.
      *
-     * Lue dans les colonnes, et non par `Moderate::getReputation()`, qui
-     * constate les fins de peine en base avant de répondre : une consultation
-     * de l'arbitre ne doit pas modifier l'état qu'elle consulte.
+     * Lue dans les colonnes de la ligne déjà chargée, comparées à l'heure : une
+     * peine échue que le moteur n'a pas encore inscrite s'y lit finie, comme
+     * `Moderate::getReputation()` la montre.
      *
      * @return array{sanction: ?string, sanction_jusqu_au: ?string, sanction_origine: ?string}
      */
