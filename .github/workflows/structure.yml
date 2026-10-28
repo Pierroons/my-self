@@ -1457,8 +1457,8 @@ jobs:
           # replantées sans elle : la décision doit rougir sur le dossier déjà tranché, le dépôt
           # sur le dossier tranché qu'il repasserait en attente.
           # Et deux défauts de la sanction lue pour l'arbitre : le motif d'un
-          # arbitre de modération qui sort en texte ; la lecture remplacée par
-          # `getReputation()`, qui écrit en base pendant qu'on consulte.
+          # arbitre de modération qui sort en texte ; la lecture remplacée par un
+          # balayage, qui écrit en base pendant qu'on consulte.
           A=demo/lab/lib/StockageSelfRecover.php
           for cas in clause cloture tranche depot motif ecriture; do
             cp "$A" /tmp/adaptateur.lab.intact
@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 144/144 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 144 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 152/152 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 152 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2377,7 +2377,7 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'lecture': ("                if (!$contenir) {\n                    throw $e;\n                }\n",
+              'lecture': ("                if (!$contenir || $e instanceof \\LogicException) {\n                    throw $e;\n                }\n",
                           "                throw $e;\n"),
               'profil':  ("        if ($etat['banned']) {\n", "        if (false) {\n"),
           }[os.environ['CAS']]
@@ -2462,7 +2462,7 @@ jobs:
                      salveVotantsMin fenetreMeuteJours meuteLiensMin meuteVotantsMax balayagePeriodeSecondes \
                      meuteEpisodeCooldown fenetreFarmingJours farmingUpvotesMax farmingDownvotesMax \
                      ciblesParVotantMax ageMinPourVoterSecondes intervalleConvalescenceSecondes \
-                     dureesBan dureeBanAdminSecondes plancherFraction; do
+                     dureesBan dureeBanAdminSecondes plancherFraction bansArbitreSignal balayageFiletMax; do
             cp "$M" /tmp/moderate.config.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, re, sys
@@ -2597,12 +2597,14 @@ jobs:
       - name: Canari — SelfModerate rabat à la convalescence un score monté par des votes positifs
         run: |
           # @plante
-          # La remontée passive borne sa propre progression, pas le score, et l'état
-          # se lève dès le seuil atteint. Deux défauts replantés tour à tour : la
-          # remontée qui ramène au point de départ un score monté plus haut, et
-          # l'état qui attend un intervalle de plus pour se lever.
+          # La remontée passive borne sa propre progression, pas le score, et les
+          # seuils se lisent sur le score quel que soit le chemin. Quatre défauts
+          # replantés tour à tour : la remontée qui ramène au point de départ un
+          # score monté plus haut ; l'état qui attend un intervalle de plus pour se
+          # lever ; le droit de vote qui l'attend au-dessus du seuil ; une base
+          # migrée, sans horloge, qui ignore son score.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in rabat attend; do
+          for cas in rabat attend droit migre; do
             cp "$M" /tmp/moderate.convalescence.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2611,8 +2613,12 @@ jobs:
           avant, apres = {
               'rabat':  ('$rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));',
                          '$rep = min(self::config()->sortieConvalescence(), $depart + $gagnes);'),
-              'attend': ('if ($gagnes >= 1 || $depart >= self::config()->sortieConvalescence()) {',
+              'attend': ('if ($gagnes >= 1 || $depart >= self::config()->perteDroitDeVoteSous) {',
                          'if ($gagnes >= 1) {'),
+              'droit':  ('if ($gagnes >= 1 || $depart >= self::config()->perteDroitDeVoteSous) {',
+                         'if ($gagnes >= 1 || $depart >= self::config()->sortieConvalescence()) {'),
+              'migre':  ("$depart = (int) $l['reputation'];\n            // Les seuils",
+                         "$depart = $last <= 0 ? 0 : (int) $l['reputation'];\n            // Les seuils"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -2626,7 +2632,11 @@ jobs:
             if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
-            echo "$sortie" | grep -qF 'la convalescence rabat un score, ou tient un compte déjà remonté' \
+            case $cas in
+              rabat|attend) attendu='la convalescence rabat un score, ou tient un compte déjà remonté' ;;
+              droit|migre)  attendu="le droit de vote attend l'intervalle au-dessus du seuil, ou une base migrée garde son état" ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -2659,13 +2669,13 @@ jobs:
                           ('self::$journal->inscrire(', 'self::$journal?->inscrire(', None)],
               'revue':   [("            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n",
                            "            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n", 1)],
-              'balayage': [("if (self::transaction($pdo, static fn (): bool => self::rattraper($pdo, (int) $row['account_id'], contenir: false))) {",
-                            "if (self::rattraper($pdo, (int) $row['account_id'], contenir: false)) {", 1)],
+              'balayage': [("$close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true));",
+                            "$close = self::rattraper($pdo, (int) $row['account_id'], contenir: true);", 1)],
               'hote':      [("                self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');\n", '', 1)],
               'attente':   [('$enAttente = self::refusFinEnAttente($etat);', '$enAttente = null;', 2),
                             ('$enAttente  = self::refusFinEnAttente($etat);', '$enAttente  = null;', 1)],
               'relecture': [('        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {\n            $etat = self::etat($pdo, $accountId);',
-                             '        self::rattraperSeul($pdo, $accountId);\n        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $etatLu): array {\n            $etat = $etatLu;', 1)],
+                             '        self::rattraperSeul($pdo, $accountId);\n        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $etatLu): array {\n            self::etat($pdo, $accountId);\n            $etat = $etatLu;', 1)],
               'ordre':     [('                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);\n                    self::restoreAfterCancel($pdo, $author, $voteIds);\n',
                              '                    self::restoreAfterCancel($pdo, $author, $voteIds);\n                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);\n', 1)],
               'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 4)],
@@ -2706,7 +2716,7 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate écrit sur une lecture, ou laisse une fin de peine sans personne pour l'inscrire
+      - name: Canari — SelfModerate écrit sur une lecture, prend le verrou pour un refus, ou laisse une fin de peine sans personne pour l'inscrire
         run: |
           # @plante
           # Une lecture calcule l'état sans l'écrire ; un vote, un geste ou le
@@ -2715,35 +2725,47 @@ jobs:
           # le filet qui balaie au premier vote négatif d'une tranche, et qui
           # s'abstient dans la transaction d'un hôte ; les convalescences dues que
           # le balayage prend ; le rattrapage qui précède la restitution d'une
-          # meute ; le vote refusé tant qu'une fin de peine attend le journal ;
-          # les états qu'une lecture montre tombés.
+          # meute ; le vote refusé, et la page qui le dit, tant que le journal
+          # refuse une fin de peine ; les états qu'une lecture montre tombés ; le
+          # rattrapage qui ne prend pas le verrou quand rien n'est dû ; le
+          # balayage qui passe un compte refusé ; l'erreur d'un journal qui
+          # rappelle le moteur, qui remonte ; un filet négatif refusé par la config.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in lecture-ecrit garde filet filet-hote balayage-conv restitution panne-vote projection; do
+          C=bi-self/selfmoderate/src/Config.php
+          for cas in lecture-ecrit garde filet filet-hote balayage-conv restitution panne-vote projection \
+                     verrou arret logique borne; do
             cp "$M" /tmp/moderate.lecture.intact
-            CAS="$cas" python3 - "$M" <<'PY'
+            cp "$C" /tmp/config.lecture.intact
+            CAS="$cas" python3 - "$M" "$C" <<'PY'
           import os, sys
-          p = sys.argv[1]
-          s = open(p, encoding='utf-8').read()
-          avant, apres = {
-              'lecture-ecrit': ('        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, time());',
-                                '        self::rattraperSeul($pdo, $accountId);\n        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, time());'),
-              'garde':         ('if (self::$ecritures > 0) {', 'if (false) {'),
-              'filet':         ('if (self::$trancheBalayee && !self::enTransaction($pdo)) {', 'if (false) {'),
-              'filet-hote':    ('if (self::$trancheBalayee && !self::enTransaction($pdo)) {', 'if (self::$trancheBalayee) {'),
-              'balayage-conv': ('OR (convalescent = 1 AND (last_regen_at <= 0', 'OR (0 AND convalescent = 1 AND (last_regen_at <= 0'),
-              'restitution':   ('        self::rattraper($pdo, $author, contenir: true);\n', ''),
-              'panne-vote':    ("if (self::getReputation($pdo, $voterId)['fin_en_attente']) {", 'if (false) {'),
-              'projection':    ("$tombent = array_diff($avance['tombent'], ['journal_en_panne']);", '$tombent = [];'),
+          fichier, avant, apres = {
+              'lecture-ecrit': (1, '        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, time());',
+                                   '        self::rattraperSeul($pdo, $accountId);\n        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, time());'),
+              'garde':         (1, 'if (self::$ecritures > 0) {', 'if (false) {'),
+              'filet':         (1, 'if (self::$trancheBalayee && !self::enTransaction($pdo)) {', 'if (false) {'),
+              'filet-hote':    (1, 'if (self::$trancheBalayee && !self::enTransaction($pdo)) {', 'if (self::$trancheBalayee) {'),
+              'balayage-conv': (1, 'OR (convalescent = 1 AND (last_regen_at <= 0', 'OR (0 AND convalescent = 1 AND (last_regen_at <= 0'),
+              'restitution':   (1, '        self::rattraper($pdo, $author, contenir: true);\n', ''),
+              'panne-vote':    (1, "if ($rep['fin_en_attente'] && in_array('journal_en_panne', array_column($rep['signaux'], 'cause'), true)) {", 'if (false) {'),
+              'projection':    (1, "$tombent = array_diff($avance['tombent'], ['journal_en_panne']);", '$tombent = [];'),
+              'verrou':        (1, "        if ($avance['fin'] === null && !$avance['horloge']", "        if (false && $avance['fin'] === null && !$avance['horloge']"),
+              'arret':         (1, "self::rattraper($pdo, (int) $row['account_id'], contenir: true));", "self::rattraper($pdo, (int) $row['account_id'], contenir: false));"),
+              'logique':       (1, 'if (!$contenir || $e instanceof \\LogicException) {', 'if (!$contenir) {'),
+              'borne':         (2, 'if ($this->balayageFiletMax < 0) {', 'if (false) {'),
           }[os.environ['CAS']]
+          p = sys.argv[fichier]
+          s = open(p, encoding='utf-8').read()
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
           PY
-            [ $? -eq 0 ] || { cp /tmp/moderate.lecture.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            [ $? -eq 0 ] || { cp /tmp/moderate.lecture.intact "$M"; cp /tmp/config.lecture.intact "$C"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
             if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
-              cp /tmp/moderate.lecture.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+              cp /tmp/moderate.lecture.intact "$M"; cp /tmp/config.lecture.intact "$C"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
             fi
             cp /tmp/moderate.lecture.intact "$M"
-            cmp -s /tmp/moderate.lecture.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            cp /tmp/config.lecture.intact "$C"
+            { cmp -s /tmp/moderate.lecture.intact "$M" && cmp -s /tmp/config.lecture.intact "$C"; } \
+              || { echo "::error::un fichier n'a pas été restauré à l'identique"; exit 1; }
             if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
@@ -2753,7 +2775,11 @@ jobs:
               filet|filet-hote) attendu='le filet sans planificateur ne tient pas' ;;
               balayage-conv) attendu='un compte guéri garde sa chute en base' ;;
               restitution)   attendu='une levée pour meute rend deux fois les mêmes points' ;;
-              panne-vote)    attendu='un journal en panne fait tomber la lecture' ;;
+              panne-vote)    attendu='la page promet un vote que la fin en attente fera refuser' ;;
+              verrou)        attendu="un refus décidé par la lecture prend le verrou d'écriture" ;;
+              arret)         attendu='un compte refusé par le journal arrête le balayage' ;;
+              logique)       attendu='un journal qui rappelle le moteur passe pour une panne' ;;
+              borne)         attendu='un seuil neuf accepte une valeur qui le vide de sens' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
@@ -2956,7 +2982,7 @@ jobs:
           for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
                      meuteLiensMin meuteVotantsMax meuteEpisodeCooldown fenetreFarmingJours \
                      farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
-                     ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal \
+                     ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal balayageFiletMax \
                      prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
                      readme:qualificatif readme:sans-chiffre; do
             PLANTE=$(mktemp -d)

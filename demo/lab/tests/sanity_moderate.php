@@ -2367,20 +2367,24 @@ $fautes56 === []
 // ── 57. Un geste décide sur l'état relu sous le verrou ───────────────────────
 // Le n° 51 tient le verrou puis le rend : l'état n'a pas changé entre la
 // lecture d'avant le verrou et celle d'après. Ici, une connexion à point d'arrêt
-// laisse un autre arbitre agir juste avant que le geste prenne son verrou — après
-// le rattrapage du compte, qui prend le sien d'abord : un geste qui déciderait
-// sur ce qu'il a lu avant banirait deux fois, ou lèverait deux fois le même ban.
+// laisse un autre arbitre agir juste avant que le geste prenne son verrou : un
+// geste qui déciderait sur ce qu'il a lu avant banirait deux fois, ou lèverait
+// deux fois le même ban. Le compte n'a rien à rattraper, et le premier verrou
+// est celui du geste — le contrôle compte les verrous pour s'en assurer.
 final class PdoAPointDArret extends PDO
 {
     public ?Closure $avantLeVerrou = null;
-    public int $verrousAPasser = 0;
+    public int $verrous = 0;
 
     public function exec(string $statement): int|false
     {
-        if ($statement === 'BEGIN IMMEDIATE' && $this->avantLeVerrou !== null && $this->verrousAPasser-- <= 0) {
-            $interlude = $this->avantLeVerrou;
-            $this->avantLeVerrou = null;
-            $interlude();
+        if ($statement === 'BEGIN IMMEDIATE') {
+            $this->verrous++;
+            if ($this->avantLeVerrou !== null) {
+                $interlude = $this->avantLeVerrou;
+                $this->avantLeVerrou = null;
+                $interlude();
+            }
         }
 
         return parent::exec($statement);
@@ -2397,22 +2401,28 @@ poserReputation($pdo, $visee57, 15);
 $c57->avantLeVerrou = static function () use ($pdo, $visee57): void {
     Moderate::adminBan($pdo, $visee57, 'arbitre-un', motif());
 };
-$c57->verrousAPasser = 1;
+$c57->verrous = 0;
 $ban57 = Moderate::adminBan($c57, $visee57, 'arbitre-deux', motif());
+$verrous57 = [$c57->verrous];
 $graciee57 = membre($pdo, 'graciee-57');
 poserReputation($pdo, $graciee57, 15);
 Moderate::adminBan($pdo, $graciee57, 'arbitre-un', motif());
 $c57->avantLeVerrou = static function () use ($pdo, $graciee57): void {
     Moderate::adminPardon($pdo, $graciee57, 'arbitre-un', motif());
 };
-$c57->verrousAPasser = 1;
+$c57->verrous = 0;
 Moderate::adminPardon($c57, $graciee57, 'arbitre-deux', motif());
+$verrous57[] = $c57->verrous;
 $debuts57 = count($journal57->de($visee57, 'ban_debut'));
 $leves57 = count($journal57->de($graciee57, 'ban_leve'));
 Moderate::setJournal($journalAvant57);
-!$ban57['ok'] && $debuts57 === 1 && $leves57 === 1
-    ? ok('un geste devancé par un autre arbitre décide sur l\'état relu sous le verrou : un seul ban, une seule levée')
-    : nok('un geste décide sur l\'état lu avant le verrou : ' . json_encode(['ban' => $ban57, 'ban_debut' => $debuts57, 'ban_leve' => $leves57], JSON_UNESCAPED_UNICODE));
+if ($verrous57 !== [1, 1]) {
+    nok('le contrôle 57 ne mesure plus rien : verrous pris par geste ' . json_encode($verrous57) . ', l\'autre arbitre n\'agit plus juste avant celui du geste');
+} else {
+    !$ban57['ok'] && $debuts57 === 1 && $leves57 === 1
+        ? ok('un geste devancé par un autre arbitre décide sur l\'état relu sous le verrou : un seul ban, une seule levée')
+        : nok('un geste décide sur l\'état lu avant le verrou : ' . json_encode(['ban' => $ban57, 'ban_debut' => $debuts57, 'ban_leve' => $leves57], JSON_UNESCAPED_UNICODE));
+}
 
 // ── 58. Une meute qui a causé un ban n'en écrit pas la levée si ses rangs échouent ─
 // Le pendant du n° 54, sur une cible que la meute a fait bannir : sa
@@ -3248,11 +3258,9 @@ poserReputation($pdo, $enchaine81, 20);
 $premier81 = Moderate::adminBan($pdo, $enchaine81, 'arbitre-banc', motif());
 $apresUn81 = causes($pdo, $enchaine81);
 vieillirBan($pdo, $enchaine81, 100 * Moderate::config()->dureeBanAdmin());
-Moderate::getReputation($pdo, $enchaine81);
 $second81 = Moderate::adminBan($pdo, $enchaine81, 'arbitre-banc', motif());
 $apresDeux81 = causes($pdo, $enchaine81);
 vieillirBan($pdo, $enchaine81, 100 * Moderate::config()->dureeBanAdmin());
-Moderate::getReputation($pdo, $enchaine81);
 $pdo->prepare('UPDATE member_moderation SET reputation = 1, voting_rights = 1 WHERE account_id = ?')->execute([$enchaine81]);
 Moderate::applyVote($pdo, membre($pdo, 'chute-81'), 'member', $enchaine81, -1, motif(), 'agressif');
 $debuts81 = array_map(static fn (array $a): array => [$a['origine'], $a['episode'], $a['dont_arbitre'] ?? null],
@@ -3427,6 +3435,249 @@ $effet86 = (int) $pdo->query("SELECT effet FROM mod_votes WHERE id = $vote86")->
 $apres86 === 20 && $effet86 === 0
     ? ok('⭐ une meute reconnue après la sortie de convalescence ne rend pas une seconde fois ce que la remise a rendu')
     : nok('⭐ une levée pour meute rend deux fois les mêmes points : ' . json_encode(['reputation' => $apres86, 'effet' => $effet86]));
+
+// ── 87. ⭐ Le droit de vote revient au seuil, quel que soit le chemin ────────
+// Le README rend le vote à 5 et lève l'état à 20. Un convalescent que des votes
+// positifs portent au seuil n'attend pas le point suivant de la remontée, et
+// l'horloge ne bouge pas ; une base migrée, sans horloge, lève son état dès la
+// première écriture.
+$porte87 = membre($pdo, 'porte-87');
+poserReputation($pdo, $porte87, 4);
+$pdo->prepare('UPDATE member_moderation SET convalescent = 1, voting_rights = 0, last_regen_at = ? WHERE account_id = ?')
+    ->execute([time(), $porte87]);
+planterSignal($pdo, $porte87, 'reputation_zero');
+$horloge87 = (int) etatBan($pdo, $porte87)['last_regen_at'];
+$pousse87 = Moderate::applyVote($pdo, membre($pdo, 'soutien-87'), 'member', $porte87, 1);
+[$vote87, $pourquoi87] = Moderate::canVote($pdo, $porte87);
+rattraper($pdo, $porte87);
+$base87 = etatBan($pdo, $porte87);
+$migre87 = membre($pdo, 'migre-87');
+poserReputation($pdo, $migre87, 22);
+$pdo->prepare('UPDATE member_moderation SET convalescent = 1, last_regen_at = 0 WHERE account_id = ?')->execute([$migre87]);
+planterSignal($pdo, $migre87, 'reputation_zero');
+rattraper($pdo, $migre87);
+$leve87 = etatBan($pdo, $migre87);
+($pousse87['ok'] ?? false) && $vote87 && (int) $base87['reputation'] === 5 && (int) $base87['voting_rights'] === 1
+    && (int) $base87['convalescent'] === 1 && (int) $base87['last_regen_at'] === $horloge87
+    && (int) $leve87['convalescent'] === 0 && causes($pdo, $migre87) === []
+    ? ok('⭐ des votes positifs rendent le droit de vote au seuil sans attendre l\'intervalle, et une base migrée lève son état en une écriture')
+    : nok('⭐ le droit de vote attend l\'intervalle au-dessus du seuil, ou une base migrée garde son état : ' . json_encode([
+        'vote' => $pousse87, 'peut_voter' => [$vote87, $pourquoi87],
+        'base' => array_intersect_key($base87, array_flip(['reputation', 'voting_rights', 'convalescent', 'last_regen_at'])),
+        'horloge' => $horloge87, 'migre' => [(int) $leve87['convalescent'], causes($pdo, $migre87)],
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 88. ⭐ Un refus que la lecture décide ne prend pas le verrou ──────────────
+// Un compte sans droit de vote, ou un motif trop court, se refusent sur ce que
+// la lecture montre. Le rattrapage d'un compte qui n'a rien de dû ne prend pas
+// le verrou d'écriture : sinon un autre écrivain qui le tient changerait ces
+// refus en exception, et chaque tentative tiendrait le verrou du site.
+$muet88 = membre($pdo, 'muet-88');
+poserReputation($pdo, $muet88, 3);
+$pdo->prepare('UPDATE member_moderation SET convalescent = 1, voting_rights = 0, last_regen_at = ? WHERE account_id = ?')
+    ->execute([time(), $muet88]);
+planterSignal($pdo, $muet88, 'reputation_zero');
+$bavard88 = membre($pdo, 'bavard-88');
+poserReputation($pdo, $bavard88, 20);
+$vise88 = membre($pdo, 'vise-88');
+poserReputation($pdo, $vise88, 20);
+$tient88 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$tient88->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$vote88 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$vote88->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$vote88->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$vote88->exec('PRAGMA busy_timeout = 100');
+$refus88 = [];
+$tient88->exec('BEGIN IMMEDIATE');
+try {
+    foreach (['sans_droit' => [$muet88, motif()], 'motif_court' => [$bavard88, 'trop court']] as $cas88 => [$votant88, $motif88]) {
+        try {
+            $refus88[$cas88] = Moderate::applyVote($vote88, $votant88, 'member', $vise88, -1, $motif88, 'agressif');
+        } catch (Throwable $t88) {
+            $refus88[$cas88] = get_class($t88) . ' : ' . $t88->getMessage();
+        }
+    }
+} finally {
+    $tient88->exec('ROLLBACK');
+}
+is_array($refus88['sans_droit']) && !$refus88['sans_droit']['ok'] && str_contains($refus88['sans_droit']['message'], 'Droit de vote retiré')
+    && is_array($refus88['motif_court']) && !$refus88['motif_court']['ok']
+    ? ok('⭐ sous un autre écrivain, un vote sans droit ou au motif trop court rend son refus, sans attendre le verrou')
+    : nok('⭐ un refus décidé par la lecture prend le verrou d\'écriture : ' . json_encode($refus88, JSON_UNESCAPED_UNICODE));
+
+// ── 89. ⭐ La page dit le refus que le vote rendra ───────────────────────────
+// Une peine échue dont le journal a refusé la fin : la page la montre finie, et
+// le vote est refusé. `canVote()` le dit d'avance. Une fin qui attend seulement
+// la première écriture, sans refus du journal, ne refuse rien : elle s'inscrit
+// au vote même.
+$refuse89 = membre($pdo, 'refuse-89');
+Moderate::ensureRow($pdo, $refuse89);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, convalescent = 1, last_regen_at = ?,
+                      banned_until = ?, ban_debut = ?, ban_origine = 'auto', ban_motif = 'reputation_zero'
+                WHERE account_id = ?")->execute([time() - 200, time() - 10, time() - 130, $refuse89]);
+planterSignal($pdo, $refuse89, 'ban_auto');
+[$avant89] = Moderate::canVote($pdo, $refuse89);
+Moderate::setJournal(new JournalEnPanne());
+try {
+    $vote89 = Moderate::applyVote($pdo, $refuse89, 'member', membre($pdo, 'vise-89'), 1);
+} catch (Throwable $t89) {
+    $vote89 = ['exception' => $t89->getMessage()];
+} finally {
+    Moderate::setJournal($journalC);
+}
+[$page89, $pourquoi89] = Moderate::canVote($pdo, $refuse89);
+rattraper($pdo, $refuse89);
+[$apres89] = Moderate::canVote($pdo, $refuse89);
+$avant89 && !($vote89['ok'] ?? true) && !$page89 && str_contains($pourquoi89, 'attend que le journal') && $apres89
+    ? ok('⭐ la page refuse d\'avance le vote d\'un compte dont le journal a refusé la fin, et le rend dès qu\'elle s\'inscrit')
+    : nok('⭐ la page promet un vote que la fin en attente fera refuser : ' . json_encode([
+        'avant' => $avant89, 'vote' => $vote89, 'page' => [$page89, $pourquoi89], 'apres' => $apres89,
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 90. ⭐ Un compte que le journal refuse n'arrête pas le balayage ──────────
+// Le balayage prend les peines les plus anciennes d'abord. Un journal qui refuse
+// la fin d'un seul compte — par son contenu — le signale, passe au suivant, et
+// fait remonter le refus à la fin : les fins et les convalescences derrière lui
+// s'inscrivent quand même.
+$tete90 = membre($pdo, 'tete-90');
+$suivant90 = membre($pdo, 'suivant-90');
+foreach ([$tete90 => 30_000_000, $suivant90 => 29_000_000] as $compte90 => $recul90) {
+    Moderate::ensureRow($pdo, $compte90);
+    $pdo->prepare("UPDATE member_moderation
+                      SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                          ban_origine = 'auto', ban_motif = 'reputation_zero'
+                    WHERE account_id = ?")->execute([time() - $recul90, time() - $recul90 - 120, $compte90]);
+    planterSignal($pdo, $compte90, 'ban_auto');
+}
+$conv90 = membre($pdo, 'conv-90');
+poserReputation($pdo, $conv90, 3);
+$pdo->prepare('UPDATE member_moderation SET convalescent = 1, voting_rights = 0, last_regen_at = ? WHERE account_id = ?')
+    ->execute([time() - 2 * Moderate::config()->intervalleConvalescenceSecondes - 5, $conv90]);
+planterSignal($pdo, $conv90, 'reputation_zero');
+$journal90 = new class ($tete90) implements \Pierroons\SelfModerate\Journal {
+    /** @var list<array<string, mixed>> */
+    public array $actes = [];
+
+    public function __construct(private int $refuse) {}
+
+    public function inscrire(array $acte): void
+    {
+        if ($acte['compte'] === $this->refuse) {
+            throw new RuntimeException('acte refusé par son contenu');
+        }
+        $this->actes[] = $acte;
+    }
+};
+Moderate::setJournal($journal90);
+$erreur90 = null;
+try {
+    Moderate::balayerBansEchus($pdo);
+} catch (RuntimeException $e90) {
+    $erreur90 = $e90->getMessage();
+} finally {
+    Moderate::setJournal($journalC);
+}
+$fins90 = array_column(array_filter($journal90->actes, static fn (array $a): bool => $a['acte'] === 'ban_fin'), 'compte');
+$tenu90 = [(int) etatBan($pdo, $tete90)['banned_until'] > 0, causes($pdo, $tete90)];
+$suivi90 = (int) etatBan($pdo, $suivant90)['banned_until'];
+$remonte90 = (int) etatBan($pdo, $conv90)['reputation'];
+rattraper($pdo, $tete90);
+$erreur90 !== null && in_array($suivant90, $fins90, true) && !in_array($tete90, $fins90, true) && $suivi90 === 0
+    && $remonte90 === 5 && $tenu90[0] && in_array('journal_en_panne', $tenu90[1], true)
+    ? ok('⭐ le balayage passe le compte que le journal refuse, le signale, inscrit les suivants, et le dit à la fin')
+    : nok('⭐ un compte refusé par le journal arrête le balayage : ' . json_encode([
+        'erreur' => $erreur90, 'fins' => $fins90, 'tete' => $tenu90, 'suivant' => $suivi90, 'convalescent' => $remonte90,
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 91. ⭐ Un journal qui rappelle le moteur est une erreur, pas une panne ───
+// L'implémentation est appelée au milieu d'une écriture du moteur, où une lecture
+// par le moteur est refusée. Ce refus remonte tel quel : rangé en panne du
+// journal, il tiendrait le compte hors du vote et accuserait un journal qui
+// fonctionne.
+$rappel91 = membre($pdo, 'rappel-91');
+Moderate::ensureRow($pdo, $rappel91);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 12, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'admin', ban_motif = 'motif d''arbitre'
+                WHERE account_id = ?")->execute([time() - 10, time() - 130, $rappel91]);
+Moderate::setJournal(new class ($pdo) implements \Pierroons\SelfModerate\Journal {
+    public function __construct(private PDO $pdo) {}
+
+    public function inscrire(array $acte): void
+    {
+        Moderate::getReputation($this->pdo, (int) $acte['compte']);
+    }
+});
+$leve91 = null;
+try {
+    Moderate::applyVote($pdo, $rappel91, 'member', membre($pdo, 'vise-91'), 1);
+} catch (LogicException $e91) {
+    $leve91 = $e91->getMessage();
+} finally {
+    Moderate::setJournal($journalC);
+}
+$panne91 = in_array('journal_en_panne', causes($pdo, $rappel91), true);
+rattraper($pdo, $rappel91);
+$leve91 !== null && !$panne91
+    ? ok('⭐ un journal qui rappelle le moteur fait remonter l\'erreur, sans poser de panne du journal')
+    : nok('⭐ un journal qui rappelle le moteur passe pour une panne : ' . json_encode(['exception' => $leve91, 'panne' => $panne91], JSON_UNESCAPED_UNICODE));
+
+// ── 92. ⭐ Les seuils neufs refusent une valeur qui les vide de sens ─────────
+// `LIMIT -1` se lit « sans limite » : un filet réglé à -1 balaierait tout le site
+// dans la requête d'un votant. Un signal au zéroième ban d'arbitre partirait sur
+// un compte qui n'en a aucun. Le filet à 0 s'éteint.
+$refuses92 = [];
+foreach (['balayageFiletMax' => -1, 'bansArbitreSignal' => 0] as $champ92 => $valeur92) {
+    try {
+        new Config(...[$champ92 => $valeur92]);
+    } catch (InvalidArgumentException) {
+        $refuses92[] = $champ92;
+    }
+}
+$eteint92 = (new Config(balayageFiletMax: 0))->balayageFiletMax === 0;
+$refuses92 === ['balayageFiletMax', 'bansArbitreSignal'] && $eteint92
+    ? ok('⭐ un filet négatif et un signal au zéroième ban d\'arbitre sont refusés ; un filet à 0 s\'éteint')
+    : nok('⭐ un seuil neuf accepte une valeur qui le vide de sens : ' . json_encode(['refuses' => $refuses92, 'eteint' => $eteint92]));
+
+// ── 93. ⭐ Les seuils neufs suivent la config ─────────────────────────────────
+// Comme les autres seuils du n° 25 : réglés autrement que par défaut, leur borne
+// visée à la valeur réglée.
+$enchaine93 = membre($pdo, 'enchaine-93');
+poserReputation($pdo, $enchaine93, 20);
+$signal93 = sousConfig(new Config(bansArbitreSignal: 3), static function () use ($pdo, $enchaine93): array {
+    $vus = [];
+    for ($i = 1; $i <= 3; $i++) {
+        Moderate::adminBan($pdo, $enchaine93, 'arbitre-banc', motif());
+        $vus[$i] = in_array('bans_arbitre', causes($pdo, $enchaine93), true);
+        vieillirBan($pdo, $enchaine93, 100 * Moderate::config()->dureeBanAdmin());
+    }
+    return $vus;
+});
+rattraper($pdo, $enchaine93);
+$signal93 === [1 => false, 2 => false, 3 => true]
+    ? ok('le signal des bans d\'arbitre répétés part au nombre de la config')
+    : nok('seuil sourd à la config (bansArbitreSignal) : ' . json_encode($signal93));
+
+$oublies93 = [membre($pdo, 'oublie-a-93'), membre($pdo, 'oublie-b-93')];
+foreach ($oublies93 as $k93 => $oublie93) {
+    Moderate::ensureRow($pdo, $oublie93);
+    $pdo->prepare("UPDATE member_moderation
+                      SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                          ban_origine = 'auto', ban_motif = 'reputation_zero'
+                    WHERE account_id = ?")->execute([time() - 40_000_000 + $k93, time() - 40_000_120 + $k93, $oublie93]);
+    planterSignal($pdo, $oublie93, 'ban_auto');
+}
+$pdo->exec('DELETE FROM mod_sweeps');
+sousConfig(new Config(balayageFiletMax: 1), static fn (): array =>
+    Moderate::applyVote($pdo, membre($pdo, 'votant-93'), 'member', membre($pdo, 'vise-93'), -1, motif(), 'agressif'));
+$inscrits93 = array_map(static fn (int $id): bool => (int) etatBan($pdo, $id)['banned_until'] === 0, $oublies93);
+foreach ($oublies93 as $oublie93) {
+    rattraper($pdo, $oublie93);
+}
+$inscrits93 === [true, false]
+    ? ok('le filet inscrit au plus le nombre de comptes de la config, les plus anciens d\'abord')
+    : nok('seuil sourd à la config (balayageFiletMax) : ' . json_encode($inscrits93));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

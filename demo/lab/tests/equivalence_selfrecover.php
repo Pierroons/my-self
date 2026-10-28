@@ -495,10 +495,10 @@ verifier('un motif automatique hors de la liste fermée ne sort pas : l\'origine
     array_key_exists('sanction_origine', $sanctionLue()) && $sanctionLue()['sanction_origine'] === null);
 
 // 🔑 Lire n'écrit pas, et c'est ici qu'on le mesure : une peine automatique échue
-// d'une minute, que le moteur n'a pas encore constatée. `Moderate::getReputation()`
-// la clôturerait en base avant de répondre ; appelée d'ici, une consultation de
-// l'arbitre modifierait l'état qu'elle consulte. Ailleurs, la mesure serait
-// verte pour rien — rien n'y serait à écrire.
+// d'une minute, que le moteur n'a pas encore inscrite. Un balayage
+// (`Moderate::balayerBansEchus()`) la clôturerait en base ; appelé d'ici, une
+// consultation de l'arbitre modifierait l'état qu'elle consulte. Ailleurs, la
+// mesure serait verte pour rien — rien n'y serait à écrire.
 $pdoP->prepare('UPDATE member_moderation SET banned_until = ? WHERE account_id = 1')->execute([time() - 60]);
 $ecrituresAvant = (int) $pdoP->query('SELECT total_changes()')->fetchColumn();
 $purgee = $sanctionLue();

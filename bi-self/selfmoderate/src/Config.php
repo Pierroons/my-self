@@ -54,7 +54,8 @@ final class Config
      *                                        arbitre ne lève un ban qu'avec un motif écrit.
      * @param int      $balayageFiletMax      Sans planificateur, le premier vote négatif d'une
      *                                        tranche de balayage inscrit ensuite au plus ce
-     *                                        nombre de fins de peine et de convalescences dues.
+     *                                        nombre de fins de peine et de convalescences dues ;
+     *                                        0 éteint le filet.
      * @param int      $bansArbitreSignal     Bans d'arbitre sur un même compte à partir
      *                                        desquels l'enchaînement est signalé à
      *                                        l'arbitre : chacun alourdit le ban
@@ -94,6 +95,12 @@ final class Config
         }
         if ($this->plancherFraction < 0 || $this->plancherFraction > 1) {
             throw new InvalidArgumentException('plancherFraction est une part de la peine : entre 0 et 1.');
+        }
+        if ($this->bansArbitreSignal < 1) {
+            throw new InvalidArgumentException('bansArbitreSignal compte des bans d\'arbitre : 1 ou plus.');
+        }
+        if ($this->balayageFiletMax < 0) {
+            throw new InvalidArgumentException('balayageFiletMax compte des comptes : 0 ou plus, et 0 éteint le filet.');
         }
     }
 

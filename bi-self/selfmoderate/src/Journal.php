@@ -46,7 +46,8 @@ interface Journal
      *              fin d'un ban
      *   episode    numéro d'épisode (1 = premier)              ban_debut, ban_fin
      *   dont_arbitre  combien de ces épisodes sont des bans     ban_debut
-     *              d'arbitre : le palier d'un ban automatique en dépend aussi
+     *              d'arbitre : le palier d'un ban automatique en dépend aussi.
+     *              Compté depuis la 0.7.0 : une base migrée part de zéro
      *   duree      durée de la peine en secondes               ban_debut
      *   debut      horodatage du début de la peine             ban_debut, ban_fin
      *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu
@@ -78,11 +79,16 @@ interface Journal
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
      * qui échoue en silence vaut l'absence de journal. Une seule exception à la
-     * règle, et elle n'est pas muette : quand un vote ou un geste constate une
-     * peine échue, le refus est consigné et signalé (`journal_en_panne`), et la
-     * peine reste à refermer à l'écriture suivante. Une lecture ne constate
-     * rien. Le planificateur (`balayerBansEchus()`) et le début d'un ban font
-     * remonter le refus.
+     * règle, et elle n'est pas muette : quand un vote, un geste ou le balayage
+     * constate une peine échue, le refus est consigné et signalé
+     * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
+     * Une lecture ne constate rien. Le balayage passe au compte suivant et fait
+     * remonter le refus à la fin ; le début d'un ban le fait remonter aussitôt.
+     *
+     * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
+     * d'une de ses écritures, où une lecture par le moteur est refusée par une
+     * `LogicException`, qui remonte telle quelle — une erreur d'intégration ne
+     * se déguise pas en panne du journal.
      */
     public function inscrire(array $acte): void;
 }

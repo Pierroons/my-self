@@ -334,30 +334,34 @@ class Moderate
         $fin          = null;
 
         if ((int) $l['convalescent']) {
-            $last = (int) $l['last_regen_at'];
+            $last   = (int) $l['last_regen_at'];
+            $gagnes = 0;
             if ($last <= 0) {
                 // Base migrée : l'état existe sans son horloge. La première écriture la
                 // pose, et le compte part de là.
                 $horloge = true;
             } else {
                 $gagnes = intdiv($t - $last, self::config()->intervalleConvalescenceSecondes);
-                $depart = (int) $l['reputation'];
-                if ($gagnes >= 1 || $depart >= self::config()->sortieConvalescence()) {
-                    // La remontée borne sa propre progression, pas le score : un point gagné
-                    // par un vote positif pendant la convalescence reste acquis.
-                    $rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));
-                    $l['reputation'] = $rep;
-                    // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
-                    // reste de temps est acquis et compte pour le point suivant.
-                    $l['last_regen_at'] = $last + $gagnes * self::config()->intervalleConvalescenceSecondes;
-                    if ($rep >= self::config()->perteDroitDeVoteSous) {
-                        $l['voting_rights'] = 1;
-                    }
-                    if ($rep >= self::config()->sortieConvalescence()) {
-                        $l['convalescent'] = 0;
-                        $tombentRegen[]    = 'reputation_zero';
-                        $effacer           = true;
-                    }
+            }
+            $depart = (int) $l['reputation'];
+            // Les seuils se lisent sur le score, quel que soit le chemin qui l'y a porté :
+            // des votes positifs rendent le droit de vote et lèvent l'état sans attendre
+            // le point suivant.
+            if ($gagnes >= 1 || $depart >= self::config()->perteDroitDeVoteSous) {
+                // La remontée borne sa propre progression, pas le score : un point gagné
+                // par un vote positif pendant la convalescence reste acquis.
+                $rep = max($depart, min(self::config()->sortieConvalescence(), $depart + $gagnes));
+                $l['reputation'] = $rep;
+                // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
+                // reste de temps est acquis et compte pour le point suivant.
+                $l['last_regen_at'] = $last + $gagnes * self::config()->intervalleConvalescenceSecondes;
+                if ($rep >= self::config()->perteDroitDeVoteSous) {
+                    $l['voting_rights'] = 1;
+                }
+                if ($rep >= self::config()->sortieConvalescence()) {
+                    $l['convalescent'] = 0;
+                    $tombentRegen[]    = 'reputation_zero';
+                    $effacer           = true;
                 }
             }
         }
@@ -403,7 +407,8 @@ class Moderate
     /**
      * Inscrit ce que le temps a fait à un compte, sous le verrou d'écriture : ce
      * qu'`avancer()` rend, et rien d'autre. Une ligne absente se crée. Rend vrai
-     * s'il a refermé une peine.
+     * s'il a refermé une peine, faux s'il n'y en avait aucune à refermer, et
+     * `null` si le journal en a refusé la fin et que le refus est contenu.
      *
      * La fin d'une peine va au journal AVANT la base, avec l'échéance et l'instant
      * où elle s'inscrit : l'écriture qui la constate, jamais une page.
@@ -417,9 +422,11 @@ class Moderate
      * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), seule la
      * remontée de convalescence s'inscrit, et l'appel continue ; la fin attend le
      * retour du journal, et tant qu'elle attend, aucune écriture ne décide sur
-     * elle. Sans `$contenir` — le balayage —, le refus remonte.
+     * elle. Sans `$contenir`, le refus remonte. Une `LogicException` remonte
+     * toujours : c'est une erreur d'intégration — un journal qui rappelle le
+     * moteur —, pas une panne du journal.
      */
-    private static function rattraper(PDO $pdo, int $accountId, bool $contenir, bool $clore = true): bool
+    private static function rattraper(PDO $pdo, int $accountId, bool $contenir, bool $clore = true): ?bool
     {
         $row = self::ligne($pdo, $accountId);
         if ($row === null) {
@@ -427,8 +434,9 @@ class Moderate
 
             return false;
         }
-        $t      = time();
-        $avance = self::avancer($row, $t, $clore);
+        $t       = time();
+        $avance  = self::avancer($row, $t, $clore);
+        $refusee = false;
         if ($avance['fin'] !== null) {
             $signaux = self::signauxDe($pdo, $accountId);
             try {
@@ -446,22 +454,20 @@ class Moderate
                     'ferme'     => self::fermesEnTexte(self::deCause($signaux, ...$avance['tombent_fin'])),
                 ]);
             } catch (\Throwable $e) {
-                if (!$contenir) {
+                if (!$contenir || $e instanceof \LogicException) {
                     throw $e;
                 }
                 error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
                 self::signaler($pdo, $accountId, 'journal_en_panne');
                 $avance = self::avancer($row, $t, clore: false);
+                $refusee = true;
             }
         }
         $l = $avance['ligne'];
         if ($avance['horloge']) {
             $l['last_regen_at'] = $t;
         }
-        $colonnes = array_values(array_filter(
-            ['reputation', 'voting_rights', 'convalescent', 'last_regen_at', 'banned_until', 'ban_debut', 'ban_origine', 'ban_motif'],
-            static fn (string $col): bool => (string) $l[$col] !== (string) $row[$col]
-        ));
+        $colonnes = self::colonnesChangees($l, $row);
         if ($colonnes !== []) {
             $poses = implode(', ', array_map(static fn (string $col): string => "$col = ?", $colonnes));
             $pdo->prepare("UPDATE member_moderation SET $poses, updated_at = ? WHERE account_id = ?")
@@ -472,13 +478,39 @@ class Moderate
         }
         self::designaler($pdo, $accountId, ...$avance['tombent']);
 
-        return $avance['fin'] !== null;
+        return $refusee ? null : $avance['fin'] !== null;
     }
 
-    /** Rattrape un compte dans sa propre transaction, avant que l'écriture qui le touche ouvre la sienne. */
+    /** Les colonnes de la ligne lue que l'état avancé change. */
+    private static function colonnesChangees(array $l, array $row): array
+    {
+        return array_values(array_filter(
+            ['reputation', 'voting_rights', 'convalescent', 'last_regen_at', 'banned_until', 'ban_debut', 'ban_origine', 'ban_motif'],
+            static fn (string $col): bool => (string) $l[$col] !== (string) $row[$col]
+        ));
+    }
+
+    /**
+     * Rattrape un compte dans sa propre transaction, avant que l'écriture qui le
+     * touche ouvre la sienne — et seulement s'il y a quelque chose à inscrire. Un
+     * refus que la lecture décide (droit de vote, motif) ne prend pas le verrou
+     * d'écriture : sous un autre écrivain, il rendrait une exception au lieu du
+     * refus. Ce qui est dû se relit sous le verrou avant de s'inscrire. Une ligne
+     * absente n'a rien à inscrire : l'écriture qui en a besoin la crée sous son
+     * verrou (`etat()`).
+     */
     private static function rattraperSeul(PDO $pdo, int $accountId): void
     {
-        self::transaction($pdo, static fn (): bool => self::rattraper($pdo, $accountId, contenir: true));
+        $row = self::ligne($pdo, $accountId);
+        if ($row === null) {
+            return;
+        }
+        $avance = self::avancer($row, time());
+        if ($avance['fin'] === null && !$avance['horloge'] && !$avance['effacer'] && $avance['tombent'] === []
+            && self::colonnesChangees($avance['ligne'], $row) === []) {
+            return;
+        }
+        self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, $accountId, contenir: true));
     }
 
     /**
@@ -489,8 +521,10 @@ class Moderate
      * qui touche le compte ; la lecture la montre dès l'échéance.
      *
      * Rend le nombre de peines refermées. Sans journal, elles se referment
-     * quand même, sans rien inscrire ; un journal qui refuse fait remonter son
-     * refus.
+     * quand même, sans rien inscrire. Un journal qui refuse la fin d'un compte
+     * n'arrête pas la passe : le compte est signalé (`journal_en_panne`), sa
+     * convalescence s'inscrit, la passe continue, et le refus remonte à la fin,
+     * pour le planificateur et la console.
      */
     public static function balayerBansEchus(PDO $pdo, int $limite = 500): int
     {
@@ -506,11 +540,22 @@ class Moderate
         $stmt->bindValue('n', $limite, PDO::PARAM_INT);
         $stmt->execute();
 
-        $clos = 0;
+        $clos     = 0;
+        $refusees = 0;
         foreach ($stmt->fetchAll() as $row) {
-            if (self::transaction($pdo, static fn (): bool => self::rattraper($pdo, (int) $row['account_id'], contenir: false))) {
+            $close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true));
+            if ($close === null) {
+                $refusees++;
+            } elseif ($close) {
                 $clos++;
             }
+        }
+        if ($refusees > 0) {
+            throw new \RuntimeException(sprintf(
+                'SelfModerate : le journal a refusé %d fin(s) de peine sur ce balayage, %d inscrite(s) ; la cause est au journal d\'erreurs.',
+                $refusees,
+                $clos
+            ));
         }
 
         return $clos;
@@ -543,6 +588,13 @@ class Moderate
         $rep = self::getReputation($pdo, $accountId);
         if ($rep['banned']) {
             return [false, sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $rep['banned_until']))];
+        }
+        // Seul l'état inscrit autorise une écriture : une page montre la peine
+        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
+        // fin, le compte ne vote pas — et il le lit avant d'essayer. Une fin qui
+        // attend sans refus s'inscrit au vote même.
+        if ($rep['fin_en_attente'] && in_array('journal_en_panne', array_column($rep['signaux'], 'cause'), true)) {
+            return [false, static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
         }
         // Avant le seuil de réputation, et non après : les deux refusent le
         // vote, mais l'un s'efface en attendant et l'autre à une date. Rendre
@@ -732,7 +784,7 @@ class Moderate
             try {
                 self::balayerBansEchus($pdo, self::config()->balayageFiletMax);
             } catch (\Throwable $e) {
-                error_log('SelfModerate : le balayage du filet s\'arrête — ' . $e->getMessage());
+                error_log('SelfModerate : le balayage du filet laisse des fins à inscrire — ' . $e->getMessage());
             }
         }
 
@@ -852,18 +904,12 @@ class Moderate
             return null;
         }
 
+        // Le votant d'abord rattrapé : `canVote()` décide sur l'état inscrit, et
+        // refuse tant que le journal refuse d'inscrire une fin de peine.
         self::rattraperSeul($pdo, $voterId);
         [$can, $why] = self::canVote($pdo, $voterId);
         if (!$can) {
             $refus = ['ok' => false, 'message' => $why];
-
-            return null;
-        }
-        // Seul l'état inscrit autorise une écriture : une page montre la peine
-        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
-        // fin, le compte ne vote pas — et il sait pourquoi.
-        if (self::getReputation($pdo, $voterId)['fin_en_attente']) {
-            $refus = ['ok' => false, 'message' => static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
 
             return null;
         }
