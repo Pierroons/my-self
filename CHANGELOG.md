@@ -27,7 +27,7 @@ plus qu'un nouveau dossier pour contester.
   demandeur révoqués. La réponse porte `titulaire_reprend` et `mot_memorise_a_changer`.
 - `Escalade::fenetre()` dit l'état de la fenêtre, avec `lecture_seule` pour le coffre et
   `lecture_admin_permise` pour le séquestre de l'archive. `cloreFenetre()` lève la lecture seule : c'est
-  le geste de l'arbitre, jamais de l'horloge. `purgerFenetres()`, appelé par `tools/purger.php`, efface
+  le geste de l'arbitre, jamais de l'horloge. `purgerFenetres()`, appelé par `bi-self/selfrecover/tools/purger.php`, efface
   les secrets d'une fenêtre échue sans qu'aucun ait servi.
 - Au niveau 1, les refus tiennent une échéance commune : le second Argon2id que coûte une ancienne
   passphrase ne dit pas, au chronomètre, qu'un compte sort d'un niveau 3.
