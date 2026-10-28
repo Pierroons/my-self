@@ -212,7 +212,7 @@ render_header(t('prf.title'), $account);
   <?php if ($rep['convalescent']): ?>
     <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d4a056;background:var(--elev);border-radius:0 6px 6px 0">
       <strong style="color:#d4a056"><?= h(t('prf.mod.conv.h')) ?></strong>
-      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.conv.txt'), Moderate::config()->sortieConvalescence())) ?></p>
+      <p class="muted" style="margin:4px 0 0;font-size:13px"><?php $r = Moderate::regles(); ?><?= h(sprintf(t('prf.mod.conv.txt'), $r['sortie'], $r['convalescence'])) ?></p>
     </div>
   <?php endif; ?>
   <?php

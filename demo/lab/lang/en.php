@@ -364,6 +364,7 @@ return [
     'atk.js.running' => '⏳ Running the attack against an isolated database…',
     'atk.js.goal'    => '🎯 Attacker goal:',
     'atk.js.verdict' => '🛡️ Attack neutralised — data preserved',
+    'atk.js.verdict.non' => '⚠️ Defence not demonstrated by this run',
     'atk.js.defense' => 'Defence:',
     'atk.js.error'   => 'Error:',
 
@@ -469,7 +470,7 @@ return [
     'prf.mod.st.active' => 'active',
     'prf.convalescent'  => 'recovering',
     'prf.mod.conv.h'    => 'Recovering',
-    'prf.mod.conv.txt'  => 'Your reputation dropped below the voting threshold. It climbs back one point per quiet day, up to %d. Nothing to prove, just time.',
+    'prf.mod.conv.txt'  => 'Your reputation dropped below the voting threshold. It climbs back one point per quiet period of %2$s, up to %1$d. Nothing to prove, just time.',
     'prf.mod.meute.h'   => 'Took part in a pile-on',
     'prf.mod.meute.warn' => 'Your votes joined those of someone you exchange private messages with, on the same target. A group weighs no more than a single member: only the votes of whoever in the group voted first are kept; the others\' were cancelled. Nothing is taken from you; if it happens again, the situation will be flagged to an arbiter.',
     'prf.mod.meute.mute' => 'Your right to vote is suspended until %s. The rest of the forum stays open: you can write, reply and start a topic.',

@@ -1568,8 +1568,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_simulateur.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du simulateur d'attaques a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 38/38 ' \
-            || { echo "::error::le banc du simulateur n'a pas joué ses 38 contrôles"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 40/40 ' \
+            || { echo "::error::le banc du simulateur n'a pas joué ses 40 contrôles"; exit 1; }
 
       # Deux fois, une page est tombée sur une classe que rien ne chargeait — le
       # simulateur sur `derive_cli.php`, l'enregistrement du profil sur `moderate.php`,
@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 155/155 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 155 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 157/157 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 157 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2791,6 +2791,53 @@ jobs:
               classe)        attendu="un refus ordinaire du journal passe pour une erreur d'intégration" ;;
               seuil-vote)    attendu='le balayage laisse en base un droit de vote que la lecture rend' ;;
               borne)         attendu='un seuil neuf accepte une valeur qui le vide de sens' ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — le lab annonce un rythme, une durée ou une défense que le moteur ne tient pas
+        run: |
+          # @plante
+          # Ce que lit la personne sanctionnée et ce que voit le chercheur du CTF,
+          # replantés tour à tour : le rythme de la convalescence écrit en dur ; une
+          # durée dont l'unité suit la divisibilité ; la démonstration de meute sans
+          # lien entre ses faux comptes, puis sans motif à leurs votes. Le banc qui
+          # garde chaque texte doit rougir sur son cas.
+          for cas in rythme unite meute-lien meute-motif; do
+            case $cas in
+              rythme)      F=demo/lab/lang/fr.php ;                  B=demo/lab/tests/sanity_moderate.php ;;
+              unite)       F=bi-self/selfmoderate/src/Moderate.php ; B=demo/lab/tests/sanity_moderate.php ;;
+              meute-*)     F=demo/lab/lib/attack_sim.php ;           B=demo/lab/tests/sanity_simulateur.php ;;
+            esac
+            cp "$F" /tmp/lab.annonce.intact
+            CAS="$cas" python3 - "$F" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'rythme':      ('par période de calme de %2$s', 'par jour de calme'),
+              'unite':       ('        if ($minutes >= 1440) {', '        if ($minutes >= 1440 && $minutes % 1440 === 0) {'),
+              'meute-lien':  ('                if ($a !== $b) {', '                if (false) {'),
+              'meute-motif': ("-1, self::MOTIF_MEUTE, 'desinformation')", '-1)'),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/lab.annonce.intact "$F"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php "$B" 2>&1); then
+              cp /tmp/lab.annonce.intact "$F"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/lab.annonce.intact "$F"
+            cmp -s /tmp/lab.annonce.intact "$F" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              rythme)  attendu='la convalescence annonce un rythme écrit en dur' ;;
+              unite)   attendu="une durée se lit dans une unité qui ne lui va pas" ;;
+              meute-*) attendu='les trois votes de la meute sont acceptés, puis tous sauf le premier annulés' ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

@@ -43,20 +43,36 @@ class Moderate
     }
 
     /**
-     * Une durée en clair : la plus grande unité qui la divise exactement, sinon
-     * des minutes arrondies au-dessus. Les unités passent par le traducteur, pour
-     * que l'hôte affiche les seuils de la config dans sa langue.
+     * Une durée en clair : l'unité suit l'ordre de grandeur, et la durée n'est
+     * jamais dite plus courte qu'elle n'est — le texte annonce souvent une
+     * attente. Minutes arrondies au-dessus, puis jours et heures, ou heures et
+     * minutes : 86 399 s se lit « 1 jour », 90 000 s « 1 jour 1 heure ». Les
+     * unités passent par le traducteur, pour que l'hôte affiche les seuils de
+     * la config dans sa langue.
      */
     public static function dureeEnClair(int $secondes): string
     {
-        foreach ([[86400, 'jour', 'jours'], [3600, 'heure', 'heures'], [60, 'minute', 'minutes']] as [$unite, $un, $plusieurs]) {
-            if ($secondes >= $unite && $secondes % $unite === 0) {
-                $n = intdiv($secondes, $unite);
-                return $n . ' ' . static::t($n > 1 ? $plusieurs : $un);
+        $minutes = max(1, intdiv($secondes + 59, 60));
+        if ($minutes >= 1440) {
+            $jours  = intdiv($minutes, 1440);
+            $heures = intdiv($minutes - $jours * 1440 + 59, 60);
+            if ($heures === 24) {
+                [$jours, $heures] = [$jours + 1, 0];
+            }
+            $parties = [[$jours, 'jour', 'jours'], [$heures, 'heure', 'heures']];
+        } elseif ($minutes >= 60) {
+            $parties = [[intdiv($minutes, 60), 'heure', 'heures'], [$minutes % 60, 'minute', 'minutes']];
+        } else {
+            $parties = [[$minutes, 'minute', 'minutes']];
+        }
+        $mots = [];
+        foreach ($parties as [$n, $un, $plusieurs]) {
+            if ($n > 0) {
+                $mots[] = $n . ' ' . static::t($n > 1 ? $plusieurs : $un);
             }
         }
-        $n = max(1, intdiv($secondes + 59, 60));
-        return $n . ' ' . static::t($n > 1 ? 'minutes' : 'minute');
+
+        return implode(' ', $mots);
     }
 
     // Motif de vote — un downvote coûte une phrase. Les bornes visent le

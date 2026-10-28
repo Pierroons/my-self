@@ -3783,6 +3783,41 @@ $erreur96 === null && $droit96 === 1
     ? ok('⭐ le balayage inscrit le droit de vote qu\'un convalescent a retrouvé au seuil')
     : nok('⭐ le balayage laisse en base un droit de vote que la lecture rend : ' . json_encode(['erreur' => $erreur96, 'droit' => $droit96], JSON_UNESCAPED_UNICODE));
 
+// ── 97. ⭐ La convalescence dit son rythme, celui de la config ───────────────
+// La page de la personne en convalescence lui dit quand elle retrouve sa place.
+// Le rythme vient de la config, comme les autres seuils : « un point par jour »
+// écrit en dur lui annonçait vingt jours là où le service en compte cent quarante.
+$enService97 = sousConfig(Config::prod(), static fn (): array => Moderate::regles());
+$enDur97 = [];
+foreach (['fr', 'en'] as $langue97) {
+    $phrase97 = (require __DIR__ . "/../lang/$langue97.php")['prf.mod.conv.txt'] ?? '';
+    if (!str_contains($phrase97, '%2$s') || preg_match('/\b(jours?|days?)\b/u', $phrase97)) {
+        $enDur97[$langue97] = $phrase97;
+    }
+}
+($enService97['convalescence'] ?? null) === '7 jours' && ($enService97['sortie'] ?? null) === 20 && $enDur97 === []
+    ? ok('⭐ la page de convalescence dit le rythme de la config : un point par période de 7 jours en service')
+    : nok('⭐ la convalescence annonce un rythme écrit en dur : ' . json_encode(['regles' => $enService97, 'en_dur' => $enDur97], JSON_UNESCAPED_UNICODE));
+
+// ── 98. ⭐ Une durée se lit dans l'unité de sa grandeur, jamais plus courte ──
+// Le texte annonce souvent une attente : l'arrondi va au-dessus. Une unité
+// choisie sur la divisibilité rendait « 1440 minutes » pour une seconde de moins
+// qu'un jour.
+$attendus98 = [
+    150 => '3 minutes', 3599 => '1 heure', 3600 => '1 heure', 5400 => '1 heure 30 minutes',
+    86399 => '1 jour', 86400 => '1 jour', 90000 => '1 jour 1 heure', 604799 => '7 jours',
+];
+$ecarts98 = [];
+foreach ($attendus98 as $secondes98 => $attendu98) {
+    $lu98 = Moderate::dureeEnClair($secondes98);
+    if ($lu98 !== $attendu98) {
+        $ecarts98[$secondes98] = $lu98;
+    }
+}
+$ecarts98 === []
+    ? ok('⭐ une durée se dit dans l\'unité de sa grandeur, arrondie au-dessus : 86 399 s, « 1 jour »')
+    : nok('⭐ une durée se lit dans une unité qui ne lui va pas : ' . json_encode($ecarts98, JSON_UNESCAPED_UNICODE));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une

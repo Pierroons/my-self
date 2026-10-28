@@ -363,6 +363,7 @@ return [
     'atk.js.running' => '⏳ Exécution de l\'attaque sur une base isolée…',
     'atk.js.goal'    => '🎯 Objectif attaquant :',
     'atk.js.verdict' => '🛡️ Attaque neutralisée — donnée conservée',
+    'atk.js.verdict.non' => '⚠️ Défense non démontrée par ce passage',
     'atk.js.defense' => 'Défense :',
     'atk.js.error'   => 'Erreur :',
 
@@ -468,7 +469,7 @@ return [
     'prf.mod.st.active' => 'actif',
     'prf.convalescent'  => 'en convalescence',
     'prf.mod.conv.h'    => 'En convalescence',
-    'prf.mod.conv.txt'  => 'Ta réputation est passée sous le seuil de vote. Elle remonte d\'un point par jour de calme, jusqu\'à %d. Rien à prouver, juste du temps.',
+    'prf.mod.conv.txt'  => 'Ta réputation est passée sous le seuil de vote. Elle remonte d\'un point par période de calme de %2$s, jusqu\'à %1$d. Rien à prouver, juste du temps.',
     'prf.mod.meute.h'   => 'Participation à une meute',
     'prf.mod.meute.warn' => 'Tes votes ont rejoint ceux d\'une personne avec qui tu échanges en privé, sur la même cible. Un groupe ne pèse pas plus qu\'un membre seul : seuls les votes de la première personne du groupe à avoir voté sont gardés, ceux des autres ont été annulés. Rien ne t\'est retiré ; si cela se reproduit, la situation sera signalée à un arbitre.',
     'prf.mod.meute.mute' => 'Ton droit de vote est suspendu jusqu\'au %s. Le reste du forum reste ouvert : tu peux écrire, répondre et ouvrir un sujet.',

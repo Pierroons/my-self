@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     -- compte vivait, sans rien révéler de ses secrets.
     last_login_at INTEGER,
     login_count   INTEGER NOT NULL DEFAULT 0,
+    -- Héritée, sans lecteur : la peine d'un compte vit dans `member_moderation`.
+    -- Ne pas s'y fier.
     banned_until  INTEGER,
     -- 🔑 Tirée au hasard à la création du compte, elle entre dans le contexte de ses
     -- chiffrés : un numéro de compte se réattribue, une graine non.
