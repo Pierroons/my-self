@@ -543,6 +543,9 @@ verifier('le ré-enrôlement réussit', ($re['ok'] ?? false) === true, (string) 
 verifier('⭐ AUCUN mot de passe n\'est rendu — le serveur n\'en fabrique pas',
     !str_contains((string) json_encode($re, JSON_UNESCAPED_UNICODE), 'un mot de passe choisi par elle'));
 verifier('une passphrase neuve est rendue', is_string($re['passphrase'] ?? null));
+// Le coffre de l'intégrateur suit sous ce nom : SelfDataGuard compare le userId
+// octet pour octet, et un nom tapé autrement ne trouverait pas le coffre.
+verifier('le ré-enrôlement rend le compte repris, sous sa forme rangée', ($re['compte'] ?? null) === 'alice');
 verifier('⭐ les appareils enrôlés sont retirés par la reprise',
     $st5->trouverAppareil('cred-du-precedent') === null);
 verifier('et le défi qui les désignait part avec',
@@ -1414,7 +1417,8 @@ verifier('⭐ la passphrase et les codes du demandeur ne servent plus',
     && ($recF->parCode((string) $rF['codes'][0], $MOT_L3, '10.0.0.8', $now + 126)['ok'] ?? true) === false);
 verifier('l\'autre code d\'avant est effacé avec la fenêtre',
     ($recF->parCode($codesF[1], $MOT_AVANT, '10.0.0.8', $now + 130)['ok'] ?? true) === false);
-$cloture = $escF->cloreFenetre('alice', 'arbitre', $now + 200);
+$cloture = $escF->cloreFenetre('  ALICE ', 'arbitre', $now + 200);
+verifier('la clôture rend le compte sous sa forme rangée, quel que soit le nom tapé', ($cloture['compte'] ?? null) === 'alice');
 $fC = $escF->fenetre('alice', $now + 210);
 verifier('⭐ seul l\'arbitre clôt : le gel se lève, le séquestre s\'ouvre à l\'arbitre',
     ($cloture['ok'] ?? false) === true && $fC['etat'] === 'close' && $fC['lecture_seule'] === false

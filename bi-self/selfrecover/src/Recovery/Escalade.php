@@ -1093,6 +1093,7 @@ final class Escalade
             : '';
 
         return ['ok' => true, 'passphrase' => $passphrase, 'codes' => $codes,
+                'compte' => $litige->nomCompte,
                 'appareils_retires' => $appareilsRetires,
                 'fenetre_jusqua' => $maintenant + $this->fenetreDuree,
                 'message' => Messages::dire($this->langue(), 'l3.compte_repris', [$avis])];
@@ -1199,12 +1200,13 @@ final class Escalade
     public function cloreFenetre(string $nomCompte, string $par, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();
-        $compte = $this->stockage->trouverCompte(strtolower(trim($nomCompte)));
+        $nomCompte = strtolower(trim($nomCompte));
+        $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null || !$this->stockage->cloreFenetre((int) $compte['id'], $par, $maintenant)) {
             return ['ok' => false, 'error' => 'aucune_fenetre_reprise',
                     'message' => Messages::dire($this->langue(), 'l3.aucune_fenetre_reprise')];
         }
-        return ['ok' => true, 'message' => Messages::dire($this->langue(), 'l3.fenetre_close')];
+        return ['ok' => true, 'compte' => $nomCompte, 'message' => Messages::dire($this->langue(), 'l3.fenetre_close')];
     }
 
     // ── Interne ────────────────────────────────────────────────────────────
