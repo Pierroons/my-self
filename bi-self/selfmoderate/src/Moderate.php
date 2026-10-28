@@ -218,7 +218,7 @@ class Moderate
     public static function getReputation(PDO $pdo, int $accountId): array
     {
         if (self::$ecritures > 0) {
-            throw new \LogicException('SelfModerate : un écrivain du moteur lit l\'état par etat(), sous son verrou — getReputation() n\'inscrit rien.');
+            throw new LectureDansUneEcriture('SelfModerate : un écrivain du moteur lit l\'état par etat(), sous son verrou — getReputation() n\'inscrit rien.');
         }
         $row     = self::ligne($pdo, $accountId);
         $avance  = self::avancer($row, time());
@@ -422,9 +422,9 @@ class Moderate
      * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), seule la
      * remontée de convalescence s'inscrit, et l'appel continue ; la fin attend le
      * retour du journal, et tant qu'elle attend, aucune écriture ne décide sur
-     * elle. Sans `$contenir`, le refus remonte. Une `LogicException` remonte
-     * toujours : c'est une erreur d'intégration — un journal qui rappelle le
-     * moteur —, pas une panne du journal.
+     * elle. Sans `$contenir`, le refus remonte. Une `LectureDansUneEcriture`
+     * remonte toujours : c'est une erreur d'intégration — un journal qui
+     * rappelle le moteur —, pas une panne du journal.
      */
     private static function rattraper(PDO $pdo, int $accountId, bool $contenir, bool $clore = true): ?bool
     {
@@ -454,7 +454,7 @@ class Moderate
                     'ferme'     => self::fermesEnTexte(self::deCause($signaux, ...$avance['tombent_fin'])),
                 ]);
             } catch (\Throwable $e) {
-                if (!$contenir || $e instanceof \LogicException) {
+                if (!$contenir || $e instanceof LectureDansUneEcriture) {
                     throw $e;
                 }
                 error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
@@ -498,17 +498,23 @@ class Moderate
      * refus. Ce qui est dû se relit sous le verrou avant de s'inscrire. Une ligne
      * absente n'a rien à inscrire : l'écriture qui en a besoin la crée sous son
      * verrou (`etat()`).
+     *
+     * Dans la transaction d'un hôte, le verrou se prend avant toute lecture : une
+     * transaction différée qui a déjà lu ne peut plus attendre le verrou, et
+     * SQLite la refuse aussitôt quand un autre écrit.
      */
     private static function rattraperSeul(PDO $pdo, int $accountId): void
     {
-        $row = self::ligne($pdo, $accountId);
-        if ($row === null) {
-            return;
-        }
-        $avance = self::avancer($row, time());
-        if ($avance['fin'] === null && !$avance['horloge'] && !$avance['effacer'] && $avance['tombent'] === []
-            && self::colonnesChangees($avance['ligne'], $row) === []) {
-            return;
+        if (!self::dansLaTransactionDeLHote($pdo)) {
+            $row = self::ligne($pdo, $accountId);
+            if ($row === null) {
+                return;
+            }
+            $avance = self::avancer($row, time());
+            if ($avance['fin'] === null && !$avance['horloge'] && $avance['tombent'] === []
+                && self::colonnesChangees($avance['ligne'], $row) === []) {
+                return;
+            }
         }
         self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, $accountId, contenir: true));
     }
@@ -522,38 +528,45 @@ class Moderate
      *
      * Rend le nombre de peines refermées. Sans journal, elles se referment
      * quand même, sans rien inscrire. Un journal qui refuse la fin d'un compte
-     * n'arrête pas la passe : le compte est signalé (`journal_en_panne`), sa
-     * convalescence s'inscrit, la passe continue, et le refus remonte à la fin,
-     * pour le planificateur et la console.
+     * n'arrête pas la passe : le compte est signalé (`journal_en_panne`), et le
+     * refus remonte à la fin, pour le planificateur et la console. Après ce
+     * premier refus, la passe n'appelle plus le journal — une panne se paie une
+     * fois par passe, pas une fois par compte : les convalescences s'inscrivent
+     * encore, les fins attendent la passe suivante, où les comptes déjà signalés
+     * passent en dernier.
      */
     public static function balayerBansEchus(PDO $pdo, int $limite = 500): int
     {
         $stmt = $pdo->prepare(
-            'SELECT account_id FROM member_moderation
+            "SELECT account_id FROM member_moderation m
               WHERE (banned_until > 0 AND banned_until <= :t)
-                 OR (convalescent = 1 AND (last_regen_at <= 0 OR last_regen_at <= :t - :i OR reputation >= :sortie))
-           ORDER BY banned_until = 0, banned_until LIMIT :n'
+                 OR (convalescent = 1 AND (last_regen_at <= 0 OR last_regen_at <= :t - :i OR reputation >= :sortie
+                                           OR (reputation >= :vote AND voting_rights = 0)))
+           ORDER BY EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),
+                    banned_until = 0, banned_until
+              LIMIT :n"
         );
         $stmt->bindValue('t', time(), PDO::PARAM_INT);
         $stmt->bindValue('i', self::config()->intervalleConvalescenceSecondes, PDO::PARAM_INT);
         $stmt->bindValue('sortie', self::config()->sortieConvalescence(), PDO::PARAM_INT);
+        $stmt->bindValue('vote', self::config()->perteDroitDeVoteSous, PDO::PARAM_INT);
         $stmt->bindValue('n', $limite, PDO::PARAM_INT);
         $stmt->execute();
 
-        $clos     = 0;
-        $refusees = 0;
+        $clos   = 0;
+        $refuse = null;
         foreach ($stmt->fetchAll() as $row) {
-            $close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true));
+            $close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true, clore: $refuse === null));
             if ($close === null) {
-                $refusees++;
+                $refuse = (int) $row['account_id'];
             } elseif ($close) {
                 $clos++;
             }
         }
-        if ($refusees > 0) {
+        if ($refuse !== null) {
             throw new \RuntimeException(sprintf(
-                'SelfModerate : le journal a refusé %d fin(s) de peine sur ce balayage, %d inscrite(s) ; la cause est au journal d\'erreurs.',
-                $refusees,
+                'SelfModerate : le journal a refusé la fin de peine du compte %d, après %d inscrite(s) ; les fins suivantes attendent la passe suivante, la cause est au journal d\'erreurs.',
+                $refuse,
                 $clos
             ));
         }
@@ -588,13 +601,6 @@ class Moderate
         $rep = self::getReputation($pdo, $accountId);
         if ($rep['banned']) {
             return [false, sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $rep['banned_until']))];
-        }
-        // Seul l'état inscrit autorise une écriture : une page montre la peine
-        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
-        // fin, le compte ne vote pas — et il le lit avant d'essayer. Une fin qui
-        // attend sans refus s'inscrit au vote même.
-        if ($rep['fin_en_attente'] && in_array('journal_en_panne', array_column($rep['signaux'], 'cause'), true)) {
-            return [false, static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
         }
         // Avant le seuil de réputation, et non après : les deux refusent le
         // vote, mais l'un s'efface en attendant et l'autre à une date. Rendre
@@ -904,12 +910,19 @@ class Moderate
             return null;
         }
 
-        // Le votant d'abord rattrapé : `canVote()` décide sur l'état inscrit, et
-        // refuse tant que le journal refuse d'inscrire une fin de peine.
         self::rattraperSeul($pdo, $voterId);
         [$can, $why] = self::canVote($pdo, $voterId);
         if (!$can) {
             $refus = ['ok' => false, 'message' => $why];
+
+            return null;
+        }
+        // Seul l'état inscrit autorise une écriture : une page montre la peine
+        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
+        // fin, le compte ne vote pas — et il sait pourquoi. La page ne le dit pas
+        // d'avance : seul un essai sait si le journal est revenu.
+        if (self::getReputation($pdo, $voterId)['fin_en_attente']) {
+            $refus = ['ok' => false, 'message' => static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
 
             return null;
         }

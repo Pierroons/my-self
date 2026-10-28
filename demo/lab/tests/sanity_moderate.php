@@ -3505,11 +3505,11 @@ is_array($refus88['sans_droit']) && !$refus88['sans_droit']['ok'] && str_contain
     ? ok('⭐ sous un autre écrivain, un vote sans droit ou au motif trop court rend son refus, sans attendre le verrou')
     : nok('⭐ un refus décidé par la lecture prend le verrou d\'écriture : ' . json_encode($refus88, JSON_UNESCAPED_UNICODE));
 
-// ── 89. ⭐ La page dit le refus que le vote rendra ───────────────────────────
-// Une peine échue dont le journal a refusé la fin : la page la montre finie, et
-// le vote est refusé. `canVote()` le dit d'avance. Une fin qui attend seulement
-// la première écriture, sans refus du journal, ne refuse rien : elle s'inscrit
-// au vote même.
+// ── 89. ⭐ La page ne ferme pas un vote que le journal revenu laisse passer ──
+// Une peine échue dont le journal refuse la fin : le vote est refusé, avec sa
+// raison, et l'arbitre prévenu. La page ne sait pas si le journal est revenu —
+// seul un essai le sait : elle laisse voter, et le vote, journal revenu, inscrit
+// la fin sans attendre un balayage.
 $refuse89 = membre($pdo, 'refuse-89');
 Moderate::ensureRow($pdo, $refuse89);
 $pdo->prepare("UPDATE member_moderation
@@ -3517,7 +3517,6 @@ $pdo->prepare("UPDATE member_moderation
                       banned_until = ?, ban_debut = ?, ban_origine = 'auto', ban_motif = 'reputation_zero'
                 WHERE account_id = ?")->execute([time() - 200, time() - 10, time() - 130, $refuse89]);
 planterSignal($pdo, $refuse89, 'ban_auto');
-[$avant89] = Moderate::canVote($pdo, $refuse89);
 Moderate::setJournal(new JournalEnPanne());
 try {
     $vote89 = Moderate::applyVote($pdo, $refuse89, 'member', membre($pdo, 'vise-89'), 1);
@@ -3526,20 +3525,24 @@ try {
 } finally {
     Moderate::setJournal($journalC);
 }
+$panne89 = in_array('journal_en_panne', causes($pdo, $refuse89), true);
 [$page89, $pourquoi89] = Moderate::canVote($pdo, $refuse89);
-rattraper($pdo, $refuse89);
-[$apres89] = Moderate::canVote($pdo, $refuse89);
-$avant89 && !($vote89['ok'] ?? true) && !$page89 && str_contains($pourquoi89, 'attend que le journal') && $apres89
-    ? ok('⭐ la page refuse d\'avance le vote d\'un compte dont le journal a refusé la fin, et le rend dès qu\'elle s\'inscrit')
-    : nok('⭐ la page promet un vote que la fin en attente fera refuser : ' . json_encode([
-        'avant' => $avant89, 'vote' => $vote89, 'page' => [$page89, $pourquoi89], 'apres' => $apres89,
+$revote89 = Moderate::applyVote($pdo, $refuse89, 'member', membre($pdo, 'vise-bis-89'), 1);
+$inscrite89 = (int) etatBan($pdo, $refuse89)['banned_until'] === 0 && count($journalC->de($refuse89, 'ban_fin')) === 1;
+!($vote89['ok'] ?? true) && str_contains($vote89['message'] ?? '', 'attend que le journal') && $panne89
+    && $page89 && ($revote89['ok'] ?? false) && $inscrite89
+    ? ok('⭐ journal en panne, le vote est refusé avec sa raison ; journal revenu, la page laisse voter et le vote inscrit la fin')
+    : nok('⭐ la page ferme un vote que le journal revenu laisse passer : ' . json_encode([
+        'vote' => $vote89, 'panne' => $panne89, 'page' => [$page89, $pourquoi89], 'revote' => $revote89, 'inscrite' => $inscrite89,
     ], JSON_UNESCAPED_UNICODE));
 
-// ── 90. ⭐ Un compte que le journal refuse n'arrête pas le balayage ──────────
-// Le balayage prend les peines les plus anciennes d'abord. Un journal qui refuse
-// la fin d'un seul compte — par son contenu — le signale, passe au suivant, et
-// fait remonter le refus à la fin : les fins et les convalescences derrière lui
-// s'inscrivent quand même.
+// ── 90. ⭐ Un refus du journal coûte un appel par passe, et ne bloque pas la file ─
+// Le balayage prend les peines les plus anciennes d'abord. Au premier refus, il
+// signale le compte et n'appelle plus le journal de la passe : une panne lente se
+// paie une fois, pas une fois par compte dû. Les convalescences s'inscrivent
+// encore ; les fins attendent la passe suivante, où le compte déjà refusé passe
+// en dernier — un compte que le journal refuse par son contenu ne bloque plus
+// ceux qui le suivent.
 $tete90 = membre($pdo, 'tete-90');
 $suivant90 = membre($pdo, 'suivant-90');
 foreach ([$tete90 => 30_000_000, $suivant90 => 29_000_000] as $compte90 => $recul90) {
@@ -3558,11 +3561,13 @@ planterSignal($pdo, $conv90, 'reputation_zero');
 $journal90 = new class ($tete90) implements \Pierroons\SelfModerate\Journal {
     /** @var list<array<string, mixed>> */
     public array $actes = [];
+    public int $appels = 0;
 
     public function __construct(private int $refuse) {}
 
     public function inscrire(array $acte): void
     {
+        $this->appels++;
         if ($acte['compte'] === $this->refuse) {
             throw new RuntimeException('acte refusé par son contenu');
         }
@@ -3570,25 +3575,32 @@ $journal90 = new class ($tete90) implements \Pierroons\SelfModerate\Journal {
     }
 };
 Moderate::setJournal($journal90);
-$erreur90 = null;
+$passes90 = [];
 try {
-    Moderate::balayerBansEchus($pdo);
-} catch (RuntimeException $e90) {
-    $erreur90 = $e90->getMessage();
+    for ($i90 = 1; $i90 <= 2; $i90++) {
+        $appels90 = $journal90->appels;
+        try {
+            Moderate::balayerBansEchus($pdo);
+            $erreur90 = null;
+        } catch (RuntimeException $e90) {
+            $erreur90 = $e90->getMessage();
+        }
+        $passes90[$i90] = [
+            'leve'     => $erreur90 !== null,
+            'appels'   => $journal90->appels - $appels90,
+            'suivant'  => (int) etatBan($pdo, $suivant90)['banned_until'] === 0,
+            'conv'     => (int) etatBan($pdo, $conv90)['reputation'],
+        ];
+    }
 } finally {
     Moderate::setJournal($journalC);
 }
-$fins90 = array_column(array_filter($journal90->actes, static fn (array $a): bool => $a['acte'] === 'ban_fin'), 'compte');
-$tenu90 = [(int) etatBan($pdo, $tete90)['banned_until'] > 0, causes($pdo, $tete90)];
-$suivi90 = (int) etatBan($pdo, $suivant90)['banned_until'];
-$remonte90 = (int) etatBan($pdo, $conv90)['reputation'];
+$tenu90 = [(int) etatBan($pdo, $tete90)['banned_until'] > 0, in_array('journal_en_panne', causes($pdo, $tete90), true)];
 rattraper($pdo, $tete90);
-$erreur90 !== null && in_array($suivant90, $fins90, true) && !in_array($tete90, $fins90, true) && $suivi90 === 0
-    && $remonte90 === 5 && $tenu90[0] && in_array('journal_en_panne', $tenu90[1], true)
-    ? ok('⭐ le balayage passe le compte que le journal refuse, le signale, inscrit les suivants, et le dit à la fin')
-    : nok('⭐ un compte refusé par le journal arrête le balayage : ' . json_encode([
-        'erreur' => $erreur90, 'fins' => $fins90, 'tete' => $tenu90, 'suivant' => $suivi90, 'convalescent' => $remonte90,
-    ], JSON_UNESCAPED_UNICODE));
+$passes90[1]['leve'] && $passes90[1]['appels'] === 1 && !$passes90[1]['suivant'] && $passes90[1]['conv'] === 5
+    && $passes90[2]['leve'] && $passes90[2]['suivant'] && $tenu90 === [true, true]
+    ? ok('⭐ un refus du journal coûte un appel par passe, laisse s\'inscrire les convalescences, et la passe suivante prend la file derrière le compte refusé')
+    : nok('⭐ un refus du journal se paie par compte, ou bloque la file : ' . json_encode(['passes' => $passes90, 'tete' => $tenu90], JSON_UNESCAPED_UNICODE));
 
 // ── 91. ⭐ Un journal qui rappelle le moteur est une erreur, pas une panne ───
 // L'implémentation est appelée au milieu d'une écriture du moteur, où une lecture
@@ -3678,6 +3690,98 @@ foreach ($oublies93 as $oublie93) {
 $inscrits93 === [true, false]
     ? ok('le filet inscrit au plus le nombre de comptes de la config, les plus anciens d\'abord')
     : nok('seuil sourd à la config (balayageFiletMax) : ' . json_encode($inscrits93));
+
+// ── 94. ⭐ Dans la transaction d'un hôte, le vote prend le verrou avant de lire ─
+// Une transaction différée qui a déjà lu ne peut plus attendre le verrou :
+// SQLite la refuse aussitôt quand un autre écrit, et un vote valide échouerait
+// là où il aurait attendu. Le premier ordre qu'un vote envoie dans la
+// transaction d'un hôte est donc une écriture.
+final class PdoQuiNote extends PDO
+{
+    /** @var list<string> */
+    public array $ordres = [];
+
+    public function exec(string $statement): int|false
+    {
+        $this->ordres[] = $statement;
+        return parent::exec($statement);
+    }
+
+    public function prepare(string $query, array $options = []): PDOStatement|false
+    {
+        $this->ordres[] = $query;
+        return parent::prepare($query, $options);
+    }
+
+    public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
+    {
+        $this->ordres[] = $query;
+        return parent::query($query, $fetchMode, ...$fetchModeArgs);
+    }
+}
+$hote94 = new PdoQuiNote('sqlite:' . getenv('LAB_DB_PATH'));
+$hote94->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$hote94->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$votant94 = membre($pdo, 'votant-94');
+poserReputation($pdo, $votant94, 20);
+$vise94 = membre($pdo, 'vise-94');
+poserReputation($pdo, $vise94, 20);
+$hote94->beginTransaction();
+$vote94 = Moderate::applyVote($hote94, $votant94, 'member', $vise94, 1);
+$hote94->commit();
+$premier94 = $hote94->ordres[0] ?? '';
+($vote94['ok'] ?? false) && str_starts_with($premier94, 'SAVEPOINT')
+    ? ok('⭐ dans la transaction d\'un hôte, le premier ordre d\'un vote prend le verrou d\'écriture')
+    : nok('⭐ dans la transaction d\'un hôte, un vote lit avant de prendre le verrou : ' . json_encode(['vote' => $vote94, 'ordres' => array_slice($hote94->ordres, 0, 3)], JSON_UNESCAPED_UNICODE));
+
+// ── 95. ⭐ Un journal qui refuse par une exception ordinaire voit son refus contenu ─
+// Seule l'erreur de la garde des écrivains traverse le rattrapage. Un journal
+// conforme peut refuser un acte par n'importe quelle exception —
+// `InvalidArgumentException` comprise, qui est une `LogicException` : le refus
+// reste un refus, signalé, et le vote d'un autre sur ce compte passe.
+$refuse95 = membre($pdo, 'refuse-95');
+Moderate::ensureRow($pdo, $refuse95);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 12, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'admin', ban_motif = 'motif d''arbitre'
+                WHERE account_id = ?")->execute([time() - 10, time() - 130, $refuse95]);
+Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+    public function inscrire(array $acte): void
+    {
+        throw new InvalidArgumentException('acte refusé par son contenu');
+    }
+});
+try {
+    $vote95 = Moderate::applyVote($pdo, membre($pdo, 'votant-95'), 'member', $refuse95, 1);
+} catch (Throwable $t95) {
+    $vote95 = ['exception' => get_class($t95) . ' : ' . $t95->getMessage()];
+} finally {
+    Moderate::setJournal($journalC);
+}
+$panne95 = in_array('journal_en_panne', causes($pdo, $refuse95), true);
+rattraper($pdo, $refuse95);
+($vote95['ok'] ?? false) && $panne95
+    ? ok('⭐ un refus du journal par une LogicException ordinaire reste un refus : signalé, et le vote sur ce compte passe')
+    : nok('⭐ un refus ordinaire du journal passe pour une erreur d\'intégration : ' . json_encode(['vote' => $vote95, 'panne' => $panne95], JSON_UNESCAPED_UNICODE));
+
+// ── 96. ⭐ Le balayage inscrit le droit de vote rendu au seuil ─────────────────
+// Des votes positifs portent un convalescent au seuil du vote : la lecture le
+// montre aussitôt, et le balayage l'inscrit pour qui lit la base.
+$porte96 = membre($pdo, 'porte-96');
+poserReputation($pdo, $porte96, 5);
+$pdo->prepare('UPDATE member_moderation SET convalescent = 1, voting_rights = 0, last_regen_at = ? WHERE account_id = ?')
+    ->execute([time(), $porte96]);
+planterSignal($pdo, $porte96, 'reputation_zero');
+$erreur96 = null;
+try {
+    Moderate::balayerBansEchus($pdo);
+} catch (Throwable $t96) {
+    $erreur96 = $t96->getMessage();
+}
+$droit96 = (int) etatBan($pdo, $porte96)['voting_rights'];
+$erreur96 === null && $droit96 === 1
+    ? ok('⭐ le balayage inscrit le droit de vote qu\'un convalescent a retrouvé au seuil')
+    : nok('⭐ le balayage laisse en base un droit de vote que la lecture rend : ' . json_encode(['erreur' => $erreur96, 'droit' => $droit96], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

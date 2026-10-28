@@ -82,13 +82,15 @@ interface Journal
      * règle, et elle n'est pas muette : quand un vote, un geste ou le balayage
      * constate une peine échue, le refus est consigné et signalé
      * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
-     * Une lecture ne constate rien. Le balayage passe au compte suivant et fait
-     * remonter le refus à la fin ; le début d'un ban le fait remonter aussitôt.
+     * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
+     * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
+     * le fait remonter aussitôt. Un refus se lève par n'importe quelle exception.
      *
      * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
      * d'une de ses écritures, où une lecture par le moteur est refusée par une
-     * `LogicException`, qui remonte telle quelle — une erreur d'intégration ne
-     * se déguise pas en panne du journal.
+     * `LectureDansUneEcriture`, qui remonte telle quelle — une erreur
+     * d'intégration ne se déguise pas en panne du journal —, sauf au filet du
+     * vote : le vote est déjà validé, et elle part au journal d'erreurs.
      */
     public function inscrire(array $acte): void;
 }
