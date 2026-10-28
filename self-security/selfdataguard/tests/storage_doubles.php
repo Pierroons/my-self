@@ -526,12 +526,19 @@ final class RestoreOverLiveStorage extends DelegatingStorage
 }
 
 /**
- * Compares the generation, then swaps whatever vault is live. Alone, it refuses
- * a stale generation; racing, every swap passes the check and the archive is
- * gone for all but one — refused as missing instead of stale.
+ * Compares the generation, then swaps whatever vault is live when its own write
+ * starts: it reads the live generation again inside its transaction, so the
+ * comparison the adapter makes there always holds. Alone, it refuses a stale
+ * generation; racing, every swap passes the check, the first takes the archive,
+ * and the others meet it gone instead of a stale generation.
  */
 final class CheckThenSwapStorage extends DelegatingStorage
 {
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
     public function swapWithArchive(VaultGeneration $g, string $id): string
     {
         $live = $this->inner->findVault($g->userId) ?? throw new VaultNotFoundException('none');
@@ -539,6 +546,31 @@ final class CheckThenSwapStorage extends DelegatingStorage
             throw new StaleVaultException('stale');
         }
         usleep(200_000);
-        return $this->inner->swapWithArchive($this->inner->loadVault($g->userId)->generation(), $id);
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $setAside = $this->inner->swapWithArchive($this->inner->loadVault($g->userId)->generation(), $id);
+            $this->pdo->exec('COMMIT');
+            return $setAside;
+        } catch (\Throwable $e) {
+            $this->pdo->exec('ROLLBACK');
+            throw $e;
+        }
+    }
+}
+
+/** Commits whatever transaction is open on its connection before it writes: the caller's half becomes durable. */
+final class CallerCommittingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function saveVault(VaultRecord $r): void
+    {
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->commit();
+        }
+        $this->inner->saveVault($r);
     }
 }

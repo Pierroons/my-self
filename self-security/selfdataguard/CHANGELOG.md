@@ -34,6 +34,12 @@ frozen vault.
 - Conformance: `swap-with-archive`, `restore-archive`, `freeze-refuses-writes` and
   `concurrent-archive-swaps`, each made to fail by a storage that breaks its clause. A freeze is checked
   in sequence only: no case races it against a write.
+- Conformance: `joins-callers-transaction` — writes made inside a transaction the caller opened go with
+  the caller's rollback, and the storage leaves that transaction to the caller. An integrator that writes
+  its account and the vault in one commit depends on it. The case needs a connection the contract does
+  not give: **BREAKING** for whoever runs the suite — `Conformance::run()` takes a third argument, and
+  `bin/storage-conformance.php` a second file that returns it; without it the case is skipped, and a
+  skipped case does not make a storage conformant.
 
 ### Changed
 

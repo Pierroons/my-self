@@ -57,9 +57,11 @@ register_shutdown_function(static function () use ($work): void {
 
 /**
  * A connection file for $class wrapping a SqliteAdapter on its own database —
- * what the racing processes require — and the callable it returns.
+ * what the racing processes require —, the callable it returns, and a callable
+ * that runs work inside a transaction it opens on a new connection, then rolls
+ * it back.
  *
- * @return array{0: callable, 1: string}
+ * @return array{0: callable, 1: string, 2: callable}
  */
 function connection(string $work, string $class): array
 {
@@ -74,7 +76,18 @@ function connection(string $work, string $class): array
         var_export("sqlite:{$db}", true),
         $build
     ));
-    return [require $file, $file];
+    $callerFile = "{$work}/{$class}-caller.php";
+    file_put_contents($callerFile, sprintf(
+        "<?php\nrequire_once %s;\nrequire_once %s;\nuse Pierroons\\SelfDataGuard\\Storage\\SqliteAdapter;\n"
+        . "return static function (callable \$work): void { \$pdo = new PDO(%s);"
+        . " \$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); \$pdo->beginTransaction();"
+        . " \$work(%s); \$pdo->rollBack(); };\n",
+        var_export(__DIR__ . '/../src/autoload.php', true),
+        var_export(__DIR__ . '/storage_doubles.php', true),
+        var_export("sqlite:{$db}", true),
+        $build
+    ));
+    return [require $file, $file, require $callerFile, $callerFile];
 }
 
 /** @return array<string, array{outcome: string, detail: string}> */
@@ -91,8 +104,8 @@ function outcomes(array $results): array
 
 section('The shipped SqliteAdapter passes every case');
 
-[$connect, $file] = connection($work, SqliteAdapter::class);
-$shipped = outcomes(Conformance::run($connect, $file));
+[$connect, $file, $withCaller] = connection($work, SqliteAdapter::class);
+$shipped = outcomes(Conformance::run($connect, $file, $withCaller));
 foreach ($shipped as $case => $r) {
     $r['outcome'] === 'pass'
         ? ok($case)
@@ -116,6 +129,9 @@ $racing = array_filter($memory, static fn (string $case): bool => str_starts_wit
 count($racing) === 7 && array_unique(array_column($racing, 'outcome')) === ['skip']
     ? ok('the seven concurrent-* cases: skip')
     : ko('a racing case ran, or passed, with no process to race', json_encode($racing));
+($memory['joins-callers-transaction']['outcome'] ?? null) === 'skip'
+    ? ok('without a caller transaction, joins-callers-transaction: skip')
+    : ko('joins-callers-transaction ran, or passed, with no caller transaction', json_encode($memory['joins-callers-transaction'] ?? null));
 
 // -----------------------------------------------------------------------------
 
@@ -154,10 +170,11 @@ $broken = [
     IndexDroppingRestoreStorage::class => ['swap-with-archive', 'restore-archive'],
     RestoreOverLiveStorage::class      => ['restore-archive'],
     CheckThenSwapStorage::class        => ['concurrent-archive-swaps'],
+    CallerCommittingStorage::class     => ['joins-callers-transaction'],
 ];
 foreach ($broken as $class => $expected) {
-    [$connect, $file] = connection($work, $class);
-    $results = outcomes(Conformance::run($connect, $file));
+    [$connect, $file, $withCaller] = connection($work, $class);
+    $results = outcomes(Conformance::run($connect, $file, $withCaller));
     $failed = array_keys(array_filter($results, static fn (array $r): bool => $r['outcome'] === 'fail'));
     $missed = array_diff($expected, $failed);
     $missed === []
@@ -172,7 +189,8 @@ foreach ([
     CheckThenClaimStorage::class           => 'setting-claimed-once',
     CheckThenSwapStorage::class            => 'swap-with-archive',
 ] as $class => $sequential) {
-    $results = outcomes(Conformance::run(...connection($work, $class)));
+    [$connect, $file, $withCaller] = connection($work, $class);
+    $results = outcomes(Conformance::run($connect, $file, $withCaller));
     $results[$sequential]['outcome'] === 'pass'
         ? ok("{$class} passes {$sequential}: only the racing processes catch it")
         : ko("{$class} failed {$sequential} — the racing case is not what catches it", $results[$sequential]['detail']);
@@ -188,11 +206,15 @@ $exit = static function (array $args): array {
     $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     return [proc_close($process), $out];
 };
-[, $file] = connection($work, SqliteAdapter::class);
-[$rc, $out] = $exit([$bin, $file]);
+[, $file, , $callerFile] = connection($work, SqliteAdapter::class);
+[$rc, $out] = $exit([$bin, $file, $callerFile]);
 $rc === 0 && str_contains($out, 'Conforme')
     ? ok('0 on the shipped adapter')
     : ko('the shipped adapter was not reported conformant', "rc={$rc} {$out}");
+[$rc, $out] = $exit([$bin, $file]);
+$rc === 1 && str_contains($out, '⏭️ joins-callers-transaction')
+    ? ok('without the caller-transaction file, the case is skipped and the adapter is not declared conformant')
+    : ko('a run without the caller-transaction file was declared conformant', "rc={$rc} {$out}");
 [, $file] = connection($work, UpsertingStorage::class);
 [$rc, $out] = $exit([$bin, $file]);
 $rc === 1 && str_contains($out, '❌ vault-insert-never-replaces')

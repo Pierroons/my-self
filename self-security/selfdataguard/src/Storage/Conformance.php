@@ -39,6 +39,11 @@ use Throwable;
  * from a file — the child processes require it in turn. Without one, they are
  * reported skipped, not passed.
  *
+ * An integrator that writes its account and the vault in one commit opens the
+ * transaction itself: the storage must write inside it, and leave the commit or
+ * the rollback to the caller. That case needs a connection the suite cannot
+ * open through the contract, hence the third argument of run().
+ *
  * A freeze is checked in sequence only: no case races it against a write. A
  * storage that reads the freeze, then writes in a second transaction, passes;
  * compare it where the generation is compared.
@@ -74,8 +79,12 @@ final class Conformance
     /**
      * @param callable(): StorageInterface $connect a new connection to the database under test
      */
-    private function __construct(callable $connect, private readonly ?string $connectFile)
+    /** @var (callable(callable(StorageInterface): void): void)|null */
+    private $withCallerTransaction;
+
+    private function __construct(callable $connect, private readonly ?string $connectFile, ?callable $withCallerTransaction)
     {
+        $this->withCallerTransaction = $withCallerTransaction;
         $this->connect = $connect;
         $this->storage = $connect();
         $this->prefix  = 'conformance-' . bin2hex(random_bytes(6));
@@ -85,11 +94,15 @@ final class Conformance
      * @param callable(): StorageInterface $connect     a new connection to the database under test
      * @param string|null                  $connectFile a PHP file that loads its autoloader and
      *                                                  returns that same callable
+     * @param (callable(callable(StorageInterface): void): void)|null $withCallerTransaction
+     *        opens a transaction on a new connection to the database under test, hands the storage
+     *        built on that connection to its argument, then rolls the transaction back. Without it,
+     *        the case that needs it is reported skipped.
      * @return list<array{case: string, outcome: string, detail: string}> outcome is pass, fail or skip
      */
-    public static function run(callable $connect, ?string $connectFile = null): array
+    public static function run(callable $connect, ?string $connectFile = null, ?callable $withCallerTransaction = null): array
     {
-        $suite = new self($connect, $connectFile);
+        $suite = new self($connect, $connectFile, $withCallerTransaction);
         $results = [];
         foreach (self::cases() as $case => $method) {
             try {
@@ -132,6 +145,7 @@ final class Conformance
             'replace-with-archive'          => 'replaceWithArchive',
             'delete-archive'                => 'deleteArchive',
             'erase-account'                 => 'eraseAccount',
+            'joins-callers-transaction'     => 'joinsCallersTransaction',
             'swap-with-archive'             => 'swapWithArchive',
             'restore-archive'               => 'restoreArchive',
             'freeze-refuses-writes'         => 'freezeRefusesWrites',
@@ -685,6 +699,31 @@ final class Conformance
 
         $this->storage->freezeVault($g, 'arbiter-1', $at);
         $this->assert($this->storage->eraseAccount($live->userId) === 2, 'eraseAccount() did not erase a frozen account and its archive');
+        return null;
+    }
+
+    /**
+     * Writes made inside a transaction the caller opened go with the caller's
+     * rollback, and the storage leaves that transaction open to the caller.
+     */
+    private function joinsCallersTransaction(): ?string
+    {
+        if ($this->withCallerTransaction === null) {
+            return 'needs a caller transaction: pass the third argument of run()';
+        }
+        $vault = $this->newVault('caller-tx');
+        ($this->withCallerTransaction)(function (StorageInterface $storage) use ($vault): void {
+            $storage->saveVault($vault);
+            $storage->saveFields($vault->generation(), ['note' => ['ciphertext' => 'c-note']]);
+            $storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+            $storage->freezeVault($vault->generation(), 'caller', new DateTimeImmutable());
+        });
+        $this->assert(
+            !$this->storage->vaultExists($vault->userId)
+                && $this->storage->loadFields($vault->userId) === []
+                && $this->storage->loadEscrow($vault->userId) === null,
+            'writes made inside the caller\'s transaction survived its rollback: the storage committed them itself'
+        );
         return null;
     }
 

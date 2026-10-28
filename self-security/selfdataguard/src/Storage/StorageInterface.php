@@ -37,6 +37,11 @@ use Pierroons\SelfDataGuard\Vault\VaultRecord;
  * Implementations are responsible for SQL safety (prepared statements),
  * transaction atomicity (batch field updates), and schema bootstrapping.
  *
+ * Called inside a transaction the caller opened — an integrator that writes its
+ * account and the vault in one commit —, an implementation writes inside it and
+ * leaves the commit or the rollback to the caller: committing "whatever is open"
+ * makes the caller's half durable, and its rollback then fails.
+ *
  * An implementation is conformant when Conformance passes against it —
  * `php bin/storage-conformance.php <connection.php>` — and not otherwise.
  */

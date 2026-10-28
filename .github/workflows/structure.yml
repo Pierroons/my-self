@@ -2963,7 +2963,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=59 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=63 [sanity_escrow]=63
+            [sanity_archive]=59 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=67 [sanity_escrow]=63
             [sanity_facade]=134 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=38 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -3261,6 +3261,8 @@ jobs:
             $D/tests/sanity_conformance.php 'FreezeSkippingFieldsStorage passed a case it breaks'
           canari $D/src/Storage/Conformance.php "            'concurrent-archive-swaps'      => 'concurrentArchiveSwaps'," '' \
             $D/tests/sanity_conformance.php 'CheckThenSwapStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "            'joins-callers-transaction'     => 'joinsCallersTransaction'," '' \
+            $D/tests/sanity_conformance.php 'CallerCommittingStorage passed a case it breaks'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

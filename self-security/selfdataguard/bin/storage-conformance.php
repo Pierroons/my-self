@@ -12,7 +12,7 @@ declare(strict_types=1);
  * conforme, et ne se met pas en service.
  *
  * Usage :
- *   php bin/storage-conformance.php <connexion.php>
+ *   php bin/storage-conformance.php <connexion.php> <transaction-appelant.php>
  *
  * <connexion.php> charge son autoloader et rend un callable qui ouvre une
  * NOUVELLE connexion à la base à éprouver, par exemple :
@@ -20,6 +20,22 @@ declare(strict_types=1);
  *   <?php
  *   require __DIR__ . '/vendor/autoload.php';
  *   return static fn () => new MonStockage(new PDO('mysql:host=…;dbname=…', $u, $p));
+ *
+ * <transaction-appelant.php> charge son autoloader et rend un callable qui ouvre
+ * une transaction sur une NOUVELLE connexion, passe le stockage bâti sur elle à
+ * son argument, puis annule la transaction, par exemple :
+ *
+ *   <?php
+ *   require __DIR__ . '/vendor/autoload.php';
+ *   return static function (callable $travail): void {
+ *       $pdo = new PDO('mysql:host=…;dbname=…', $u, $p);
+ *       $pdo->beginTransaction();
+ *       $travail(new MonStockage($pdo));
+ *       $pdo->rollBack();
+ *   };
+ *
+ * Sans lui, le cas « joins-callers-transaction » est sauté, et un cas sauté
+ * n'est pas un cas passé : l'implémentation n'est pas déclarée conforme.
  *
  * La suite écrit dans cette base, sous des userId tirés au hasard
  * (« conformance-<hex>-… »), et les efface à la fin de chaque cas. Les cas de
@@ -35,7 +51,7 @@ use Pierroons\SelfDataGuard\Storage\StorageInterface;
 
 $file = $argv[1] ?? '';
 if ($file === '' || !is_file($file)) {
-    fwrite(STDERR, "Usage : php bin/storage-conformance.php <connexion.php>\n");
+    fwrite(STDERR, "Usage : php bin/storage-conformance.php <connexion.php> <transaction-appelant.php>\n");
     exit(3);
 }
 $file = (string) realpath($file);
@@ -45,7 +61,16 @@ if (!is_callable($connect) || !($connect() instanceof StorageInterface)) {
     exit(3);
 }
 
-$results = Conformance::run($connect, $file);
+$callerFile = $argv[2] ?? null;
+$withCaller = null;
+if ($callerFile !== null) {
+    if (!is_file($callerFile) || !is_callable($withCaller = require $callerFile)) {
+        fwrite(STDERR, "{$callerFile} doit rendre un callable qui exécute son argument dans une transaction qu'il annule\n");
+        exit(3);
+    }
+}
+
+$results = Conformance::run($connect, $file, $withCaller);
 $failed = 0;
 foreach ($results as $result) {
     $mark = ['pass' => '✅', 'fail' => '❌', 'skip' => '⏭️'][$result['outcome']];
