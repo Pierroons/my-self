@@ -758,6 +758,20 @@ verifier('⭐ trancher un dossier périmé est refusé, et la console relaie le 
     ($rX['ok'] ?? null) === false && ($rX['error'] ?? '') === 'expire' && ($rX['code'] ?? 0) === 410
     && trim((string) ($rX['message'] ?? '')) !== '', json_encode($rX, JSON_UNESCAPED_UNICODE));
 
+// 🔑 L'adaptateur ne valide et n'annule que ce qu'il a ouvert. Un appelant qui
+// écrit son coffre dans le même commit ouvre la transaction : la valider à sa
+// place rendait durable sa moitié, et son rollBack() levait.
+$pdoTx = $baseLitiges();
+$stTx  = new StockageSelfRecover($pdoTx);
+$pdoTx->beginTransaction();
+$stTx->commencerTransaction();
+$stTx->ouvrirLitige(1, 'LIT-APPELANT', hash('sha256', 'sesame-appelant'), $TL, $TL + 86400);
+$stTx->validerTransaction();
+verifier('⭐ la validation de l\'adaptateur laisse ouverte la transaction de l\'appelant', $pdoTx->inTransaction());
+$annule = $attraper(static fn () => $pdoTx->rollBack());
+verifier('… et le rollBack de l\'appelant défait ce que l\'adaptateur avait écrit',
+    $annule === 'rien' && $stTx->trouverLitigeParNumero('LIT-APPELANT') === null, $annule);
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

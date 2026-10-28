@@ -12,6 +12,7 @@ use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\LitigeDejaTranche;
 use Pierroons\SelfRecover\Storage\PassphraseDejaConsommee;
 use Pierroons\SelfRecover\Storage\StorageInterface;
+use Pierroons\SelfRecover\Storage\TransactionsPdo;
 
 /**
  * Le schéma du lab, présenté à la bibliothèque SelfRecover.
@@ -449,26 +450,9 @@ final class StockageSelfRecover implements StorageInterface
 
     // ── Atomicité ──────────────────────────────────────────────────────────
 
-    public function commencerTransaction(): void
-    {
-        if (!$this->pdo->inTransaction()) {
-            $this->pdo->beginTransaction();
-        }
-    }
-
-    public function validerTransaction(): void
-    {
-        if ($this->pdo->inTransaction()) {
-            $this->pdo->commit();
-        }
-    }
-
-    public function annulerTransaction(): void
-    {
-        if ($this->pdo->inTransaction()) {
-            $this->pdo->rollBack();
-        }
-    }
+    // On ne valide et on n'annule que ce qu'on a ouvert : le trait de la
+    // bibliothèque pose un point de reprise dans la transaction d'un appelant.
+    use TransactionsPdo;
 
     // ── Récupération de niveau 3 : dossier et arbitrage humain ─────────────
     //

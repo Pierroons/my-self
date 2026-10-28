@@ -1543,8 +1543,9 @@ jobs:
           # Et deux défauts de la sanction lue pour l'arbitre : le motif d'un
           # arbitre de modération qui sort en texte ; la lecture remplacée par
           # `getReputation()`, qui écrit en base pendant qu'on consulte.
+          # Et l'adaptateur qui valide la transaction de l'appelant à sa place.
           A=demo/lab/lib/StockageSelfRecover.php
-          for cas in clause cloture tranche depot motif ecriture; do
+          for cas in clause cloture tranche depot motif ecriture transaction; do
             cp "$A" /tmp/adaptateur.lab.intact
             CAS="$cas" python3 - "$A" <<'PY'
           import os, sys
@@ -1563,6 +1564,10 @@ jobs:
               'ecriture': ("              WHERE a.id = ?'\n        );\n        $st->execute([$compteId]);\n",
                            "              WHERE a.id = ?'\n        );\n        $st->execute([$compteId]);\n"
                            "        \\Pierroons\\SelfModerate\\Moderate::getReputation($this->pdo, $compteId);\n"),
+              'transaction': ("    use TransactionsPdo;\n",
+                              "    public function commencerTransaction(): void { if (!$this->pdo->inTransaction()) { $this->pdo->beginTransaction(); } }\n"
+                              "    public function validerTransaction(): void { if ($this->pdo->inTransaction()) { $this->pdo->commit(); } }\n"
+                              "    public function annulerTransaction(): void { if ($this->pdo->inTransaction()) { $this->pdo->rollBack(); } }\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -1583,6 +1588,7 @@ jobs:
               depot)   attendu='❌ ⭐ un dépôt sur un dossier tranché lève LitigeDejaTranche' ;;
               motif)   attendu='❌ ⭐ et le motif de l.arbitre n.en sort pas' ;;
               ecriture) attendu='❌ lire les faits n.écrit rien en base' ;;
+              transaction) attendu='❌ ⭐ la validation de l.adaptateur laisse ouverte la transaction de l.appelant' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

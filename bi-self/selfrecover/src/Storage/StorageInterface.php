@@ -627,6 +627,13 @@ interface StorageInterface
     // du facteur « cet appareil » est consommé avant la vérification de
     // signature, exprès : un défi rejouable annule l'intérêt de le tirer au
     // hasard, échec compris.
+    //
+    // 🔑 **Un adaptateur ne valide et n'annule que ce qu'il a ouvert.** Appelé
+    // dans la transaction d'un appelant — un intégrateur qui écrit son coffre
+    // dans le même commit —, il pose un point de reprise et laisse la décision à
+    // l'appelant. Valider « ce qui est ouvert » rendrait durable la moitié de
+    // l'appelant, et son `rollBack()` lèverait. `TransactionsPdo` porte cette
+    // règle pour un adaptateur sur PDO.
 
     public function commencerTransaction(): void;
 
