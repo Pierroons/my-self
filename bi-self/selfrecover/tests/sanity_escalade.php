@@ -1355,6 +1355,134 @@ verifier('⭐ sous clearweb, l\'adresse freine : aucune épreuve n\'est demandé
         ->epreuve('alice', $now)['difficulte'] === 0
     && ($escW2->ouvrir('alice', Escalade::empreinteSesame('w'), '198.51.100.1', $now)['ok'] ?? false) === true);
 
+echo "\n→ La fenêtre d'après un niveau 3 : le titulaire qui revient avec un secret d'avant l'emporte\n";
+
+$PHRASE_AVANT = 'abime abrite acajou acier adage aerer';
+$MOT_AVANT    = str_repeat('a1', 32);
+$SEL_AVANT    = str_repeat('5e', 16);
+$MOT_L3       = str_repeat('c3', 32);
+$SEL_L3       = str_repeat('d4', 16);
+/** Un compte aux secrets connus, repris par un niveau 3 à `$t` ; rend [stockage, escalade, recovery, codes d'avant]. */
+$repris = static function (int $t, int $fenetreDuree = 14 * 86400) use ($PHRASE_AVANT, $MOT_AVANT, $SEL_AVANT, $MOT_L3, $SEL_L3): array {
+    $st = new StockageMemoire();
+    $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT_AVANT)];
+    $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash(Recovery::normaliserPassphrase($PHRASE_AVANT))];
+    $st->empreintes[1] = Hashing::hash('mot de passe de connexion');
+    $st->sels[1]       = $SEL_AVANT;
+    $st->faits[1]      = ['cree_le' => $t - 400 * 86400, 'derniere_connexion' => null, 'nombre_connexions' => null];
+    $rec   = new Recovery($st, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
+    $esc   = new Escalade($st, $rec, ...SANS_EPREUVE, delaiRefusUs: 0, fenetreDuree: $fenetreDuree);
+    $codes = $rec->emettreCodes(1, 2, $t - 86400);
+    $sesame = bin2hex(random_bytes(32));
+    $o = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), '10.0.0.7', $t);
+    $esc->trancher((string) $o['numero'], 'accepte', 'arbitre', $t + 10);
+    $r = $esc->reEnroler((string) $o['numero'], $sesame, 'le mot de passe du demandeur', $MOT_L3, $SEL_L3, $t + 20);
+
+    return [$st, $esc, $rec, $codes, $r];
+};
+
+[$stF, $escF, $recF, $codesF, $rF] = $repris($now);
+$fF = $escF->fenetre('alice', $now + 30);
+verifier('⭐ la reprise par un niveau 3 ouvre une fenêtre de 14 jours, et le dit',
+    $fF['etat'] === 'ouverte' && $fF['ferme_le'] === $now + 20 + 14 * 86400 && ($rF['fenetre_jusqua'] ?? 0) === $fF['ferme_le'],
+    json_encode($fF));
+verifier('pendant la fenêtre, le coffre n\'est pas gelé et l\'arbitre ne lit pas le séquestre de l\'archive',
+    $fF['lecture_seule'] === false && $fF['lecture_admin_permise'] === false);
+$selPendant = $recF->selDeDerivation($codesF[0]);
+verifier('⭐ la route du sel rend l\'ancien sel pour un code d\'avant : le titulaire dérive son ancien mot',
+    $selPendant === $SEL_AVANT, $selPendant);
+
+$appareilDemandeur = $stF->enregistrerAppareil(1, 'cle-du-demandeur', 'pk', $now + 40);
+$repriseF = $recF->parPassphrase('alice', $PHRASE_AVANT, '10.0.0.8', $now + 100);
+verifier('⭐ l\'ancienne passphrase, servie dans la fenêtre, rend le compte à son titulaire',
+    ($repriseF['ok'] ?? false) === true && ($repriseF['titulaire_reprend'] ?? false) === true
+    && ($repriseF['mot_memorise_a_changer'] ?? false) === true, json_encode(array_keys($repriseF)));
+verifier('il reçoit un mot de passe, une passphrase et dix codes neufs',
+    isset($repriseF['mot_de_passe'], $repriseF['passphrase']) && count($repriseF['codes'] ?? []) === Recovery::CODES_PAR_LOT);
+verifier('⭐ il retrouve son mot mémorisé d\'avant et son sel ; celui du demandeur est sorti',
+    Hashing::verify($MOT_AVANT, $stF->comptes['alice']['empreinte_mot']) && $stF->sels[1] === $SEL_AVANT
+    && !Hashing::verify($MOT_L3, $stF->comptes['alice']['empreinte_mot']));
+verifier('les sessions et les appareils du demandeur tombent',
+    in_array(1, $stF->sessionsRevoquees, true) && $stF->trouverAppareil('cle-du-demandeur') === null);
+$fR = $escF->fenetre('alice', $now + 110);
+verifier('⭐ la fenêtre passe reprise : le coffre reste gelé, et le séquestre fermé à l\'arbitre, jusqu\'à la clôture',
+    $fR['etat'] === 'reprise' && $fR['lecture_seule'] === true && $fR['lecture_admin_permise'] === false);
+verifier('⭐ un secret d\'avant ne sert qu\'une fois',
+    ($recF->parPassphrase('alice', $PHRASE_AVANT, '10.0.0.8', $now + 120)['ok'] ?? true) === false);
+verifier('⭐ la passphrase et les codes du demandeur ne servent plus',
+    ($recF->parPassphrase('alice', (string) $rF['passphrase'], '10.0.0.8', $now + 125)['ok'] ?? true) === false
+    && ($recF->parCode((string) $rF['codes'][0], $MOT_L3, '10.0.0.8', $now + 126)['ok'] ?? true) === false);
+verifier('l\'autre code d\'avant est effacé avec la fenêtre',
+    ($recF->parCode($codesF[1], $MOT_AVANT, '10.0.0.8', $now + 130)['ok'] ?? true) === false);
+$cloture = $escF->cloreFenetre('alice', 'arbitre', $now + 200);
+$fC = $escF->fenetre('alice', $now + 210);
+verifier('⭐ seul l\'arbitre clôt : le gel se lève, le séquestre s\'ouvre à l\'arbitre',
+    ($cloture['ok'] ?? false) === true && $fC['etat'] === 'close' && $fC['lecture_seule'] === false
+    && $fC['lecture_admin_permise'] === true && $fC['close_par'] === 'arbitre');
+verifier('une clôture ne se refait pas', ($escF->cloreFenetre('alice', 'arbitre', $now + 220)['ok'] ?? true) === false);
+
+[, $escO, $recO, $codesO] = $repris($now);
+$repriseCode = $recO->parCode($codesO[0], $MOT_AVANT, '10.0.0.8', $now + 100);
+verifier('⭐ un code d\'avant, avec le mot d\'avant, rend aussi le compte à son titulaire',
+    ($repriseCode['ok'] ?? false) === true && ($repriseCode['titulaire_reprend'] ?? false) === true);
+verifier('l\'horloge seule ne clôt pas une fenêtre reprise',
+    $escO->fenetre('alice', $now + 60 * 86400)['etat'] === 'reprise');
+
+[$stE, $escE2, $recE] = $repris($now);
+$tard = $now + 20 + 14 * 86400;
+verifier('⭐ la fenêtre échue, la passphrase d\'avant ne sert plus',
+    ($recE->parPassphrase('alice', $PHRASE_AVANT, '10.0.0.8', $tard)['ok'] ?? true) === false);
+$fE = $escE2->fenetre('alice', $tard);
+verifier('et l\'état dit échue : l\'arbitre peut lire le séquestre de l\'archive',
+    $fE['etat'] === 'echue' && $fE['lecture_admin_permise'] === true);
+verifier('⭐ la purge efface les secrets d\'une fenêtre échue, et garde sa ligne',
+    $stE->compterFenetresEchues($tard) === 1 && $escE2->purgerFenetres($tard) === 1
+    && $stE->fenetres[1]['empreinte_passphrase'] === null && $stE->fenetres[1]['empreinte_mot'] === null
+    && $stE->anciensCodes === [] && $stE->compterFenetresEchues($tard) === 0);
+verifier('une fenêtre encore ouverte n\'est pas purgée', (static function () use ($repris, $now): bool {
+    [$st, $e] = $repris($now);
+
+    return $e->purgerFenetres($now + 86400) === 0 && $st->fenetres[1]['empreinte_passphrase'] !== null;
+})());
+
+[$stS, $escS, $recS] = $repris($now);
+$s2 = bin2hex(random_bytes(32));
+$o2 = $escS->ouvrir('alice', Escalade::empreinteSesame($s2), '10.0.0.9', $now + 1000);
+$escS->trancher((string) $o2['numero'], 'accepte', 'arbitre', $now + 1010);
+$escS->reEnroler((string) $o2['numero'], $s2, 'un second mot de passe du demandeur', str_repeat('e5', 32), str_repeat('f6', 16), $now + 1020);
+verifier('⭐ un second niveau 3 dans la fenêtre garde les secrets du titulaire, pas ceux du premier demandeur',
+    ($recS->parPassphrase('alice', $PHRASE_AVANT, '10.0.0.8', $now + 1100)['titulaire_reprend'] ?? false) === true);
+
+$bornes = [];
+foreach ([6 * 86400, 7 * 86400, 30 * 86400, 31 * 86400] as $duree) {
+    try {
+        new Escalade(new StockageMemoire(), new Recovery(new StockageMemoire(), 'sel', ProfilDeploiement::CLEARWEB, Langue::FR),
+            fenetreDuree: $duree);
+        $bornes[] = 'ok';
+    } catch (InvalidArgumentException) {
+        $bornes[] = 'refus';
+    }
+}
+verifier('⭐ la fenêtre dure de 7 à 30 jours : 6 et 31 sont refusés', $bornes === ['refus', 'ok', 'ok', 'refus'], json_encode($bornes));
+
+// Au niveau 1, la passphrase d'avant coûte un Argon2id de plus : l'échéance
+// commune des refus doit le couvrir, sinon le chronomètre dit qu'un compte sort
+// d'un niveau 3.
+$chrono = static function (Recovery $r, int $t): int {
+    $t0 = hrtime(true);
+    $r->parPassphrase('alice', 'zebre zenith zeste zigzag zinc zoom', '10.0.0.8', $t);
+
+    return intdiv(hrtime(true) - $t0, 1000000);
+};
+[$stT1] = $repris($now);
+$avecFenetre = new Recovery($stT1, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 400000);
+$stT2 = new StockageMemoire();
+$stT2->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash(Recovery::normaliserPassphrase($PHRASE_AVANT))];
+$sansFenetre = new Recovery($stT2, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 400000);
+$durees = ['avec' => $chrono($avecFenetre, $now + 100), 'sans' => $chrono($sansFenetre, $now + 100)];
+verifier('⭐ un refus au niveau 1 prend le même temps, fenêtre ouverte ou non, à 20 ms près, au moins le délai',
+    min($durees) >= 400 && abs($durees['avec'] - $durees['sans']) < 20, json_encode($durees));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Escalade SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

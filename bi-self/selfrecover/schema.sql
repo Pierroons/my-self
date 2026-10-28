@@ -214,6 +214,34 @@ CREATE TABLE IF NOT EXISTS device_challenges (
 
 CREATE INDEX IF NOT EXISTS idx_challenges_age ON device_challenges(created_at);
 
+-- La fenêtre d'après un niveau 3 : les secrets du titulaire d'avant la reprise,
+-- valables une fois chacun jusqu'à `ferme_le`. Un ancien secret servi rend le
+-- compte à son titulaire (`reprise_le`) ; seul l'arbitre clôt ensuite le litige.
+-- Une fenêtre échue sans ancien secret servi efface ses secrets et garde sa ligne.
+CREATE TABLE IF NOT EXISTS l3_fenetres (
+    account_id      INTEGER PRIMARY KEY,
+    ouverte_le      INTEGER NOT NULL,
+    ferme_le        INTEGER NOT NULL,
+    passphrase_hash TEXT,
+    recovery_hash   TEXT,
+    recovery_salt   TEXT,
+    reprise_le      INTEGER,
+    close_le        INTEGER,
+    close_par       TEXT,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Les codes papier non consommés au moment de la reprise du niveau 3.
+CREATE TABLE IF NOT EXISTS l3_anciens_codes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id  INTEGER NOT NULL,
+    code_lookup TEXT    NOT NULL,
+    code_hash   TEXT    NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_anciens_codes_lookup ON l3_anciens_codes(code_lookup);
+
 -- Une épreuve du niveau 3, servie une fois : la clé primaire refuse la seconde.
 -- Pas de compte ici, exprès : l'épreuve est payée avant qu'on cherche le compte.
 CREATE TABLE IF NOT EXISTS l3_epreuves (

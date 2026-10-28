@@ -102,6 +102,7 @@ if ($aBlanc) {
     try {
         $dossiers = $stockage->compterLitigesExpires($maintenant);
         $lignes   = $stockage->compterEchecsPurgeables($seuilEchecs, Etiquette::PREFIXES);
+        $fenetres = $stockage->compterFenetresEchues($maintenant);
     } catch (\Throwable $e) {
         // Court et sur stderr, comme le reste : rien n'a été touché, donc le
         // message ne parle que de la lecture.
@@ -110,6 +111,7 @@ if ($aBlanc) {
     }
     printf("%d dossier(s) seraient effacés.\n", $dossiers);
     printf("%d ligne(s) d'échec seraient effacées (rétention : %d jours).\n", $lignes, $jours);
+    printf("%d fenêtre(s) de niveau 3 échue(s) perdraient leurs anciens secrets.\n", $fenetres);
     exit(0);
 }
 
@@ -125,6 +127,7 @@ $stockage->commencerTransaction();
 try {
     $effaces = $stockage->purgerLitigesExpires($maintenant);
     $echecs  = $stockage->purgerEchecs($seuilEchecs, Etiquette::PREFIXES);
+    $fenetres = $stockage->purgerFenetresEchues($maintenant);
     $stockage->validerTransaction();
 } catch (\Throwable $e) {
     $stockage->annulerTransaction();
@@ -136,6 +139,7 @@ try {
 }
 printf("%d dossier(s) effacé(s).\n", $effaces);
 printf("%d ligne(s) d'échec effacée(s) (rétention : %d jours).\n", $echecs, $jours);
+printf("%d fenêtre(s) de niveau 3 échue(s) : leurs anciens secrets sont effacés.\n", $fenetres);
 
 // ⚠️ Les lignes de RÉUSSITE survivent, et le contrat dit pourquoi : la
 // suspension du niveau 2 se réarme sur une date que rien ne borne dans le

@@ -156,8 +156,24 @@ final class Escalade
         private readonly int $epreuvePlafond = 19,
         /** Durée de vie d'une épreuve émise. */
         private readonly int $epreuveDuree = 300,
+        /**
+         * Secondes pendant lesquelles, après une reprise par le niveau 3, les
+         * secrets d'avant restent valables une fois chacun : le temps laissé au
+         * titulaire pour revenir. Entre `FENETRE_MINIMUM` et `FENETRE_MAXIMUM`.
+         */
+        private readonly int $fenetreDuree = 14 * 86400,
     ) {
+        if ($this->fenetreDuree < self::FENETRE_MINIMUM || $this->fenetreDuree > self::FENETRE_MAXIMUM) {
+            throw new \InvalidArgumentException(sprintf(
+                'La fenêtre d\'après un niveau 3 dure de %d à %d jours, pas %d s',
+                intdiv(self::FENETRE_MINIMUM, 86400), intdiv(self::FENETRE_MAXIMUM, 86400), $this->fenetreDuree
+            ));
+        }
     }
+
+    /** La fenêtre d'après un niveau 3 : sept jours au moins, trente au plus. */
+    public const FENETRE_MINIMUM = 7 * 86400;
+    public const FENETRE_MAXIMUM = 30 * 86400;
 
     /**
      * L'épreuve à résoudre avant d'ouvrir un dossier au nom de `$nomCompte` —
@@ -1039,6 +1055,9 @@ final class Escalade
             // le même accord ; la clôture ne réussit qu'une fois, et la perdante
             // sort ici, avant d'avoir rien écrit.
             $this->stockage->cloreLitige($litige->id, $maintenant);
+            // Les secrets du titulaire, rangés avant d'être remplacés : il a la
+            // fenêtre pour revenir avec l'un d'eux et l'emporter.
+            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree);
             $this->stockage->reposerSecrets(
                 $litige->compteId,
                 $empreinteMotDePasse,
@@ -1075,6 +1094,7 @@ final class Escalade
 
         return ['ok' => true, 'passphrase' => $passphrase, 'codes' => $codes,
                 'appareils_retires' => $appareilsRetires,
+                'fenetre_jusqua' => $maintenant + $this->fenetreDuree,
                 'message' => Messages::dire($this->langue(), 'l3.compte_repris', [$avis])];
     }
 
@@ -1116,6 +1136,75 @@ final class Escalade
     public function purger(?int $maintenant = null): int
     {
         return $this->stockage->purgerLitigesExpires($maintenant ?? time());
+    }
+
+    /**
+     * Efface les anciens secrets des fenêtres échues sans qu'aucun ait servi.
+     * Rend le nombre de fenêtres touchées. Comme `purger()`, c'est au
+     * déploiement de l'appeler : `tools/purger.php` le fait.
+     */
+    public function purgerFenetres(?int $maintenant = null): int
+    {
+        return $this->stockage->purgerFenetresEchues($maintenant ?? time());
+    }
+
+    /**
+     * L'état de la fenêtre d'après un niveau 3, pour l'application et pour
+     * l'arbitre.
+     *
+     * - `aucune` : pas de niveau 3 repris sur ce compte ;
+     * - `ouverte` : les secrets d'avant valent encore, jusqu'à `ferme_le` ;
+     * - `reprise` : le titulaire l'a emporté avec l'un d'eux. Le litige reste
+     *   ouvert jusqu'à `cloreFenetre()`, et le coffre reste en lecture seule ;
+     * - `close` : l'arbitre a clos le litige ;
+     * - `echue` : la fenêtre s'est fermée sans qu'aucun ancien secret serve.
+     *
+     * 🔑 `lecture_admin_permise` dit si l'arbitre peut lire le séquestre de
+     * l'archive née du niveau 3 : pas tant que le titulaire peut encore revenir,
+     * ni tant que le litige qu'il a ouvert en revenant n'est pas clos.
+     *
+     * @return array{etat: string, ferme_le: ?int, reprise_le: ?int, close_le: ?int, close_par: ?string,
+     *               lecture_seule: bool, lecture_admin_permise: bool}
+     */
+    public function fenetre(string $nomCompte, ?int $maintenant = null): array
+    {
+        $maintenant = $maintenant ?? time();
+        $compte = $this->stockage->trouverCompte(strtolower(trim($nomCompte)));
+        $f = $compte === null ? null : $this->stockage->fenetreDuCompte((int) $compte['id']);
+        $etat = match (true) {
+            $f === null                  => 'aucune',
+            $f['close_le'] !== null      => 'close',
+            $f['reprise_le'] !== null    => 'reprise',
+            $f['ferme_le'] > $maintenant => 'ouverte',
+            default                      => 'echue',
+        };
+        return [
+            'etat'                  => $etat,
+            'ferme_le'              => $f['ferme_le'] ?? null,
+            'reprise_le'            => $f['reprise_le'] ?? null,
+            'close_le'              => $f['close_le'] ?? null,
+            'close_par'             => $f['close_par'] ?? null,
+            'lecture_seule'         => $etat === 'reprise',
+            'lecture_admin_permise' => in_array($etat, ['aucune', 'close', 'echue'], true),
+        ];
+    }
+
+    /**
+     * L'arbitre clôt le litige qu'un titulaire a ouvert en revenant dans la
+     * fenêtre. C'est le seul geste qui lève la lecture seule du coffre : jamais
+     * l'horloge, qui la rendrait au demandeur sans que personne ait regardé.
+     *
+     * @return array{ok: bool, error?: string, message: string}
+     */
+    public function cloreFenetre(string $nomCompte, string $par, ?int $maintenant = null): array
+    {
+        $maintenant = $maintenant ?? time();
+        $compte = $this->stockage->trouverCompte(strtolower(trim($nomCompte)));
+        if ($compte === null || !$this->stockage->cloreFenetre((int) $compte['id'], $par, $maintenant)) {
+            return ['ok' => false, 'error' => 'aucune_fenetre_reprise',
+                    'message' => Messages::dire($this->langue(), 'l3.aucune_fenetre_reprise')];
+        }
+        return ['ok' => true, 'message' => Messages::dire($this->langue(), 'l3.fenetre_close')];
     }
 
     // ── Interne ────────────────────────────────────────────────────────────

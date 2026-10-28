@@ -362,6 +362,22 @@ final class Messages
             'fr' => "Ton navigateur doit d'abord résoudre une épreuve de calcul. Elle est jointe : renvoie ta demande avec sa solution.",
             'en' => 'Your browser must first solve a computation challenge. It is attached: send your request again with its solution.',
         ],
+        'l3.aucune_fenetre_reprise' => [
+            'fr' => "Ce compte n'a pas de litige ouvert par son titulaire à clore.",
+            'en' => 'This account has no dispute opened by its holder to close.',
+        ],
+        'l3.fenetre_close' => [
+            'fr' => 'Litige clos : le coffre du titulaire peut sortir de la lecture seule.',
+            'en' => "Dispute closed: the holder's vault can leave read-only mode.",
+        ],
+        'l3.titulaire_reprend' => [
+            'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '
+                  . 'tu le retrouves. Celui qui l\'avait repris en est sorti. Tu reçois des secrets neufs : note-les. Un arbitre va '
+                  . 'prendre contact, et ton coffre reste en lecture seule jusque-là. Pense à changer ton mot mémorisé.',
+            'en' => 'Your account was taken over through an arbitration procedure in the last few days, and your former '
+                  . 'secret prevails: you get it back. Whoever had taken it is out. You receive new secrets: write them down. An arbitrator '
+                  . 'will get in touch, and your vault stays read-only until then. Remember to change your memorized word.',
+        ],
         'l3.message_vide' => [
             'fr' => 'Le message est vide.',
             'en' => 'The message is empty.',

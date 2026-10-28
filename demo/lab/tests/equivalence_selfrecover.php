@@ -308,7 +308,18 @@ $esc3   = new \Pierroons\SelfRecover\Recovery\Escalade(
     $stock3,
     new Recovery($stock3, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 0,
+    // L'épreuve se juge dans le banc de la bibliothèque ; ici, la consommation et
+    // la fenêtre sur le schéma du lab, plus bas.
+    epreuveBase: 0, epreuvePasService: PHP_INT_MAX, epreuvePasCompte: PHP_INT_MAX,
 );
+
+verifier('une épreuve se consomme une fois sur le schéma du lab',
+    $stock3->consommerEpreuve('ab', $now3 + 300, $now3) && !$stock3->consommerEpreuve('ab', $now3 + 300, $now3 + 1));
+$stock3->ouvrirFenetre(1, $now3, $now3 + 14 * 86400);
+$fen3 = $stock3->fenetreDuCompte(1);
+verifier('la fenêtre d\'après un niveau 3 range la passphrase de la colonne pass_hash',
+    is_string($fen3['empreinte_passphrase'] ?? null) && Hashing::verify('y', (string) $fen3['empreinte_passphrase']));
+$pdo3->exec('DELETE FROM l3_fenetres');
 
 $ses3 = bin2hex(random_bytes(32));
 $ouv3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses3), maintenant: $now3);

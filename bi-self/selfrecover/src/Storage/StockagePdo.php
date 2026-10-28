@@ -284,6 +284,118 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         return $insere->rowCount() === 1;
     }
 
+    // ── La fenêtre d'après un niveau 3 ─────────────────────────────────────
+
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void
+    {
+        $existante = $this->fenetreDuCompte($compteId);
+        if ($existante !== null && $existante['reprise_le'] === null && $existante['close_le'] === null
+            && $existante['ferme_le'] > $ouverteLe) {
+            $this->pdo->prepare('UPDATE l3_fenetres SET ferme_le = MAX(ferme_le, ?) WHERE account_id = ?')
+                ->execute([$fermeLe, $compteId]);
+            return;
+        }
+        $this->pdo->prepare('DELETE FROM l3_anciens_codes WHERE account_id = ?')->execute([$compteId]);
+        $this->pdo->prepare(
+            'INSERT OR REPLACE INTO l3_fenetres
+                    (account_id, ouverte_le, ferme_le, passphrase_hash, recovery_hash, recovery_salt, reprise_le, close_le, close_par)
+             SELECT id, ?, ?, passphrase_hash, recovery_hash, recovery_salt, NULL, NULL, NULL FROM accounts WHERE id = ?'
+        )->execute([$ouverteLe, $fermeLe, $compteId]);
+        $this->pdo->prepare(
+            'INSERT INTO l3_anciens_codes (account_id, code_lookup, code_hash)
+             SELECT account_id, code_lookup, code_hash FROM recovery_codes WHERE account_id = ? AND used = 0'
+        )->execute([$compteId]);
+    }
+
+    public function fenetreDuCompte(int $compteId): ?array
+    {
+        $st = $this->pdo->prepare('SELECT * FROM l3_fenetres WHERE account_id = ?');
+        $st->execute([$compteId]);
+        $f = $st->fetch(PDO::FETCH_ASSOC);
+        $entier = static fn ($v): ?int => $v === null ? null : (int) $v;
+
+        return $f === false ? null : [
+            'ouverte_le'           => (int) $f['ouverte_le'],
+            'ferme_le'             => (int) $f['ferme_le'],
+            'empreinte_passphrase' => $f['passphrase_hash'],
+            'empreinte_mot'        => $f['recovery_hash'],
+            'sel'                  => $f['recovery_salt'],
+            'reprise_le'           => $entier($f['reprise_le']),
+            'close_le'             => $entier($f['close_le']),
+            'close_par'            => $f['close_par'],
+        ];
+    }
+
+    public function trouverAncienCodeParIndex(string $indexRecherche): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT c.account_id, a.username, c.code_hash, f.recovery_hash, f.ferme_le
+               FROM l3_anciens_codes c
+               JOIN l3_fenetres f ON f.account_id = c.account_id
+               JOIN accounts a ON a.id = c.account_id
+              WHERE c.code_lookup = ? AND f.recovery_hash IS NOT NULL AND f.reprise_le IS NULL AND f.close_le IS NULL'
+        );
+        $st->execute([$indexRecherche]);
+        $ligne = $st->fetch(PDO::FETCH_ASSOC);
+
+        return $ligne === false ? null : [
+            'compte_id'      => (int) $ligne['account_id'],
+            'nom_compte'     => (string) $ligne['username'],
+            'empreinte_code' => (string) $ligne['code_hash'],
+            'empreinte_mot'  => (string) $ligne['recovery_hash'],
+            'ferme_le'       => (int) $ligne['ferme_le'],
+        ];
+    }
+
+    public function reprendreFenetre(int $compteId, int $quand): bool
+    {
+        $st = $this->pdo->prepare(
+            'UPDATE l3_fenetres SET reprise_le = ?, passphrase_hash = NULL, recovery_hash = NULL, recovery_salt = NULL
+              WHERE account_id = ? AND reprise_le IS NULL AND close_le IS NULL AND ferme_le > ?'
+        );
+        $st->execute([$quand, $compteId, $quand]);
+        if ($st->rowCount() !== 1) {
+            return false;
+        }
+        $this->pdo->prepare('DELETE FROM l3_anciens_codes WHERE account_id = ?')->execute([$compteId]);
+        return true;
+    }
+
+    public function cloreFenetre(int $compteId, string $par, int $quand): bool
+    {
+        $st = $this->pdo->prepare(
+            'UPDATE l3_fenetres SET close_le = ?, close_par = ?
+              WHERE account_id = ? AND reprise_le IS NOT NULL AND close_le IS NULL'
+        );
+        $st->execute([$quand, $par, $compteId]);
+        return $st->rowCount() === 1;
+    }
+
+    public function purgerFenetresEchues(int $avant): int
+    {
+        $this->pdo->prepare(
+            'DELETE FROM l3_anciens_codes WHERE account_id IN
+                    (SELECT account_id FROM l3_fenetres WHERE ferme_le <= ? AND reprise_le IS NULL)'
+        )->execute([$avant]);
+        $st = $this->pdo->prepare(
+            'UPDATE l3_fenetres SET passphrase_hash = NULL, recovery_hash = NULL, recovery_salt = NULL WHERE '
+            . self::FENETRES_ECHUES
+        );
+        $st->execute([$avant]);
+        return $st->rowCount();
+    }
+
+    public function compterFenetresEchues(int $avant): int
+    {
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM l3_fenetres WHERE ' . self::FENETRES_ECHUES);
+        $st->execute([$avant]);
+        return (int) $st->fetchColumn();
+    }
+
+    /** Une fenêtre fermée sans ancien secret servi, qui porte encore des secrets. */
+    private const FENETRES_ECHUES = 'ferme_le <= ? AND reprise_le IS NULL
+        AND (passphrase_hash IS NOT NULL OR recovery_hash IS NOT NULL OR recovery_salt IS NOT NULL)';
+
     // ── Codes de récupération ──────────────────────────────────────────────
 
     public function purgerCodes(int $compteId): void
@@ -329,6 +441,15 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         );
         $st->execute([$indexRecherche]);
         $sel = $st->fetchColumn();
+        if ($sel === false) {
+            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel.
+            $st = $this->pdo->prepare(
+                'SELECT f.recovery_salt FROM l3_anciens_codes c JOIN l3_fenetres f ON f.account_id = c.account_id
+                  WHERE c.code_lookup = ?'
+            );
+            $st->execute([$indexRecherche]);
+            $sel = $st->fetchColumn();
+        }
 
         return $sel === false || $sel === null ? null : (string) $sel;
     }

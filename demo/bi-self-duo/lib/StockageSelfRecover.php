@@ -316,6 +316,47 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $this->pasDeNiveau3('consommerEpreuve');
     }
 
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void
+    {
+        $this->pasDeNiveau3('ouvrirFenetre');
+    }
+
+    // ⚠️ Une lecture que les niveaux 1 et 2 font à chaque échec. Sans niveau 3,
+    // aucune fenêtre ne s'ouvre jamais : `null` est ici la vérité, pas un vide
+    // qui masquerait un niveau absent.
+    public function fenetreDuCompte(int $compteId): ?array
+    {
+        return null;
+    }
+
+    // ⚠️ Une lecture que les niveaux 1 et 2 font à chaque échec. Sans niveau 3,
+    // aucune fenêtre ne s'ouvre jamais : `null` est ici la vérité, pas un vide
+    // qui masquerait un niveau absent.
+    public function trouverAncienCodeParIndex(string $indexRecherche): ?array
+    {
+        return null;
+    }
+
+    public function reprendreFenetre(int $compteId, int $quand): bool
+    {
+        $this->pasDeNiveau3('reprendreFenetre');
+    }
+
+    public function cloreFenetre(int $compteId, string $par, int $quand): bool
+    {
+        $this->pasDeNiveau3('cloreFenetre');
+    }
+
+    public function purgerFenetresEchues(int $avant): int
+    {
+        $this->pasDeNiveau3('purgerFenetresEchues');
+    }
+
+    public function compterFenetresEchues(int $avant): int
+    {
+        $this->pasDeNiveau3('compterFenetresEchues');
+    }
+
     public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige
     {
         $this->pasDeNiveau3('litigeActifDuCompte');

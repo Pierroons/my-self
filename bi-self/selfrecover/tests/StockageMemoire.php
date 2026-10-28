@@ -238,6 +238,11 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
                 return $this->sels[$c['compte_id']] ?? null;
             }
         }
+        foreach ($this->anciensCodes as $c) {
+            if (hash_equals($c['index'], $indexRecherche)) {
+                return $this->fenetres[$c['compte_id']]['sel'] ?? null;
+            }
+        }
 
         return null;
     }
@@ -693,6 +698,109 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
 
     /** @var array<int, string> */
     public array $sels = [];
+
+    // ── La fenêtre d'après un niveau 3 ─────────────────────────────────────
+
+    /** @var array<int, array<string, mixed>> compte => fenêtre */
+    public array $fenetres = [];
+    /** @var list<array{compte_id: int, index: string, empreinte: string}> */
+    public array $anciensCodes = [];
+
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void
+    {
+        $f = $this->fenetres[$compteId] ?? null;
+        if ($f !== null && $f['reprise_le'] === null && $f['close_le'] === null && $f['ferme_le'] > $ouverteLe) {
+            $this->fenetres[$compteId]['ferme_le'] = max($f['ferme_le'], $fermeLe);
+            return;
+        }
+        $passphrase = null;
+        foreach ($this->passphrases as $p) {
+            if ($p['id'] === $compteId) { $passphrase = $p['empreinte_passphrase']; }
+        }
+        $mot = null;
+        foreach ($this->comptes as $c) {
+            if ($c['id'] === $compteId) { $mot = $c['empreinte_mot']; }
+        }
+        $this->fenetres[$compteId] = [
+            'ouverte_le' => $ouverteLe, 'ferme_le' => $fermeLe, 'empreinte_passphrase' => $passphrase,
+            'empreinte_mot' => $mot, 'sel' => $this->sels[$compteId] ?? null,
+            'reprise_le' => null, 'close_le' => null, 'close_par' => null,
+        ];
+        $this->anciensCodes = array_values(array_filter($this->anciensCodes, static fn (array $c): bool => $c['compte_id'] !== $compteId));
+        foreach ($this->codes as $c) {
+            if ($c['compte_id'] === $compteId && !$c['utilise']) {
+                $this->anciensCodes[] = ['compte_id' => $compteId, 'index' => $c['index'], 'empreinte' => $c['empreinte']];
+            }
+        }
+    }
+
+    public function fenetreDuCompte(int $compteId): ?array
+    {
+        return $this->fenetres[$compteId] ?? null;
+    }
+
+    public function trouverAncienCodeParIndex(string $indexRecherche): ?array
+    {
+        foreach ($this->anciensCodes as $c) {
+            $f = $this->fenetres[$c['compte_id']] ?? null;
+            if (!hash_equals($c['index'], $indexRecherche) || $f === null || $f['empreinte_mot'] === null
+                || $f['reprise_le'] !== null || $f['close_le'] !== null) {
+                continue;
+            }
+            $nom = '';
+            foreach ($this->comptes as $cle => $compte) {
+                if ($compte['id'] === $c['compte_id']) { $nom = $cle; }
+            }
+            return ['compte_id' => $c['compte_id'], 'nom_compte' => $nom, 'empreinte_code' => $c['empreinte'],
+                    'empreinte_mot' => $f['empreinte_mot'], 'ferme_le' => $f['ferme_le']];
+        }
+        return null;
+    }
+
+    public function reprendreFenetre(int $compteId, int $quand): bool
+    {
+        $f = $this->fenetres[$compteId] ?? null;
+        if ($f === null || $f['reprise_le'] !== null || $f['close_le'] !== null || $f['ferme_le'] <= $quand) {
+            return false;
+        }
+        $this->fenetres[$compteId] = ['reprise_le' => $quand, 'empreinte_passphrase' => null, 'empreinte_mot' => null, 'sel' => null] + $f;
+        $this->anciensCodes = array_values(array_filter($this->anciensCodes, static fn (array $c): bool => $c['compte_id'] !== $compteId));
+        return true;
+    }
+
+    public function cloreFenetre(int $compteId, string $par, int $quand): bool
+    {
+        $f = $this->fenetres[$compteId] ?? null;
+        if ($f === null || $f['reprise_le'] === null || $f['close_le'] !== null) {
+            return false;
+        }
+        $this->fenetres[$compteId]['close_le'] = $quand;
+        $this->fenetres[$compteId]['close_par'] = $par;
+        return true;
+    }
+
+    public function purgerFenetresEchues(int $avant): int
+    {
+        $n = 0;
+        foreach ($this->fenetres as $id => $f) {
+            if ($f['ferme_le'] > $avant || $f['reprise_le'] !== null) {
+                continue;
+            }
+            $this->anciensCodes = array_values(array_filter($this->anciensCodes, static fn (array $c): bool => $c['compte_id'] !== $id));
+            if ($f['empreinte_passphrase'] !== null || $f['empreinte_mot'] !== null || $f['sel'] !== null) {
+                $this->fenetres[$id] = ['empreinte_passphrase' => null, 'empreinte_mot' => null, 'sel' => null] + $f;
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    public function compterFenetresEchues(int $avant): int
+    {
+        return count(array_filter($this->fenetres, static fn (array $f): bool => $f['ferme_le'] <= $avant
+            && $f['reprise_le'] === null
+            && ($f['empreinte_passphrase'] !== null || $f['empreinte_mot'] !== null || $f['sel'] !== null)));
+    }
 
     // ── Atomicité ──────────────────────────────────────────────────────────
     //

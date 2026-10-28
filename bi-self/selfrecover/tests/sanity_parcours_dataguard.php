@@ -208,8 +208,8 @@ verifier('le coffre neuf est vide, l\'ancien est archivé',
 $ouverte = $dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Passphrase, $PHR);
 verifier('l\'ancienne passphrase, retrouvée plus tard, rouvre l\'archive',
     ($dg->readArchive($ouverte)['private']['note'] ?? null) === $NOTE);
-verifier('… alors qu\'elle n\'ouvre plus le compte',
-    ($rec->parPassphrase('alice', $PHR, null, $now + 500)['ok'] ?? true) === false);
+verifier('… alors qu\'elle n\'ouvre plus le compte, une fois la fenêtre d\'après le niveau 3 échue',
+    ($rec->parPassphrase('alice', $PHR, null, $now + 400 + 15 * 86400)['ok'] ?? true) === false);
 
 // ─────────────────────────────────────────────────────────────────────────
 echo "\n" . str_repeat('=', 63) . "\n";

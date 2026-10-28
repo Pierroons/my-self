@@ -166,6 +166,7 @@ final class Recovery
     ): array {
         $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
+        $debut      = hrtime(true);
         $nomCompte  = strtolower(trim($nomCompte));
         $refus      = ['ok' => false, 'message' => Messages::dire($this->langue, 'l1.refus')];
 
@@ -216,6 +217,19 @@ final class Recovery
         $ok = Hashing::verify($passphrase, $compte['empreinte_passphrase'] ?? Hashing::dummyHash())
             && $compte !== null;
 
+        // 🔑 Dans la fenêtre d'après un niveau 3, la passphrase d'avant vaut encore,
+        // une fois : le titulaire qui revient l'emporte sur le demandeur. Elle coûte
+        // un Argon2id de plus, que l'échéance commune des refus couvre : le
+        // chronomètre ne dit pas qu'un compte sort d'un niveau 3.
+        $fenetre = null;
+        if (!$ok && $compte !== null) {
+            $f = $this->stockage->fenetreDuCompte((int) $compte['id']);
+            if ($f !== null && self::fenetreOuverte($f, $maintenant) && $f['empreinte_passphrase'] !== null
+                && Hashing::verify($passphrase, (string) $f['empreinte_passphrase'])) {
+                $fenetre = $f;
+            }
+        }
+
         // L'ancienne passphrase ne revient pas, ni ses mots dans un autre ordre :
         // pour qui a le papier, c'est la même. Jugé seulement quand elle est bonne,
         // donc bornée par celle qui est rangée, quoi que pèse la saisie ; le refus
@@ -233,13 +247,16 @@ final class Recovery
 
         // L'étiquette du niveau 1 est celle où `freinerNiveau2()` cherche la
         // dernière réussite. Les deux portent l'origine, qui seule freine ici.
-        $etiquette = !$ok && self::motsTousConnus($passphrase)
+        $etiquette = !$ok && $fenetre === null && self::motsTousConnus($passphrase)
             ? $this->etiquetteSuspicionL1($nomCompte)
             : $this->etiquetteEchecsL1($nomCompte);
-        $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
+        $this->stockage->tracerTentative($etiquette, $ok || $fenetre !== null, $ip, $maintenant);
 
+        if ($fenetre !== null) {
+            return $this->reprendreParTitulaire((int) $compte['id'], $nomCompte, $fenetre, $maintenant, $apport, $refus);
+        }
         if (!$ok) {
-            usleep($this->delaiRefusUs);
+            $this->attendreEcheance($debut);
 
             return $refus;
         }
@@ -335,6 +352,13 @@ final class Recovery
         }
 
         $trouve = $this->stockage->trouverCodeParIndex($this->indexRecherche($code));
+        // Un code d'avant la reprise d'un niveau 3, encore dans sa fenêtre : il se
+        // juge avec le mot mémorisé d'avant, aux mêmes deux Argon2id qu'un code actuel.
+        $ancien = $trouve === null ? $this->stockage->trouverAncienCodeParIndex($this->indexRecherche($code)) : null;
+        if ($ancien !== null && $ancien['ferme_le'] <= $maintenant) {
+            $ancien = null;
+        }
+        $cible = $trouve ?? $ancien;
 
         // Le frein par compte avant les deux Argon2id, donc avant toute
         // consommation : un essai freiné ne coûte ni code ni place au quota de
@@ -346,12 +370,12 @@ final class Recovery
         // 2 du service entier dès que le plafond est atteint, par n'importe qui.
         // Sans compte, il n'y a pas de compteur à consulter, et le frein par
         // origine tient seul. Les cas ⭐ de `sanity_recovery` le font rougir.
-        if ($trouve !== null) {
-            $etiquette = $this->etiquetteEchecsL2((string) $trouve['nom_compte']);
+        if ($cible !== null) {
+            $etiquette = $this->etiquetteEchecsL2((string) $cible['nom_compte']);
             $frein     = $this->freinerNiveau2(
                 $etiquette,
-                (string) $trouve['nom_compte'],
-                (int) $trouve['compte_id'],
+                (string) $cible['nom_compte'],
+                (int) $cible['compte_id'],
                 $maintenant,
             );
             if ($frein !== null) {
@@ -364,9 +388,10 @@ final class Recovery
 
         // Les deux vérifications sont menées quoi qu'il arrive : s'arrêter à la
         // première échouée dirait, par le temps, laquelle a échoué.
-        $codeOk = Hashing::verify($code, $trouve['empreinte_code'] ?? Hashing::dummyHash());
-        $motOk  = Hashing::verify($motDerive, $trouve['empreinte_mot'] ?? Hashing::dummyHash());
-        $ok     = $trouve !== null && !$trouve['deja_utilise'] && $codeOk && $motOk;
+        $codeOk   = Hashing::verify($code, $cible['empreinte_code'] ?? Hashing::dummyHash());
+        $motOk    = Hashing::verify($motDerive, $cible['empreinte_mot'] ?? Hashing::dummyHash());
+        $ok       = $trouve !== null && !$trouve['deja_utilise'] && $codeOk && $motOk;
+        $okAncien = $ancien !== null && $codeOk && $motOk;
 
         // L'ancienne passphrase ne revient pas telle quelle. Jugé seulement quand
         // les deux facteurs sont bons : l'Argon2id de plus ne se paie que sur un
@@ -384,8 +409,15 @@ final class Recovery
         // `PREFIXE_L2_INCONNU`, la même pour tous. Elle garde son adresse, et
         // c'est ainsi que le frein par origine la voit — sous une étiquette
         // plutôt que sous `null`, qu'aucun filtre de préfixe ne peut compter.
-        $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
+        $this->stockage->tracerTentative($etiquette, $ok || $okAncien, $ip, $maintenant);
 
+        if ($okAncien) {
+            $fenetre = $this->stockage->fenetreDuCompte((int) $ancien['compte_id']);
+            if ($fenetre !== null && self::fenetreOuverte($fenetre, $maintenant)) {
+                return $this->reprendreParTitulaire((int) $ancien['compte_id'], (string) $ancien['nom_compte'],
+                    $fenetre, $maintenant, $apport, $refus);
+            }
+        }
         if (!$ok) {
             usleep($this->delaiRefusUs);
 
@@ -543,6 +575,81 @@ final class Recovery
      *
      * @return array{ok: false, message: string}
      */
+    /**
+     * Le titulaire revient dans la fenêtre d'après un niveau 3 avec un secret
+     * d'avant, et l'emporte. Il reçoit un mot de passe, une passphrase et des
+     * codes neufs, et retrouve son mot mémorisé d'avant avec son sel : le
+     * serveur ne sait pas en engendrer un, et celui du demandeur doit sortir.
+     * Les sessions et les appareils du demandeur tombent. La fenêtre passe
+     * reprise, et le litige reste ouvert jusqu'à ce qu'un arbitre le close
+     * (`Escalade::cloreFenetre()`) ; jusque-là, le coffre reste en lecture seule.
+     *
+     * @param array{empreinte_mot: ?string, sel: ?string} $fenetre
+     * @return array<string, mixed>
+     */
+    private function reprendreParTitulaire(
+        int $compteId,
+        string $nomCompte,
+        array $fenetre,
+        int $maintenant,
+        #[\SensitiveParameter] ?string $apport,
+        array $refus,
+    ): array {
+        $motDePasse      = Device::engendrerMotDePasse();
+        $nouvellePhrase  = $apport ?? self::engendrerPassphrase($this->langue);
+        $empreinteMdp    = Hashing::hash($motDePasse);
+        $empreintePhrase = Hashing::hash($nouvellePhrase);
+
+        $this->stockage->commencerTransaction();
+        try {
+            // 🔑 Consommer d'abord : deux retours simultanés du titulaire n'en font
+            // qu'un, et le perdant sort avant d'avoir rien écrit.
+            if (!$this->stockage->reprendreFenetre($compteId, $maintenant)) {
+                $this->stockage->annulerTransaction();
+                usleep($this->delaiRefusUs);
+
+                return $refus;
+            }
+            $this->stockage->reposerSecrets($compteId, $empreinteMdp, $empreintePhrase,
+                (string) $fenetre['empreinte_mot'], (string) $fenetre['sel']);
+            $codes = $this->emettreCodes($compteId, self::CODES_PAR_LOT, $maintenant);
+            $this->stockage->revoquerSessions($compteId);
+            $appareils = $this->stockage->revoquerAppareils($compteId);
+            $this->stockage->validerTransaction();
+        } catch (\Throwable $e) {
+            $this->stockage->annulerTransaction();
+
+            throw $e;
+        }
+
+        return [
+            'ok'                     => true,
+            'titulaire_reprend'      => true,
+            'mot_memorise_a_changer' => true,
+            'message'                => Messages::dire($this->langue, 'l3.titulaire_reprend'),
+            'mot_de_passe'           => $motDePasse,
+            'passphrase'             => $nouvellePhrase,
+            'codes'                  => $codes,
+            'compte'                 => $nomCompte,
+            'appareils_retires'      => $appareils,
+        ];
+    }
+
+    /** @param array{ferme_le: int, reprise_le: ?int, close_le: ?int} $f */
+    private static function fenetreOuverte(array $f, int $maintenant): bool
+    {
+        return $f['reprise_le'] === null && $f['close_le'] === null && $f['ferme_le'] > $maintenant;
+    }
+
+    /** Attend que `delaiRefusUs` se soit écoulé depuis `$debut` (`hrtime`). */
+    private function attendreEcheance(int $debut): void
+    {
+        $reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);
+        if ($reste > 0) {
+            usleep($reste);
+        }
+    }
+
     private function refusFrein(): array
     {
         return ['ok' => false, 'message' => Messages::dire(

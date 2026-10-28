@@ -278,6 +278,32 @@ CREATE TABLE IF NOT EXISTS l3_gel (
     degele_par   TEXT,
     degele_le    INTEGER
 );
+
+-- Une épreuve du niveau 3 ne se sert qu'une fois : la clé primaire le tient.
+CREATE TABLE IF NOT EXISTS l3_epreuves (
+    empreinte TEXT PRIMARY KEY,
+    expire_at INTEGER NOT NULL
+);
+
+-- La fenêtre d'après un niveau 3 : les secrets d'avant la reprise, une fois chacun.
+CREATE TABLE IF NOT EXISTS l3_fenetres (
+    account_id      INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    ouverte_le      INTEGER NOT NULL,
+    ferme_le        INTEGER NOT NULL,
+    passphrase_hash TEXT,
+    recovery_hash   TEXT,
+    recovery_salt   TEXT,
+    reprise_le      INTEGER,
+    close_le        INTEGER,
+    close_par       TEXT
+);
+CREATE TABLE IF NOT EXISTS l3_anciens_codes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    code_lookup TEXT    NOT NULL,
+    code_hash   TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_anciens_codes_lookup ON l3_anciens_codes(code_lookup);
 CREATE INDEX IF NOT EXISTS idx_disputes_account ON disputes(account_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number);
 CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);

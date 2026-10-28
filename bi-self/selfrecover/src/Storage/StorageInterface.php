@@ -130,6 +130,65 @@ interface StorageInterface
      */
     public function consommerEpreuve(string $empreinte, int $expire, int $maintenant): bool;
 
+    // ── La fenêtre d'après un niveau 3 ─────────────────────────────────────
+    //
+    // 🔑 Seul un niveau 3 en ouvre une. Les secrets que le titulaire tenait
+    // avant la reprise — passphrase, mot mémorisé et son sel, codes papier non
+    // consommés — y restent valables une fois chacun, jusqu'à sa fermeture : le
+    // titulaire qui revient l'emporte sur le demandeur. L'ancien mot de passe
+    // n'y entre pas : c'est souvent lui qui a fui.
+
+    /**
+     * Range les secrets ACTUELS du compte dans sa fenêtre, avant que la reprise
+     * ne les remplace. Dans la transaction de la reprise.
+     *
+     * ⚠️ **Une fenêtre déjà ouverte et non reprise garde ses secrets** : ce sont
+     * ceux du titulaire, et une seconde reprise dans la fenêtre ne doit pas les
+     * remplacer par ceux du demandeur. Seule sa fermeture recule (`$fermeLe`).
+     */
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void;
+
+    /**
+     * La fenêtre du compte, ou `null` s'il n'en a jamais eu.
+     *
+     * @return array{ouverte_le: int, ferme_le: int, empreinte_passphrase: ?string, empreinte_mot: ?string,
+     *               sel: ?string, reprise_le: ?int, close_le: ?int, close_par: ?string}|null
+     */
+    public function fenetreDuCompte(int $compteId): ?array;
+
+    /**
+     * L'ancien code de cet index, avec l'ancien mot mémorisé de sa fenêtre, ou
+     * `null`. Ne rend que les codes d'une fenêtre dont les secrets sont encore là.
+     *
+     * @return array{compte_id: int, nom_compte: string, empreinte_code: string, empreinte_mot: string,
+     *               ferme_le: int}|null
+     */
+    public function trouverAncienCodeParIndex(string $indexRecherche): ?array;
+
+    /**
+     * Le titulaire l'emporte : la fenêtre passe reprise, et ses anciens secrets
+     * sont effacés. `false` si elle l'était déjà, ou close, ou échue à `$quand`.
+     *
+     * ⚠️ **Atomique, par une écriture conditionnelle.** Deux reprises par le
+     * titulaire en même temps n'en font qu'une : la perdante ne réécrit rien.
+     */
+    public function reprendreFenetre(int $compteId, int $quand): bool;
+
+    /**
+     * L'arbitre clôt le litige d'une fenêtre reprise. `false` si elle n'est pas
+     * reprise, ou déjà close.
+     */
+    public function cloreFenetre(int $compteId, string $par, int $quand): bool;
+
+    /**
+     * Efface les secrets des fenêtres fermées avant `$avant` sans ancien secret
+     * servi, et garde leur ligne. Rend le nombre de fenêtres touchées.
+     */
+    public function purgerFenetresEchues(int $avant): int;
+
+    /** Ce que `purgerFenetresEchues($avant)` toucherait, sans rien écrire : la même clause. */
+    public function compterFenetresEchues(int $avant): int;
+
     /** Remplace le mot de passe du compte par cette empreinte. */
     public function remplacerEmpreinteMotDePasse(int $compteId, string $empreinte): void;
 

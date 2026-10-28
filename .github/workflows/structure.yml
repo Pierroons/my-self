@@ -655,6 +655,40 @@ jobs:
           canari $P "'INSERT OR IGNORE INTO l3_epreuves (empreinte, expire_at) VALUES (?, ?)'" \
             "'INSERT OR REPLACE INTO l3_epreuves (empreinte, expire_at) VALUES (?, ?)'" \
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ la seconde consommation est refusée par la clé'
+          # La fenêtre d'après un niveau 3 : le titulaire qui revient avec un secret
+          # d'avant l'emporte, et chaque garde doit pouvoir céder seule.
+          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree);' '' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la reprise par un niveau 3 ouvre une fenêtre de 14 jours'
+          canari $R "            if (\$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
+            "            if (false && \$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'ancienne passphrase, servie dans la fenêtre, rend le compte à son titulaire"
+          canari $R '        $ancien = $trouve === null ? $this->stockage->trouverAncienCodeParIndex($this->indexRecherche($code)) : null;' \
+            '        $ancien = null;' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ un code d'avant, avec le mot d'avant, rend aussi le compte à son titulaire"
+          canari $R "                (string) \$fenetre['empreinte_mot'], (string) \$fenetre['sel']);" \
+            "                Hashing::hash('mot du demandeur'), (string) \$fenetre['sel']);" \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ il retrouve son mot mémorisé d'avant et son sel"
+          canari $R '            $appareils = $this->stockage->revoquerAppareils($compteId);' '            $appareils = 0;' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ les sessions et les appareils du demandeur tombent'
+          canari $R '            $this->attendreEcheance($debut);' '            usleep($this->delaiRefusUs);' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ un refus au niveau 1 prend le même temps'
+          canari $E "            'lecture_admin_permise' => in_array(\$etat, ['aucune', 'close', 'echue'], true)," \
+            "            'lecture_admin_permise' => true," \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ pendant la fenêtre, le coffre n'est pas gelé et l'arbitre ne lit pas"
+          canari $E '        if ($this->fenetreDuree < self::FENETRE_MINIMUM || $this->fenetreDuree > self::FENETRE_MAXIMUM) {' '        if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la fenêtre dure de 7 à 30 jours'
+          canari $P "              WHERE account_id = ? AND reprise_le IS NULL AND close_le IS NULL AND ferme_le > ?'" \
+            "              WHERE account_id = ? AND close_le IS NULL AND ferme_le > ?'" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre ne se reprend qu'une fois"
+          canari $P "        if (\$existante !== null && \$existante['reprise_le'] === null && \$existante['close_le'] === null" '        if (false' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une seconde reprise dans la fenêtre garde les secrets du titulaire'
+          canari $P "    private const FENETRES_ECHUES = 'ferme_le <= ? AND reprise_le IS NULL" \
+            "    private const FENETRES_ECHUES = 'ferme_le >= 0 AND ? IS NOT NULL AND reprise_le IS NULL" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre encore ouverte n'est ni comptée ni purgée"
+          canari $P "            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel." '            return null;' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ la route du sel rend l'ancien sel d'un code d'avant"
+          canari $P '        $st->execute([$quand, $compteId, $quand]);' '        $st->execute([$quand, $compteId, 0]);' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une fenêtre échue ne se reprend pas'
           # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
           # d'un autre. Depuis que son frein ne ferme plus par compte, quatre
           # propriétés le remplacent, et chacune doit pouvoir céder seule.
@@ -851,8 +885,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 225 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 225 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 247 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 247 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -3194,8 +3228,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
-          echo "$sortie" | grep -qE '^✅ 192 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 192 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 203 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 203 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)

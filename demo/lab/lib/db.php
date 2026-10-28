@@ -503,6 +503,30 @@ final class Db
             )'
         );
 
+        // La fenêtre d'après un niveau 3 : les secrets d'avant la reprise, une fois chacun.
+        self::$pdo->exec(
+            'CREATE TABLE IF NOT EXISTS l3_fenetres (
+                account_id      INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                ouverte_le      INTEGER NOT NULL,
+                ferme_le        INTEGER NOT NULL,
+                passphrase_hash TEXT,
+                recovery_hash   TEXT,
+                recovery_salt   TEXT,
+                reprise_le      INTEGER,
+                close_le        INTEGER,
+                close_par       TEXT
+            )'
+        );
+        self::$pdo->exec(
+            'CREATE TABLE IF NOT EXISTS l3_anciens_codes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                code_lookup TEXT    NOT NULL,
+                code_hash   TEXT    NOT NULL
+            )'
+        );
+        self::$pdo->exec('CREATE INDEX IF NOT EXISTS idx_anciens_codes_lookup ON l3_anciens_codes(code_lookup)');
+
         // Une épreuve du niveau 3 ne se sert qu'une fois : la clé primaire le tient.
         self::$pdo->exec(
             'CREATE TABLE IF NOT EXISTS l3_epreuves (
