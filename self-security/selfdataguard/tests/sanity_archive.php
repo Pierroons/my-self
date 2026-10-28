@@ -18,9 +18,13 @@ require __DIR__ . '/../src/autoload.php';
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
@@ -126,15 +130,16 @@ try {
 
 // -----------------------------------------------------------------------------
 
-section('What the archive does not keep — the blind index');
+section('The blind index goes into the archive, inert');
 
 $storage->findUserIdsByIndex('email', $emailIndex) === []
     ? ok('the old email no longer finds the account')
     : ko('a lookup still finds data that is only archived');
-$pkg = (string) $pdo->query("SELECT package FROM selfdataguard_archives WHERE archive_id = '{$id1}'")->fetchColumn();
-!str_contains($pkg, $emailIndex)
-    ? ok('the blind index value is not in the archive package')
-    : ko('the archive carries the blind index');
+$pkg = json_decode((string) $pdo->query("SELECT package FROM selfdataguard_archives WHERE archive_id = '{$id1}'")->fetchColumn(), true);
+($pkg['fields']['private']['email']['blind_index'] ?? null) === $emailIndex
+    && array_key_exists('blind_index', $pkg['fields']['private']['note'] ?? []) && $pkg['fields']['private']['note']['blind_index'] === null
+    ? ok('the package keeps the index of the indexed field, and none for the other')
+    : ko('the archive did not keep the blind index', json_encode($pkg['fields']['private'] ?? null));
 
 // -----------------------------------------------------------------------------
 
@@ -289,6 +294,176 @@ foreach (['pas du json' => 'a package that is not JSON', '{"vault":null}' => 'a 
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+
+section('swapWithArchive — the archive comes back live, the live vault goes aside');
+
+/** A vault filled, then re-enrolled: the archive id and the record of each side. */
+function reEnrolled(SelfDataGuard $dg, SqliteAdapter $storage, string $userId, string $email, array $admin): array
+{
+    $s = $dg->register($userId, "{$userId}-password-1", "{$userId}-memorized", PHRASE);
+    $dg->setFields($s, ['email' => $email, 'note' => 'note du titulaire'], indexed: ['email']);
+    $dg->setEscrowFields($s, $admin['publicKey'], ['contact' => 'contact du titulaire']);
+    $holder = $storage->loadVault($userId);
+    $re = $dg->reEnroll($holder->generation(), "{$userId}-password-2");
+    $dg->setFields($re['unlocked'], ['note' => 'note du demandeur']);
+    return ['archiveId' => $re['archiveId'], 'holder' => $holder, 'requester' => $storage->loadVault($userId)];
+}
+
+$sw = reEnrolled($dg, $storage, 'user-swap', 'swap@example.org', $admin);
+$swIndex = BlindIndex::compute('swap@example.org', $blindKey, 'email');
+$setAside = $storage->swapWithArchive($sw['requester']->generation(), $sw['archiveId']);
+$live = $storage->loadVault('user-swap');
+hash_equals($sw['holder']->userSalt, $live->userSalt) && $live->wrapPhrase?->toBase64() === $sw['holder']->wrapPhrase?->toBase64()
+    ? ok('the live vault is the archived one, envelopes as they were')
+    : ko('the live vault is not the archived one');
+$holderSession = $dg->loginWithPassword('user-swap', 'user-swap-password-1');
+$dg->getFields($holderSession) === ['email' => 'swap@example.org', 'note' => 'note du titulaire']
+    && $dg->getEscrowFieldsAsUser($holderSession) === ['contact' => 'contact du titulaire']
+    ? ok('the holder opens it with their old password, fields and escrow back')
+    : ko('the reinstated vault does not read as it was archived');
+$storage->findUserIdsByIndex('email', $swIndex) === ['user-swap']
+    ? ok('its blind index answers lookups again')
+    : ko('the blind index did not come back');
+$ids = array_column($storage->listArchives('user-swap'), 'id');
+$ids === [$setAside] && $setAside !== $sw['archiveId']
+    ? ok('the archive brought back is gone; the requester\'s vault is the only archive')
+    : ko('the archives after a swap are wrong', implode(',', $ids));
+$requesterArchive = $storage->loadArchive('user-swap', $setAside);
+hash_equals($sw['requester']->userSalt, $requesterArchive->record->userSalt)
+    && isset($requesterArchive->privateFields['note'])
+    ? ok('the requester\'s vault waits as an archive, with what was written into it')
+    : ko('the requester\'s vault was not archived as it stood');
+
+foreach ([
+    'the generation already replaced' => [$sw['requester']->generation(), $setAside, StaleVaultException::class],
+    'an archive that does not exist'  => [$live->generation(), str_repeat('0', 32), VaultNotFoundException::class],
+    'an archive of another account'   => [$live->generation(), $id2, VaultNotFoundException::class],
+] as $what => [$generation, $archiveId, $expected]) {
+    try {
+        $storage->swapWithArchive($generation, $archiveId);
+        ko("a swap naming {$what} went through");
+    } catch (Throwable $e) {
+        $e instanceof $expected && hash_equals($sw['holder']->userSalt, $storage->loadVault('user-swap')->userSalt)
+            && count($storage->listArchives('user-swap')) === 1
+            ? ok("a swap naming {$what}: " . (new ReflectionClass($e))->getShortName() . ', nothing changed')
+            : ko("a swap naming {$what} misbehaved", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+
+section('A value another account took since the archive was made refuses the swap');
+
+$dup = reEnrolled($dg, $storage, 'user-dup', 'dup@example.org', $admin);
+$dg->setFields($dg->register('user-taker', 'taker-password-01'), ['email' => 'dup@example.org'], indexed: ['email']);
+try {
+    $storage->swapWithArchive($dup['requester']->generation(), $dup['archiveId']);
+    ko('the swap put back an index another account holds');
+} catch (DuplicateIndexException $e) {
+    $e->fields === ['email'] ? ok('DuplicateIndexException names the field') : ko('the refusal names the wrong fields', implode(',', $e->fields));
+}
+hash_equals($dup['requester']->userSalt, $storage->loadVault('user-dup')->userSalt)
+    && $storage->loadArchive('user-dup', $dup['archiveId']) !== null
+    && $storage->findUserIdsByIndex('email', BlindIndex::compute('dup@example.org', $blindKey, 'email')) === ['user-taker']
+    ? ok('nothing was swapped: the requester\'s vault is live, the archive is there, the value stays with its holder')
+    : ko('a refused swap changed something');
+
+section('An archive written before 0.8.0 comes back without its indexes');
+
+$old8 = reEnrolled($dg, $storage, 'user-pre08', 'pre08@example.org', $admin);
+$pdo->prepare("UPDATE selfdataguard_archives SET package = json_remove(package, '$.fields.private.email.blind_index',"
+    . " '$.fields.private.email.shared_index', '$.fields.private.note.blind_index', '$.fields.private.note.shared_index')"
+    . ' WHERE archive_id = :id')->execute([':id' => $old8['archiveId']]);
+$storage->swapWithArchive($old8['requester']->generation(), $old8['archiveId']);
+$dg->getFields($dg->loginWithPassword('user-pre08', 'user-pre08-password-1'))['email'] === 'pre08@example.org'
+    && $storage->findUserIdsByIndex('email', BlindIndex::compute('pre08@example.org', $blindKey, 'email')) === []
+    ? ok('the field is back, without an index: the application indexes it again')
+    : ko('an archive without indexes did not come back as declared');
+
+section('restoreArchive — only where no live vault is left');
+
+$rest = reEnrolled($dg, $storage, 'user-rest', 'rest@example.org', $admin);
+try {
+    $storage->restoreArchive('user-rest', $rest['archiveId']);
+    ko('restoreArchive() replaced a live vault');
+} catch (VaultExistsException) {
+    hash_equals($rest['requester']->userSalt, $storage->loadVault('user-rest')->userSalt)
+        ? ok('a live vault: VaultExistsException, nothing changed')
+        : ko('a refused restoration changed the live vault');
+}
+$storage->deleteVault($rest['requester']->generation());
+$storage->restoreArchive('user-rest', $rest['archiveId']);
+hash_equals($rest['holder']->userSalt, $storage->loadVault('user-rest')->userSalt)
+    && $storage->listArchives('user-rest') === []
+    && $dg->getFields($dg->loginWithPassword('user-rest', 'user-rest-password-1'))['note'] === 'note du titulaire'
+    ? ok('no live vault: the archive is live again, and no longer an archive')
+    : ko('restoreArchive() did not bring the archive back');
+
+// -----------------------------------------------------------------------------
+
+section('A frozen vault reads, and refuses every write');
+
+$frz = reEnrolled($dg, $storage, 'user-frz', 'frz@example.org', $admin);
+$fg  = $frz['requester']->generation();
+$storage->freezeVault($fg, 'arbitre', new DateTimeImmutable('2026-10-28T08:00:00+01:00'))
+    ? ok('freezeVault() freezes')
+    : ko('freezeVault() said it did not freeze');
+!$storage->freezeVault($fg, 'quelqu\'un d\'autre', new DateTimeImmutable())
+    && ($storage->frozenState('user-frz')['by'] ?? null) === 'arbitre'
+    && ($storage->frozenState('user-frz')['at'] ?? null)?->format('c') === '2026-10-28T07:00:00+00:00'
+    ? ok('a second freeze changes nothing: who froze it and when stay the first, in UTC')
+    : ko('a second freeze replaced the first', json_encode($storage->frozenState('user-frz')));
+$storage->frozenState('user-swap') === null && $storage->frozenState('user-never') === null
+    ? ok('frozenState() is null for a vault not frozen, and for a userId without one')
+    : ko('frozenState() reports a freeze that is not there');
+
+$before = [$storage->loadVault('user-frz'), $storage->loadFields('user-frz'), $storage->loadEscrowFields('user-frz')];
+$frozenRecord = $before[0];
+$now = new DateTimeImmutable();
+foreach ([
+    'updateVault'        => static fn () => $storage->updateVault($frozenRecord->withWrapPwd($frozenRecord->wrapPwd, $now)),
+    'saveFields'         => static fn () => $storage->saveFields($fg, ['note' => ['ciphertext' => 'c']]),
+    'saveEscrowFields'   => static fn () => $storage->saveEscrowFields($fg, ['contact' => 'c']),
+    'createEscrow'       => static fn () => $storage->createEscrow($fg, new Pierroons\SelfDataGuard\Escrow\EscrowRecord('user-frz', $frozenRecord->wrapPwd, 'x', $now, $now)),
+    'deleteVault'        => static fn () => $storage->deleteVault($fg),
+    'deleteArchive'      => static fn () => $storage->deleteArchive($fg, $frz['archiveId']),
+    'replaceWithArchive' => static fn () => $storage->replaceWithArchive($fg, $uv->register('user-frz', 'frz-password-9')['record']),
+    'swapWithArchive'    => static fn () => $storage->swapWithArchive($fg, $frz['archiveId']),
+] as $write => $call) {
+    try {
+        $call();
+        ko("{$write}() wrote into a frozen vault");
+    } catch (VaultFrozenException) {
+        ok("{$write}() → VaultFrozenException");
+    } catch (Throwable $e) {
+        ko("{$write}() refused otherwise than as frozen", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+[$storage->loadVault('user-frz')->revision, $storage->loadFields('user-frz'), $storage->loadEscrowFields('user-frz'), count($storage->listArchives('user-frz'))]
+    === [$before[0]->revision, $before[1], $before[2], 1]
+    ? ok('nothing changed, and it still reads')
+    : ko('a refused write changed the frozen vault');
+
+try {
+    $storage->unfreezeVault($frz['holder']->generation());
+    ko('unfreezeVault() of another generation lifted the freeze');
+} catch (StaleVaultException) {
+    $storage->frozenState('user-frz') !== null
+        ? ok('unfreezeVault() names its generation: another one is stale, the freeze stays')
+        : ko('a refused unfreeze lifted the freeze');
+}
+$storage->unfreezeVault($fg) && !$storage->unfreezeVault($fg) && $storage->frozenState('user-frz') === null
+    ? ok('unfreezeVault() lifts it once, then says there was nothing to lift')
+    : ko('unfreezeVault() did not lift the freeze as it says');
+$storage->saveFields($fg, ['note' => ['ciphertext' => 'après le gel']]);
+$storage->loadFields('user-frz', ['note']) === ['note' => 'après le gel']
+    ? ok('unfrozen, it takes writes again')
+    : ko('the vault still refuses writes after unfreezeVault()');
+
+$storage->freezeVault($fg, 'arbitre', new DateTimeImmutable());
+$storage->eraseAccount('user-frz') === 2 && !$storage->vaultExists('user-frz')
+    ? ok('eraseAccount() erases a frozen account, its archive with it')
+    : ko('a freeze kept the account from being erased');
 
 // -----------------------------------------------------------------------------
 

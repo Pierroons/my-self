@@ -25,6 +25,7 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
@@ -208,8 +209,41 @@ verifier('le coffre neuf est vide, l\'ancien est archivé',
 $ouverte = $dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Passphrase, $PHR);
 verifier('l\'ancienne passphrase, retrouvée plus tard, rouvre l\'archive',
     ($dg->readArchive($ouverte)['private']['note'] ?? null) === $NOTE);
-verifier('… alors qu\'elle n\'ouvre plus le compte, une fois la fenêtre d\'après le niveau 3 échue',
-    ($rec->parPassphrase('alice', $PHR, null, $now + 400 + 15 * 86400)['ok'] ?? true) === false);
+
+// ── Fenêtre d'après le niveau 3 ─────────────────────────────────────────────
+echo "\n→ Fenêtre d'après le niveau 3 — la titulaire revient avec un secret d'avant\n";
+
+$dg->setFields($l3['unlocked'], ['note' => 'écrite par le demandeur']);
+$r = $rec->parPassphrase('alice', $PHR, null, $now + 500);
+verifier('l\'ancienne passphrase, dans la fenêtre, rend le compte à sa titulaire',
+    ($r['ok'] ?? false) === true && ($r['titulaire_reprend'] ?? false) === true, (string) ($r['message'] ?? ''));
+
+$coffreDemandeur = $dg->reinstateArchive($dg->generationOf('alice'), $l3['archiveId']);
+$dg->freeze($dg->generationOf('alice'), 'fenêtre du niveau 3');
+$fenetre = $esc->fenetre('alice', $now + 500);
+verifier('SelfRecover dit le coffre en lecture seule, et SelfDataGuard le tient gelé',
+    $fenetre['lecture_seule'] === true && $dg->frozenState('alice') !== null);
+$titulaire = $dg->loginWithMemorized('alice', $MOT);
+verifier('la titulaire relit sa note par son mot mémorisé d\'avant, que SelfRecover lui a rendu',
+    ($dg->getFields($titulaire)['note'] ?? null) === $NOTE);
+$gelRefuse = false;
+try {
+    $dg->setFields($titulaire, ['note' => 'pendant le litige']);
+} catch (VaultFrozenException) {
+    $gelRefuse = true;
+}
+verifier('… et n\'y écrit rien tant que le litige est ouvert', $gelRefuse);
+verifier('le mot de passe donné au demandeur n\'ouvre plus le coffre', note($dg, $MDP3) === null);
+$archive = $dg->openArchive($titulaire, $coffreDemandeur, Lock::Password, $MDP3);
+verifier('ce que le demandeur a écrit attend en archive, pour l\'arbitre',
+    ($dg->readArchive($archive)['private']['note'] ?? null) === 'écrite par le demandeur');
+
+$clos = $esc->cloreFenetre('alice', 'arbitre', $now + 600);
+$dg->unfreeze($dg->generationOf('alice'));
+$dg->recover('alice', Lock::Memorized, $MOT, $r['mot_de_passe'], $r['passphrase']);
+verifier('litige clos, coffre dégelé : la titulaire re-scelle son coffre sous ses secrets neufs',
+    ($clos['ok'] ?? false) === true && $esc->fenetre('alice', $now + 600)['lecture_seule'] === false
+        && note($dg, $r['mot_de_passe']) === $NOTE && ouvre($dg, Lock::Passphrase, $r['passphrase'], $r['mot_de_passe']));
 
 // ─────────────────────────────────────────────────────────────────────────
 echo "\n" . str_repeat('=', 63) . "\n";

@@ -18,6 +18,7 @@ use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
@@ -44,6 +45,8 @@ use Throwable;
  *     kdf_opslimit / kdf_memlimit  INTEGER NOT NULL  (the vault's Argon2id profile;
  *                 added in 0.6.0, defaulting to the legacy profile of older rows)
  *     profile_seal TEXT            (base64 ProfileSeal, nullable — added in 0.7.0)
+ *     frozen_by / frozen_at  TEXT  (who froze the vault, and when in ISO 8601 UTC;
+ *                 both NULL while it is not frozen — added in 0.8.0)
  *
  *   selfdataguard_fields
  *     user_id     TEXT NOT NULL
@@ -72,7 +75,8 @@ use Throwable;
  *     archived_at TEXT NOT NULL    (ISO 8601, UTC, so that the order survives a DST change)
  *     locks       TEXT NOT NULL    (the locks that still open it, comma-separated)
  *     package     TEXT NOT NULL    (JSON: the vault row, escrow, fields — all
- *                 still encrypted —, the Argon2id profile, a format version)
+ *                 still encrypted, their indexes since 0.8.0 —, the Argon2id
+ *                 profile, a format version)
  */
 final class SqliteAdapter implements StorageInterface
 {
@@ -147,10 +151,13 @@ final class SqliteAdapter implements StorageInterface
                  kdf_memlimit = :mem,
                  profile_seal = :ps,
                  revision = revision + 1
-             WHERE user_id = :uid AND user_salt = :salt AND revision = :rev'
+             WHERE user_id = :uid AND user_salt = :salt AND revision = :rev AND frozen_by IS NULL'
         );
         $stmt->execute($this->vaultToParamsForUpdate($record));
         if ($stmt->rowCount() === 0) {
+            if ($this->frozenState($record->userId) !== null) {
+                throw new VaultFrozenException("The vault of '{$record->userId}' is frozen: it reads, and refuses every write");
+            }
             if ($this->vaultExists($record->userId)) {
                 throw new StaleVaultException(
                     "Vault for userId '{$record->userId}' changed or was replaced since this record was read — reload it"
@@ -399,20 +406,7 @@ final class SqliteAdapter implements StorageInterface
         }
         return $this->atomic(function () use ($replacing, $new): string {
             $this->assertGeneration($replacing);
-            $live = $this->fetchVaultRow($new->userId);
-            $archiveId = bin2hex(random_bytes(16));
-            $this->pdo->prepare(
-                'INSERT INTO selfdataguard_archives (archive_id, user_id, archived_at, locks, package)
-                 VALUES (:id, :uid, :at, :locks, :pkg)'
-            )->execute([
-                ':id'    => $archiveId,
-                ':uid'   => $new->userId,
-                ':at'    => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
-                // Read by 0.6.2, so that a rollback still lists the archive; 0.7.0
-                // reads the locks from the package.
-                ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
-                ':pkg'   => $this->archivePackage($live),
-            ]);
+            $archiveId = $this->archiveLive($new->userId);
             $this->purgeLive($new->userId);
             $this->saveVault($new);
             return $archiveId;
@@ -501,13 +495,7 @@ final class SqliteAdapter implements StorageInterface
         if ($row === false) {
             return null;
         }
-        $package = $this->package($row, $userId);
-        $format = $package['format'] ?? null;
-        if ($format !== self::ARCHIVE_FORMAT) {
-            throw new RuntimeException(is_int($format) && $format > self::ARCHIVE_FORMAT
-                ? "Archive {$archiveId} was written by a newer SelfDataGuard (format {$format}) — upgrade to read it"
-                : "Archive {$archiveId} has no readable format version");
-        }
+        $package = $this->readablePackage($row, $userId);
 
         $private = [];
         foreach ($package['fields']['private'] as $name => $field) {
@@ -537,6 +525,69 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
+    public function swapWithArchive(VaultGeneration $generation, string $archiveId): string
+    {
+        return $this->atomic(function () use ($generation, $archiveId): string {
+            $this->assertGeneration($generation);
+            $package = $this->takeArchive($generation->userId, $archiveId);
+            $setAside = $this->archiveLive($generation->userId);
+            $this->purgeLive($generation->userId);
+            $this->restorePackage($generation->userId, $package);
+            return $setAside;
+        });
+    }
+
+    public function restoreArchive(string $userId, string $archiveId): void
+    {
+        $this->atomic(function () use ($userId, $archiveId): void {
+            if ($this->fetchVaultRow($userId) !== null) {
+                throw new VaultExistsException("'{$userId}' holds a live vault: bring an archive back with swapWithArchive()");
+            }
+            $this->restorePackage($userId, $this->takeArchive($userId, $archiveId));
+        });
+    }
+
+    public function freezeVault(VaultGeneration $generation, string $by, DateTimeImmutable $at): bool
+    {
+        return $this->atomic(function () use ($generation, $by, $at): bool {
+            $this->assertGeneration($generation, evenFrozen: true);
+            $stmt = $this->pdo->prepare(
+                'UPDATE selfdataguard_vaults SET frozen_by = :by, frozen_at = :at
+                 WHERE user_id = :uid AND frozen_by IS NULL'
+            );
+            $stmt->execute([
+                ':by'  => $by,
+                ':at'  => $at->setTimezone(new DateTimeZone('UTC'))->format('c'),
+                ':uid' => $generation->userId,
+            ]);
+            return $stmt->rowCount() > 0;
+        });
+    }
+
+    public function unfreezeVault(VaultGeneration $generation): bool
+    {
+        return $this->atomic(function () use ($generation): bool {
+            $this->assertGeneration($generation, evenFrozen: true);
+            $stmt = $this->pdo->prepare(
+                'UPDATE selfdataguard_vaults SET frozen_by = NULL, frozen_at = NULL
+                 WHERE user_id = :uid AND frozen_by IS NOT NULL'
+            );
+            $stmt->execute([':uid' => $generation->userId]);
+            return $stmt->rowCount() > 0;
+        });
+    }
+
+    public function frozenState(string $userId): ?array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT frozen_by, frozen_at FROM selfdataguard_vaults WHERE user_id = :uid AND frozen_by IS NOT NULL'
+        );
+        $stmt->execute([':uid' => $userId]);
+        $row = $stmt->fetch();
+        $stmt->closeCursor();
+        return $row === false ? null : ['by' => (string) $row['frozen_by'], 'at' => new DateTimeImmutable((string) $row['frozen_at'])];
+    }
+
     public function eraseAccount(string $userId): int
     {
         return $this->atomic(function () use ($userId): int {
@@ -554,20 +605,24 @@ final class SqliteAdapter implements StorageInterface
      * Inside the write's own transaction, the live vault must still be the one
      * $generation names. Checked beforehand only, a re-enrolment committed in
      * between would let an old session write under the old master key into
-     * the new vault.
+     * the new vault. A frozen vault refuses the write, unless $evenFrozen.
      */
-    private function assertGeneration(VaultGeneration $generation): void
+    private function assertGeneration(VaultGeneration $generation, bool $evenFrozen = false): void
     {
-        $stmt = $this->pdo->prepare('SELECT user_salt FROM selfdataguard_vaults WHERE user_id = :uid');
+        $stmt = $this->pdo->prepare('SELECT user_salt, frozen_by FROM selfdataguard_vaults WHERE user_id = :uid');
         $stmt->execute([':uid' => $generation->userId]);
-        $salt = $stmt->fetchColumn();
-        if ($salt === false) {
+        $row = $stmt->fetch();
+        $stmt->closeCursor();
+        if ($row === false) {
             throw new VaultNotFoundException("Vault not found for userId '{$generation->userId}'");
         }
-        if (!hash_equals(base64_encode($generation->userSalt), (string) $salt)) {
+        if (!hash_equals(base64_encode($generation->userSalt), (string) $row['user_salt'])) {
             throw new StaleVaultException(
                 "The live vault of '{$generation->userId}' is not the one this write names — load the current one"
             );
+        }
+        if ($row['frozen_by'] !== null && !$evenFrozen) {
+            throw new VaultFrozenException("The vault of '{$generation->userId}' is frozen: it reads, and refuses every write");
         }
     }
 
@@ -587,9 +642,10 @@ final class SqliteAdapter implements StorageInterface
 
     /**
      * Everything an archive must keep, as stored — nothing is decrypted. The
-     * indexes stay behind: they would keep answering equality lookups for data
-     * the user no longer has live, and keep the value from its next holder.
-     * `was_indexed` says which fields carried one.
+     * indexes go into the package, where no lookup and no unique index reaches
+     * them: live, they would keep answering for data the user no longer has,
+     * and keep the value from its next holder. restorePackage() puts them back.
+     * The keys are added to format 1, which 0.7.0 reads by ignoring them.
      *
      * @param array<string, mixed> $vault the live vault row
      */
@@ -610,8 +666,10 @@ final class SqliteAdapter implements StorageInterface
         $stmt->execute($uid);
         while ($f = $stmt->fetch()) {
             $private[(string) $f['field_name']] = [
-                'ciphertext'  => $f['ciphertext'],
-                'was_indexed' => $f['blind_index'] !== null || $f['shared_index'] !== null,
+                'ciphertext'   => $f['ciphertext'],
+                'was_indexed'  => $f['blind_index'] !== null || $f['shared_index'] !== null,
+                'blind_index'  => $f['blind_index'],
+                'shared_index' => $f['shared_index'],
             ];
         }
 
@@ -652,6 +710,134 @@ final class SqliteAdapter implements StorageInterface
             );
         }
         return $package;
+    }
+
+    /**
+     * The package of $row, in a format this version reads.
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function readablePackage(array $row, string $userId): array
+    {
+        $package = $this->package($row, $userId);
+        $format = $package['format'] ?? null;
+        if ($format !== self::ARCHIVE_FORMAT) {
+            throw new RuntimeException(is_int($format) && $format > self::ARCHIVE_FORMAT
+                ? "Archive {$row['archive_id']} was written by a newer SelfDataGuard (format {$format}) — upgrade to read it"
+                : "Archive {$row['archive_id']} has no readable format version");
+        }
+        return $package;
+    }
+
+    /**
+     * The live vault of $userId, with its fields and escrow, written as a new
+     * archive. The live rows stay: the caller purges them. Callers run it
+     * inside atomic().
+     *
+     * @return string the archive id
+     */
+    private function archiveLive(string $userId): string
+    {
+        $live = $this->fetchVaultRow($userId)
+            ?? throw new VaultNotFoundException("Vault not found for userId '{$userId}'");
+        $archiveId = bin2hex(random_bytes(16));
+        $this->pdo->prepare(
+            'INSERT INTO selfdataguard_archives (archive_id, user_id, archived_at, locks, package)
+             VALUES (:id, :uid, :at, :locks, :pkg)'
+        )->execute([
+            ':id'    => $archiveId,
+            ':uid'   => $userId,
+            ':at'    => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
+            // Read by 0.6.2, so that a rollback still lists the archive; 0.7.0
+            // reads the locks from the package.
+            ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
+            ':pkg'   => $this->archivePackage($live),
+        ]);
+        return $archiveId;
+    }
+
+    /**
+     * Archive $archiveId of $userId, read and deleted. Callers run it inside
+     * atomic(), so that a failed restoration leaves it in place.
+     *
+     * @return array<string, mixed> its package
+     */
+    private function takeArchive(string $userId, string $archiveId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT archive_id, package FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
+        );
+        $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+        $row = $stmt->fetch();
+        $stmt->closeCursor();
+        if ($row === false) {
+            throw new VaultNotFoundException("No archive '{$archiveId}' for userId '{$userId}'");
+        }
+        $package = $this->readablePackage($row, $userId);
+        $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE archive_id = :id')->execute([':id' => $archiveId]);
+        return $package;
+    }
+
+    /**
+     * The vault of $package, live again under $userId: its row as archived,
+     * its fields with the indexes the package kept, its escrow and escrow
+     * fields. An index another account holds now is named, every such field
+     * of the package, in one DuplicateIndexException. Callers run it inside
+     * atomic(), with no live vault left for $userId.
+     *
+     * @param array<string, mixed> $package
+     */
+    private function restorePackage(string $userId, array $package): void
+    {
+        $this->saveVault($this->rowToVault(['user_id' => $userId] + $package['vault']));
+
+        $field = $this->pdo->prepare(
+            'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at, shared_index)
+             VALUES (:uid, :fn, :ct, :bi, :ua, :si)'
+        );
+        $now = (new DateTimeImmutable())->format('c');
+        $taken = [];
+        foreach ($package['fields']['private'] as $name => $f) {
+            try {
+                $field->execute([
+                    ':uid' => $userId,
+                    ':fn'  => (string) $name,
+                    ':ct'  => (string) $f['ciphertext'],
+                    ':bi'  => isset($f['blind_index']) ? (string) $f['blind_index'] : null,
+                    ':ua'  => $now,
+                    ':si'  => isset($f['shared_index']) ? (string) $f['shared_index'] : null,
+                ]);
+            } catch (PDOException $e) {
+                if (!str_contains($e->getMessage(), 'selfdataguard_fields.blind_index')) {
+                    throw $e;
+                }
+                $field->closeCursor();
+                $taken[] = (string) $name;
+            }
+        }
+        if ($taken !== []) {
+            throw new DuplicateIndexException($taken);
+        }
+
+        if ($package['escrow'] !== null) {
+            $this->pdo->prepare(
+                'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
+                 VALUES (:uid, :wu, :wa, :ca, :ua)'
+            )->execute([
+                ':uid' => $userId,
+                ':wu'  => (string) $package['escrow']['wrap_user'],
+                ':wa'  => (string) $package['escrow']['wrap_admin'],
+                ':ca'  => (string) $package['escrow']['created_at'],
+                ':ua'  => (string) $package['escrow']['updated_at'],
+            ]);
+        }
+        $escrowField = $this->pdo->prepare(
+            'INSERT INTO selfdataguard_escrow_fields (user_id, field_name, ciphertext, updated_at) VALUES (:uid, :fn, :ct, :ua)'
+        );
+        foreach ($package['fields']['escrow'] as $name => $ciphertext) {
+            $escrowField->execute([':uid' => $userId, ':fn' => (string) $name, ':ct' => (string) $ciphertext, ':ua' => $now]);
+        }
     }
 
     /**
@@ -773,7 +959,9 @@ final class SqliteAdapter implements StorageInterface
                 revision    INTEGER NOT NULL DEFAULT 0,
                 kdf_opslimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT . ',
                 kdf_memlimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT . ',
-                profile_seal TEXT
+                profile_seal TEXT,
+                frozen_by   TEXT,
+                frozen_at   TEXT
             )'
         );
         $this->addMissingColumn('selfdataguard_vaults', 'wrap_phrase', 'TEXT');
@@ -783,6 +971,8 @@ final class SqliteAdapter implements StorageInterface
         $this->addMissingColumn('selfdataguard_vaults', 'kdf_opslimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT);
         $this->addMissingColumn('selfdataguard_vaults', 'kdf_memlimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT);
         $this->addMissingColumn('selfdataguard_vaults', 'profile_seal', 'TEXT');
+        $this->addMissingColumn('selfdataguard_vaults', 'frozen_by', 'TEXT');
+        $this->addMissingColumn('selfdataguard_vaults', 'frozen_at', 'TEXT');
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_settings (
                 name   TEXT PRIMARY KEY,

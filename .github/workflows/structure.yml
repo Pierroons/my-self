@@ -61,8 +61,8 @@ jobs:
           done
           php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 10/10 ' \
             || { echo "::error::couplage hors 10/10 sous PHP ${{ matrix.php }}"; rc=1; }
-          php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 21/21$' \
-            || { echo "::error::parcours hors 21/21 sous PHP ${{ matrix.php }}"; rc=1; }
+          php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 27/27$' \
+            || { echo "::error::parcours hors 27/27 sous PHP ${{ matrix.php }}"; rc=1; }
           exit $rc
 
   structure:
@@ -2928,8 +2928,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=30 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=52 [sanity_escrow]=63
-            [sanity_facade]=116 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=37 [sanity_primitives]=56
+            [sanity_archive]=59 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=63 [sanity_escrow]=63
+            [sanity_facade]=134 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=38 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -3054,8 +3054,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 21/21$' \
-            || { echo "::error::le parcours n'a pas joué ses 21 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 27/27$' \
+            || { echo "::error::le parcours n'a pas joué ses 27 cas"; exit 1; }
           F=self-security/selfdataguard/src/SelfDataGuard.php
           cp "$F" /tmp/SelfDataGuard.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -3208,6 +3208,24 @@ jobs:
             $D/tests/sanity_facade.php 'getFields() refused the whole account for one reserved row'
           canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return null; fwrite(STDERR, "❌ option inconnue : "' \
             $D/tests/sanity_ceremony.php 'was accepted'
+          canari $D/src/Storage/SqliteAdapter.php "             WHERE user_id = :uid AND user_salt = :salt AND revision = :rev AND frozen_by IS NULL'" \
+            "             WHERE user_id = :uid AND user_salt = :salt AND revision = :rev'" \
+            $D/tests/sanity_archive.php 'a refused write changed the frozen vault'
+          canari $D/src/Storage/SqliteAdapter.php "        if (\$row['frozen_by'] !== null && !\$evenFrozen) {" '        if (false) {' \
+            $D/tests/sanity_archive.php 'saveFields() wrote into a frozen vault'
+          canari $D/src/Storage/SqliteAdapter.php "                 WHERE user_id = :uid AND frozen_by IS NULL'" "                 WHERE user_id = :uid'" \
+            $D/tests/sanity_archive.php 'a second freeze replaced the first'
+          canari $D/src/Storage/SqliteAdapter.php "                'blind_index'  => \$f['blind_index']," "                'blind_index'  => null," \
+            $D/tests/sanity_archive.php 'the archive did not keep the blind index'
+          canari $D/src/Storage/SqliteAdapter.php '                $taken[] = (string) $name;' '' \
+            $D/tests/sanity_archive.php 'the swap put back an index another account holds'
+          canari $D/src/SelfDataGuard.php '        $record = $this->sealedArchive($replacing->userId, $archiveId);' \
+            '        $record = $this->storage->loadArchive($replacing->userId, $archiveId)->record;' \
+            $D/tests/sanity_facade.php 'an archive whose profile was changed came back live'
+          canari $D/src/Storage/Conformance.php "            'freeze-refuses-writes'         => 'freezeRefusesWrites'," '' \
+            $D/tests/sanity_conformance.php 'FreezeSkippingFieldsStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "            'concurrent-archive-swaps'      => 'concurrentArchiveSwaps'," '' \
+            $D/tests/sanity_conformance.php 'CheckThenSwapStorage passed a case it breaks'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

@@ -29,7 +29,9 @@ use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
@@ -1154,6 +1156,104 @@ if ($args === null || !in_array('email', $args, true)) {
     !in_array($tooShort, $args, true)
         ? ok('BlindIndex::compute() hides blindKey from the trace')
         : ko('blindKey is readable in the trace of BlindIndex::compute()');
+}
+
+// -----------------------------------------------------------------------------
+
+section('reinstateArchive() — the holder comes back, the requester\'s vault waits as an archive');
+
+$holderSession = $dg->register('user-back', 'back-password-0001', 'back-memorized', 'pivert lagune ardoise tambour');
+$dg->setFields($holderSession, ['email' => 'back@example.org', 'note' => 'du titulaire'], indexed: ['email']);
+$taken = $dg->reEnroll($holderSession->generation(), 'back-password-0002');
+$dg->setFields($taken['unlocked'], ['note' => 'du demandeur']);
+$setAside = $dg->reinstateArchive($taken['unlocked']->generation(), $taken['archiveId']);
+$back = $dg->loginWithPassword('user-back', 'back-password-0001');
+$dg->getFields($back) === ['email' => 'back@example.org', 'note' => 'du titulaire']
+    && $dg->findUserByField('email', 'back@example.org') === 'user-back'
+    ? ok('the holder\'s old password opens their vault again, fields and index back')
+    : ko('the reinstated vault does not read as the holder left it');
+try {
+    $dg->setFields($taken['unlocked'], ['note' => 'encore du demandeur']);
+    ko('a session on the requester\'s vault still writes after the swap');
+} catch (StaleVaultException) {
+    ok('the requester\'s session is stale: it writes nowhere');
+}
+array_column($dg->listArchives($back), 'id') === [$setAside]
+    ? ok('the requester\'s vault is the account\'s only archive')
+    : ko('the archives after reinstateArchive() are wrong');
+
+section('An archive whose seal does not hold is not brought back');
+
+$sealed = $dg->register('user-badseal', 'badseal-password-01');
+$re = $dg->reEnroll($sealed->generation(), 'badseal-password-02');
+$raw = new PDO("sqlite:{$dbPath}");
+$raw->prepare("UPDATE selfdataguard_archives SET package = json_set(package, '$.vault.kdf_opslimit', 5) WHERE archive_id = :id")
+    ->execute([':id' => $re['archiveId']]);
+try {
+    $dg->reinstateArchive($re['unlocked']->generation(), $re['archiveId']);
+    ko('an archive whose profile was changed came back live');
+} catch (VaultTamperedException) {
+    hash_equals($re['unlocked']->vaultSalt, $storage->loadVault('user-badseal')->userSalt)
+        && $storage->loadArchive('user-badseal', $re['archiveId']) !== null
+        ? ok('VaultTamperedException, and nothing swapped')
+        : ko('a refused reinstatement changed something');
+}
+
+section('freeze() — the vault reads, every write refuses, until unfreeze()');
+
+$g = $back->generation();
+$dg->freeze($g, 'arbitre') ? ok('freeze() freezes') : ko('freeze() did not freeze');
+($dg->frozenState('user-back')['by'] ?? null) === 'arbitre'
+    ? ok('frozenState() says who froze it')
+    : ko('frozenState() does not report the freeze');
+$reading = $dg->loginWithPassword('user-back', 'back-password-0001');
+$dg->getFields($reading)['note'] === 'du titulaire'
+    ? ok('a frozen vault opens and reads')
+    : ko('a frozen vault no longer reads');
+foreach ([
+    'setFields'  => static fn () => $dg->setFields($reading, ['note' => 'pendant le gel']),
+    'setLock'    => static fn () => $dg->setLock($reading, Lock::Password, 'back-password-0003'),
+    'removeLock' => static fn () => $dg->removeLock($reading, Lock::Passphrase),
+    'reEnroll'   => static fn () => $dg->reEnroll($g, 'back-password-0004'),
+    'reinstateArchive' => static fn () => $dg->reinstateArchive($g, $setAside),
+    'delete'     => static fn () => $dg->delete($g),
+] as $write => $call) {
+    try {
+        $call();
+        ko("{$write}() wrote into a frozen vault");
+    } catch (VaultFrozenException) {
+        ok("{$write}() → VaultFrozenException");
+    } catch (Throwable $e) {
+        ko("{$write}() refused otherwise than as frozen", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+$dg->getFields($dg->loginWithPassword('user-back', 'back-password-0001'))['note'] === 'du titulaire'
+    && count($dg->listArchives($reading)) === 1
+    ? ok('nothing changed: the old password still opens it, the archive is there')
+    : ko('a refused write changed the frozen vault');
+$dg->unfreeze($g) && $dg->frozenState('user-back') === null
+    ? ok('unfreeze() lifts it')
+    : ko('unfreeze() did not lift the freeze');
+$dg->setFields($reading, ['note' => 'après le gel']);
+$dg->getFields($reading)['note'] === 'après le gel'
+    ? ok('unfrozen, the vault takes writes again')
+    : ko('the vault still refuses writes after unfreeze()');
+
+section('restoreArchive() — an account left with archives only gets one back');
+
+$dg->delete($reading->generation());
+$dg->restoreArchive('user-back', $setAside);
+try {
+    $dg->loginWithPassword('user-back', 'back-password-0002');
+    ok('the archive is live again: the requester\'s password opens it');
+} catch (Throwable $e) {
+    ko('restoreArchive() did not bring the archive back', $e->getMessage());
+}
+try {
+    $dg->restoreArchive('user-back', $setAside);
+    ko('restoreArchive() went through twice');
+} catch (VaultNotFoundException | VaultExistsException) {
+    ok('a second restoration is refused');
 }
 
 // -----------------------------------------------------------------------------

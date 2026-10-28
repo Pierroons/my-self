@@ -189,6 +189,13 @@ try {
     ko('the passphrase did not survive a round-trip', $e->getMessage());
 }
 
+$oldGeneration = $storage->loadVault('user-old')->generation();
+$storage->freezeVault($oldGeneration, 'migration', new DateTimeImmutable())
+    && ($storage->frozenState('user-old')['by'] ?? null) === 'migration'
+    && $storage->unfreezeVault($oldGeneration)
+    ? ok('the migrated vault freezes and unfreezes: the 0.8.0 columns are there')
+    : ko('the migrated vault cannot be frozen');
+
 try {
     new SqliteAdapter($old);
     ok('a second opening is idempotent (no duplicate-column error)');

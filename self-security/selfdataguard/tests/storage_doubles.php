@@ -43,6 +43,11 @@ abstract class DelegatingStorage implements StorageInterface
     public function listArchives(string $u): array { return $this->inner->listArchives($u); }
     public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
+    public function swapWithArchive(VaultGeneration $g, string $id): string { return $this->inner->swapWithArchive($g, $id); }
+    public function restoreArchive(string $u, string $id): void { $this->inner->restoreArchive($u, $id); }
+    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at): bool { return $this->inner->freezeVault($g, $by, $at); }
+    public function unfreezeVault(VaultGeneration $g): bool { return $this->inner->unfreezeVault($g); }
+    public function frozenState(string $u): ?array { return $this->inner->frozenState($u); }
     public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
     public function claimSetting(string $n, string $v): string { return $this->inner->claimSetting($n, $v); }
     public function loadSetting(string $n): ?string { return $this->inner->loadSetting($n); }
@@ -429,5 +434,111 @@ final class SharedIndexDroppingStorage extends DelegatingStorage
     public function saveFields(VaultGeneration $g, array $f): void
     {
         $this->inner->saveFields($g, array_map(static fn (array $d): array => array_diff_key($d, ['sharedIndex' => true]), $f));
+    }
+}
+
+/** Writes fields into a frozen vault: lifts the freeze, writes, puts it back. */
+final class FreezeSkippingFieldsStorage extends DelegatingStorage
+{
+    public function saveFields(VaultGeneration $g, array $f): void
+    {
+        $state = $this->inner->frozenState($g->userId);
+        if ($state !== null) {
+            $this->inner->unfreezeVault($g);
+        }
+        try {
+            $this->inner->saveFields($g, $f);
+        } finally {
+            if ($state !== null) {
+                $this->inner->freezeVault($g, $state['by'], $state['at']);
+            }
+        }
+    }
+}
+
+/** updateVault() that ignores the freeze, the same way. */
+final class FreezeSkippingUpdateStorage extends DelegatingStorage
+{
+    public function updateVault(VaultRecord $r): int
+    {
+        $state = $this->inner->frozenState($r->userId);
+        if ($state !== null) {
+            $this->inner->unfreezeVault($r->generation());
+        }
+        try {
+            return $this->inner->updateVault($r);
+        } finally {
+            if ($state !== null) {
+                $this->inner->freezeVault($r->generation(), $state['by'], $state['at']);
+            }
+        }
+    }
+}
+
+/** A second freeze replaces the first: who froze the vault is the last caller. */
+final class FreezeOverwritingStorage extends DelegatingStorage
+{
+    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at): bool
+    {
+        $this->inner->unfreezeVault($g);
+        return $this->inner->freezeVault($g, $by, $at);
+    }
+}
+
+/** Brings an archive back live without its indexes. */
+final class IndexDroppingRestoreStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    private function dropIndexes(string $u): void
+    {
+        $this->pdo->prepare('UPDATE selfdataguard_fields SET blind_index = NULL, shared_index = NULL WHERE user_id = ?')->execute([$u]);
+    }
+
+    public function swapWithArchive(VaultGeneration $g, string $id): string
+    {
+        $setAside = $this->inner->swapWithArchive($g, $id);
+        $this->dropIndexes($g->userId);
+        return $setAside;
+    }
+
+    public function restoreArchive(string $u, string $id): void
+    {
+        $this->inner->restoreArchive($u, $id);
+        $this->dropIndexes($u);
+    }
+}
+
+/** restoreArchive() that deletes the live vault in its way. */
+final class RestoreOverLiveStorage extends DelegatingStorage
+{
+    public function restoreArchive(string $u, string $id): void
+    {
+        $live = $this->inner->findVault($u);
+        if ($live !== null) {
+            $this->inner->deleteVault($live->generation());
+        }
+        $this->inner->restoreArchive($u, $id);
+    }
+}
+
+/**
+ * Compares the generation, then swaps whatever vault is live. Alone, it refuses
+ * a stale generation; racing, every swap passes the check and the archive is
+ * gone for all but one — refused as missing instead of stale.
+ */
+final class CheckThenSwapStorage extends DelegatingStorage
+{
+    public function swapWithArchive(VaultGeneration $g, string $id): string
+    {
+        $live = $this->inner->findVault($g->userId) ?? throw new VaultNotFoundException('none');
+        if (!hash_equals($live->userSalt, $g->userSalt)) {
+            throw new StaleVaultException('stale');
+        }
+        usleep(200_000);
+        return $this->inner->swapWithArchive($this->inner->loadVault($g->userId)->generation(), $id);
     }
 }

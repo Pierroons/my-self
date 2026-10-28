@@ -3,6 +3,56 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — 0.8.0
+
+A vault set aside by a level 3 can come back. SelfRecover 0.13.0 keeps the secrets from before a level 3
+valid for a window after it: a holder who returns with one of them takes the account back, and the
+vault must follow. `reinstateArchive()` brings the archived vault back live — envelopes, fields with their
+indexes, escrow — and sets the vault the requester was given aside as an archive, in one transaction.
+`freeze()` then holds it read-only until the arbiter has closed the dispute: every write refuses, inside
+the write's own transaction, as a stale generation does.
+
+Code that implements `StorageInterface` changes: five methods are added, and every write refuses a
+frozen vault.
+
+### Added
+
+- `SelfDataGuard::reinstateArchive(VaultGeneration $replacing, string $archiveId): string` — the archive
+  comes back live in place of the vault `$replacing` names, which becomes an archive; returns its id. No
+  secret is asked: for the level-3 flow or an operator. An archive whose seal does not hold is refused
+  (`VaultTamperedException`); one taken before 0.7.0 comes back unsealed, and opens to no one until
+  `sealProfile()`.
+- `SelfDataGuard::restoreArchive(string $userId, string $archiveId)` — the same, for a userId left with
+  archives only; `VaultExistsException` if it holds a live vault.
+- `SelfDataGuard::freeze(VaultGeneration $generation, string $by): bool`, `unfreeze()` and
+  `frozenState(string $userId)`. A frozen vault opens and reads; `setFields()`, `setLock()`,
+  `removeLock()`, `recover()`, `reEnroll()`, `reinstateArchive()`, `delete()` and the escrow writes throw
+  `VaultFrozenException`. `eraseAccount()` still erases. A second freeze keeps who froze it first.
+- **BREAKING** — `StorageInterface::swapWithArchive()`, `restoreArchive()`, `freezeVault()`,
+  `unfreezeVault()` and `frozenState()`. Every write that names a generation — and `updateVault()`, in
+  the same statement as the revision — throws `VaultFrozenException` on a frozen vault.
+- Conformance: `swap-with-archive`, `restore-archive`, `freeze-refuses-writes` and
+  `concurrent-archive-swaps`, each made to fail by a storage that breaks its clause. A freeze is checked
+  in sequence only: no case races it against a write.
+
+### Changed
+
+- An archive keeps the blind and shared indexes of its fields, in its package, where no lookup and no
+  unique index reaches them: an archived value still answers nothing and is free for another account.
+  Brought back live, the fields carry them again; a value another account took since makes the swap
+  refuse with `DuplicateIndexException`, naming the fields, and nothing moves. An archive taken before
+  0.8.0 kept no index: its fields come back without one, for the application to index again. The
+  package stays format 1, which 0.7.0 reads by ignoring the new keys.
+- `selfdataguard_vaults` gains `frozen_by` and `frozen_at`, added in place when a 0.7.0 database is
+  opened.
+
+### Known limits
+
+- A frozen vault keeps its locks: an old secret that opens it still reads it. The freeze holds the data
+  still; it does not decide who may read it.
+- The holder cannot re-seal their vault under the secrets SelfRecover gave them back while it is frozen:
+  `recover()` is a write. They open it with an old lock until the arbiter closes the dispute.
+
 ## [v0.7.0] — 2026-10-27
 
 The AAD becomes a required argument, and a ciphertext bound to nothing says so. This is a hardening

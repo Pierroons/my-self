@@ -14,6 +14,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
@@ -37,6 +38,10 @@ use Throwable;
  * The cases that need several processes run only when the connection comes
  * from a file — the child processes require it in turn. Without one, they are
  * reported skipped, not passed.
+ *
+ * A freeze is checked in sequence only: no case races it against a write. A
+ * storage that reads the freeze, then writes in a second transaction, passes;
+ * compare it where the generation is compared.
  */
 final class Conformance
 {
@@ -127,11 +132,15 @@ final class Conformance
             'replace-with-archive'          => 'replaceWithArchive',
             'delete-archive'                => 'deleteArchive',
             'erase-account'                 => 'eraseAccount',
+            'swap-with-archive'             => 'swapWithArchive',
+            'restore-archive'               => 'restoreArchive',
+            'freeze-refuses-writes'         => 'freezeRefusesWrites',
             'concurrent-updates'            => 'concurrentUpdates',
             'concurrent-re-enrolments'      => 'concurrentReEnrolments',
             'concurrent-unique-index'       => 'concurrentUniqueIndex',
             'concurrent-escrow-creations'   => 'concurrentEscrowCreations',
             'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment',
+            'concurrent-archive-swaps'      => 'concurrentArchiveSwaps',
             'setting-claimed-once'          => 'settingClaimedOnce',
             'has-vaults'                    => 'hasVaultsCase',
             'indexed-fields'                => 'indexedFieldsCase',
@@ -536,6 +545,149 @@ final class Conformance
         return null;
     }
 
+    /**
+     * The archive comes back live as it was archived, indexes included, and
+     * the live vault becomes an archive — or, on any refusal, nothing moves.
+     */
+    private function swapWithArchive(): ?string
+    {
+        $holder = $this->newVault('swap', withRecov: true, withPhrase: true);
+        $this->storage->saveVault($holder);
+        $this->fill($holder);
+        $requester = $this->newVault('swap');
+        $id = $this->storage->replaceWithArchive($holder->generation(), $requester);
+        $this->storage->saveFields($requester->generation(), ['note' => ['ciphertext' => 'c-note-requester']]);
+
+        foreach ([
+            'the generation of a vault that is not live' => [$holder->generation(), $id, StaleVaultException::class],
+            'an archive id that does not exist'          => [$requester->generation(), bin2hex(random_bytes(16)), VaultNotFoundException::class],
+        ] as $what => [$generation, $archiveId, $expected]) {
+            $this->expect($expected, fn () => $this->storage->swapWithArchive($generation, $archiveId), "swapWithArchive() naming {$what}");
+        }
+
+        $setAside = $this->storage->swapWithArchive($requester->generation(), $id);
+        $this->assertSameVault($holder, $this->storage->loadVault($holder->userId), 'the live vault after swapWithArchive()');
+        $fields = $this->storage->loadFields($holder->userId);
+        ksort($fields);
+        $this->assert($fields === ['email' => 'c-email', 'note' => 'c-note'], 'swapWithArchive() did not bring the archived fields back live');
+        $this->assert(
+            $this->storage->findUserIdsByIndex('email', $this->indexOf($holder->userId)) === [$holder->userId],
+            'swapWithArchive() brought the fields back without their blind index'
+        );
+        $this->assert(
+            $this->storage->loadEscrow($holder->userId)?->wrapAdmin === $this->escrow($holder->userId)->wrapAdmin
+                && $this->storage->loadEscrowFields($holder->userId) === ['contact' => 'c-contact'],
+            'swapWithArchive() did not bring the escrow and its fields back live'
+        );
+        $this->assert(
+            array_column($this->storage->listArchives($holder->userId), 'id') === [$setAside] && $setAside !== $id,
+            'after swapWithArchive(), the archive brought back is still listed, or the replaced vault is not'
+        );
+        $archived = $this->storage->loadArchive($holder->userId, $setAside);
+        $this->assert(
+            $archived !== null && hash_equals($requester->userSalt, $archived->record->userSalt)
+                && ($archived->privateFields['note']['ciphertext'] ?? null) === 'c-note-requester',
+            'the vault swapWithArchive() replaced was not archived as it stood'
+        );
+
+        $taker = $this->newVault('swap-taker');
+        $this->storage->saveVault($taker);
+        $live = $this->storage->loadVault($holder->userId);
+        $back = $this->storage->replaceWithArchive($live->generation(), $again = $this->newVault('swap'));
+        $this->storage->saveFields($taker->generation(), ['email' => ['ciphertext' => 'c', 'blindIndex' => $this->indexOf($holder->userId)]]);
+        try {
+            $this->storage->swapWithArchive($again->generation(), $back);
+            throw new RuntimeException('swapWithArchive() put back a blind index another account holds');
+        } catch (DuplicateIndexException $e) {
+            $this->assert($e->fields === ['email'], 'the DuplicateIndexException of swapWithArchive() does not name the field taken');
+        }
+        $this->assert(
+            hash_equals($again->userSalt, $this->storage->loadVault($holder->userId)->userSalt)
+                && $this->storage->loadArchive($holder->userId, $back) !== null
+                && $this->storage->findUserIdsByIndex('email', $this->indexOf($holder->userId)) === [$taker->userId],
+            'a swapWithArchive() refused on a taken index changed something: it must be all or nothing'
+        );
+        return null;
+    }
+
+    private function restoreArchive(): ?string
+    {
+        $old = $this->newVault('restore', withRecov: true, withPhrase: true);
+        $this->storage->saveVault($old);
+        $this->fill($old);
+        $new = $this->newVault('restore');
+        $id = $this->storage->replaceWithArchive($old->generation(), $new);
+
+        $this->expect(VaultExistsException::class, fn () => $this->storage->restoreArchive($old->userId, $id), 'restoreArchive() over a live vault');
+        $this->assert(
+            hash_equals($new->userSalt, $this->storage->loadVault($old->userId)->userSalt)
+                && $this->storage->loadArchive($old->userId, $id) !== null,
+            'a refused restoreArchive() changed the live vault or the archive'
+        );
+        $this->storage->deleteVault($new->generation());
+        $this->expect(VaultNotFoundException::class, fn () => $this->storage->restoreArchive($this->id('restore-other'), $id), 'restoreArchive() of an archive under another userId');
+        $this->storage->restoreArchive($old->userId, $id);
+        $this->assertSameVault($old, $this->storage->loadVault($old->userId), 'the live vault after restoreArchive()');
+        $this->assert(
+            $this->storage->listArchives($old->userId) === []
+                && $this->storage->findUserIdsByIndex('email', $this->indexOf($old->userId)) === [$old->userId]
+                && $this->storage->loadEscrowFields($old->userId) === ['contact' => 'c-contact'],
+            'restoreArchive() did not bring the archive back live, indexes and escrow included, or left it listed'
+        );
+        return null;
+    }
+
+    private function freezeRefusesWrites(): ?string
+    {
+        $vault = $this->newVault('freeze');
+        $this->storage->saveVault($vault);
+        $this->fill($vault);
+        $live = $this->newVault('freeze');
+        $id = $this->storage->replaceWithArchive($vault->generation(), $live);
+        $this->fill($live);
+        $g = $live->generation();
+        $at = new DateTimeImmutable('2026-03-29T01:30:00+00:00');
+
+        $this->expect(VaultNotFoundException::class, fn () => $this->storage->freezeVault(new VaultGeneration($this->id('freeze-none'), random_bytes(16)), 'x', $at), 'freezeVault() of a userId without vault');
+        $this->expect(StaleVaultException::class, fn () => $this->storage->freezeVault($vault->generation(), 'x', $at), 'freezeVault() naming a replaced generation');
+        $this->assert($this->storage->frozenState($live->userId) === null, 'frozenState() reports a freeze before any');
+        $this->assert($this->storage->freezeVault($g, 'arbiter-1', $at), 'freezeVault() returned false on a vault not frozen');
+        $this->assert(!$this->storage->freezeVault($g, 'arbiter-2', new DateTimeImmutable()), 'a second freezeVault() returned true');
+        $state = $this->storage->frozenState($live->userId);
+        $this->assert(
+            ($state['by'] ?? null) === 'arbiter-1' && ($state['at'] ?? null) instanceof DateTimeImmutable && $state['at'] == $at,
+            'frozenState() does not return who froze the vault first, and when'
+        );
+
+        $stored = $this->storage->loadVault($live->userId);
+        $fields = $this->storage->loadFields($live->userId);
+        $writes = $this->writesUnder($g, $id) + [
+            'updateVault'     => fn () => $this->storage->updateVault($stored->withWrapPwd($this->blob(), new DateTimeImmutable())),
+            'swapWithArchive' => fn () => $this->storage->swapWithArchive($g, $id),
+        ];
+        foreach ($writes as $write => $call) {
+            $this->expect(VaultFrozenException::class, $call, "{$write}() on a frozen vault");
+        }
+        $this->assertSameVault($stored, $this->storage->loadVault($live->userId), 'a frozen vault after its refused writes');
+        $this->assert(
+            $this->storage->loadFields($live->userId) === $fields
+                && $this->storage->loadEscrowFields($live->userId) === ['contact' => 'c-contact']
+                && count($this->storage->listArchives($live->userId)) === 1,
+            'a write refused on a frozen vault changed its fields, its escrow or its archives'
+        );
+
+        $this->expect(StaleVaultException::class, fn () => $this->storage->unfreezeVault($vault->generation()), 'unfreezeVault() naming a replaced generation');
+        $this->assert($this->storage->frozenState($live->userId) !== null, 'a refused unfreezeVault() lifted the freeze');
+        $this->assert($this->storage->unfreezeVault($g), 'unfreezeVault() of a frozen vault returned false');
+        $this->assert(!$this->storage->unfreezeVault($g) && $this->storage->frozenState($live->userId) === null, 'unfreezeVault() did not lift the freeze, or said it lifted one twice');
+        $this->storage->saveFields($g, ['after' => ['ciphertext' => 'c-after']]);
+        $this->assert($this->storage->loadFields($live->userId, ['after']) === ['after' => 'c-after'], 'an unfrozen vault still refuses writes');
+
+        $this->storage->freezeVault($g, 'arbiter-1', $at);
+        $this->assert($this->storage->eraseAccount($live->userId) === 2, 'eraseAccount() did not erase a frozen account and its archive');
+        return null;
+    }
+
     private function concurrentUpdates(): ?string
     {
         if ($this->connectFile === null) {
@@ -756,6 +908,28 @@ final class Conformance
                 && $this->storage->loadEscrow($vault->userId) === null,
             'a write that named the replaced generation landed in the vault that replaced it: '
             . 'the generation is compared before the write, not inside its transaction'
+        );
+        return null;
+    }
+
+    private function concurrentArchiveSwaps(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $old = $this->newVault('race-swap');
+        $this->storage->saveVault($old);
+        $id = $this->storage->replaceWithArchive($old->generation(), $this->newVault('race-swap'));
+        $outcomes = $this->race(<<<PHP
+            \$g = \$s->loadVault(\$uid)->generation();
+            \$ready();
+            \$s->swapWithArchive(\$g, '{$id}');
+            PHP, $old->userId);
+        $this->assertOneWinner($outcomes, 'swapWithArchive() of the same generation');
+        $this->assert(
+            hash_equals($old->userSalt, $this->storage->loadVault($old->userId)->userSalt)
+                && count($this->storage->listArchives($old->userId)) === 1,
+            'several swaps of the same generation went through: the generation is not compared inside the swap'
         );
         return null;
     }

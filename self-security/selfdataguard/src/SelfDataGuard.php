@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pierroons\SelfDataGuard;
 
+use DateTimeImmutable;
 use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
@@ -13,6 +14,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
@@ -21,6 +23,7 @@ use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultExistsException;
+use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
@@ -581,6 +584,78 @@ final class SelfDataGuard
     }
 
     /**
+     * Bring an archive back live in place of the vault $replacing names, which
+     * becomes an archive in turn — SelfRecover's window after a level 3, when
+     * the holder comes back with a secret from before it: their vault returns
+     * with its fields, indexes and escrow, and the vault the requester was
+     * given waits as an archive. No secret is asked: for the level-3 flow or an
+     * operator, never for a route a visitor reaches.
+     *
+     * The archive comes back as it was archived, locks included: its old
+     * secrets open it again. An archive whose seal does not hold is refused,
+     * as its opening would be. One taken before 0.7.0, without a seal, comes
+     * back unsealed, and opens to no one until sealProfile().
+     *
+     * @return string the id of the archive the replaced vault became
+     * @throws VaultNotFoundException   if this userId has no such archive
+     * @throws VaultTamperedException   if the archive's seal does not hold
+     * @throws DuplicateIndexException  naming the fields whose index another account took since
+     * @throws VaultFrozenException     if the vault $replacing names is frozen
+     */
+    public function reinstateArchive(VaultGeneration $replacing, string $archiveId): string
+    {
+        $record = $this->sealedArchive($replacing->userId, $archiveId);
+        $setAside = $this->storage->swapWithArchive($replacing, $archiveId);
+        $this->assertVaultPersisted($record, $record->revision);
+        return $setAside;
+    }
+
+    /**
+     * Bring an archive back live for a userId left without a live vault — an
+     * operator's step, after the live vault was deleted. As reinstateArchive(),
+     * the replaced vault apart.
+     *
+     * @throws VaultExistsException if the userId holds a live vault
+     */
+    public function restoreArchive(string $userId, string $archiveId): void
+    {
+        $record = $this->sealedArchive($userId, $archiveId);
+        $this->storage->restoreArchive($userId, $archiveId);
+        $this->assertVaultPersisted($record, $record->revision);
+    }
+
+    /**
+     * Freeze the live vault $generation names: it keeps opening and reading,
+     * and every write refuses with VaultFrozenException — fields, escrow,
+     * locks, deletion, re-enrolment — until unfreeze(). eraseAccount() still
+     * erases. SelfRecover freezes the vault a returning holder took back, for
+     * as long as the arbiter has not closed the dispute.
+     *
+     * @param string $by who froze it, as the caller names them (an arbiter, a case)
+     * @return bool true if this call froze it; false if it was frozen already, by whoever froze it first
+     */
+    public function freeze(VaultGeneration $generation, string $by): bool
+    {
+        return $this->storage->freezeVault($generation, $by, new DateTimeImmutable());
+    }
+
+    /** @return bool true if the vault was frozen */
+    public function unfreeze(VaultGeneration $generation): bool
+    {
+        return $this->storage->unfreezeVault($generation);
+    }
+
+    /**
+     * Who froze the live vault of $userId, and when; null when it is not frozen.
+     *
+     * @return array{by: string, at: DateTimeImmutable}|null
+     */
+    public function frozenState(string $userId): ?array
+    {
+        return $this->storage->frozenState($userId);
+    }
+
+    /**
      * Erase the account — its live vault and every archive — without a
      * session. Works on a userId left with archives only.
      *
@@ -852,6 +927,23 @@ final class SelfDataGuard
         }
         $this->assertProfileSealed($record, $opslimit, $memlimit, archive: true);
         return [$opslimit, $memlimit];
+    }
+
+    /**
+     * The record of archive $archiveId, its seal checked under the profile it
+     * records: brought back live, that is the profile it opens under. One
+     * without a seal passes only if written before 0.7.0.
+     */
+    private function sealedArchive(string $userId, string $archiveId): VaultRecord
+    {
+        $archive = $this->storage->loadArchive($userId, $archiveId)
+            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
+        $this->assertSameUser($userId, $archive->record->userId);
+        if ($archive->record->profileSeal === null && !ProfileSeal::expected($archive->record)) {
+            return $archive->record;
+        }
+        $this->assertProfileSealed($archive->record, $archive->record->kdfOpslimit, $archive->record->kdfMemlimit, archive: true);
+        return $archive->record;
     }
 
     private function sealed(VaultRecord $record): VaultRecord

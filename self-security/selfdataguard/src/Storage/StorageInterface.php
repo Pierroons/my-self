@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pierroons\SelfDataGuard\Storage;
 
+use DateTimeImmutable;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
@@ -26,8 +27,9 @@ use Pierroons\SelfDataGuard\Vault\VaultRecord;
  * (VaultGeneration: userId + user_salt). The implementation compares it inside
  * the write's own transaction, or in the same statement, and throws
  * VaultNotFoundException when the userId has no live vault, StaleVaultException
- * when it has another one. A generation received and not compared breaks
- * nothing visible: the write lands in a vault whose key cannot read it.
+ * when it has another one, VaultFrozenException when that vault is frozen. A
+ * generation received and not compared breaks nothing visible: the write lands
+ * in a vault whose key cannot read it.
  *
  * userIds compare byte for byte: a case-insensitive collation on the user_id
  * column hands one account's vault to another spelling of its name.
@@ -54,7 +56,8 @@ interface StorageInterface
      * user_salt is never rewritten: it identifies the vault. The write applies only where user_salt AND revision still match
      * the record's, and bumps the revision. Throws StaleVaultException if the
      * vault was replaced or updated since the record was read,
-     * VaultNotFoundException if the userId holds none.
+     * VaultNotFoundException if the userId holds none, VaultFrozenException if
+     * the vault is frozen — compared in the same statement as the revision.
      *
      * @return int the revision now stored, the record's plus one
      */
@@ -164,8 +167,10 @@ interface StorageInterface
     /**
      * Atomically set the live vault of $replacing aside as an archive —
      * envelopes, fields and escrow, still encrypted — then insert $new in its
-     * place. Blind indexes are not archived. Nothing changes if any step
-     * fails.
+     * place. The indexes go with the fields, inert: an archive answers no
+     * lookup and holds no value against the next account, and a vault brought
+     * back live by swapWithArchive() or restoreArchive() carries them again.
+     * Nothing changes if any step fails.
      *
      * The vault archived is exactly the one $replacing names: a second call
      * with the same generation finds the vault the first one inserted and
@@ -191,6 +196,62 @@ interface StorageInterface
      * names. False if it does not exist or belongs to another userId.
      */
     public function deleteArchive(VaultGeneration $generation, string $archiveId): bool;
+
+    /**
+     * Atomically set the live vault of $generation aside as an archive, and
+     * bring archive $archiveId of the same userId back live in its place —
+     * its envelopes, profile, fields with their indexes, escrow and escrow
+     * fields, as they were archived. The archive row is gone once live again.
+     * Nothing changes if any step fails.
+     *
+     * An index another account took since the archive was made throws
+     * DuplicateIndexException naming those fields, and nothing is swapped.
+     * An archive written before 0.8.0 kept no index: its fields come back
+     * without one.
+     *
+     * @return string the id of the archive the live vault became
+     * @throws VaultNotFoundException if the userId has no such archive
+     */
+    public function swapWithArchive(VaultGeneration $generation, string $archiveId): string;
+
+    /**
+     * Bring archive $archiveId back live for a userId that holds no live
+     * vault — after its live vault was deleted. Same restoration as
+     * swapWithArchive(), DuplicateIndexException included.
+     *
+     * @throws VaultExistsException   if the userId holds a live vault
+     * @throws VaultNotFoundException if the userId has no such archive
+     */
+    public function restoreArchive(string $userId, string $archiveId): void;
+
+    // -- Freezing a live vault --------------------------------------------------
+
+    /**
+     * Freeze the live vault of $generation: every write of this contract that
+     * names it — updateVault included — throws VaultFrozenException, compared
+     * inside the write's own transaction as the generation is. Reads go on,
+     * and eraseAccount() still erases. The freeze stays with the vault, not
+     * with the generation: archived, it is gone with the live row.
+     *
+     * @return bool true if this call froze it; false if it was frozen already,
+     *              in which case the first $by and $at stay
+     */
+    public function freezeVault(VaultGeneration $generation, string $by, DateTimeImmutable $at): bool;
+
+    /**
+     * Lift the freeze of the live vault of $generation.
+     *
+     * @return bool true if it was frozen
+     */
+    public function unfreezeVault(VaultGeneration $generation): bool;
+
+    /**
+     * Who froze the live vault of $userId, and when; null when it is not
+     * frozen or the userId holds none. Never writes.
+     *
+     * @return array{by: string, at: DateTimeImmutable}|null
+     */
+    public function frozenState(string $userId): ?array;
 
     // -- Settings of the database ---------------------------------------------
 
