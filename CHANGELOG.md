@@ -10,6 +10,37 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.0, lot B — après un niveau 3, le titulaire qui revient avec un secret d'avant l'emporte — 28 octobre 2026
+
+Rupture de contrat : `StorageInterface` gagne sept méthodes, et deux tables s'ajoutent au schéma.
+SelfDataGuard passe à 0.8.0 pour suivre.
+
+Un niveau 3 rend le compte à qui convainc l'arbitre. Jusqu'ici c'était sans retour : `reEnroler()`
+remplaçait tous les secrets à l'instant, et un titulaire qui retrouvait son papier le lendemain n'avait
+plus qu'un nouveau dossier pour contester.
+
+- La reprise ouvre une fenêtre de 14 jours, réglable de 7 à 30 (`fenetreDuree`). La passphrase, le mot
+  mémorisé, son sel et les codes papier non consommés d'avant y restent valables, une fois chacun ;
+  l'ancien mot de passe n'y entre pas.
+- Un secret d'avant servi au niveau 1 ou 2 dans la fenêtre rend le compte au titulaire : mot de passe,
+  passphrase et codes neufs, son ancien mot mémorisé et son sel rendus, les sessions et les appareils du
+  demandeur révoqués. La réponse porte `titulaire_reprend` et `mot_memorise_a_changer`.
+- `Escalade::fenetre()` dit l'état de la fenêtre, avec `lecture_seule` pour le coffre et
+  `lecture_admin_permise` pour le séquestre de l'archive. `cloreFenetre()` lève la lecture seule : c'est
+  le geste de l'arbitre, jamais de l'horloge. `purgerFenetres()`, appelé par `tools/purger.php`, efface
+  les secrets d'une fenêtre échue sans qu'aucun ait servi.
+- Au niveau 1, les refus tiennent une échéance commune : le second Argon2id que coûte une ancienne
+  passphrase ne dit pas, au chronomètre, qu'un compte sort d'un niveau 3.
+- SelfDataGuard 0.8.0 : `reinstateArchive()` remet en service le coffre archivé au niveau 3, index
+  compris, et range celui du demandeur en archive ; `freeze()` le tient en lecture seule jusqu'à la
+  clôture. Le parcours des deux bibliothèques joue la fenêtre de bout en bout (27 cas).
+- Le prix est déclaré au modèle de menace : la fenêtre fait primer un secret d'avant sur le jugement de
+  l'arbitre, donc un papier volé reprend un niveau 3 que son titulaire avait fait à cause du vol, tant
+  que la fenêtre dure.
+
+`sanity_escalade` passe à 247 cas, `banc_stockage_pdo` à 203, le contrat à 53 méthodes. Vingt et un
+canaris, chacun vu rouge sur son cas.
+
 ### SelfRecover 0.13.0, lot A — sous un service caché, ouvrir un dossier de niveau 3 se paie — 27 octobre 2026
 
 Rupture de contrat : `StorageInterface` gagne une méthode, et une table s'ajoute au schéma.

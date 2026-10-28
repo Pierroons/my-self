@@ -198,6 +198,16 @@ What the library enforces, with the defaults it ships:
   count handed to the arbitrator (`gel_suggere` past the threshold); `geler()`
   and `degeler()` are theirs. A counter keyed on the targeted account is
   fillable by whoever knows a public name
+- L3 — a takeover opens a window of 14 days (`fenetreDuree`, 7 to 30): the
+  secrets from before stay valid in it once each, the old password apart, and
+  one served at level 1 or 2 gives the account back to its holder. The vault
+  then stays read-only until the arbitrator closes the dispute
+  (`cloreFenetre()`) — never the clock. `fenetre()` tells the application
+  which state holds; with SelfDataGuard, `reinstateArchive()` and `freeze()`
+  follow it. A window that expires unused erases those secrets
+  (`purgerFenetres()`). At level 1, every refusal waits for one common
+  deadline, so that the second Argon2id an old passphrase costs does not tell
+  that an account came out of a level 3
 - A forced delay on every refusal that hides a state. One refusal names its
   state, and must: an account whose level 2 is suspended cannot be told to renew
   otherwise. It tells whoever already holds one of that account's codes that the

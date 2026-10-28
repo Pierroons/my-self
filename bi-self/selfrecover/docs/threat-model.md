@@ -116,6 +116,28 @@ What bounds the cost meanwhile: the per-address brake under `clearweb`, the comp
 and the service-wide ceiling behind it under `tor-onion`, the shared deadline on every refusal, a ceiling per answer and per thread
 message — and rate limiting in front of the route, which the library cannot impose.
 
+### ~ A fraudulent level 3 — undone within a window, at a price
+
+**Level 3 hands an account to whoever convinces the arbitrator.** Until 0.13.0 that was final:
+`reEnroler()` replaced every secret at once, and a holder who found their paper the next day had only
+a new dispute to contest the takeover.
+
+Since 0.13.0 a takeover opens a window of 14 days (7 to 30, `fenetreDuree`). The passphrase, the
+memorized word with its salt, and the unused paper codes from before stay valid in it, once each; the
+old password does not. A secret from before served at level 1 or 2 within the window gives the
+account back: new secrets, the old memorized word and salt restored, the requester's sessions and
+devices revoked. The application's vault then stays read-only until the arbitrator closes the dispute
+(`cloreFenetre()`), never on a timer. A window that expires with none of them served erases them
+(`purgerFenetres()`).
+
+⚠️ **The price is the symmetric case.** The window trusts a secret from before over the arbitrator's
+judgment. A holder who went to level 3 *because* their sheet was stolen loses the account again to
+whoever holds that sheet, for as long as the window lasts. What bounds it: each old secret serves
+once; the dispute stays open, read-only, until a human closes it; the deployment chooses the length,
+from 7 to 30 days, for every account at once. An arbitrator cannot close a window that no secret
+from before has entered yet. What the library cannot do is tell the two cases apart — both present a
+secret the account really held.
+
 ### ~ Bot-driven account enumeration
 
 **Partial, and the honest version is uncomfortable: opening an L3 dispute tells you whether an
@@ -300,6 +322,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Holding an L3 slot with a name alone | ✗ — open, by design of the level | Nobody can prove a link to an account they have lost everything of, so no automatic check can tell squatter from holder. The arbitrator is the answer: `abandonner()` frees the slot, and since 0.12.0 the collision count they read is reliable |
 | A third party freezing the holder's level-3 procedure | ✓ since 0.12.0 | No counter poses a freeze; refusals inform, an administrator decides and can lift it. Taking the slot is the row above |
+| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |
