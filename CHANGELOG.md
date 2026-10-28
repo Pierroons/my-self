@@ -10,6 +10,23 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfModerate 0.7.0 : une lecture n'écrit plus rien, et aucune sanction ne passe sans trace — 28 octobre 2026
+
+La 0.7.0 ferme ce que deux audits de la 0.6 ont relevé.
+
+- **Une lecture n'écrit plus rien** : `getReputation()` et `canVote()` calculent l'état de l'instant ; un vote,
+  un geste d'arbitre ou le balayage l'inscrivent. Une page servie sans session ne fait plus écrire le serveur.
+- **Pas de sanction sans trace** : sans journal, aucun geste d'arbitre ; dans la transaction d'un hôte, ni geste
+  ni ban automatique.
+- **Un signalement par cause** (`mod_signaux`), et un geste qui refuse de fermer ce que l'arbitre n'a pas vu.
+- **Les bans d'arbitre se comptent à part**, et leur répétition se signale.
+- Le lab : la page de convalescence dit le rythme de la config, les durées se lisent dans l'unité de leur
+  grandeur, et la démonstration de meute exerce la défense qu'elle annonce.
+
+**Rupture pour un intégrateur** : la colonne `strikes_admin` et la table `mod_signaux` entrent au schéma attendu,
+et une base de la 0.6 appelle `migrerSignaux()` une fois. Le détail, et la marche à suivre : la section
+« Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+
 ### Le squelette de MySelf-Live quitte le dépôt — 16 octobre 2026
 
 `tools/build-myself-live/` décrivait la construction et la signature d'une image ISO qui n'a jamais

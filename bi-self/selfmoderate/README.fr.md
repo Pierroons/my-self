@@ -5,7 +5,7 @@
 **Moteur de modération communautaire autonome par raisonnement social**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.1](https://img.shields.io/badge/status-v0.6.1-yellow.svg)](#statut)
+[![Status: v0.7.0](https://img.shields.io/badge/status-v0.7.0-yellow.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -153,8 +153,29 @@ Les dates de ses messages, et le jour des motifs que `reasonsFor()` rend, suiven
 
 ## Statut
 
-🟢 **v0.6.1** — le moteur est ici, dans `src/`, et le lab l'importe comme il
+🟢 **v0.7.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
 importe SelfRecover et SelfDataGuard.
+
+La 0.7.0 ferme ce que deux audits de la 0.6 ont relevé, et change ce que voit l'hôte :
+- **une lecture n'écrit plus rien** : `getReputation()` et `canVote()` calculent l'état de l'instant sans
+  l'inscrire ni prendre de verrou, et `fin_en_attente` dit qu'une fin de peine attend son inscription ; un
+  vote, un geste d'arbitre ou le balayage l'inscrivent. Sans planificateur, le premier vote négatif de chaque
+  tranche balaie ensuite au plus `balayageFiletMax` comptes. Un écrivain du moteur qui lirait par
+  `getReputation()` lève `LectureDansUneEcriture` ;
+- **pas de sanction sans trace** : sans journal branché, aucun geste d'arbitre ne passe ; dans la transaction
+  d'un hôte, les gestes sont refusés et le ban automatique ne s'arme pas ;
+- **un signalement par cause**, dans `mod_signaux` : un geste qui ferme un signal reçoit le jeton
+  `$vu = {signal, detections}` et refuse si le signal a été redétecté depuis l'affichage ; `signauxOuverts()`
+  les liste ; les listes d'un acte (`ouverts`, `ferme`) partent en texte JSON ;
+- **les bans d'arbitre se comptent à part** (`strikes_admin`, clé `dont_arbitre` de `ban_debut`), et leur
+  répétition se signale (`bans_arbitre`, `Config::bansArbitreSignal`) ;
+- et : une chute à zéro pendant un ban d'arbitre se signale ; la convalescence ne rabat plus un score monté
+  par des votes positifs, et rend le droit de vote dès 5 ; un geste sur un compte inexistant est refusé ; le
+  jour des motifs suit le fuseau de l'hôte ; `Config` refuse un filet négatif.
+
+**Monter depuis la 0.6** : ajouter à `member_moderation` la colonne `strikes_admin INTEGER NOT NULL DEFAULT 0`
+— les bans d'arbitre se comptent alors depuis la 0.7.0 — ; créer `mod_signaux` comme le schéma du lab ; puis
+appeler `migrerSignaux()` une fois, sans quoi le moteur refuse tout compte dont la case est ouverte.
 
 La 0.6.1 ne change ni promesse ni schéma. Un vote s'inscrit tout ou rien : `applyVote()` tient
 ses écritures dans une transaction — la sienne, ou un point de reprise dans celle de l'hôte —, et une

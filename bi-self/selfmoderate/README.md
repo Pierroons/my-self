@@ -5,7 +5,7 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.1](https://img.shields.io/badge/status-v0.6.1-yellow.svg)](#status)
+[![Status: v0.7.0](https://img.shields.io/badge/status-v0.7.0-yellow.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -153,8 +153,29 @@ Dates in its messages, and the day of the reasons `reasonsFor()` returns, follow
 
 ## Status
 
-🟢 **v0.6.1** — the engine is here, under `src/`, and the lab imports it the way
+🟢 **v0.7.0** — the engine is here, under `src/`, and the lab imports it the way
 it imports SelfRecover and SelfDataGuard.
+
+0.7.0 closes what two audits of 0.6 found, and changes what the host sees:
+- **a read writes nothing any more**: `getReputation()` and `canVote()` compute the state of the moment
+  without recording it or taking a lock, and `fin_en_attente` says a penalty end awaits recording; a vote, an
+  arbiter action or the sweep records it. Without a scheduler, the first negative vote of each slot then sweeps
+  at most `balayageFiletMax` accounts. An engine writer reading through `getReputation()` raises
+  `LectureDansUneEcriture`;
+- **no sanction without a trace**: with no journal plugged in, no arbiter action goes through; inside a host's
+  transaction, actions are refused and the automatic ban does not arm;
+- **one flag per cause**, in `mod_signaux`: an action that closes a flag takes the token
+  `$vu = {signal, detections}` and refuses if the flag was detected again since it was displayed;
+  `signauxOuverts()` lists them; a record's lists (`ouverts`, `ferme`) go out as JSON text;
+- **arbiter bans are counted apart** (`strikes_admin`, key `dont_arbitre` of `ban_debut`), and their repetition
+  is flagged (`bans_arbitre`, `Config::bansArbitreSignal`);
+- and: a drop to zero during an arbiter ban is flagged; recovery no longer pulls down a score raised by
+  upvotes, and gives voting rights back from 5; an action on a non-existent account is refused; the day of the
+  reasons follows the host's time zone; `Config` refuses a negative sweep cap.
+
+**Upgrading from 0.6**: add the column `strikes_admin INTEGER NOT NULL DEFAULT 0` to `member_moderation` —
+arbiter bans are then counted from 0.7.0 on —; create `mod_signaux` as in the lab schema; then call
+`migrerSignaux()` once, otherwise the engine refuses any account whose slot is open.
 
 0.6.1 changes neither promise nor schema. A vote is written all or nothing: `applyVote()` holds
 its writes in one transaction — its own, or a savepoint inside the host's — and a cut no longer
