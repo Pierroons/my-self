@@ -1074,6 +1074,11 @@ final class Escalade
             // reposer tous les secrets en gardant la porte la plus directe ouverte,
             // pendant que le titulaire croit avoir refermé.
             $appareilsRetires = $this->stockage->revoquerAppareils($litige->compteId);
+            $suite = $this->recovery->suite()?->suivre(new Reprise(
+                Reprise::NIVEAU_3, $litige->compteId, $litige->nomCompte, $maintenant,
+                motDePasse: $motDePasse, passphrase: $passphrase, motMemorise: $motDerive,
+                numeroLitige: $litige->numero,
+            )) ?? 'aucune';
             $this->stockage->validerTransaction();
         } catch (LitigeDejaClos) {
             // La perdante reçoit le refus d'un sésame qui n'ouvre plus : c'est ce que
@@ -1094,6 +1099,7 @@ final class Escalade
 
         return ['ok' => true, 'passphrase' => $passphrase, 'codes' => $codes,
                 'compte' => $litige->nomCompte,
+                'suite' => $suite,
                 'appareils_retires' => $appareilsRetires,
                 'fenetre_jusqua' => $maintenant + $this->fenetreDuree,
                 'message' => Messages::dire($this->langue(), 'l3.compte_repris', [$avis])];
@@ -1202,11 +1208,29 @@ final class Escalade
         $maintenant = $maintenant ?? time();
         $nomCompte = strtolower(trim($nomCompte));
         $compte = $this->stockage->trouverCompte($nomCompte);
-        if ($compte === null || !$this->stockage->cloreFenetre((int) $compte['id'], $par, $maintenant)) {
-            return ['ok' => false, 'error' => 'aucune_fenetre_reprise',
-                    'message' => Messages::dire($this->langue(), 'l3.aucune_fenetre_reprise')];
+        $refus = ['ok' => false, 'error' => 'aucune_fenetre_reprise',
+                  'message' => Messages::dire($this->langue(), 'l3.aucune_fenetre_reprise')];
+        if ($compte === null) {
+            return $refus;
         }
-        return ['ok' => true, 'compte' => $nomCompte, 'message' => Messages::dire($this->langue(), 'l3.fenetre_close')];
+        $this->stockage->commencerTransaction();
+        try {
+            if (!$this->stockage->cloreFenetre((int) $compte['id'], $par, $maintenant)) {
+                $this->stockage->annulerTransaction();
+
+                return $refus;
+            }
+            $suite = $this->recovery->suite()?->suivre(
+                new Reprise(Reprise::CLOTURE, (int) $compte['id'], $nomCompte, $maintenant)
+            ) ?? 'aucune';
+            $this->stockage->validerTransaction();
+        } catch (\Throwable $e) {
+            $this->stockage->annulerTransaction();
+
+            throw $e;
+        }
+        return ['ok' => true, 'compte' => $nomCompte, 'suite' => $suite,
+                'message' => Messages::dire($this->langue(), 'l3.fenetre_close')];
     }
 
     // ── Interne ────────────────────────────────────────────────────────────

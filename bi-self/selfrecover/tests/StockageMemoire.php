@@ -825,12 +825,19 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
             'passphrases' => $this->passphrases, 'codes' => $this->codes,
             'litiges' => $this->litiges, 'messages' => $this->messages,
             'gels' => $this->gels, 'faits' => $this->faits, 'sels' => $this->sels,
+            'hotes' => $this->hotes, 'fenetres' => $this->fenetres, 'anciensCodes' => $this->anciensCodes,
         ];
     }
 
     public function validerTransaction(): void
     {
         $this->avant = null;
+    }
+
+    /** Pour les bancs : une transaction est-elle ouverte en ce moment ? */
+    public function transactionOuverte(): bool
+    {
+        return $this->avant !== null;
     }
 
     public function annulerTransaction(): void

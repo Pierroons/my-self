@@ -534,6 +534,40 @@ jobs:
             '            if (false) {' \
             $R/tests/sanity_recovery.php 'une course sur la passphrase du niveau 1 devient un refus ordinaire'
 
+      # Ce qui suit une récupération (le coffre, par le pont) est appelé dans la
+      # transaction qui l'accepte, sur chaque chemin : une suite qui lève annule
+      # la récupération, et rien ne se valide à moitié. Chaque canari la
+      # débranche d'un côté et exige que le banc rougisse sur ce cas-là.
+      - name: Canaris — la suite d'une récupération est appelée dans sa transaction
+        run: |
+          # @plante
+          sortie=$(php bi-self/selfrecover/tests/sanity_suite_reprise.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de la suite a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 13/13$' \
+            || { echo "::error::le banc de la suite n'a pas joué ses 13 cas"; exit 1; }
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          canari $R/src/Recovery/Recovery.php \
+            "        return \$this->suite?->suivre(\$reprise) ?? 'aucune';" "        return 'aucune';" \
+            $R/tests/sanity_suite_reprise.php '❌ la suite est appelée une fois, dans la transaction'
+          canari $R/src/Recovery/Escalade.php \
+            "new Reprise(Reprise::CLOTURE, (int) \$compte['id'], \$nomCompte, \$maintenant)" \
+            "new Reprise(Reprise::CLOTURE, (int) \$compte['id'], \$nomCompte, \$maintenant + (int) \$this->stockage->validerTransaction())" \
+            $R/tests/sanity_suite_reprise.php '❌ clôture : la suite est appelée dans la transaction'
+
       # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
       # code. Le canari la fait répondre « rien » à un code inconnu, l'oracle que la
       # garde ferme ; le banc doit rougir sur ce cas-là.

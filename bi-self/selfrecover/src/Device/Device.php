@@ -11,6 +11,8 @@ use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\ProfilDeploiement;
+use Pierroons\SelfRecover\Recovery\Reprise;
+use Pierroons\SelfRecover\Recovery\SuiteDeReprise;
 use Pierroons\SelfRecover\Titulaire;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
@@ -66,6 +68,8 @@ final class Device
         private readonly int $maxEchecsIp = 12,
         /** Délai appliqué aux refus, pour aplatir ce que le message tait. */
         private readonly int $delaiRefusUs = 300000,
+        /** Ce qui suit une récupération acceptée, comme celle de `Recovery`. */
+        private readonly ?SuiteDeReprise $suite = null,
     ) {
     }
 
@@ -247,6 +251,11 @@ final class Device
         try {
             $this->stockage->remplacerEmpreinteMotDePasse($appareil->compteId, Hashing::hash($motDePasse));
             $this->stockage->revoquerSessions($appareil->compteId);
+            // Aucun secret du coffre n'a servi : la suite le sait par le chemin.
+            $suite = $this->suite?->suivre(new Reprise(
+                Reprise::APPAREIL, $appareil->compteId, $appareil->nomCompte, $maintenant,
+                motDePasse: $motDePasse,
+            )) ?? 'aucune';
             $this->stockage->validerTransaction();
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
@@ -259,6 +268,7 @@ final class Device
             'message'      => Messages::dire($this->langue, 'appareil.reconnu'),
             'mot_de_passe' => $motDePasse,
             'compte'       => $appareil->nomCompte,
+            'suite'        => $suite,
         ];
     }
 

@@ -89,7 +89,25 @@ final class Recovery
          * passphrase ou par le niveau 3, puis renouvelle ses codes.
          */
         private readonly int $maxEchecsL2AvantSuspension = 20,
+        /**
+         * Ce qui suit chaque récupération acceptée, dans sa transaction : le
+         * coffre, par le pont. `null` : rien ne suit, et la réponse le dit
+         * (`suite` = `aucune`). `Escalade` et `Device` la lisent ici.
+         */
+        private readonly ?SuiteDeReprise $suite = null,
     ) {
+    }
+
+    /** La suite branchée, que `Escalade` appelle sur les chemins du niveau 3. */
+    public function suite(): ?SuiteDeReprise
+    {
+        return $this->suite;
+    }
+
+    /** Ce que la suite branchée rend, ou `aucune`. Appelé dans la transaction. */
+    private function suivre(Reprise $reprise): string
+    {
+        return $this->suite?->suivre($reprise) ?? 'aucune';
     }
 
     /**
@@ -254,7 +272,8 @@ final class Recovery
         $this->stockage->tracerTentative($etiquette, $ok || $fenetre !== null, $ip, $maintenant);
 
         if ($fenetre !== null) {
-            return $this->reprendreParTitulaire((int) $compte['id'], $nomCompte, $fenetre, $maintenant, $apport, $refus);
+            return $this->reprendreParTitulaire((int) $compte['id'], $nomCompte, $fenetre, $maintenant, $apport, $refus,
+                Reprise::SERRURE_PASSPHRASE, $passphrase);
         }
         if (!$ok) {
             $this->attendreEcheance($debut);
@@ -277,6 +296,10 @@ final class Recovery
                 (string) $compte['empreinte_passphrase'],
             );
             $this->stockage->revoquerSessions((int) $compte['id']);
+            $suite = $this->suivre(new Reprise(
+                Reprise::NIVEAU_1, (int) $compte['id'], $nomCompte, $maintenant,
+                Reprise::SERRURE_PASSPHRASE, $passphrase, $motDePasse, $nouvellePhrase,
+            ));
             $this->stockage->validerTransaction();
         } catch (PassphraseDejaConsommee) {
             // 🔑 Une seconde requête portant la même passphrase est passée pendant
@@ -307,6 +330,7 @@ final class Recovery
             'mot_de_passe' => $motDePasse,
             'passphrase'   => $nouvellePhrase,
             'compte'       => $nomCompte,
+            'suite'        => $suite,
             'age_jours'    => is_int($emiseLe) ? intdiv(max(0, $maintenant - $emiseLe), 86400) : null,
         ];
     }
@@ -425,7 +449,7 @@ final class Recovery
             $fenetre = $this->stockage->fenetreDuCompte((int) $ancien['compte_id']);
             if ($fenetre !== null && self::fenetreOuverte($fenetre, $maintenant)) {
                 return $this->reprendreParTitulaire((int) $ancien['compte_id'], (string) $ancien['nom_compte'],
-                    $fenetre, $maintenant, $apport, $refus);
+                    $fenetre, $maintenant, $apport, $refus, Reprise::SERRURE_MOT_MEMORISE, $motDerive);
             }
         }
         if (!$ok) {
@@ -451,6 +475,10 @@ final class Recovery
                 null,
             );
             $this->stockage->revoquerSessions((int) $trouve['compte_id']);
+            $suite = $this->suivre(new Reprise(
+                Reprise::NIVEAU_2, (int) $trouve['compte_id'], (string) $trouve['nom_compte'], $maintenant,
+                Reprise::SERRURE_MOT_MEMORISE, $motDerive, $motDePasse, $nouvellePhrase,
+            ));
             $this->stockage->validerTransaction();
         } catch (CodeDejaConsomme) {
             // 🔑 Une seconde requête portant le même code est arrivée pendant nos
@@ -474,6 +502,7 @@ final class Recovery
             'mot_de_passe'   => $motDePasse,
             'passphrase'     => $nouvellePhrase,
             'compte'         => $trouve['nom_compte'],
+            'suite'          => $suite,
             'codes_restants' => $this->stockage->compterCodesRestants((int) $trouve['compte_id']),
         ];
     }
@@ -605,6 +634,8 @@ final class Recovery
         int $maintenant,
         #[\SensitiveParameter] ?string $apport,
         array $refus,
+        string $serrureServie,
+        #[\SensitiveParameter] string $secretServi,
     ): array {
         $motDePasse      = Device::engendrerMotDePasse();
         $nouvellePhrase  = $apport ?? self::engendrerPassphrase($this->langue);
@@ -626,6 +657,10 @@ final class Recovery
             $codes = $this->emettreCodes($compteId, self::CODES_PAR_LOT, $maintenant);
             $this->stockage->revoquerSessions($compteId);
             $appareils = $this->stockage->revoquerAppareils($compteId);
+            $suite = $this->suivre(new Reprise(
+                Reprise::RETOUR_TITULAIRE, $compteId, $nomCompte, $maintenant,
+                $serrureServie, $secretServi, $motDePasse, $nouvellePhrase,
+            ));
             $this->stockage->validerTransaction();
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
@@ -643,6 +678,7 @@ final class Recovery
             'codes'                  => $codes,
             'compte'                 => $nomCompte,
             'appareils_retires'      => $appareils,
+            'suite'                  => $suite,
         ];
     }
 
