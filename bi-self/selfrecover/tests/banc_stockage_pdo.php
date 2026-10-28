@@ -35,6 +35,7 @@ use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\LitigeDejaTranche;
 use Pierroons\SelfRecover\Storage\StorageInterface;
+use Pierroons\SelfRecover\Storage\PassphraseDejaConsommee;
 use Pierroons\SelfRecover\Storage\StockagePdo;
 use Pierroons\SelfRecover\Langue;
 
@@ -230,6 +231,19 @@ verifier('pw_hash porte le mot de passe rendu', Hashing::verify($r1['mot_de_pass
 verifier('passphrase_hash porte la passphrase NEUVE', Hashing::verify($r1['passphrase'], $ligne['passphrase_hash']));
 verifier('l\'ancienne passphrase ne ressert pas',
     ($recovery->parPassphrase('alice', $PHRASE, null, $T0)['ok'] ?? true) === false);
+
+// 🔑 La garde de la course au niveau 1 vit dans l'écriture : une passphrase lue
+// puis consommée entre-temps par une autre requête ne laisse rien écrire.
+$avantCourse = $pdo->query("SELECT pw_hash, passphrase_hash FROM accounts WHERE id = {$compteId}")->fetch(PDO::FETCH_ASSOC);
+$courseLevee = false;
+try {
+    $stockage->remplacerEmpreintes($compteId, Hashing::hash('perdant'), Hashing::hash('perdante'), Hashing::hash($PHRASE));
+} catch (PassphraseDejaConsommee) {
+    $courseLevee = true;
+}
+verifier('une passphrase lue puis consommée ailleurs lève PassphraseDejaConsommee, et rien n\'est écrit',
+    $courseLevee && $pdo->query("SELECT pw_hash, passphrase_hash FROM accounts WHERE id = {$compteId}")
+                        ->fetch(PDO::FETCH_ASSOC) === $avantCourse);
 
 // ⚠️ La date d'émission se refait à chaque émission. Sans ça, un papier imprimé
 // à l'instant s'affiche avec l'âge de celui qu'il remplace.

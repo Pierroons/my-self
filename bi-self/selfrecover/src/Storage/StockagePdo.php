@@ -177,15 +177,26 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         $this->pdo->prepare('UPDATE accounts SET pw_hash = ? WHERE id = ?')->execute([$empreinte, $compteId]);
     }
 
-    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase, ?string $passphraseLue): void
     {
         // ⚠️ La date d'émission se refait ici : une passphrase neuve est émise, et
         // garder l'ancienne date ferait vieillir un papier imprimé à l'instant.
         // C'est le geste que le contrat demande et que sa signature ne peut pas
         // imposer — même famille que l'hôte de dérivation dans `reposerSecrets()`.
-        $this->pdo
-            ->prepare('UPDATE accounts SET pw_hash = ?, passphrase_hash = ?, pass_emise_le = ? WHERE id = ?')
-            ->execute([$empreinteMotDePasse, $empreintePassphrase, time(), $compteId]);
+        if ($passphraseLue === null) {
+            $this->pdo
+                ->prepare('UPDATE accounts SET pw_hash = ?, passphrase_hash = ?, pass_emise_le = ? WHERE id = ?')
+                ->execute([$empreinteMotDePasse, $empreintePassphrase, time(), $compteId]);
+
+            return;
+        }
+        $st = $this->pdo->prepare(
+            'UPDATE accounts SET pw_hash = ?, passphrase_hash = ?, pass_emise_le = ? WHERE id = ? AND passphrase_hash = ?'
+        );
+        $st->execute([$empreinteMotDePasse, $empreintePassphrase, time(), $compteId, $passphraseLue]);
+        if ($st->rowCount() !== 1) {
+            throw new PassphraseDejaConsommee('la passphrase lue n\'est plus celle du compte');
+        }
     }
 
     public function revoquerSessions(int $compteId): void

@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\PassphraseDejaConsommee;
 use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
@@ -123,12 +124,23 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $this->executer('UPDATE accounts SET pw_hash = :h WHERE id = :i', [':h' => $empreinte, ':i' => $compteId]);
     }
 
-    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase, ?string $passphraseLue): void
     {
+        if ($passphraseLue === null) {
+            $this->executer(
+                'UPDATE accounts SET pw_hash = :h, pass_hash = :p WHERE id = :i',
+                [':h' => $empreinteMotDePasse, ':p' => $empreintePassphrase, ':i' => $compteId],
+            );
+
+            return;
+        }
         $this->executer(
-            'UPDATE accounts SET pw_hash = :h, pass_hash = :p WHERE id = :i',
-            [':h' => $empreinteMotDePasse, ':p' => $empreintePassphrase, ':i' => $compteId],
+            'UPDATE accounts SET pw_hash = :h, pass_hash = :p WHERE id = :i AND pass_hash = :lue',
+            [':h' => $empreinteMotDePasse, ':p' => $empreintePassphrase, ':i' => $compteId, ':lue' => $passphraseLue],
         );
+        if ($this->db->changes() !== 1) {
+            throw new PassphraseDejaConsommee('la passphrase lue n\'est plus celle du compte');
+        }
     }
 
     public function revoquerSessions(int $compteId): void

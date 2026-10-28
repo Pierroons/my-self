@@ -10,6 +10,27 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.0 — deux récupérations de niveau 1 simultanées ne réussissent plus toutes les deux — 28 octobre 2026
+
+Rupture de contrat : `StorageInterface::remplacerEmpreintes()` prend un quatrième paramètre.
+
+`parPassphrase()` lit l'empreinte de la passphrase, joue son Argon2id, puis la remplace. Le remplacement
+était un `UPDATE` sans condition : deux requêtes portant la même passphrase recevaient toutes les deux un
+accès rendu, et le compte gardait le mot de passe de celle qui écrivait en second. Une passphrase servait
+deux fois, et l'un des deux mots de passe affichés n'ouvrait rien. Mesuré par la passe d'architecture du
+lot C, trois fois sur trois.
+
+- `remplacerEmpreintes($compteId, $motDePasse, $passphrase, ?string $passphraseLue)` n'écrit que sur un
+  compte dont la passphrase rangée est encore celle qui a été lue, et lève `PassphraseDejaConsommee`
+  sinon — le modèle de `consommerCode()` et de `CodeDejaConsomme`. `null` écrit sans condition :
+  `parCode()`, dont le code consommé a déjà tranché la course, et l'inscription par l'application.
+- La requête perdante reçoit le refus ordinaire, après l'échéance commune, sans qu'aucun secret neuf lui
+  soit montré.
+- Les adaptateurs du lab et de la démo duo suivent.
+
+`sanity_recovery` passe à 89 cas (85 sous `tor-onion`), `banc_stockage_pdo` à 204. Deux canaris, chacun vu
+rouge sur son cas.
+
 ### SelfRecover 0.13.0, lot B — après un niveau 3, le titulaire qui revient avec un secret d'avant l'emporte — 28 octobre 2026
 
 Rupture de contrat : `StorageInterface` gagne sept méthodes, et deux tables s'ajoutent au schéma.

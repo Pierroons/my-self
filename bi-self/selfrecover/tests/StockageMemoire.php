@@ -200,8 +200,13 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
     /** L'horloge de l'adaptateur. Une implémentation réelle appellerait `time()`. */
     public int $horloge = 1_700_000_000;
 
-    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase, ?string $passphraseLue): void
     {
+        foreach ($this->passphrases as $p) {
+            if ($p['id'] === $compteId && $passphraseLue !== null && $p['empreinte_passphrase'] !== $passphraseLue) {
+                throw new \Pierroons\SelfRecover\Storage\PassphraseDejaConsommee('passphrase déjà consommée');
+            }
+        }
         $this->empreintes[$compteId] = $empreinteMotDePasse;
         foreach ($this->passphrases as $nom => $p) {
             if ($p['id'] === $compteId) {

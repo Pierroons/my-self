@@ -14,6 +14,7 @@ use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use LogicException;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\PassphraseDejaConsommee;
 use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
@@ -273,9 +274,18 @@ final class Recovery
                 (int) $compte['id'],
                 Hashing::hash($motDePasse),
                 Hashing::hash($nouvellePhrase),
+                (string) $compte['empreinte_passphrase'],
             );
             $this->stockage->revoquerSessions((int) $compte['id']);
             $this->stockage->validerTransaction();
+        } catch (PassphraseDejaConsommee) {
+            // 🔑 Une seconde requête portant la même passphrase est passée pendant
+            // notre Argon2id, et elle l'a consommée la première : le perdant reçoit
+            // le refus ordinaire, sans qu'aucun secret neuf ne lui soit montré.
+            $this->stockage->annulerTransaction();
+            $this->attendreEcheance($debut);
+
+            return $refus;
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
 
@@ -438,6 +448,7 @@ final class Recovery
                 (int) $trouve['compte_id'],
                 Hashing::hash($motDePasse),
                 Hashing::hash($nouvellePhrase),
+                null,
             );
             $this->stockage->revoquerSessions((int) $trouve['compte_id']);
             $this->stockage->validerTransaction();

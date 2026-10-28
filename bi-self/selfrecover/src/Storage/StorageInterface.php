@@ -258,8 +258,16 @@ interface StorageInterface
      * quatre ans » porterait sur un secret d'hier. Avec `reposerSecrets()`, ce
      * sont les deux seuls endroits du protocole où la passphrase est réécrite ;
      * l'inscription est le troisième, et elle appartient à l'application.
+     *
+     * ⚠️ **La garde appartient à cette écriture, pas à l'appelant.**
+     * `Recovery::parPassphrase()` a lu l'empreinte avant son Argon2id : deux
+     * requêtes portant la même passphrase passent toutes les deux la vérification.
+     * Avec `$passphraseLue`, l'écriture ne porte que sur un compte dont la
+     * passphrase rangée est encore celle-là, et **lève** `PassphraseDejaConsommee`
+     * sinon. `null` écrit sans condition : `parCode()`, dont `consommerCode()` a
+     * déjà tranché la course, et l'inscription.
      */
-    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void;
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase, ?string $passphraseLue): void;
 
     // ── Récupération de niveau 2 : code de récupération + mot mémorisé ──────
 

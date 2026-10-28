@@ -593,6 +593,30 @@ verifier('🔑 une course sur la consommation devient un refus ordinaire',
     $rCourse['ok'] === false && $rCourse['message'] === 'Code ou mot mémorisé incorrect.',
     $rCourse['message']);
 
+// 🔑 Le niveau 1 a la même course : `parPassphrase()` lit l'empreinte, joue son
+// Argon2id, puis remplace. Deux requêtes portant la même passphrase passaient
+// toutes les deux, et le compte gardait le mot de passe de celle qui écrivait en
+// second. Le double rejoue la requête concurrente : elle consomme la passphrase
+// entre la lecture et l'écriture.
+final class StockageL1PerdLaCourse extends StockageMemoire
+{
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase, ?string $passphraseLue): void
+    {
+        $this->passphrases['alice']['empreinte_passphrase'] = Hashing::hash('passphrase émise à la requête concurrente');
+        $this->empreintes[$compteId] = 'mot de passe de la requête concurrente';
+        parent::remplacerEmpreintes($compteId, $empreinteMotDePasse, $empreintePassphrase, $passphraseLue);
+    }
+}
+
+$stL = new StockageL1PerdLaCourse();
+$stL->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
+$stL->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($PHR)];
+$rL = (new Recovery($stL, $SEL, $PROFIL, Langue::FR, delaiRefusUs: 0))->parPassphrase('alice', $PHR, $IP, $now);
+verifier('🔑 une course sur la passphrase du niveau 1 devient un refus ordinaire, sans secret neuf montré',
+    $rL['ok'] === false && !isset($rL['mot_de_passe']) && !isset($rL['passphrase']), json_encode($rL));
+verifier('… et la requête perdante n\'a rangé aucun mot de passe',
+    !isset($stL->empreintes[1]) || $stL->empreintes[1] === 'mot de passe de la requête concurrente');
+
 // ── La rétention, côté adaptateur mémoire ───────────────────────────────────
 //
 // Le sel du déploiement est la clé de l'index des codes : une page de débogage

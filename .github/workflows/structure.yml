@@ -495,8 +495,8 @@ jobs:
           # se lirait « la propriété tient des deux côtés ».
           for profil in clearweb tor-onion; do
             case "$profil" in
-              clearweb)  attendu=87 ;;
-              tor-onion) attendu=83 ;;
+              clearweb)  attendu=89 ;;
+              tor-onion) attendu=85 ;;
             esac
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
@@ -504,6 +504,35 @@ jobs:
             echo "$sortie" | grep -qE "^OK — $attendu/$attendu\$" \
               || { echo "::error::le banc de récupération n'a pas joué ses $attendu cas sous $profil"; exit 1; }
           done
+
+      # Deux niveaux 1 portant la même passphrase passaient tous les deux : la
+      # consommation était un UPDATE sans condition, et le compte gardait le mot de
+      # passe du second écrivain. La garde vit dans l'écriture ; chaque canari la
+      # retire d'un côté et exige que son banc rougisse sur ce cas-là.
+      - name: Canaris — la passphrase du niveau 1 ne sert qu'une fois, même en course
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          canari $R/src/Storage/StockagePdo.php \
+            "            throw new PassphraseDejaConsommee('la passphrase lue n\\'est plus celle du compte');" '            return;' \
+            $R/tests/banc_stockage_pdo.php 'une passphrase lue puis consommée ailleurs lève PassphraseDejaConsommee'
+          canari $R/tests/StockageMemoire.php \
+            '            if ($p['"'"'id'"'"'] === $compteId && $passphraseLue !== null && $p['"'"'empreinte_passphrase'"'"'] !== $passphraseLue) {' \
+            '            if (false) {' \
+            $R/tests/sanity_recovery.php 'une course sur la passphrase du niveau 1 devient un refus ordinaire'
 
       # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
       # code. Le canari la fait répondre « rien » à un code inconnu, l'oracle que la
@@ -3246,8 +3275,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
-          echo "$sortie" | grep -qE '^✅ 203 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 203 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 204 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 204 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
