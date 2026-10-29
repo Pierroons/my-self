@@ -5,7 +5,7 @@
 **Moteur de modération communautaire autonome par raisonnement social**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.1](https://img.shields.io/badge/status-v0.6.1-yellow.svg)](#statut)
+[![Status: v0.7.0](https://img.shields.io/badge/status-v0.7.0-yellow.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -36,13 +36,14 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 - La raison doit **dire quelque chose** : 40 caractères, 3 mots distincts, aucun mot ressassé (deux fois sont toujours permises ; au-delà, un mot court comme « de » ou « mon » ne dépasse pas le tiers des mots, un mot de quatre lettres ou plus pas le cinquième), au moins 12 caractères différents, pas de rafale d'un même caractère. Cinq règles parce qu'une seule se contourne — on atteint n'importe quelle longueur en bloquant une touche. Elle ne dépasse pas non plus 1000 caractères : cette borne protège la page de la personne visée, où les motifs s'affichent
 - Voter est une **recommandation, pas une obligation** — ça aide à reconnaître les bons coéquipiers ou signaler les comportements problématiques
 - Raisons configurables par plateforme via `setReasonCodes()` ; le jeu par défaut convient à un forum (hors-sujet, agressif, désinformation, entraide, contribution utile, autre)
-- Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis
+- Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis. Et l'arrondi ne protège pas d'un chiffre public : si l'hôte affiche sans session le score d'un message ou la réputation d'un auteur, qui les relève assez souvent date chaque vote à la minute, et le message visé
 
 ### Score de réputation
 - Chaque utilisateur démarre à **20** (`Config`)
 - Score plafonné à **30** (`Config`) — pas d'accumulation de crédit social
 - Monter est lent, descendre est rapide : un downvote retire un point immédiatement, la remontée passive en rend un par intervalle de calme
 - **Convalescence** : sous 5, l'état est posé et le score remonte tout seul **jusqu'à 20**, son point de départ — jamais au-delà. Le droit de vote revient à 5, l'état se lève à 20
+- La remontée borne sa propre progression, pas le score : un point gagné par un vote positif pendant la convalescence reste acquis : le droit de vote revient dès que le score atteint 5, et l'état se lève dès qu'il atteint 20, sans attendre le point suivant de la remontée
 - L'état est **visible** sur son propre profil et pour l'arbitre : il annonce qu'il y a eu bêtise, et que le score remonte par la patience, pas par le mérite. Les autres membres ne voient qu'un palier de réputation, jamais l'état de sanction ; sous le seuil du vote, ce palier ne porte plus de chiffre
 - C'est un **état**, pas un seuil. Conditionner la remontée à « score < 5 » l'arrête pile au seuil qui rend le droit de vote, et laisse le compte à vie sur le fil du rasoir
 
@@ -59,14 +60,16 @@ La punition n'est pas technique — elle est sociale.
 ### Escalade des sanctions
 - Score < 5 → **perte du droit de vote**
 - Score = 0 → **ban temporaire, gradué** : 24 h → 7 j → 30 j en service (`Config::prod()`), 2 → 10 → 30 min en démonstration (`Config::demo()`). Le dernier palier **se reconduit** : la machine ne prononce jamais d'exclusion définitive, au-delà c'est l'arbitre qui décide
-- **Le ban automatique ne tombe que si un journal est branché** (`setJournal()`), et jamais dans la transaction d'un hôte, qui pourrait encore l'annuler. Sans journal, une réputation à zéro lève un signalement, et aucun geste d'arbitre ne passe : ni la machine ni un arbitre ne sanctionnent sans trace. Avec lui, chaque début, chaque fin et chaque levée de ban s'écrit au journal, **avant** la base : une panne laisse une trace sans effet, jamais une peine sans trace. Une fin de peine que le journal refuse d'inscrire reste à refermer : le vote ou la page qui la constate continue, l'arbitre est prévenu (`journal_en_panne`, et la console d'arbitre le dit pour tout le site), et la clôture suit le retour du journal. D'ici là, la personne n'est plus bannie, mais son droit de vote et sa réputation remise au départ attendent la clôture, et aucun nouveau ban ne commence
+- **Le ban automatique ne tombe que si un journal est branché** (`setJournal()`), et jamais dans la transaction d'un hôte, qui pourrait encore l'annuler. Sans journal, une réputation à zéro lève un signalement, et aucun geste d'arbitre ne passe : ni la machine ni un arbitre ne sanctionnent sans trace. Avec lui, chaque début, chaque fin et chaque levée de ban s'écrit au journal, **avant** la base : une panne laisse une trace sans effet, jamais une peine sans trace. Une fin de peine s'inscrit à la première écriture qui touche le compte — un vote, un geste d'arbitre, le balayage —, jamais à la lecture, qui la montre dès l'échéance. Si le journal refuse de l'inscrire, elle reste à refermer : l'écriture qui l'a tentée continue, l'arbitre est prévenu (`journal_en_panne`, et la console d'arbitre le dit pour tout le site), et la clôture suit le retour du journal. D'ici là, la page montre la peine finie, mais seul l'état inscrit autorise une écriture : le compte ne vote pas, et le refus dit pourquoi — mais `canVote()` ne le dit pas d'avance : seul un essai sait si le journal est revenu ; aucun geste d'arbitre ni aucun nouveau ban ne passe sur lui
 - Une peine en cours **ne se rallonge pas** au vote contraire suivant
 - Après un ban automatique purgé : score remis à **20**, strikes préservés — le ban suivant sera plus long
 - Ce qu'un ban bloque au-delà du vote relève de la plateforme (`estBanni()`). Le lab bloque aussi la publication, et laisse ouverts la connexion et les messages privés
 - 3 mois sans incident : remise à zéro des strikes — *pas encore codé*
 
 ### Gestes d'arbitre
-- **Bannir**, **lever**, **maintenir** : chaque geste porte le nom de l'arbitre et s'écrit au journal ; sans journal branché, aucun ne passe. Bannir exige un motif, contrôlé comme celui d'un downvote : la personne bannie doit pouvoir lire ce qu'on lui reproche ; il ne clôt pas la revue ouverte, et son acte dit laquelle l'était. **Lever** (la grâce) remet tout au départ : le ban, la réputation, les strikes, une suspension de vote posée par une version antérieure et encore en cours, et le rang de meute — l'historique des épisodes reste lisible. **Maintenir** clôt la revue du compte, quel qu'en soit le motif. **Classer** clôt un signalement sans rien toucher d'autre, motif exigé
+- **Bannir**, **lever**, **maintenir**, **classer** : chaque geste porte le nom de l'arbitre et s'écrit au journal, avec les signalements ouverts et ceux qu'il ferme ; sans journal branché, aucun ne passe. Bannir exige un motif, contrôlé comme celui d'un downvote : la personne bannie doit pouvoir lire ce qu'on lui reproche ; il ne ferme aucun signalement. **Lever** (la grâce) remet au départ le ban, la réputation, les strikes, une suspension de vote posée par une version antérieure et encore en cours, et le rang de meute — l'historique des épisodes reste lisible. Elle ferme ce qu'elle défait : les signalements d'état, et la récidive de meute quand elle en efface le rang ; une salve, une troncature ou un votant étendu restent à classer, motif écrit. **Maintenir** prend acte d'un ban automatique : son signalement sort de la file, la peine court ; un ban d'arbitre n'a rien à maintenir. **Classer** ferme un signalement, nommé, sans rien toucher d'autre, motif exigé
+- **Un signalement par cause** : chaque cause ouverte sur un compte a sa ligne, et aucune n'en remplace une autre. Un signalement d'état (`reputation_zero`, `ban_auto`, `journal_en_panne`) tombe seul quand l'état cesse ; un signalement de comportement (`salve_rapide`, `meute_recidive`, `votants_tronques`, `votant_etendu`, `bans_arbitre`) ne tombe que classé par un arbitre. Un fait qui se répète fait monter son compte ; un geste reçoit le signalement tel que la console l'a affiché, avec ses détections, et refuse si un vote neuf l'a redétecté depuis — même quand la détection a replié une salve d'autres votants dans le même fait : l'arbitre ne ferme pas ce qu'il n'a pas vu. Le balayage, qui relit des votes déjà détectés, ne fait rien refuser. Le votant étendu et la troncature font exception : chez eux, seul un fait compté fait refuser, au plus une fois par `balayagePeriodeSecondes` depuis le précédent, sans quoi chaque vote priverait l'arbitre du classement aussi longtemps qu'il dure. La console montre une page par cause, la plus ancienne en tête : un flot de salves remplit la sienne et ne pousse rien d'autre hors de la vue
+- **Bans d'arbitre répétés** : un ban d'arbitre compte comme un épisode, et alourdit le ban automatique suivant — la récidive se paie, quelle que soit la main qui l'a constatée. L'acte de début de ban dit combien de ses épisodes viennent d'un arbitre, et au **2ᵉ ban d'arbitre** sur un même compte (`bansArbitreSignal`), un signalement `bans_arbitre` part dans la file des arbitres : un enchaînement ne passe plus sans être signalé, mais rien n'empêche l'arbitre qui a banni de classer ce signal lui-même. La grâce, qui remet les strikes à zéro, le ferme. Ces bans se comptent depuis la 0.7.0 : une base migrée part de zéro
 - **Plancher** : avant un tiers de la peine **en cours** (`Config::$plancherFraction`), une levée exige un motif écrit et s'inscrit comme **levée anticipée**, avec le temps qui restait. Un tiers de la peine en cours, jamais du palier maximal : sinon le plancher d'un premier ban d'un jour durerait dix jours. Le plancher ne ferme pas le favoritisme ; il le rend coûteux, parce qu'il laisse une trace signée
 - **Jamais de plancher sur une meute détectée** : quand le moteur reconnaît que la meute a **causé** le ban — des votes annulés, posés avant son début, avaient retiré un point —, il le lève seul et l'écrit. La levée rend ce que ces votes avaient pris et retire le strike de ce ban, rien de plus. Elle répare une injustice ; elle n'en accorde aucune. Des votes posés pendant le ban ne le lèvent pas, et un ban d'arbitre ne se lève pas ainsi : il n'est pas venu des votes
 
@@ -102,6 +105,15 @@ ensemble. Le moteur neutralise donc ce que le groupe ajoute, et ne punit personn
 - **Limite : la meute qui a contribué.** Des comptes liés qui ont réellement fait
   tomber une cible lèvent le ban qu'ils ont causé, même s'ils agissaient pour elle. Ils
   n'obtiennent que cette levée et la restitution exacte de leurs votes
+- **Limite : la meute qui soutient.** La détection ne lit que les votes négatifs. Des
+  comptes liés qui votent tous pour un même membre ne sont ni vus ni neutralisés, et le
+  portent jusqu'au plafond, ce qui le rend plus long à faire tomber ; le plafond par
+  paire les borne chacun, pas leur nombre. La détection des deux sens est prévue en 0.8.0
+- **Limite : l'existence d'un compte.** Le motif est facultatif au vote positif : un vote
+  positif sans motif sur un identifiant passe s'il existe et refuse sinon, et donne un
+  point à la cible. Il dit donc si un compte existe ; le plafond par paire le borne, pas
+  le nombre d'identifiants sondés. Un vote négatif, lui, exige un motif valide avant de
+  regarder la cible
 
 ### Anti-manipulation
 - **Anti-Sybil** : délai sur les nouveaux comptes, sauf s'ils ont déjà publié : **24 h** en service, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md), **2 min** en démonstration. Le refus dit l'attente restante
@@ -120,16 +132,19 @@ Le moteur est une classe statique ; l'hôte fournit la connexion `PDO` à chaque
 | Appel | Rôle |
 |---|---|
 | `setConfig(Config)` | les seuils : `Config::demo()`, `Config::prod()` ou les tiens. **Seule source** des seuils : le moteur les lit là, et tes pages aussi, par `Moderate::config()` |
-| `setJournal(Journal)` | branche le journal, et avec lui le ban automatique et les gestes d'arbitre. L'interface [`Journal`](./src/Journal.php) liste les actes et leurs clés ; l'écriture doit être durable et non réécrivable. Un refus remonte toujours, sauf quand un vote ou une lecture constate une peine échue : sa clôture attend alors, et l'arbitre est prévenu |
-| `balayerBansEchus(PDO)` | referme les peines échues en une passe, pour un planificateur. Sans lui, une fin se constate à la lecture suivante, et le journal porte l'échéance ET l'instant de la constatation |
+| `setJournal(Journal)` | branche le journal, et avec lui le ban automatique et les gestes d'arbitre. L'interface [`Journal`](./src/Journal.php) liste les actes et leurs clés ; l'écriture doit être durable et non réécrivable. Un refus remonte toujours, sauf quand un vote ou un geste constate une peine échue : sa clôture attend alors, et l'arbitre est prévenu |
+| `balayerBansEchus(PDO)` | inscrit en une passe ce que le temps a fait — les fins de peine, au journal d'abord, et les remontées de convalescence —, pour un planificateur ou la console d'arbitre, qui lit la base et l'appelle avant de la lire. Sans planificateur, le premier vote négatif de chaque tranche de balayage le fait ensuite, pour **50** comptes au plus (`balayageFiletMax`), dans sa propre requête et sous le verrou d'écriture : un planificateur épargne ce coût au votant. Un vote fait dans la transaction d'un hôte prend la tranche sans balayer, et un hôte qui fait voter dans ses transactions a besoin d'un planificateur. Sinon, une fin s'inscrit à la première écriture qui touche le compte. Après un premier refus du journal, la passe ne l'appelle plus : elle inscrit encore les convalescences, laisse les fins à la passe suivante — où les comptes déjà refusés passent en dernier —, et le refus remonte en fin de passe. Le journal porte l'échéance ET l'instant de l'inscription |
 | `applyVote(PDO, votant, type, cible, valeur, ?motif)` | un vote, qui rend `ok`, `blocked` et `message` — jamais la réputation de la cible, que le profil tait sous le seuil du vote. Il s'inscrit tout ou rien : dans une transaction que le moteur ouvre (`BEGIN IMMEDIATE`) quand l'hôte n'en a pas, derrière un point de reprise (`SAVEPOINT`) dans celle de l'hôte sinon, à qui il revient alors de valider ou d'annuler le reste. Dans la transaction de l'hôte, il n'arme pas le ban automatique : une réputation à zéro y est signalée, comme sans journal. Une clôture de peine ou une levée pour meute faites là, puis défaites avec elle, se refont au passage suivant : le journal porte alors l'acte deux fois |
+| `getReputation(PDO, id)` · `canVote(PDO, id)` | lisent sans rien écrire, ni en base ni au journal, et sans prendre de verrou : l'état rendu est celui de l'instant — remontée de convalescence et fin de peine comprises —, même quand la base ne les porte pas encore, et `fin_en_attente` dit qu'une fin attend son inscription. Un compte sans ligne se lit au départ, sans qu'une ligne soit créée. Les colonnes de `member_moderation` sont l'état que le moteur a inscrit : un hôte les lit, il ne les écrit pas |
 | `estBanni(PDO, id)` · `bansEnCours(PDO)` | ce que l'hôte bloque, et ce que l'arbitre doit voir : origine, motif, fin, temps restant, plancher, et pour un ban automatique la composition de sa chute |
-| `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif)` · `adminClasser(PDO, id, arbitre, motif)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]`. Chacun relit l'état et décide sous le verrou d'écriture, pris d'emblée. Ils refusent dans la transaction d'un hôte : le journal ne se défait pas avec elle |
+| `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif, ?vu)` · `adminClasser(PDO, id, arbitre, motif, ?vu)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]`. Chacun relit l'état et décide sous le verrou d'écriture, pris d'emblée. Ils refusent dans la transaction d'un hôte : le journal ne se défait pas avec elle. `vu` est le signalement affiché, `['signal' => id, 'detections' => n]` ; sans lui, maintenir et classer visent le seul signalement de leur ressort, et refusent s'il y en a plusieurs |
+| `migrerSignaux(PDO)` | reprend dans `mod_signaux` la case unique d'avant la 0.7.0 : à appeler une fois, juste après avoir créé la table ; la marque qui l'empêche de se rejouer est à l'hôte. Tant qu'elle n'a pas tourné, le moteur refuse de lire ou de signaler un compte dont la case est ouverte, par une `LogicException` qui la nomme |
+| `flaggedForReview(PDO)` · `signauxOuverts(PDO)` | les comptes à arbitrer, le plus ancien en tête, une ligne par compte avec tous ses signalements ; et les signalements à voir, une page par cause, la plus ancienne en tête, avec le total de chaque cause |
 | `dureeEnClair(secondes)` | une durée lisible, unités passées par ton traducteur (`setTranslator()`) |
 
-**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes` (dont `effet`, ce que le vote a réellement changé à la réputation ; un vote antérieur à la colonne la laisse à `NULL`, sans effet connu : il ne se rend pas et ne compte comme cause d'aucun ban), `mod_pack_flags`, `mod_sweeps` (une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ; sans elle, chaque vote négatif échoue au lieu de laisser le filet s'éteindre), et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
+**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes dont ceux d'un arbitre (`strikes_admin`), droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes` (dont `effet`, ce que le vote a réellement changé à la réputation ; un vote antérieur à la colonne la laisse à `NULL`, sans effet connu : il ne se rend pas et ne compte comme cause d'aucun ban), `mod_pack_flags`, `mod_signaux` (une ligne par signalement ouvert, par compte et par cause ; `needs_review` et `review_reason` restent, résumé que le moteur tient pour qui lit la base et ne relit jamais — une base d'avant la 0.7.0 crée la table puis appelle `migrerSignaux()` une fois, sans quoi le moteur refuse tout compte dont la case est ouverte), `mod_sweeps` (une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ; sans elle, chaque vote négatif échoue au lieu de laisser le filet s'éteindre), et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
 
-Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_set()`).
+Les dates de ses messages, et le jour des motifs que `reasonsFor()` rend, suivent le fuseau de l'hôte (`date_default_timezone_set()`).
 
 ## Documentation
 
@@ -138,8 +153,29 @@ Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_s
 
 ## Statut
 
-🟢 **v0.6.1** — le moteur est ici, dans `src/`, et le lab l'importe comme il
+🟢 **v0.7.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
 importe SelfRecover et SelfDataGuard.
+
+La 0.7.0 ferme ce que deux audits de la 0.6 ont relevé, et change ce que voit l'hôte :
+- **une lecture n'écrit plus rien** : `getReputation()` et `canVote()` calculent l'état de l'instant sans
+  l'inscrire ni prendre de verrou, et `fin_en_attente` dit qu'une fin de peine attend son inscription ; un
+  vote, un geste d'arbitre ou le balayage l'inscrivent. Sans planificateur, le premier vote négatif de chaque
+  tranche balaie ensuite au plus `balayageFiletMax` comptes. Un écrivain du moteur qui lirait par
+  `getReputation()` lève `LectureDansUneEcriture` ;
+- **pas de sanction sans trace** : sans journal branché, aucun geste d'arbitre ne passe ; dans la transaction
+  d'un hôte, les gestes sont refusés et le ban automatique ne s'arme pas ;
+- **un signalement par cause**, dans `mod_signaux` : un geste qui ferme un signal reçoit le jeton
+  `$vu = {signal, detections}` et refuse si le signal a été redétecté depuis l'affichage ; `signauxOuverts()`
+  les liste ; les listes d'un acte (`ouverts`, `ferme`) partent en texte JSON ;
+- **les bans d'arbitre se comptent à part** (`strikes_admin`, clé `dont_arbitre` de `ban_debut`), et leur
+  répétition se signale (`bans_arbitre`, `Config::bansArbitreSignal`) ;
+- et : une chute à zéro pendant un ban d'arbitre se signale ; la convalescence ne rabat plus un score monté
+  par des votes positifs, et rend le droit de vote dès 5 ; un geste sur un compte inexistant est refusé ; le
+  jour des motifs suit le fuseau de l'hôte ; `Config` refuse un filet négatif.
+
+**Monter depuis la 0.6** : ajouter à `member_moderation` la colonne `strikes_admin INTEGER NOT NULL DEFAULT 0`
+— les bans d'arbitre se comptent alors depuis la 0.7.0 — ; créer `mod_signaux` comme le schéma du lab ; puis
+appeler `migrerSignaux()` une fois, sans quoi le moteur refuse tout compte dont la case est ouverte.
 
 La 0.6.1 ne change ni promesse ni schéma. Un vote s'inscrit tout ou rien : `applyVote()` tient
 ses écritures dans une transaction — la sienne, ou un point de reprise dans celle de l'hôte —, et une

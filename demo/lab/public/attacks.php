@@ -74,7 +74,7 @@ render_header(t('atk.title'), $account);
 <div class="result hidden" id="result"></div>
 
 <script nonce="<?= nonce() ?>">
-const ATK = <?= json_encode(['running'=>t('atk.js.running'),'goal'=>t('atk.js.goal'),'verdict'=>t('atk.js.verdict'),'defense'=>t('atk.js.defense'),'error'=>t('atk.js.error'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
+const ATK = <?= json_encode(['running'=>t('atk.js.running'),'goal'=>t('atk.js.goal'),'verdict'=>t('atk.js.verdict'),'verdictNon'=>t('atk.js.verdict.non'),'defense'=>t('atk.js.defense'),'error'=>t('atk.js.error'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function lancer(scenario, btn){
   const box=document.getElementById('result');
@@ -95,7 +95,7 @@ function lancer(scenario, btn){
     h+='<div class="panel verte"><div class="ptitle">🟢 '+esc(d.cote_legitime.label)+'</div><ul>';
     d.cote_legitime.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});
     h+='</ul></div></div>';
-    h+='<div class="verdict"><div class="v">'+ATK.verdict+'</div>';
+    h+='<div class="verdict"><div class="v">'+(d.neutralise===false?ATK.verdictNon:ATK.verdict)+'</div>';
     h+='<div class="d">'+ATK.defense+' '+esc(d.defense)+'</div>';
     h+='<div class="k">💡 '+esc(d.message_cle)+'</div></div>';
     box.innerHTML=h;

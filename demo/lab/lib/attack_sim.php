@@ -193,6 +193,13 @@ final class AttackSimulator
     }
 
     // ─── Scénario 3 : Sybil + pack-voting ────────────────────────────────────
+    // La meute se joue comme le moteur la reconnaît : des faux comptes qui se sont
+    // écrit dans les deux sens, et qui votent avec un motif valide — sans motif, leurs
+    // votes seraient refusés, et sans lien, aucune meute n'existerait. Ce que la page
+    // annonce se compte en base, et le verdict ne dit « neutralisé » que si la meute
+    // a pesé un membre seul.
+    private const MOTIF_MEUTE = 'Ce message propage une rumeur sans aucune source vérifiable sur ce membre.';
+
     private static function runPackVoting(): array
     {
         $pdo = self::sandbox();
@@ -209,19 +216,29 @@ final class AttackSimulator
         $pdo->prepare('INSERT INTO threads (account_id,titre,categorie,created_at) VALUES (?,?,?,?)')->execute([$ids['cible'], 'Mon sujet', 'general', $old]);
         $pdo->prepare('INSERT INTO posts (thread_id,account_id,contenu,created_at) VALUES (1,?,?,?)')->execute([$ids['cible'], 'contenu', $old]);
 
+        // 🔴 les faux comptes se sont écrit dans les deux sens : c'est le lien que la détection lit
+        $faux = ['faux1', 'faux2', 'faux3'];
+        foreach ($faux as $a) {
+            foreach ($faux as $b) {
+                if ($a !== $b) {
+                    $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)')
+                        ->execute([$ids[$a], $ids[$b], 'chiffre', $old]);
+                }
+            }
+        }
+
         // 🟢 vote honnête d'abord (membre établi)
         Moderate::applyVote($pdo, $ids['honnete'], 'member', $ids['cible'], 1);
         $repApresHonnete = Moderate::getReputation($pdo, $ids['cible'])['reputation'];
 
-        // 🔴 pack-voting : 3 faux comptes downvotent en <60s
-        foreach (['faux1', 'faux2', 'faux3'] as $f) {
-            Moderate::applyVote($pdo, $ids[$f], 'member', $ids['cible'], -1);
+        // 🔴 pack-voting : 3 faux comptes liés downvotent, chacun avec un motif valide
+        $acceptes = 0;
+        foreach ($faux as $f) {
+            $acceptes += (int) Moderate::applyVote($pdo, $ids[$f], 'member', $ids['cible'], -1, self::MOTIF_MEUTE, 'desinformation')['ok'];
         }
-        $repApresAttaque = Moderate::getReputation($pdo, $ids['cible'])['reputation'];
-
-        // défense : détection
-        $det = Moderate::detectPackVoting($pdo);
-        $repApresDetection = Moderate::getReputation($pdo, $ids['cible'])['reputation'];
+        $annules = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE target_author = {$ids['cible']} AND blocked_reason = 'pack_voting'")->fetchColumn();
+        $repFinale = Moderate::getReputation($pdo, $ids['cible'])['reputation'];
+        $impact = $repFinale - $repApresHonnete;
 
         // anti-Sybil : un compte tout neuf tente de voter
         $pdo->prepare('INSERT INTO accounts (username,pw_hash,pass_hash,recovery_hash,created_at) VALUES (?,?,?,?,?)')->execute(['sybil_neuf', 'x', 'x', 'x', time()]);
@@ -231,35 +248,40 @@ final class AttackSimulator
         // le vote honnête est-il toujours compté ?
         $voteHonnete = Moderate::userVote($pdo, $ids['honnete'], 'member', $ids['cible']);
 
+        $neutralise = $acceptes === count($faux) && $annules === count($faux) - 1 && $impact === -1
+            && !$canVote && $voteHonnete !== null;
+
         return [
             'ok' => true,
             'titre' => 'Sybil + pack-voting (enterrement coordonné)',
             'objectif' => "Créer de faux comptes pour faire chuter la réputation d'un membre par un downvote coordonné.",
             'etapes' => [
                 ['action' => 'Un membre honnête soutient la cible (+1)', 'resultat' => sprintf(tc('réputation : %d'), $repApresHonnete)],
-                ['action' => '3 faux comptes downvotent la cible en moins de 60 s', 'resultat' => sprintf(tc('réputation chute à : %d'), $repApresAttaque)],
-                ['action' => 'Détection de pack-voting', 'resultat' => sprintf(tc('%d votes annulés, réputation restaurée à : %d'), (int) $det['cancelled_votes'], $repApresDetection)],
+                ['action' => '3 faux comptes, liés par des messages privés, downvotent la cible avec un motif', 'resultat' => sprintf(tc('%1$d votes acceptés sur %2$d'), $acceptes, count($faux))],
+                ['action' => 'Détection de meute, à chaque vote négatif', 'resultat' => sprintf(tc('%1$d votes annulés, le premier garde le sien ; réputation : %2$d'), $annules, $repFinale)],
                 ['action' => 'Un compte créé à l\'instant tente de voter', 'resultat' => $canVote ? 'autorisé (!)' : 'refusé — ' . $why],
             ],
             'cote_attaquant' => [
                 'label' => 'Tentative de manipulation',
                 'lignes' => [
-                    sprintf(tc('3 downvotes coordonnés → %d annulés (pack_voting)'), (int) $det['cancelled_votes']),
+                    sprintf(tc('3 downvotes coordonnés → %d annulés (pack_voting)'), $annules),
                     sprintf(tc('Faux compte neuf → %s'), $canVote ? tc('a pu voter') : tc('BLOQUÉ (anti-Sybil)')),
-                    sprintf(tc('Impact net sur la réputation : %d'), 0),
+                    sprintf(tc('Impact net sur la réputation : %d (le poids d\'un membre seul : -1)'), $impact),
                 ],
             ],
             'cote_legitime' => [
                 'label' => 'Modération communautaire honnête',
                 'lignes' => [
                     'Vote du membre établi : ' . ($voteHonnete !== null ? '✓ conservé (+1)' : 'perdu'),
-                    sprintf(tc('Réputation finale de la cible : %d (intègre)'), $repApresDetection),
-                    'Les votes légitimes restent comptés, seuls les coordonnés tombent.',
+                    sprintf(tc('Réputation finale de la cible : %d'), $repFinale),
+                    'Une meute pèse ce que pèse un membre seul ; les votes honnêtes restent comptés.',
                 ],
             ],
-            'verdict' => 'neutralisé',
+            'verdict' => $neutralise ? 'neutralisé' : 'non neutralisé',
+            'neutralise' => $neutralise,
+            'mesures' => ['acceptes' => $acceptes, 'annules' => $annules, 'impact' => $impact],
             'defense' => 'SelfModerate (détection pack-voting + anti-Sybil par seuils)',
-            'message_cle' => "La manipulation coordonnée est annulée et la réputation restaurée, sans toucher aux votes honnêtes.",
+            'message_cle' => tc('Une meute pèse ce que pèse un membre seul : le premier garde son vote, les suivants sont annulés, et les votes honnêtes restent comptés.'),
         ];
     }
 

@@ -31,7 +31,7 @@ final class Moderate extends Engine
      * Ce que les pages annoncent des règles, lu dans la config en service :
      * les textes ne portent aucun seuil à eux.
      *
-     * @return array{initiale: int, max: int, sybil: string, farmingMax: int, farmingJours: int, perteVote: int, paliers: string}
+     * @return array{initiale: int, max: int, sybil: string, farmingMax: int, farmingJours: int, perteVote: int, paliers: string, balayage: string, convalescence: string, sortie: int}
      */
     public static function regles(): array
     {
@@ -45,6 +45,8 @@ final class Moderate extends Engine
             'perteVote'    => $c->perteDroitDeVoteSous,
             'paliers'      => implode(' → ', array_map([self::class, 'dureeEnClair'], $c->dureesBan)),
             'balayage'     => self::dureeEnClair($c->balayagePeriodeSecondes),
+            'convalescence' => self::dureeEnClair($c->intervalleConvalescenceSecondes),
+            'sortie'       => $c->sortieConvalescence(),
         ];
     }
 }

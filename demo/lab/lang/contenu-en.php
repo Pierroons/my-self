@@ -162,6 +162,7 @@ return [
     'Dump SQL brut (ce que voit l\'attaquant)' => 'Raw SQL dump (what the attacker sees)',
     'Alice connectée (ce que conserve le propriétaire)' => 'Alice logged in (what the owner still holds)',
     'neutralisé' => 'neutralised',
+    'non neutralisé' => 'not neutralised',
     'SelfDataGuard (XChaCha20-Poly1305, clé dérivée d\'un secret serveur hors base)'
         => 'SelfDataGuard (XChaCha20-Poly1305, key derived from a server secret held outside the database)',
 
@@ -171,16 +172,17 @@ return [
         => 'Create fake accounts to sink a member\'s reputation through coordinated downvotes.',
     'Un membre honnête soutient la cible (+1)' => 'An honest member supports the target (+1)',
     'réputation : %d' => 'reputation: %d',
-    '3 faux comptes downvotent la cible en moins de 60 s' => '3 fake accounts downvote the target within 60 s',
-    'réputation chute à : %d' => 'reputation drops to: %d',
-    'Détection de pack-voting' => 'Pack voting detection',
-    '%d votes annulés, réputation restaurée à : %d' => '%d votes cancelled, reputation restored to: %d',
+    '3 faux comptes, liés par des messages privés, downvotent la cible avec un motif'
+        => '3 fake accounts, linked by private messages, downvote the target with a reason',
+    '%1$d votes acceptés sur %2$d' => '%1$d votes accepted out of %2$d',
+    'Détection de meute, à chaque vote négatif' => 'Pack detection, on every negative vote',
+    '%1$d votes annulés, le premier garde le sien ; réputation : %2$d' => '%1$d votes cancelled, the first keeps its own; reputation: %2$d',
     'Un compte créé à l\'instant tente de voter' => 'A freshly created account tries to vote',
-    'Impact net sur la réputation : %d' => 'Net impact on reputation: %d',
+    'Impact net sur la réputation : %d (le poids d\'un membre seul : -1)' => 'Net impact on reputation: %d (the weight of a single member: -1)',
     'Modération communautaire honnête' => 'Honest community moderation',
-    'Réputation finale de la cible : %d (intègre)' => 'Target\'s final reputation: %d (intact)',
-    'Les votes légitimes restent comptés, seuls les coordonnés tombent.'
-        => 'Legitimate votes still count; only the coordinated ones fall.',
+    'Réputation finale de la cible : %d' => 'Target\'s final reputation: %d',
+    'Une meute pèse ce que pèse un membre seul ; les votes honnêtes restent comptés.'
+        => 'A pack weighs what a single member weighs; honest votes still count.',
     'SelfModerate (détection pack-voting + anti-Sybil par seuils)'
         => 'SelfModerate (pack voting detection and threshold-based anti-Sybil)',
 
@@ -215,8 +217,8 @@ return [
     'La donnée est intégralement conservée et utilisable par Alice — mais l\'attaquant ne récupère que du bruit chiffré.'
         => 'The data stays whole and usable for Alice — the attacker walks away with encrypted noise.',
     'Vote du membre établi : ✓ conservé (+1)' => 'Established member\'s vote: ✓ kept (+1)',
-    'La manipulation coordonnée est annulée et la réputation restaurée, sans toucher aux votes honnêtes.'
-        => 'Coordinated manipulation is cancelled and the reputation restored, without touching honest votes.',
+    'Une meute pèse ce que pèse un membre seul : le premier garde son vote, les suivants sont annulés, et les votes honnêtes restent comptés.'
+        => 'A pack weighs what a single member weighs: the first keeps its vote, the next ones are cancelled, and honest votes still count.',
     'L\'action légitime passe ; l\'attaquant cross-site échoue, et un clone qui ne recopie pas le vrai label dérive une clé inutile.'
         => 'The legitimate action goes through; the cross-site attacker fails, and a clone that does not copy the real label derives a useless key.',
 
@@ -278,7 +280,19 @@ return [
     'Ban levé.' => 'Ban lifted.',
     'Réputation remise au point de départ.' => 'Reputation reset to its starting point.',
     'Aucun ban en cours sur ce compte.' => 'No ban in progress on this account.',
+    'Compte introuvable.' => 'Account not found.',
+    'La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.' => 'The end of your penalty is waiting for the journal to record it: you can vote again as soon as it is.',
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
+    'Ce ban n\'attend aucune revue : un signalement se classe.'
+        => 'This ban awaits no review: a flag is closed instead.',
+    'Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine attend le journal.'
+        => 'This flag cannot be closed: an automatic ban is maintained, and a penalty end waits for the journal.',
+    'Ce signalement a changé depuis ton affichage : recharge la console.'
+        => 'This flag has changed since it was displayed: reload the console.',
+    'Ce signalement n\'est plus ouvert : recharge la console.'
+        => 'This flag is no longer open: reload the console.',
+    'Plusieurs signalements sont ouverts sur ce compte (%s) : nomme celui que tu fermes.'
+        => 'Several flags are open on this account (%s): name the one you are closing.',
     'Droit de vote retiré (réputation trop basse).' => 'Voting rights withdrawn (reputation too low).',
 
     // ── Red team report encryption ───────────────────────────────────────

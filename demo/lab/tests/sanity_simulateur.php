@@ -127,6 +127,23 @@ foreach (AttackSimulator::SCENARIOS as $scenario) {
     }
 }
 
+echo "\n▸ la meute du simulateur\n";
+// 🔑 La démonstration annonçait « neutralisé » sans rien avoir neutralisé : ses votes
+// sans motif étaient refusés, et ses faux comptes, sans lien entre eux, ne formaient
+// aucune meute. Ce qu'elle annonce se compte maintenant, et le verdict en découle.
+$meute = AttackSimulator::run('packvoting');
+$mesures = $meute['mesures'] ?? [];
+verifier(
+    '⭐ « packvoting » : les trois votes de la meute sont acceptés, puis tous sauf le premier annulés',
+    ($mesures['acceptes'] ?? null) === 3 && ($mesures['annules'] ?? null) === 2 && ($mesures['impact'] ?? null) === -1,
+    json_encode($mesures)
+);
+verifier(
+    '⭐ « packvoting » : le verdict dit ce que les comptes rendent',
+    ($meute['neutralise'] ?? null) === true && ($meute['verdict'] ?? '') === 'neutralisé',
+    json_encode(['neutralise' => $meute['neutralise'] ?? null, 'verdict' => $meute['verdict'] ?? null], JSON_UNESCAPED_UNICODE)
+);
+
 echo "\n▸ la base du site\n";
 // 🔑 « Zéro impact sur lab.db » : le numéro de la base, que chaque chiffré porte, se
 // lisait dans la vraie base, et le scénario `dump` la créait hors d'une route (mesuré

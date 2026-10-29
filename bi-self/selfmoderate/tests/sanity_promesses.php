@@ -150,6 +150,14 @@ $porteurs = [
                     ...deuxJeux('fenetreFarmingJours', (int) $m[2])]],
     ['README.md', '/And a voter targets no more than (\d+) distinct members over the same window \(`ciblesParVotantMax`\): beyond that/u',
         fn ($m) => deuxJeux('ciblesParVotantMax', (int) $m[1])],
+    ['README.fr.md', '/au \*\*(\d+)ᵉ ban d\'arbitre\*\* sur un même compte \(`bansArbitreSignal`\)/u',
+        fn ($m) => deuxJeux('bansArbitreSignal', (int) $m[1])],
+    ['README.md', '/at the \*\*(\d+)(?:st|nd|rd|th) arbiter ban\*\* on the same account \(`bansArbitreSignal`\)/u',
+        fn ($m) => deuxJeux('bansArbitreSignal', (int) $m[1])],
+    ['README.fr.md', '/pour \*\*(\d+)\*\* comptes au plus \(`balayageFiletMax`\)/u',
+        fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
+    ['README.md', '/for at most \*\*(\d+)\*\* accounts \(`balayageFiletMax`\)/u',
+        fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
 ];
 
 // Les champs dont le README parle sans en donner la valeur, et la phrase qui

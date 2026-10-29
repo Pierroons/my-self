@@ -5,7 +5,7 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.1](https://img.shields.io/badge/status-v0.6.1-yellow.svg)](#status)
+[![Status: v0.7.0](https://img.shields.io/badge/status-v0.7.0-yellow.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -36,13 +36,14 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 - The reason must **say something**: 40 characters, 3 distinct words, no word hammered on (twice is always allowed; beyond that a short word such as "of" or "my" stays within a third of the words, a word of four letters or more within a fifth), at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down. It also stays within 1000 characters: that bound protects the targeted person's page, where reasons are displayed
 - Voting is a **recommendation, not an obligation** — it helps recognize good teammates or flag problematic behavior
 - Configurable reasons per platform through `setReasonCodes()`; the default set fits a forum (off-topic, aggressive, misinformation, helpful to others, useful contribution, other)
-- Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it
+- Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it. And rounding does not protect against a public figure: if the host shows a post's score or an author's reputation without a session, whoever reads them often enough dates each vote to the minute, and the post it targeted
 
 ### Reputation score
 - Every user starts at **20** (configurable)
 - Score is capped at **30** (configurable) — no hoarding social credit
 - Going up is slow, going down is fast: a downvote takes a point immediately, passive recovery gives one back per quiet interval
 - **Recovery**: below 5 the state is set and the score climbs back on its own **up to 20**, its starting point — never beyond. Voting rights return at 5, the state lifts at 20
+- Recovery caps its own progress, not the score: a point earned from an upvote during recovery is kept: voting rights return as soon as the score reaches 5, and the state lifts as soon as it reaches 20, without waiting for the next recovery point
 - The state is **visible** on one's own profile and to the arbiter: it announces that something went wrong, and that the score climbs back with patience rather than merit. Other members only see a reputation tier, never the sanction state; below the voting threshold, that tier carries no number
 - It is a **state, not a threshold**. Gating recovery on "score < 5" stops it exactly at the threshold that restores voting rights, leaving the account permanently on a knife edge
 
@@ -59,14 +60,16 @@ The punishment isn't technical — it's social.
 ### Sanction escalation
 - Score < 5 → **loss of voting rights**
 - Score = 0 → **temporary ban, graduated**: 24 h → 7 d → 30 d in service (`Config::prod()`), 2 → 10 → 30 min in demonstration (`Config::demo()`). The last tier **repeats**: the machine never pronounces a definitive exclusion; beyond it, the arbiter decides
-- **The automatic ban only falls when a journal is plugged in** (`setJournal()`), and never inside a host's transaction, which could still roll it back. Without a journal, a zero reputation raises a flag, and no arbiter action goes through: neither the machine nor an arbiter sanctions without a trace. With one, every start, end and lift of a ban is written to the journal, **before** the database: a failure leaves a trace without effect, never a penalty without trace. When the journal refuses to record the end of a penalty, the closing is left pending: the vote or page that noticed it still goes through, the arbiter is told (`journal_en_panne`, and the arbiter console shows it site-wide), and the closing happens once the journal is back. Until then the person is no longer banned, but their voting right and their reputation reset wait for the closing, and no new ban starts
+- **The automatic ban only falls when a journal is plugged in** (`setJournal()`), and never inside a host's transaction, which could still roll it back. Without a journal, a zero reputation raises a flag, and no arbiter action goes through: neither the machine nor an arbiter sanctions without a trace. With one, every start, end and lift of a ban is written to the journal, **before** the database: a failure leaves a trace without effect, never a penalty without trace. The end of a penalty is recorded by the first write that touches the account — a vote, an arbiter action, the sweep —, never by a read, which shows it as soon as it is due. When the journal refuses to record it, the closing is left pending: the write that tried still goes through, the arbiter is told (`journal_en_panne`, and the arbiter console shows it site-wide), and the closing happens once the journal is back. Until then the page shows the penalty as over, but only the recorded state allows a write: the account cannot vote, and the refusal says why — but `canVote()` does not say it in advance: only an attempt knows whether the journal is back; no arbiter action and no new ban goes through on it
 - A running penalty **is not extended** by the next opposing vote
 - After a served automatic ban: score back to **20**, strikes kept — the next ban will be longer
 - What a ban blocks beyond voting is the platform's call (`estBanni()`). The lab also blocks posting, and leaves login and private messages open
 - 3 months without incident: strikes reset — *not implemented yet*
 
 ### Arbiter actions
-- **Ban**, **lift**, **maintain**: each carries the arbiter's name and is written to the journal; with no journal plugged in, none goes through. Banning requires a reason, checked like a downvote's: the banned person must be able to read what they are blamed for; it does not close the open review, and its act says which one was open. **Lifting** (the pardon) resets everything: the ban, the reputation, the strikes, a voting suspension left by an earlier version and still running, and the pack rank — the history of episodes stays readable. **Maintaining** closes the account's review, whatever its cause. **Closing** a flag touches nothing else, reason required
+- **Ban**, **lift**, **maintain**, **close**: each carries the arbiter's name and is written to the journal, with the flags that were open and those it closes; with no journal plugged in, none goes through. Banning requires a reason, checked like a downvote's: the banned person must be able to read what they are blamed for; it closes no flag. **Lifting** (the pardon) resets the ban, the reputation, the strikes, a voting suspension left by an earlier version and still running, and the pack rank — the history of episodes stays readable. It closes what it undoes: the state flags, and the pack-recidivism flag when it erases the rank; a burst, a truncation or a wide voter stays to be closed, with a written reason. **Maintaining** takes note of an automatic ban: its flag leaves the queue, the penalty runs; an arbiter's ban has nothing to maintain. **Closing** closes one flag, named, and touches nothing else, reason required
+- **One flag per cause**: each open cause on an account has its own row, and none replaces another. A state flag (`reputation_zero`, `ban_auto`, `journal_en_panne`) falls on its own when the state ends; a behaviour flag (`salve_rapide`, `meute_recidive`, `votants_tronques`, `votant_etendu`, `bans_arbitre`) only falls when an arbiter closes it. A repeated fact raises its count; an action receives the flag as the console displayed it, with its detections, and refuses if a new vote has detected it again since — even when the detection folded a burst from other voters into the same fact: the arbiter does not close what they have not seen. The sweep, which rereads votes already detected, makes nothing refuse. The wide voter and the truncation are the exceptions: for them, only a counted fact makes the action refuse, at most once per `balayagePeriodeSecondes` since the previous one, otherwise every vote would keep the arbiter from closing for as long as it lasts. The console shows one page per cause, oldest first: a flood of bursts fills its own page and pushes nothing else out of view
+- **Repeated arbiter bans**: an arbiter's ban counts as an episode, and makes the next automatic ban heavier — a repeat offence is paid for, whoever recorded it. The ban start record says how many of its episodes came from an arbiter, and at the **2nd arbiter ban** on the same account (`bansArbitreSignal`), a `bans_arbitre` flag goes to the arbiters' queue: a chain no longer passes unflagged, but nothing stops the arbiter who banned from closing that flag themselves. The pardon, which resets the strikes, closes it. These bans are counted from 0.7.0 on: a migrated database starts at zero
 - **Floor**: before one third of the **running** penalty (`Config::$plancherFraction`), a lift requires a written reason and is recorded as an **early lift**, with the time that remained. One third of the running penalty, never of the maximum tier: otherwise the floor of a one-day first ban would last ten days. The floor does not close favouritism; it makes it costly, because it leaves a signed trace
 - **Never a floor on a detected pack**: when the engine recognises that the pack **caused** the ban — cancelled votes, cast before it started, had taken a point —, it lifts it on its own and records it. The lift gives back what those votes took and removes that ban's strike, nothing more. It repairs an injustice; it grants none. Votes cast during the ban do not lift it, and an arbiter's ban is not lifted that way: it did not come from the votes
 
@@ -102,6 +105,15 @@ no one.
 - **Limit: the pack that contributed.** Linked accounts that really brought a
   target down lift the ban they caused, even when acting on the target's behalf.
   They get that lift and the exact return of their votes, nothing else
+- **Limit: the supporting pack.** Detection only reads negative votes. Linked
+  accounts that all vote for the same member are neither seen nor neutralised, and
+  carry them up to the cap, which makes them slower to bring down; the per-pair cap
+  bounds each of them, not their number. Detection in both directions is planned for 0.8.0
+- **Limit: whether an account exists.** A reason is optional on a positive vote: a
+  positive vote without a reason on an identifier goes through if it exists and is
+  refused otherwise, and gives the target a point. It therefore tells whether an account
+  exists; the per-pair cap bounds it, not the number of identifiers probed. A negative
+  vote, on the other hand, requires a valid reason before looking at the target
 
 ### Anti-manipulation
 - **Anti-Sybil**: a delay on new accounts, unless they have already posted: **24 hours** in service, matching the warm-up period described by [Bi-Self](../README.md), **2 minutes** in demonstration. The refusal states the remaining wait
@@ -120,16 +132,19 @@ The engine is a static class; the host passes its `PDO` connection on every call
 | Call | Role |
 |---|---|
 | `setConfig(Config)` | the thresholds: `Config::demo()`, `Config::prod()` or your own. **Single source** of the thresholds: the engine reads them there, and so do your pages, through `Moderate::config()` |
-| `setJournal(Journal)` | plugs in the journal, and with it the automatic ban and the arbiter actions. The [`Journal`](./src/Journal.php) interface lists the acts and their keys; writing must be durable and not rewritable. A refusal always propagates, except when a vote or a read notices an expired penalty: its closing is then left pending and the arbiter is told |
-| `balayerBansEchus(PDO)` | closes expired penalties in one pass, for a scheduler. Without it, an end is noticed at the next read, and the journal carries the due time AND the moment it was noticed |
+| `setJournal(Journal)` | plugs in the journal, and with it the automatic ban and the arbiter actions. The [`Journal`](./src/Journal.php) interface lists the acts and their keys; writing must be durable and not rewritable. A refusal always propagates, except when a vote or an arbiter action notices an expired penalty: its closing is then left pending and the arbiter is told |
+| `balayerBansEchus(PDO)` | records in one pass what time has done — penalty ends, to the journal first, and recovery climbs —, for a scheduler or the arbiter console, which reads the database and calls it before reading. Without a scheduler, the first negative vote of each sweep slot does it afterwards, for at most **50** accounts (`balayageFiletMax`), in its own request and under the write lock: a scheduler spares the voter that cost. A vote cast inside a host's transaction takes the slot without sweeping, and a host that votes inside its transactions needs a scheduler. Otherwise, an end is recorded by the first write that touches the account. After a first refusal from the journal, the pass stops calling it: it still records recovery climbs, leaves the ends to the next pass — where accounts already refused come last —, and the refusal surfaces at the end of the pass. The journal carries the due time AND the moment it was recorded |
 | `applyVote(PDO, voter, type, target, value, ?reason)` | a vote, returning `ok`, `blocked` and `message` — never the target's reputation, which the profile does not show below the voting threshold. It is written all or nothing: in a transaction the engine opens (`BEGIN IMMEDIATE`) when the host has none, behind a savepoint in the host's otherwise, which then commits or rolls back the rest. Inside the host's transaction, it does not arm the automatic ban: a zero reputation is flagged there, as without a journal. A penalty closing or a pack lift done there, then rolled back with it, is done again on the next pass: the journal then carries the act twice |
+| `getReputation(PDO, id)` · `canVote(PDO, id)` | read without writing anything, neither to the database nor to the journal, and without taking a lock: the state returned is that of the moment — recovery and penalty end included —, even when the database does not carry them yet, and `fin_en_attente` says an end is waiting to be recorded. An account without a row reads as the starting values, without a row being created. The `member_moderation` columns are the state the engine has recorded: a host reads them, it does not write them |
 | `estBanni(PDO, id)` · `bansEnCours(PDO)` | what the host blocks, and what the arbiter must see: origin, reason, end, time left, floor, and for an automatic ban the make-up of its fall |
-| `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason)` · `adminClasser(PDO, id, arbiter, reason)` | the arbiter actions, returning `['ok' => bool, 'message' => string]`. Each one rereads the state and decides under the write lock, taken up front. They refuse inside a host's transaction: the journal is not rolled back with it |
+| `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason, ?vu)` · `adminClasser(PDO, id, arbiter, reason, ?vu)` | the arbiter actions, returning `['ok' => bool, 'message' => string]`. Each one rereads the state and decides under the write lock, taken up front. They refuse inside a host's transaction: the journal is not rolled back with it. `vu` is the flag as displayed, `['signal' => id, 'detections' => n]`; without it, maintaining and closing target the only flag within their reach, and refuse if there are several |
+| `migrerSignaux(PDO)` | moves the single flag slot of versions before 0.7.0 into `mod_signaux`: call it once, right after creating the table; the mark that keeps it from running again is the host's. Until it has run, the engine refuses to read or flag an account whose slot is open, with a `LogicException` that names it |
+| `flaggedForReview(PDO)` · `signauxOuverts(PDO)` | the accounts to arbitrate, oldest first, one row per account with all its flags; and the flags to look at, one page per cause, oldest first, with each cause's total |
 | `dureeEnClair(seconds)` | a readable duration, units passed through your translator (`setTranslator()`) |
 
-**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes` (including `effet`, what the vote actually changed to the reputation; a vote older than the column leaves it `NULL`, with no known effect: it is not given back and causes no ban), `mod_pack_flags`, `mod_sweeps` (one row per `balayagePeriodeSecondes` slot already swept; without it every downvote fails instead of letting the safety net go out), and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
+**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes including an arbiter's (`strikes_admin`), voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes` (including `effet`, what the vote actually changed to the reputation; a vote older than the column leaves it `NULL`, with no known effect: it is not given back and causes no ban), `mod_pack_flags`, `mod_signaux` (one row per open flag, per account and per cause; `needs_review` and `review_reason` remain, a summary the engine keeps for whoever reads the database and never reads back — a database from before 0.7.0 creates the table, then calls `migrerSignaux()` once, otherwise the engine refuses every account whose slot is open), `mod_sweeps` (one row per `balayagePeriodeSecondes` slot already swept; without it every downvote fails instead of letting the safety net go out), and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
 
-Dates in its messages follow the host's time zone (`date_default_timezone_set()`).
+Dates in its messages, and the day of the reasons `reasonsFor()` returns, follow the host's time zone (`date_default_timezone_set()`).
 
 ## Documentation
 
@@ -138,8 +153,29 @@ Dates in its messages follow the host's time zone (`date_default_timezone_set()`
 
 ## Status
 
-🟢 **v0.6.1** — the engine is here, under `src/`, and the lab imports it the way
+🟢 **v0.7.0** — the engine is here, under `src/`, and the lab imports it the way
 it imports SelfRecover and SelfDataGuard.
+
+0.7.0 closes what two audits of 0.6 found, and changes what the host sees:
+- **a read writes nothing any more**: `getReputation()` and `canVote()` compute the state of the moment
+  without recording it or taking a lock, and `fin_en_attente` says a penalty end awaits recording; a vote, an
+  arbiter action or the sweep records it. Without a scheduler, the first negative vote of each slot then sweeps
+  at most `balayageFiletMax` accounts. An engine writer reading through `getReputation()` raises
+  `LectureDansUneEcriture`;
+- **no sanction without a trace**: with no journal plugged in, no arbiter action goes through; inside a host's
+  transaction, actions are refused and the automatic ban does not arm;
+- **one flag per cause**, in `mod_signaux`: an action that closes a flag takes the token
+  `$vu = {signal, detections}` and refuses if the flag was detected again since it was displayed;
+  `signauxOuverts()` lists them; a record's lists (`ouverts`, `ferme`) go out as JSON text;
+- **arbiter bans are counted apart** (`strikes_admin`, key `dont_arbitre` of `ban_debut`), and their repetition
+  is flagged (`bans_arbitre`, `Config::bansArbitreSignal`);
+- and: a drop to zero during an arbiter ban is flagged; recovery no longer pulls down a score raised by
+  upvotes, and gives voting rights back from 5; an action on a non-existent account is refused; the day of the
+  reasons follows the host's time zone; `Config` refuses a negative sweep cap.
+
+**Upgrading from 0.6**: add the column `strikes_admin INTEGER NOT NULL DEFAULT 0` to `member_moderation` —
+arbiter bans are then counted from 0.7.0 on —; create `mod_signaux` as in the lab schema; then call
+`migrerSignaux()` once, otherwise the engine refuses any account whose slot is open.
 
 0.6.1 changes neither promise nor schema. A vote is written all or nothing: `applyVote()` holds
 its writes in one transaction — its own, or a savepoint inside the host's — and a cut no longer

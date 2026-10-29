@@ -43,7 +43,9 @@ try {
     $finsEnPanne = $e->getMessage();
 }
 $bans     = Moderate::bansEnCours($pdo);
-$aRevoir  = array_values(array_filter(Moderate::flaggedForReview($pdo), static fn (array $f): bool => $f['review_reason'] !== 'ban_auto'));
+// Une page par cause, la plus ancienne en tête : un flot de salves remplit la sienne
+// sans pousser les autres hors de la vue. Le ban automatique se lit avec les bans.
+$aRevoir  = array_values(array_filter(Moderate::signauxOuverts($pdo), static fn (array $s): bool => $s['cause'] !== 'ban_auto'));
 // L'état du journal se lit, il ne se suppose pas : une chaîne rompue ou
 // illisible doit se voir ici avant qu'un arbitre ne s'y fie.
 $journalMod = Moderate::journal();
@@ -60,8 +62,10 @@ $causes = [
     'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus)',
     'votants_tronques' => 'trop de votants pour la détection de meute',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
+    'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
     'ban_auto'        => 'ban automatique en cours',
+    'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
 ];
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
 $suites = [
@@ -183,22 +187,27 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= $b['plancher'] === null ? '—' : ($b['plancher'] <= time() ? 'passé' : $dt($b['plancher'])) ?></td>
           <td style="white-space:nowrap">
             <button class="btn mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="pardon">✅ lever</button>
-            <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir">⏳ maintenir</button><?php endif; ?>
+            <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir" data-signal="<?= (int) $b['revue']['signal'] ?>" data-det="<?= (int) $b['revue']['detections'] ?>">⏳ maintenir</button><?php endif; ?>
           </td></tr>
     <?php endforeach; ?>
   </table><?php endif; ?>
 
   <h3 style="margin:16px 0 6px;font-size:14px">🔎 Signalements à arbitrer</h3>
   <?php if (!$aRevoir): ?><p class="muted">Aucun signalement en attente.</p><?php else: ?>
-  <table class="adm"><tr><th>Compte</th><th>Cause</th><th>Réputation</th><th></th></tr>
-    <?php foreach ($aRevoir as $f): ?>
-      <tr><td>@<?= h((string) $f['username']) ?></td>
-          <td><?= h($causes[$f['review_reason']] ?? (string) $f['review_reason']) ?></td>
+  <table class="adm"><tr><th>Compte</th><th>Fois</th><th>Depuis</th><th>Réputation</th><th></th></tr>
+    <?php $causeVue = null; foreach ($aRevoir as $f): ?>
+      <?php if ($f['cause'] !== $causeVue): $causeVue = $f['cause']; $affiches = count(array_filter($aRevoir, static fn (array $s): bool => $s['cause'] === $causeVue)); ?>
+      <tr><th colspan="5" style="text-align:left"><?= h($causes[$f['cause']] ?? $f['cause']) ?>
+        <span class="muted">— <?= $affiches ?> <?= $affiches > 1 ? 'signaux' : 'signal' ?><?= $f['total_cause'] > $affiches ? ' affichés sur ' . (int) $f['total_cause'] . ', les plus anciens d\'abord' : '' ?></span></th></tr>
+      <?php endif; ?>
+      <tr><td>@<?= h($f['username']) ?></td>
+          <td><?= (int) $f['occurrences'] ?><?php if ($f['detections'] > $f['occurrences']): ?> <span class="muted">· <?= (int) $f['detections'] ?> détections</span><?php endif; ?></td>
+          <td><?= h(date('d/m/Y H:i', $f['ouvert_le'])) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>
           <td style="white-space:nowrap">
-            <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="classer">📁 classer</button>
-            <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="ban">🔨 bannir</button>
-            <button class="btn mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="pardon">✅ gracier</button>
+            <?php if ($f['cause'] !== 'journal_en_panne'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="classer" data-signal="<?= $f['signal'] ?>" data-det="<?= $f['detections'] ?>">📁 classer</button><?php endif; ?>
+            <button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="ban">🔨 bannir</button>
+            <button class="btn mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="pardon">✅ gracier</button>
           </td></tr>
     <?php endforeach; ?>
   </table><?php endif; ?>
@@ -415,7 +424,7 @@ function statutRapport(id,status){
     if(d.ok){location.reload();}
   });
 }
-function modAction(id,op){
+function modAction(id,op,vu){
   const invites={
     ban:'Motif du ban — une phrase de 40 caractères au moins, que le membre pourra lire :',
     pardon:'Motif de la grâce — exigé avant le plancher de la peine, facultatif ensuite :',
@@ -424,14 +433,16 @@ function modAction(id,op){
   };
   const motif=prompt(invites[op]||'Motif :','');
   if(motif===null) return;
-  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op,motif:motif}).then(d=>{
+  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op,motif:motif,vu:vu}).then(d=>{
     if(d.ok){ location.reload(); } else { alert(d.message||'Erreur'); }
   });
 }
 document.querySelectorAll('.js-voirprofil').forEach(b=>b.addEventListener('click',()=>voirProfil(+b.dataset.id,b)));
 document.querySelectorAll('.js-voirrapport').forEach(b=>b.addEventListener('click',()=>voirRapport(+b.dataset.id,b)));
 document.querySelectorAll('.js-statut').forEach(b=>b.addEventListener('click',()=>statutRapport(+b.dataset.id,b.dataset.status)));
-document.querySelectorAll('.js-modaction').forEach(b=>b.addEventListener('click',()=>modAction(+b.dataset.id,b.dataset.op)));
+// Le signal affiché et son compte de détections : le moteur refuse s'il a été redétecté depuis.
+document.querySelectorAll('.js-modaction').forEach(b=>b.addEventListener('click',()=>modAction(+b.dataset.id,b.dataset.op,
+  b.dataset.signal?{signal:+b.dataset.signal,detections:+b.dataset.det}:null)));
 
 function deciderDispute(num, decision){
   // Confirmer n'ouvre AUCUN accès : la décision est enregistrée, et c'est le

@@ -45,10 +45,14 @@ interface Journal
      *              par `validateReason()` pour un arbitre ; le même au début et à la
      *              fin d'un ban
      *   episode    numéro d'épisode (1 = premier)              ban_debut, ban_fin
+     *   dont_arbitre  combien de ces épisodes sont des bans     ban_debut
+     *              d'arbitre : le palier d'un ban automatique en dépend aussi.
+     *              Compté depuis la 0.7.0 : une base migrée part de zéro
      *   duree      durée de la peine en secondes               ban_debut
      *   debut      horodatage du début de la peine             ban_debut, ban_fin
      *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu
-     *   observe_a  instant où la fin a été constatée           ban_fin
+     *   observe_a  instant où la fin s'est inscrite : la       ban_fin
+     *              première écriture qui a touché le compte, ou le balayage
      *   cause      `grace` | `meute_detectee`                  ban_leve
      *   anticipee  levée avant le plancher de la peine         ban_leve
      *   reste      secondes de peine qui restaient             ban_leve
@@ -56,18 +60,37 @@ interface Journal
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
      *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
-     *   raison     cause du signalement classé ; pour un ban   revue_classee, ban_debut
-     *              d'arbitre, la revue ouverte, ou null
+     *   raison     cause du signal fermé ; pour un ban         revue_classee, ban_maintenu,
+     *              d'arbitre, la cause ouverte que la case     ban_debut
+     *              unique aurait portée, ou null
+     *   ouverts    les causes ouvertes sur le compte quand     tous
+     *              l'acte se décide, sous le verrou
+     *   ferme      les signaux que l'acte ferme, ou retire de  tous ; `[]` pour un ban
+     *              la file sans les fermer (un état vu reste   d'arbitre
+     *              en base jusqu'à ce qu'il cesse), chacun
+     *              `{signal, cause, ouvert_le, occurrences, detections}`
+     *
+     * `ouverts` et `ferme` sont des listes, passées en texte JSON : toute valeur
+     * d'un acte reste scalaire, et une implémentation qui range une colonne par
+     * clé n'a rien à sérialiser.
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
      * qui échoue en silence vaut l'absence de journal. Une seule exception à la
-     * règle, et elle n'est pas muette : quand un vote ou une lecture constate une
-     * peine échue, le refus est consigné et signalé (`journal_en_panne`), et la
-     * peine reste à refermer au passage suivant. Le planificateur
-     * (`balayerBansEchus()`) et le début d'un ban font remonter le refus.
+     * règle, et elle n'est pas muette : quand un vote, un geste ou le balayage
+     * constate une peine échue, le refus est consigné et signalé
+     * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
+     * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
+     * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
+     * le fait remonter aussitôt. Un refus se lève par n'importe quelle exception.
+     *
+     * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
+     * d'une de ses écritures, où une lecture par le moteur est refusée par une
+     * `LectureDansUneEcriture`, qui remonte telle quelle — une erreur
+     * d'intégration ne se déguise pas en panne du journal —, sauf au filet du
+     * vote : le vote est déjà validé, et elle part au journal d'erreurs.
      */
     public function inscrire(array $acte): void;
 }

@@ -622,9 +622,30 @@ final class Db
             'ban_debut'        => 'INTEGER NOT NULL DEFAULT 0',
             'ban_origine'      => 'TEXT',
             'ban_motif'        => 'TEXT',
+            'strikes_admin'    => 'INTEGER NOT NULL DEFAULT 0',
         ] as $col => $type) {
             if (!in_array($col, $cols, true)) {
                 self::$pdo->exec("ALTER TABLE member_moderation ADD COLUMN $col $type");
+            }
+        }
+
+        // SelfModerate — les signaux passent de la case à `mod_signaux`, UNE fois, par le module
+        // (`migrerSignaux()`, qui dit ce qu'il reprend). La marque est au lab : rejouée à chaque
+        // ouverture, la copie relirait le résumé que le moteur tient dans la case, et un écrivain
+        // resté à l'ancienne forme y deviendrait un signal, sans un mot.
+        if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'")->fetchColumn() === false) {
+            require_once __DIR__ . '/../vendor/autoload.php';
+            self::$pdo->exec('BEGIN IMMEDIATE');
+            try {
+                if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'signaux-en-table'")->fetchColumn() === false) {
+                    \Pierroons\SelfModerate\Moderate::migrerSignaux(self::$pdo);
+                    self::$pdo->prepare("INSERT INTO lab_migrations (nom, faite_le) VALUES ('signaux-en-table', ?)")
+                        ->execute([time()]);
+                }
+                self::$pdo->exec('COMMIT');
+            } catch (\Throwable $e) {
+                self::$pdo->exec('ROLLBACK');
+                throw $e;
             }
         }
 
