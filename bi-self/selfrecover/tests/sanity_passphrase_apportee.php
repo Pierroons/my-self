@@ -254,7 +254,11 @@ function dossier(string $ancienne): array
     $st->empreintes[1]        = Hashing::hash('mot de passe de connexion');
     $st->hotes[1]             = $st->hoteServi;
     $st->faits[1]             = ['cree_le' => $now - 400 * 86400, 'derniere_connexion' => null, 'nombre_connexions' => null];
-    $esc    = new Escalade($st, new Recovery($st, 'sel-de-la-sonde', $PROFIL, Langue::FR, delaiRefusUs: 0), delaiRefusUs: 0);
+    // Ce banc éprouve la passphrase apportée, pas l'épreuve du niveau 3 : sous un
+    // profil sans adresse discriminante, elle est neutralisée ici comme dans
+    // sanity_escalade.php, qui la mesure pour elle-même.
+    $esc    = new Escalade($st, new Recovery($st, 'sel-de-la-sonde', $PROFIL, Langue::FR, delaiRefusUs: 0),
+        delaiRefusUs: 0, epreuveBase: 0, epreuvePasService: PHP_INT_MAX, epreuvePasCompte: PHP_INT_MAX);
     $sesame = bin2hex(random_bytes(32));
     $numero = (string) $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), $IP, $now)['numero'];
     $esc->trancher($numero, 'accepte', 'arbitre', $now + 100);
