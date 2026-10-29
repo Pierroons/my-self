@@ -3505,15 +3505,6 @@ jobs:
           canari $D/src/SelfDataGuard.php "\$created['unlocked']->lock();" \
             "\$this->storage->replaceEscrow(\$session->generation(), \$created['record']); \$unlocked = \$created['unlocked'];" \
             $D/tests/sanity_escrow.php 'the escrow no longer reads in full'
-          canari $D/src/Storage/Conformance.php "            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment'," '' \
-            $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
-          canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
-            "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
-            $D/tests/sanity_conformance.php 'processes claimed one setting at once: each must be given the value the database holds'
-          canari $D/src/Storage/Conformance.php "        \$this->assert(!\$empty || \$this->storage->hasVaults(), 'hasVaults() is false on a database that keeps only an archive');" '' \
-            $D/tests/sanity_conformance.php 'LiveOnlyHasVaultsStorage passed a case it breaks'
-          canari $D/src/Storage/SqliteAdapter.php "            \$out[(string) \$row['field_name']] = (bool) \$row['shared'];" '' \
-            $D/tests/sanity_conformance.php 'indexedFields() did not name exactly the fields that carry an index'
           canari $D/src/Storage/SqliteAdapter.php '            $package = $this->package($row, $userId);' \
             "            \$package = json_decode((string) \$row['package'], true, flags: JSON_THROW_ON_ERROR);" \
             $D/tests/sanity_archive.php 'listArchives() threw JsonException, which no caller expects'
@@ -3599,16 +3590,67 @@ jobs:
           canari $D/src/SelfDataGuard.php '        $record = $this->sealedArchive($replacing->userId, $archiveId);' \
             '        $record = $this->storage->loadArchive($replacing->userId, $archiveId)->record;' \
             $D/tests/sanity_facade.php 'an archive whose profile was changed came back live'
+          canari $D/src/SelfDataGuard.php '        if ($ticket === null || $this->tickets->kindOf($ticket, $userId) !== $kind) {' '        if (false) {' \
+            $D/tests/sanity_facade.php 'reEnroll() went through without an accepted level 3'
+          canari $D/src/Storage/SqliteAdapter.php "            \$this->recordTicket(\$ticket, 'replace-with-archive', \$new->userId, \$archiveId);" '' \
+            $D/tests/sanity_archive.php 'archiveOfTicket() did not name the archive of its ticket'
+
+      # ⚠️ Les canaris de la suite de conformité tiennent trois étapes, et la raison est
+      # mesurable : `check-canaris.sh` borne CHAQUE étape à 900 s, et une passe de
+      # `sanity_conformance.php` coûte ~100 s — ses sept cas `concurrent-*` lancent dix tours
+      # de processus, chacun payant son Argon2id. Huit canaris dans une seule étape, et le
+      # rejeu local ne finit plus : mesuré le 29/10/2026, l'étape atteignait ~940 s et
+      # s'arrêtait en laissant un fichier planté. Les scinder ne retire aucun canari.
+      - name: Canaris — la suite de conformité de SelfDataGuard rougit quand un cas en sort (1/2)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          canari $D/src/Storage/Conformance.php "            'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment'," '' \
+            $D/tests/sanity_conformance.php 'GenerationCheckThenWriteStorage passed a case it breaks'
+          canari $D/src/Storage/SqliteAdapter.php "'INSERT OR IGNORE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
+            "'INSERT OR REPLACE INTO selfdataguard_settings (name, value) VALUES (:n, :v)'" \
+            $D/tests/sanity_conformance.php 'processes claimed one setting at once: each must be given the value the database holds'
+          canari $D/src/Storage/Conformance.php "        \$this->assert(!\$empty || \$this->storage->hasVaults(), 'hasVaults() is false on a database that keeps only an archive');" '' \
+            $D/tests/sanity_conformance.php 'LiveOnlyHasVaultsStorage passed a case it breaks'
+          canari $D/src/Storage/SqliteAdapter.php "            \$out[(string) \$row['field_name']] = (bool) \$row['shared'];" '' \
+            $D/tests/sanity_conformance.php 'indexedFields() did not name exactly the fields that carry an index'
+
+      - name: Canaris — la suite de conformité de SelfDataGuard rougit quand un cas en sort (2/2)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
           canari $D/src/Storage/Conformance.php "            'freeze-refuses-writes'         => 'freezeRefusesWrites'," '' \
             $D/tests/sanity_conformance.php 'FreezeSkippingFieldsStorage passed a case it breaks'
           canari $D/src/Storage/Conformance.php "            'concurrent-archive-swaps'      => 'concurrentArchiveSwaps'," '' \
             $D/tests/sanity_conformance.php 'CheckThenSwapStorage passed a case it breaks'
           canari $D/src/Storage/Conformance.php "            'joins-callers-transaction'     => 'joinsCallersTransaction'," '' \
             $D/tests/sanity_conformance.php 'CallerCommittingStorage passed a case it breaks'
-          canari $D/src/SelfDataGuard.php '        if ($ticket === null || $this->tickets->kindOf($ticket, $userId) !== $kind) {' '        if (false) {' \
-            $D/tests/sanity_facade.php 'reEnroll() went through without an accepted level 3'
-          canari $D/src/Storage/SqliteAdapter.php "            \$this->recordTicket(\$ticket, 'replace-with-archive', \$new->userId, \$archiveId);" '' \
-            $D/tests/sanity_archive.php 'archiveOfTicket() did not name the archive of its ticket'
           canari $D/src/Storage/Conformance.php "            'tickets-applied-once'          => 'ticketsAppliedOnce'," '' \
             $D/tests/sanity_conformance.php 'TicketDroppingStorage passed a case it breaks'
 
@@ -3616,6 +3658,7 @@ jobs:
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
       # contrôle, un fichier de vecteurs régénéré par la bibliothèque elle-même ne
       # prouverait plus rien.
+
       - name: Garde-fou — les vecteurs Argon2id de SelfDataGuard viennent d'une seconde implémentation
         run: python3 self-security/selfdataguard/tests/vecteurs_argon2.py
 
