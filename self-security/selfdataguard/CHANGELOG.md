@@ -3,7 +3,7 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 0.8.0
+## [v0.8.0] — 2026-10-29
 
 A vault set aside by a level 3 can come back. SelfRecover 0.13.0 keeps the secrets from before a level 3
 valid for a window after it: a holder who returns with one of them takes the account back, and the

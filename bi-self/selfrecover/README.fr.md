@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.12.5](https://img.shields.io/badge/status-v0.12.5-green.svg)](#statut)
+[![Status: v0.13.0](https://img.shields.io/badge/status-v0.13.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -473,7 +473,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.12.5 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.13.0 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -496,6 +496,9 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Passphrase apportée par l'utilisateur, tirée aux dés** — `Recovery::validerPassphraseApportee`, à l'inscription et à chaque niveau (v0.10.0)
 - [x] **Le frein du niveau 1 ne ferme plus la porte du titulaire** — compteurs sous empreinte, classement silencieux des essais dont tous les mots existent (v0.11.0)
 - [x] **Au niveau 3, un refus ne ferme plus de lui-même la dernière porte du titulaire** — le gel n'est plus posé par un compteur mais par l'arbitre, qui le lève aussi, le fil et les réponses sont bornés, les refus de `recevable()` tiennent une échéance commune ; prendre la place avec le seul nom affiché reste possible (v0.12.0)
+- [x] **Sous un service caché, ouvrir un dossier de niveau 3 se paie au lieu d'être refusé** — là où aucune adresse ne discrimine, une ouverture coûte une épreuve de calcul, et le plafond de service derrière elle est un dernier recours plutôt qu'un frein par compte : vingt requêtes anonymes par heure ne ferment plus le niveau 3 de tout le monde (v0.13.0)
+- [x] **Un niveau 3 frauduleux se défait dans une fenêtre** — les secrets d'avant restent valables 14 jours, une fois chacun ; l'un d'eux servi au niveau 1 ou 2 rend le compte à son titulaire, le coffre reste en lecture seule jusqu'à la clôture par l'arbitre, et le prix est déclaré : un papier volé reprend un niveau 3 que son titulaire avait fait à cause du vol (v0.13.0)
+- [x] **Une passphrase est consommée une seule fois, même sous concurrence**, et **aucune écriture de coffre décidée par une récupération ne passe sans son ticket** — deux requêtes portant la même passphrase ne réussissent plus toutes les deux, et SelfDataGuard refuse un réenrôlement ou une remise en service d'archive qu'aucune récupération n'a décidés (v0.13.0)
 
 ### Ensuite
 

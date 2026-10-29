@@ -5,7 +5,7 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.7.0 disponible](https://img.shields.io/badge/statut-v0.7.0%20disponible-brightgreen.svg)](#statut)
+[![Statut : v0.8.0 disponible](https://img.shields.io/badge/statut-v0.8.0%20disponible-brightgreen.svg)](#statut)
 [![Tests : 605 passants](https://img.shields.io/badge/tests-605%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
@@ -147,9 +147,9 @@ Ce que le séquestre tient :
 
 ## Statut
 
-**v0.7.0 — un coffre scellé, des clés qu'aucun objet ne tend, un séquestre lu par une cérémonie témoignée**, 27 octobre 2026, sur la **v0.6.2 — une entrée du journal de séquestre est forcée sur le disque**, 15 octobre 2026, et la **v0.6.1 — les clés déverrouillées et les secrets du serveur restent hors des vidages et des traces**, 14 octobre 2026.
+**v0.8.0 — un coffre archivé revient en service, un coffre se gèle en lecture seule, et aucune écriture décidée par une récupération ne passe sans son ticket**, 29 octobre 2026, sur la **v0.7.0 — un coffre scellé, des clés qu'aucun objet ne tend, un séquestre lu par une cérémonie témoignée**, 27 octobre 2026, et la **v0.6.2 — une entrée du journal de séquestre est forcée sur le disque**, 15 octobre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (6 893 lignes réparties sur 42 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **605 contrôles répartis sur 13 suites** sous PHP 8.2 et 8.4, et 601 sous PHP 8.1, où quatre contrôles de trace deviennent des limites déclarées, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (7 697 lignes réparties sur 46 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **679 contrôles répartis sur 13 suites**, comptés en les lançant sous PHP 8.4, le 29 octobre 2026. La CI lance les mêmes suites sous PHP 8.1 et 8.2, où quatre contrôles de trace deviennent des limites déclarées. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Une base 0.5.x se migre en place à sa première ouverture par la 0.6.0 (colonnes `kdf_opslimit` et `kdf_memlimit`, au profil d'avant), une base 0.4.0 aussi, en une fois. ⚠️ Un retour à la 0.5.x garde l'accès aux coffres et au séquestre côté titulaire, mais l'administrateur n'ouvre plus un séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin générée par la 0.6.0 : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
 

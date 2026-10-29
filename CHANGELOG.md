@@ -10,7 +10,32 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover 0.13.0 — deux récupérations de niveau 1 simultanées ne réussissent plus toutes les deux — 28 octobre 2026
+### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
+
+Rupture de contrat : `StorageInterface` gagne les méthodes des tickets, et SelfDataGuard 0.8.0 les exige.
+
+`reEnroler()` et la remise en service d'un coffre archivé sont des gestes que seule une récupération
+aboutie autorise. Jusqu'ici, rien ne le vérifiait côté coffre : un appelant qui tenait la façade de
+SelfDataGuard pouvait les demander sans qu'aucune récupération les ait décidés.
+
+- SelfRecover émet un ticket **dans sa transaction**, pour chaque niveau 3, chaque retour du titulaire
+  et chaque clôture de fenêtre. Une fenêtre garde celui de son premier niveau 3 : un dossier rejoué
+  n'en fabrique pas un second.
+- SelfDataGuard, muni d'une source `RecoveryTickets`, exige un ticket **du bon genre avant toute
+  dérivation** pour `reEnroll()`, `reinstateArchive()`, `freeze()` et `unfreeze()`, et le refuse par
+  `RecoveryTicketException` — donc sans payer l'Argon2id d'un geste qu'il va refuser.
+- Le ticket qu'une écriture applique est inscrit dans la transaction de cette écriture, **une fois par
+  opération** : un rejeu ne retrouve pas son ticket et s'arrête. `archiveOfTicket()` nomme l'archive
+  qu'un ticket de niveau 3 a rangée, pour un titulaire qui revient après deux niveaux 3.
+- Sans source de tickets, les quatre méthodes n'en demandent aucun : une installation qui n'a pas de
+  récupération derrière son coffre n'a rien à changer.
+
+Mesuré sur `716c484` : `sanity_escalade` 249 cas, `sanity_recovery` 89, `sanity_suite_reprise` 17,
+`banc_stockage_pdo` 207, le couplage des deux bibliothèques 13 et leur parcours 27 ; les treize suites
+SelfDataGuard 679 cas, dont le cas de conformité `tickets-applied-once`. Les 61 canaris de l'étape
+SelfDataGuard rejoués, chacun vu rouge sur son cas.
+
+### SelfRecover 0.13.0, lot C — deux récupérations de niveau 1 simultanées ne réussissent plus toutes les deux — 28 octobre 2026
 
 Rupture de contrat : `StorageInterface::remplacerEmpreintes()` prend un quatrième paramètre.
 
