@@ -642,9 +642,6 @@ jobs:
           X=bi-self/selfrecover/tests/sanity_escalade.php
           canari $R 'if (!Wordlist::inAnyList(strtolower($mot))) {' 'if (false) {' \
             $B '❌ un mot hors des deux listes est refusé'
-          canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
-            '        $this->stockage->tracerTentative($this->etiquetteSuspicionL1($nomCompte), false, $ip, $maintenant);' \
-            $B '❌ 🔑 et il ne charge pas le classement non plus'
           canari $R "if (\$ancienne !== null && Hashing::verify(\$apport, (string) \$ancienne['empreinte_passphrase'])) {" 'if (false) {' \
             $B '❌ niveau 2 : la passphrase remplacée ne revient pas telle quelle'
           canari $R 'public const MOTS_PASSPHRASE = 6;' 'public const MOTS_PASSPHRASE = 4;' \
@@ -656,39 +653,12 @@ jobs:
           # `purgerEchecs` n'efface jamais ces lignes.
           # ⚠️ Le ternaire est devenu un `if/else` : la garde porte sur le dossier
           # trouvé, pas sur l'étiquette. Le motif suit l'affectation, pas sa forme.
-          canari $R '            $etiquette = Etiquette::PREFIXE_L2_INCONNU;' '            $etiquette = null;' \
-            bi-self/selfrecover/tests/sanity_recovery.php \
-            '❌ ⭐ le frein par origine COMPTE ces essais'
-          canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
-            $B '❌ apporter celle qui sert est refusé'
-          canari $R 'if (strlen($saisie) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
-            $B "❌ au-delà du plafond d'octets, la saisie est refusée comme trop longue"
-          E=bi-self/selfrecover/src/Recovery/Escalade.php
           canari $E "if (\$ancienne !== null && Hashing::verify(\$jugee['canonique'], (string) \$ancienne['empreinte_passphrase'])) {" 'if (false) {' \
             $B "❌ apporter l'ancienne est refusé"
-          canari $E "if (\$jugee['canonique'] === strtolower(Recovery::normaliserPassphrase(\$motDePasse))) {" 'if (false) {' \
-            $B '❌ une passphrase égale au mot de passe choisi est refusée'
-          # Le refus d'ouverture du niveau 3 est unique : un dossier déjà ouvert qui
-          # se nommerait apprendrait à n'importe qui qu'un tiers récupère son compte.
-          canari $E '            $this->stockage->compterDemandeurConcurrent($existant->id);' \
-            "            return ['ok' => false, 'error' => 'deja_ouvert', 'message' => 'ouvert'];" \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule réponse'
-          # Et il prend le même temps : un délai ajouté APRÈS le travail du refus en
-          # garderait l'écart, et le chronomètre dirait ce que le message tait.
           canari $E '$reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);' '$reste = $this->delaiRefusUs;' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, procédure gelée, dossier ouvert : la même durée'
           # Et l'échéance part en tête de route : repartie après les freins et les
           # traces, elle ajoute leur coût à la durée du refus sur un disque lent.
-          canari $E "        // garderait l'écart ; ils tiennent l'échéance commune posée plus haut." '        $debut = hrtime(true);' \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ un stockage lent avant la recherche'
-          # Un secret marqué à l'entrée et pas sur le chemin qu'il emprunte ressort
-          # en clair un cadre plus bas, dans la trace d'une exception du stockage.
-          canari $E 'private function recevable(string $numero, #[\SensitiveParameter] string $sesame,' \
-            'private function recevable(string $numero, string $sesame,' \
-            $B '❌ niveau 3 : la trace porte le numéro, ni le sésame'
-          # La clôture consomme le dossier : sans la condition sur l'état, deux
-          # reprises concurrentes du même accord écrivent toutes les deux.
-          P=bi-self/selfrecover/src/Storage/StockagePdo.php
           canari $P "             WHERE id = ? AND status IN ('open', 'awaiting_admin', 'accepted')\"" \
             '             WHERE id = ?"' \
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ clore un dossier déjà clos lève LitigeDejaClos'
@@ -697,23 +667,56 @@ jobs:
           canari $P '        $st->execute([$statut, $quand, $par, $quand, $litigeId]);' \
             "        \$this->pdo->prepare('UPDATE disputes SET status = ?, decided_at = ?, decided_by = ?, updated_at = ? WHERE id = ?')->execute([\$statut, \$quand, \$par, \$quand, \$litigeId]); return;" \
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ trancher un dossier déjà tranché lève LitigeDejaTranche'
-          canari $P '        $st->execute([$faisceauJson, $quand, $quand, $litigeId]);' \
-            "        \$this->pdo->prepare(\"UPDATE disputes SET signals_json = ?, status = 'awaiting_admin', submitted_at = ?, updated_at = ? WHERE id = ?\")->execute([\$faisceauJson, \$quand, \$quand, \$litigeId]); return;" \
-            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ un dépôt sur un dossier tranché lève LitigeDejaTranche'
-          # Un dossier déposé survit à son échéance, archivé : la purge ne l'efface
-          # qu'au bout de la rétention, et il ne se tranche plus entre-temps.
-          canari $P "(expires_at <= ? AND (status = 'closed' OR (status = 'open'" \
-            "(expires_at <= ? AND (status NOT IN ('refused', 'accepted') OR (status = 'open'" \
-            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ un dossier DÉPOSÉ survit à son échéance'
           canari $P "        OR (expires_at <= ? AND status IN ('open', 'awaiting_admin'))\";" \
             '        OR (expires_at <= ? AND 1 = 0)";' \
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ la rétention passée'
-          canari $E '        if ($litige->expire($maintenant)) {' '        if (false) {' \
-            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ un dossier périmé ne s'accepte plus"
-          # L'épreuve du niveau 3 : là où l'adresse ne dit rien, chaque garde de
-          # l'épreuve doit pouvoir céder seule.
           canari $E "&& (\$pourquoi = \$this->refusEpreuve(" "&& false && (\$pourquoi = \$this->refusEpreuve(" \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ sous tor-onion, une ouverture sans épreuve est refusée"
+          canari $E 'if ($emise > $maintenant || $maintenant - $emise > $this->epreuveDuree) {' 'if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ une épreuve périmée est refusée'
+          canari $E "        \$this->stockage->tracerTentative(\$this->etiquette('#' . \$nomCompte), false, null, \$maintenant);" '' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ insister sur un nom en monte le prix pour ce nom-là seulement'
+          canari $R "            if (\$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
+            "            if (false && \$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'ancienne passphrase, servie dans la fenêtre, rend le compte à son titulaire"
+          canari $R '            $appareils = $this->stockage->revoquerAppareils($compteId);' '            $appareils = 0;' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ les sessions et les appareils du demandeur tombent'
+          canari $E '        if ($this->fenetreDuree < self::FENETRE_MINIMUM || $this->fenetreDuree > self::FENETRE_MAXIMUM) {' '        if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la fenêtre dure de 7 à 30 jours'
+          canari $P "        if (\$existante !== null && \$existante['reprise_le'] === null && \$existante['close_le'] === null" '        if (false' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une seconde reprise dans la fenêtre garde les secrets du titulaire'
+          canari $R '$etiquette = !$ok && $fenetre === null && self::motsTousConnus($passphrase)' \
+            '$etiquette = !$ok && $fenetre === null && !self::motsTousConnus($passphrase)' \
+            $S '❌ ⭐ six essais aux mots inconnus ne comptent pas'
+          # Le plafond d'octets de la saisie SOUMISE, qui n'était appliqué qu'à la
+          # passphrase apportée : sans lui, un envoi énorme se fait comparer.
+          canari $R 'public const MOTS_MINIMUM_CLASSEMENT = 4;' \
+            'public const MOTS_MINIMUM_CLASSEMENT = 6;' \
+            $S '❌ ⭐ quatre mots connus comptent pour un essai, pas seulement six'
+          # ── Le niveau 3 : un tiers ne ferme pas la dernière porte du titulaire ──
+          # Le gel automatique du refus comptait sous le compte VISÉ : trois dossiers
+          # ouverts par un tiers avec le seul nom affiché, et la porte se fermait.
+          # Le remettre doit faire rougir la propriété composée, qui est la seule
+          # qu'aucun banc ne gardait avant la 0.12.0.
+          X=bi-self/selfrecover/tests/sanity_escalade.php
+          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
+            'if (false) {' \
+            $X "❌ ⭐ après un REFUS, l'écriture est refusée et rien n'est rangé"
+          # Et la garde ne doit pas se refermer d'un cran de trop : sur un dossier
+          # ACCEPTÉ, le fil est le seul canal entre le demandeur et l'arbitre
+          # pendant la reprise des secrets. Aucun banc ne l'exerçait.
+          canari $E 'if (mb_strlen($valeur) > self::REPONSE_MAXIMUM) {' \
+            'if (mb_strlen($valeur) > 100000) {' \
+            $X '❌ ⭐ une réponse au-delà du plafond est refusée, et nommée'
+          canari $E 'if ($dernier !== null && $maintenant - $dernier < $this->attenteMessage) {' \
+            'if ($dernier !== null && $maintenant - $dernier < 0) {' \
+            $X '❌ ⭐ deux messages collés : le second est freiné'
+          # `expire` et `accord_perime` ne sont atteintes QUE si le sésame est bon, et
+          # partaient sans délai : le chronomètre disait ce que le message unique tait.
+          canari $E 'if (!$this->recovery->profil()->adresseDiscriminante()' 'if (false' \
+            $X '❌ ⭐ sous tor-onion, 20 ouvertures sur des noms inconnus ferment le service'
+          # Deux gardes vivantes qu'aucune assertion ne nommait : le cas existant
+          # n'assertait que « ça refuse », ce que le refus d'exclusivité satisfait.
 
       - name: Garde-fou — la passphrase apportée par l'utilisateur (2/3)
         run: |
@@ -737,18 +740,33 @@ jobs:
           P=bi-self/selfrecover/src/Storage/StockagePdo.php
           S=bi-self/selfrecover/tests/sanity_recovery.php
           X=bi-self/selfrecover/tests/sanity_escalade.php
+          canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
+            '        $this->stockage->tracerTentative($this->etiquetteSuspicionL1($nomCompte), false, $ip, $maintenant);' \
+            $B '❌ 🔑 et il ne charge pas le classement non plus'
+          canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
+            $B '❌ apporter celle qui sert est refusé'
+          canari $E "if (\$jugee['canonique'] === strtolower(Recovery::normaliserPassphrase(\$motDePasse))) {" 'if (false) {' \
+            $B '❌ une passphrase égale au mot de passe choisi est refusée'
+          # Le refus d'ouverture du niveau 3 est unique : un dossier déjà ouvert qui
+          # se nommerait apprendrait à n'importe qui qu'un tiers récupère son compte.
+          canari $E '            $this->stockage->compterDemandeurConcurrent($existant->id);' \
+            "            return ['ok' => false, 'error' => 'deja_ouvert', 'message' => 'ouvert'];" \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule réponse'
+          # Et il prend le même temps : un délai ajouté APRÈS le travail du refus en
+          # garderait l'écart, et le chronomètre dirait ce que le message tait.
+          canari $E "        // garderait l'écart ; ils tiennent l'échéance commune posée plus haut." '        $debut = hrtime(true);' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ un stockage lent avant la recherche'
+          # Un secret marqué à l'entrée et pas sur le chemin qu'il emprunte ressort
+          # en clair un cadre plus bas, dans la trace d'une exception du stockage.
+          canari $P '        $st->execute([$faisceauJson, $quand, $quand, $litigeId]);' \
+            "        \$this->pdo->prepare(\"UPDATE disputes SET signals_json = ?, status = 'awaiting_admin', submitted_at = ?, updated_at = ? WHERE id = ?\")->execute([\$faisceauJson, \$quand, \$quand, \$litigeId]); return;" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ un dépôt sur un dossier tranché lève LitigeDejaTranche'
+          # Un dossier déposé survit à son échéance, archivé : la purge ne l'efface
+          # qu'au bout de la rétention, et il ne se tranche plus entre-temps.
           canari $E "if (!hash_equals(\$this->recovery->indexRecherche('epreuve:' . \$charge), \$m[4])" 'if (false' \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une difficulté retouchée dans l'épreuve est refusée"
-          canari $E "|| !hash_equals(\$this->recovery->indexRecherche('epreuve-nom:' . \$nomCompte), \$m[3])) {" ') {' \
-            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'épreuve tirée pour un nom ne vaut pas pour un autre"
-          canari $E 'if ($emise > $maintenant || $maintenant - $emise > $this->epreuveDuree) {' 'if (false) {' \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ une épreuve périmée est refusée'
           canari $E 'if ((int) $m[2] < $requis) {' 'if (false) {' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ une épreuve tirée avant la hausse ne suffit plus'
-          canari $E '&& !$this->stockage->consommerEpreuve(' '&& false && !$this->stockage->consommerEpreuve(' \
-            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une épreuve ne sert qu'une fois"
-          canari $E "        \$this->stockage->tracerTentative(\$this->etiquette('#' . \$nomCompte), false, null, \$maintenant);" '' \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ insister sur un nom en monte le prix pour ce nom-là seulement'
           canari $E 'if ($this->recovery->profil()->adresseDiscriminante()) {' 'if (false) {' \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ sous clearweb, l'adresse freine"
           canari $P "'INSERT OR IGNORE INTO l3_epreuves (empreinte, expire_at) VALUES (?, ?)'" \
@@ -756,36 +774,62 @@ jobs:
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ la seconde consommation est refusée par la clé'
           # La fenêtre d'après un niveau 3 : le titulaire qui revient avec un secret
           # d'avant l'emporte, et chaque garde doit pouvoir céder seule.
-          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree, $ticket);' '' \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la reprise par un niveau 3 ouvre une fenêtre de 14 jours'
-          canari $R "            if (\$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
-            "            if (false && \$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
-            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'ancienne passphrase, servie dans la fenêtre, rend le compte à son titulaire"
           canari $R '        $ancien = $trouve === null ? $this->stockage->trouverAncienCodeParIndex($this->indexRecherche($code)) : null;' \
             '        $ancien = null;' \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ un code d'avant, avec le mot d'avant, rend aussi le compte à son titulaire"
-          canari $R "                (string) \$fenetre['empreinte_mot'], (string) \$fenetre['sel']);" \
-            "                Hashing::hash('mot du demandeur'), (string) \$fenetre['sel']);" \
-            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ il retrouve son mot mémorisé d'avant et son sel"
-          canari $R '            $appareils = $this->stockage->revoquerAppareils($compteId);' '            $appareils = 0;' \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ les sessions et les appareils du demandeur tombent'
           canari $R '        $reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);' '        $reste = $this->delaiRefusUs;' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ un refus au niveau 1 prend le même temps'
-          canari $E "            'lecture_admin_permise' => in_array(\$etat, ['aucune', 'close', 'echue'], true)," \
-            "            'lecture_admin_permise' => true," \
-            bi-self/selfrecover/tests/sanity_escalade.php "❌ pendant la fenêtre, le coffre n'est pas gelé et l'arbitre ne lit pas"
-          canari $E '        if ($this->fenetreDuree < self::FENETRE_MINIMUM || $this->fenetreDuree > self::FENETRE_MAXIMUM) {' '        if (false) {' \
-            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la fenêtre dure de 7 à 30 jours'
-          canari $P "              WHERE account_id = ? AND reprise_le IS NULL AND close_le IS NULL AND ferme_le > ?'" \
-            "              WHERE account_id = ? AND close_le IS NULL AND ferme_le > ?'" \
-            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre ne se reprend qu'une fois"
-          canari $P "        if (\$existante !== null && \$existante['reprise_le'] === null && \$existante['close_le'] === null" '        if (false' \
-            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une seconde reprise dans la fenêtre garde les secrets du titulaire'
           canari $P "    private const FENETRES_ECHUES = 'ferme_le <= ? AND reprise_le IS NULL" \
             "    private const FENETRES_ECHUES = 'ferme_le >= 0 AND ? IS NOT NULL AND reprise_le IS NULL" \
             bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre encore ouverte n'est ni comptée ni purgée"
-          canari $P "            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel." '            return null;' \
-            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ la route du sel rend l'ancien sel d'un code d'avant"
+          canari $P '        $st->execute([$quand, $compteId, $quand]);' '        $st->execute([$quand, $compteId, 0]);' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une fenêtre échue ne se reprend pas'
+          # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
+          # d'un autre. Depuis que son frein ne ferme plus par compte, quatre
+          # propriétés le remplacent, et chacune doit pouvoir céder seule.
+          S=bi-self/selfrecover/tests/sanity_recovery.php
+          # Le frein par origine est désormais le seul qui ferme ici — et aucun banc
+          # ne le faisait mordre : sa branche pouvait disparaître en restant verte.
+          canari $R 'public const ESSAIS_PLAUSIBLES_SIGNALES = 3;' \
+            'public const ESSAIS_PLAUSIBLES_SIGNALES = 99;' \
+            $S '❌ ⭐ le troisième atteint le seuil'
+          # Et il ne doit pas se déclencher sur n'importe quoi : classer à l'envers
+          # réveillerait le vigile pour qui tape à côté, et le tairait pour l'autre.
+          canari $E "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre);" \
+            "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre); if (\$refus >= \$this->gelSeuil) { \$this->stockage->poserGel(\$litige->compteId, \$maintenant + \$this->gelDuree, \$maintenant, \$par); }" \
+            $X '❌ ⭐ trois refus déclenchés par un tiers, et le titulaire ouvre toujours'
+          # Le geste qui remplace le compteur. Sans effet, tout le bloc du gel
+          # restait vert : l'ouverture suivante était refusée par l'exclusivité du
+          # dossier en cours, pas par le gel. Mesuré, pas supposé.
+          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
+            'if (!$litige->enCours()) {' \
+            $X '❌ ⭐ après un ACCORD, l'"'"'écriture reste possible'
+          # Et le cran de trop dans l'autre sens : sans le test de l'auteur, l'arbitre
+          # refuse sans pouvoir expliquer — sur le dernier recours de qui n'a plus
+          # aucun secret, un refus muet est pire que le défaut qu'on fermait.
+          canari $E '$reponses  = array_intersect_key($reponses, array_flip($attendues));' \
+            '// rien n'"'"'est écarté' \
+            $X '❌ ⭐ 50 clés inventées hors-plafond n'"'"'empêchent pas le dépôt'
+          # Le fil : un plafond par DOSSIER, une fenêtre entre deux messages, et
+          # l'arbitre jamais borné — borner son canal le lui retirerait au moment
+          # où il en a besoin.
+          canari $E '        $refuser = function (string $motif, string $message) use ($debut): array {' \
+            '        $refuser = function (string $motif, string $message) use ($debut): array { if ($motif !== "sesame_invalide") { return ["ok" => false, "error" => $motif, "message" => $message]; }' \
+            $X '❌ ⭐ sésame faux, dossier expiré, accord périmé : la même durée'
+          # Le plafond de service n'achète rien là où l'adresse discrimine, et il y
+          # ajoutait un interrupteur général que vingt requêtes anonymes tiraient.
+          canari $E "if (!preg_match('/^[a-f0-9]{64}\$/', \$empreinteSesame)) {" 'if (false) {' \
+            $X '❌ ⭐ une empreinte de sésame malformée est refusée, et nommée'
+          # ⚠️ PAS de canari sur le `deja_tranche` de `soumettre()`, et c'est mesuré :
+          # `if (!$litige->enCours()) {` apparaît deux fois dans le fichier, et cette
+          # fonction exige — à juste titre — un motif unique. Le rendre unique
+          # demanderait de recopier la définition de `enCours()` sur place, soit une
+          # duplication pour la commodité d'un canari. Le banc, lui, assertait
+          # jusqu'ici « ça refuse » sans nommer le motif : il le nomme désormais
+          # (« on ne dépose plus de faisceau sur un dossier tranché »), et ce cas a
+          # été vu rouge hors CI en retirant la garde.
+          # Un reste d'attente sous la minute s'annonçait « 1 minute » : jamais plus
+          # court que le délai réel, mais six fois trop long.
 
       - name: Garde-fou — la passphrase apportée par l'utilisateur (3/3)
         run: |
@@ -809,49 +853,52 @@ jobs:
           P=bi-self/selfrecover/src/Storage/StockagePdo.php
           S=bi-self/selfrecover/tests/sanity_recovery.php
           X=bi-self/selfrecover/tests/sanity_escalade.php
-          canari $P '        $st->execute([$quand, $compteId, $quand]);' '        $st->execute([$quand, $compteId, 0]);' \
-            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une fenêtre échue ne se reprend pas'
-          # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
-          # d'un autre. Depuis que son frein ne ferme plus par compte, quatre
-          # propriétés le remplacent, et chacune doit pouvoir céder seule.
-          S=bi-self/selfrecover/tests/sanity_recovery.php
-          # Le frein par origine est désormais le seul qui ferme ici — et aucun banc
-          # ne le faisait mordre : sa branche pouvait disparaître en restant verte.
+          canari $R '            $etiquette = Etiquette::PREFIXE_L2_INCONNU;' '            $etiquette = null;' \
+            bi-self/selfrecover/tests/sanity_recovery.php \
+            '❌ ⭐ le frein par origine COMPTE ces essais'
+          canari $R 'if (strlen($saisie) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
+            $B "❌ au-delà du plafond d'octets, la saisie est refusée comme trop longue"
+          E=bi-self/selfrecover/src/Recovery/Escalade.php
+          canari $E 'private function recevable(string $numero, #[\SensitiveParameter] string $sesame,' \
+            'private function recevable(string $numero, string $sesame,' \
+            $B '❌ niveau 3 : la trace porte le numéro, ni le sésame'
+          # La clôture consomme le dossier : sans la condition sur l'état, deux
+          # reprises concurrentes du même accord écrivent toutes les deux.
+          P=bi-self/selfrecover/src/Storage/StockagePdo.php
+          canari $P "(expires_at <= ? AND (status = 'closed' OR (status = 'open'" \
+            "(expires_at <= ? AND (status NOT IN ('refused', 'accepted') OR (status = 'open'" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ un dossier DÉPOSÉ survit à son échéance'
+          canari $E '        if ($litige->expire($maintenant)) {' '        if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ un dossier périmé ne s'accepte plus"
+          # L'épreuve du niveau 3 : là où l'adresse ne dit rien, chaque garde de
+          # l'épreuve doit pouvoir céder seule.
+          canari $E "|| !hash_equals(\$this->recovery->indexRecherche('epreuve-nom:' . \$nomCompte), \$m[3])) {" ') {' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'épreuve tirée pour un nom ne vaut pas pour un autre"
+          canari $E '&& !$this->stockage->consommerEpreuve(' '&& false && !$this->stockage->consommerEpreuve(' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une épreuve ne sert qu'une fois"
+          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree, $ticket);' '' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la reprise par un niveau 3 ouvre une fenêtre de 14 jours'
+          canari $R "                (string) \$fenetre['empreinte_mot'], (string) \$fenetre['sel']);" \
+            "                Hashing::hash('mot du demandeur'), (string) \$fenetre['sel']);" \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ il retrouve son mot mémorisé d'avant et son sel"
+          canari $E "            'lecture_admin_permise' => in_array(\$etat, ['aucune', 'close', 'echue'], true)," \
+            "            'lecture_admin_permise' => true," \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ pendant la fenêtre, le coffre n'est pas gelé et l'arbitre ne lit pas"
+          canari $P "              WHERE account_id = ? AND reprise_le IS NULL AND close_le IS NULL AND ferme_le > ?'" \
+            "              WHERE account_id = ? AND close_le IS NULL AND ferme_le > ?'" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre ne se reprend qu'une fois"
+          canari $P "            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel." '            return null;' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ la route du sel rend l'ancien sel d'un code d'avant"
           canari $R "if (\$ip !== null && \$this->stockage->compterEchecsIp(\$ip, \$depuis, Etiquette::PREFIXES) >= \$this->maxEchecsIp) {" \
             'if (false) {' \
             $S '❌ ⭐ douze échecs depuis la même origine ferment, eux'
           # Le signal qui remplace la porte fermée : s'il ne se déclenche jamais, on a
           # retiré un frein sans rien mettre à sa place.
-          canari $R 'public const ESSAIS_PLAUSIBLES_SIGNALES = 3;' \
-            'public const ESSAIS_PLAUSIBLES_SIGNALES = 99;' \
-            $S '❌ ⭐ le troisième atteint le seuil'
-          # Et il ne doit pas se déclencher sur n'importe quoi : classer à l'envers
-          # réveillerait le vigile pour qui tape à côté, et le tairait pour l'autre.
-          canari $R '$etiquette = !$ok && $fenetre === null && self::motsTousConnus($passphrase)' \
-            '$etiquette = !$ok && $fenetre === null && !self::motsTousConnus($passphrase)' \
-            $S '❌ ⭐ six essais aux mots inconnus ne comptent pas'
-          # Le plafond d'octets de la saisie SOUMISE, qui n'était appliqué qu'à la
-          # passphrase apportée : sans lui, un envoi énorme se fait comparer.
           canari $R 'if (strlen($passphrase) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
             $S '❌ ⭐ et refusée SANS payer la comparaison lente'
           # ⭐ Le plancher du classement aligné sur la longueur du JOUR rend le signal
           # aveugle sur les comptes les plus anciens — donc les plus faibles —, dont
           # la passphrase plus courte reste valide. C'est le seul signal de ce niveau.
-          canari $R 'public const MOTS_MINIMUM_CLASSEMENT = 4;' \
-            'public const MOTS_MINIMUM_CLASSEMENT = 6;' \
-            $S '❌ ⭐ quatre mots connus comptent pour un essai, pas seulement six'
-          # ── Le niveau 3 : un tiers ne ferme pas la dernière porte du titulaire ──
-          # Le gel automatique du refus comptait sous le compte VISÉ : trois dossiers
-          # ouverts par un tiers avec le seul nom affiché, et la porte se fermait.
-          # Le remettre doit faire rougir la propriété composée, qui est la seule
-          # qu'aucun banc ne gardait avant la 0.12.0.
-          X=bi-self/selfrecover/tests/sanity_escalade.php
-          canari $E "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre);" \
-            "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre); if (\$refus >= \$this->gelSeuil) { \$this->stockage->poserGel(\$litige->compteId, \$maintenant + \$this->gelDuree, \$maintenant, \$par); }" \
-            $X '❌ ⭐ trois refus déclenchés par un tiers, et le titulaire ouvre toujours'
-          # Le geste qui remplace le compteur. Sans effet, tout le bloc du gel
-          # restait vert : l'ouverture suivante était refusée par l'exclusivité du
-          # dossier en cours, pas par le gel. Mesuré, pas supposé.
           canari $E "        \$this->stockage->poserGel((int) \$compte['id'], \$jusqua, \$maintenant, \$par);" \
             '        // le gel ne se pose plus' \
             $X "❌ une fois gelée, l'ouverture d'un nouveau dossier est refusée"
@@ -859,64 +906,17 @@ jobs:
           # que CLOS, et le détenteur du sésame écrivait encore à l'arbitre qui
           # venait de l'éconduire.
           canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
-            'if (false) {' \
-            $X "❌ ⭐ après un REFUS, l'écriture est refusée et rien n'est rangé"
-          # Et la garde ne doit pas se refermer d'un cran de trop : sur un dossier
-          # ACCEPTÉ, le fil est le seul canal entre le demandeur et l'arbitre
-          # pendant la reprise des secrets. Aucun banc ne l'exerçait.
-          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
-            'if (!$litige->enCours()) {' \
-            $X '❌ ⭐ après un ACCORD, l'"'"'écriture reste possible'
-          # Et le cran de trop dans l'autre sens : sans le test de l'auteur, l'arbitre
-          # refuse sans pouvoir expliquer — sur le dernier recours de qui n'a plus
-          # aucun secret, un refus muet est pire que le défaut qu'on fermait.
-          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
             'if ($litige->statut === Litige::REFUSE) {' \
             $X '❌ ⭐ après avoir refusé, l'"'"'arbitre peut encore EXPLIQUER son refus'
           # Les trois réponses sont rangées en base et lues par un humain : le fil
           # avait sa borne, le questionnaire aucune.
-          canari $E 'if (mb_strlen($valeur) > self::REPONSE_MAXIMUM) {' \
-            'if (mb_strlen($valeur) > 100000) {' \
-            $X '❌ ⭐ une réponse au-delà du plafond est refusée, et nommée'
-          canari $E '$reponses  = array_intersect_key($reponses, array_flip($attendues));' \
-            '// rien n'"'"'est écarté' \
-            $X '❌ ⭐ 50 clés inventées hors-plafond n'"'"'empêchent pas le dépôt'
-          # Le fil : un plafond par DOSSIER, une fenêtre entre deux messages, et
-          # l'arbitre jamais borné — borner son canal le lui retirerait au moment
-          # où il en a besoin.
           canari $E 'if (count($siens) >= $this->maxMessagesLitige) {' \
             'if (count($siens) >= 100000) {' \
             $X '❌ ⭐ le fil se ferme au plafond livré, et le motif le dit'
-          canari $E 'if ($dernier !== null && $maintenant - $dernier < $this->attenteMessage) {' \
-            'if ($dernier !== null && $maintenant - $dernier < 0) {' \
-            $X '❌ ⭐ deux messages collés : le second est freiné'
-          # `expire` et `accord_perime` ne sont atteintes QUE si le sésame est bon, et
-          # partaient sans délai : le chronomètre disait ce que le message unique tait.
-          canari $E '        $refuser = function (string $motif, string $message) use ($debut): array {' \
-            '        $refuser = function (string $motif, string $message) use ($debut): array { if ($motif !== "sesame_invalide") { return ["ok" => false, "error" => $motif, "message" => $message]; }' \
-            $X '❌ ⭐ sésame faux, dossier expiré, accord périmé : la même durée'
-          # Le plafond de service n'achète rien là où l'adresse discrimine, et il y
-          # ajoutait un interrupteur général que vingt requêtes anonymes tiraient.
           canari $E 'if (!$this->recovery->profil()->adresseDiscriminante()' 'if (!false' \
             $X '❌ ⭐ sous clearweb, 30 ouvertures depuis 15 adresses ne ferment PLUS le service'
           # Mais il reste le SEUL frein possible sous un service caché : le désarmer
           # partout doit rougir aussi.
-          canari $E 'if (!$this->recovery->profil()->adresseDiscriminante()' 'if (false' \
-            $X '❌ ⭐ sous tor-onion, 20 ouvertures sur des noms inconnus ferment le service'
-          # Deux gardes vivantes qu'aucune assertion ne nommait : le cas existant
-          # n'assertait que « ça refuse », ce que le refus d'exclusivité satisfait.
-          canari $E "if (!preg_match('/^[a-f0-9]{64}\$/', \$empreinteSesame)) {" 'if (false) {' \
-            $X '❌ ⭐ une empreinte de sésame malformée est refusée, et nommée'
-          # ⚠️ PAS de canari sur le `deja_tranche` de `soumettre()`, et c'est mesuré :
-          # `if (!$litige->enCours()) {` apparaît deux fois dans le fichier, et cette
-          # fonction exige — à juste titre — un motif unique. Le rendre unique
-          # demanderait de recopier la définition de `enCours()` sur place, soit une
-          # duplication pour la commodité d'un canari. Le banc, lui, assertait
-          # jusqu'ici « ça refuse » sans nommer le motif : il le nomme désormais
-          # (« on ne dépose plus de faisceau sur un dossier tranché »), et ce cas a
-          # été vu rouge hors CI en retirant la garde.
-          # Un reste d'attente sous la minute s'annonçait « 1 minute » : jamais plus
-          # court que le délai réel, mais six fois trop long.
           canari bi-self/selfrecover/src/Duree.php '        if ($secondes < 60) {' '        if (false) {' \
             $X '❌ ⭐ deux messages collés : le second est freiné, et le délai est dit en secondes'
 
