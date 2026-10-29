@@ -606,7 +606,12 @@ jobs:
       # durée, un secret absent des traces d'exception. Celui qui raccourcit le protocole fait passer la plus courte passphrase
       # apportable sous le plancher de scellement de SelfDataGuard, et le couplage doit
       # le voir.
-      - name: Garde-fou — la passphrase apportée par l'utilisateur
+      # ⚠️ Trois étapes, et la raison se mesure : `check-canaris.sh` borne CHAQUE étape à 900 s,
+      # et ces canaris rejouent `sanity_escalade.php` (~27 s) trente-quatre fois. Mesuré le
+      # 29/10/2026 : l'étape entière coûtait ~1368 s, le rejeu s'arrêtait sur son plafond et
+      # laissait un fichier planté. Les scinder ne retire aucun canari ; chaque étape redéclare
+      # les variables de chemin, puisque son `run:` est un shell à lui.
+      - name: Garde-fou — la passphrase apportée par l'utilisateur (1/3)
         run: |
           # @plante
           for profil in clearweb tor-onion; do
@@ -631,6 +636,10 @@ jobs:
           }
           R=bi-self/selfrecover/src/Recovery/Recovery.php
           B=bi-self/selfrecover/tests/sanity_passphrase_apportee.php
+          E=bi-self/selfrecover/src/Recovery/Escalade.php
+          P=bi-self/selfrecover/src/Storage/StockagePdo.php
+          S=bi-self/selfrecover/tests/sanity_recovery.php
+          X=bi-self/selfrecover/tests/sanity_escalade.php
           canari $R 'if (!Wordlist::inAnyList(strtolower($mot))) {' 'if (false) {' \
             $B '❌ un mot hors des deux listes est refusé'
           canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
@@ -705,6 +714,29 @@ jobs:
           # l'épreuve doit pouvoir céder seule.
           canari $E "&& (\$pourquoi = \$this->refusEpreuve(" "&& false && (\$pourquoi = \$this->refusEpreuve(" \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ sous tor-onion, une ouverture sans épreuve est refusée"
+
+      - name: Garde-fou — la passphrase apportée par l'utilisateur (2/3)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover/src/Recovery/Recovery.php
+          B=bi-self/selfrecover/tests/sanity_passphrase_apportee.php
+          E=bi-self/selfrecover/src/Recovery/Escalade.php
+          P=bi-self/selfrecover/src/Storage/StockagePdo.php
+          S=bi-self/selfrecover/tests/sanity_recovery.php
+          X=bi-self/selfrecover/tests/sanity_escalade.php
           canari $E "if (!hash_equals(\$this->recovery->indexRecherche('epreuve:' . \$charge), \$m[4])" 'if (false' \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une difficulté retouchée dans l'épreuve est refusée"
           canari $E "|| !hash_equals(\$this->recovery->indexRecherche('epreuve-nom:' . \$nomCompte), \$m[3])) {" ') {' \
@@ -754,6 +786,29 @@ jobs:
             bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre encore ouverte n'est ni comptée ni purgée"
           canari $P "            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel." '            return null;' \
             bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ la route du sel rend l'ancien sel d'un code d'avant"
+
+      - name: Garde-fou — la passphrase apportée par l'utilisateur (3/3)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover/src/Recovery/Recovery.php
+          B=bi-self/selfrecover/tests/sanity_passphrase_apportee.php
+          E=bi-self/selfrecover/src/Recovery/Escalade.php
+          P=bi-self/selfrecover/src/Storage/StockagePdo.php
+          S=bi-self/selfrecover/tests/sanity_recovery.php
+          X=bi-self/selfrecover/tests/sanity_escalade.php
           canari $P '        $st->execute([$quand, $compteId, $quand]);' '        $st->execute([$quand, $compteId, 0]);' \
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ une fenêtre échue ne se reprend pas'
           # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
@@ -868,6 +923,7 @@ jobs:
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
       # celui du niveau 2 est branché, pas seulement écrit.
+
       - name: Canari — le banc rougit quand le frein du niveau 2 est débranché
         run: |
           # @plante
