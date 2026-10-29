@@ -714,7 +714,7 @@ jobs:
           # `expire` et `accord_perime` ne sont atteintes QUE si le sésame est bon, et
           # partaient sans délai : le chronomètre disait ce que le message unique tait.
           canari $E 'if (!$this->recovery->profil()->adresseDiscriminante()' 'if (false' \
-            $X '❌ ⭐ sous tor-onion, 20 ouvertures sur des noms inconnus ferment le service'
+            $X '❌ ⭐ sous tor-onion, 500 ouvertures sur des noms inconnus ferment le service'
           # Deux gardes vivantes qu'aucune assertion ne nommait : le cas existant
           # n'assertait que « ça refuse », ce que le refus d'exclusivité satisfait.
 

@@ -79,6 +79,11 @@ function banc(
     ?int $derniereConnexion = null,
     ?int $connexions = null,
     ?StockageMemoire $st = null,
+    // 🔑 Le plafond de service est à 500 depuis la 0.13.0. Un cas qui veut prouver
+    // que la garde du PROFIL protège le service doit franchir ce plafond : avec la
+    // valeur livrée, trente ouvertures ne le franchissent pas et le cas passe que la
+    // garde soit là ou non — un canari l'a montré en restant vert.
+    ?int $maxService = null,
 ): array {
     $st ??= new StockageMemoire();
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash('mot memorise initial')];
@@ -95,7 +100,8 @@ function banc(
         'nombre_connexions'  => $connexions,
     ];
     $recovery = new Recovery($st, 'sel-de-la-sonde', $profil, Langue::FR, delaiRefusUs: 0);
-    $esc      = new Escalade($st, $recovery, ...SANS_EPREUVE, delaiRefusUs: 0);
+    $esc      = new Escalade($st, $recovery, ...(SANS_EPREUVE + ['delaiRefusUs' => 0]
+        + ($maxService === null ? [] : ['maxOuverturesService' => $maxService])));
     // Un lot posé à la main — ce qu'on vérifie est qu'un refus ne le détruit pas,
     // pas la façon dont il est fabriqué. `emettreCodes()` coûterait dix Argon2id.
     for ($c = 1; $c <= Recovery::CODES_PAR_LOT; $c++) {
@@ -1041,7 +1047,7 @@ verifier('contre-témoin : à 499, le titulaire ouvre encore', (static function 
 })());
 // Sous clearweb, le profil EXIGE une adresse : le frein par adresse mord
 // toujours, et le plafond global n'ajoutait qu'un interrupteur général.
-[$stW, $escW] = banc(ProfilDeploiement::CLEARWEB, $now);
+[$stW, $escW] = banc(ProfilDeploiement::CLEARWEB, $now, maxService: 20);
 for ($i = 0; $i < 30; $i++) {
     $escW->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), '198.51.100.' . (10 + intdiv($i, 2)), $now + $i);
 }
