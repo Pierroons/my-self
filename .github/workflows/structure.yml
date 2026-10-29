@@ -724,7 +724,7 @@ jobs:
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ la seconde consommation est refusée par la clé'
           # La fenêtre d'après un niveau 3 : le titulaire qui revient avec un secret
           # d'avant l'emporte, et chaque garde doit pouvoir céder seule.
-          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree);' '' \
+          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree, $ticket);' '' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la reprise par un niveau 3 ouvre une fenêtre de 14 jours'
           canari $R "            if (\$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
             "            if (false && \$f !== null && self::fenetreOuverte(\$f, \$maintenant) && \$f['empreinte_passphrase'] !== null" \
@@ -737,7 +737,7 @@ jobs:
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ il retrouve son mot mémorisé d'avant et son sel"
           canari $R '            $appareils = $this->stockage->revoquerAppareils($compteId);' '            $appareils = 0;' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ les sessions et les appareils du demandeur tombent'
-          canari $R '            $this->attendreEcheance($debut);' '            usleep($this->delaiRefusUs);' \
+          canari $R '        $reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);' '        $reste = $this->delaiRefusUs;' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ un refus au niveau 1 prend le même temps'
           canari $E "            'lecture_admin_permise' => in_array(\$etat, ['aucune', 'close', 'echue'], true)," \
             "            'lecture_admin_permise' => true," \
@@ -772,8 +772,8 @@ jobs:
             $S '❌ ⭐ le troisième atteint le seuil'
           # Et il ne doit pas se déclencher sur n'importe quoi : classer à l'envers
           # réveillerait le vigile pour qui tape à côté, et le tairait pour l'autre.
-          canari $R '$etiquette = !$ok && self::motsTousConnus($passphrase)' \
-            '$etiquette = !$ok && !self::motsTousConnus($passphrase)' \
+          canari $R '$etiquette = !$ok && $fenetre === null && self::motsTousConnus($passphrase)' \
+            '$etiquette = !$ok && $fenetre === null && !self::motsTousConnus($passphrase)' \
             $S '❌ ⭐ six essais aux mots inconnus ne comptent pas'
           # Le plafond d'octets de la saisie SOUMISE, qui n'était appliqué qu'à la
           # passphrase apportée : sans lui, un envoi énorme se fait comparer.
