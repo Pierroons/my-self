@@ -329,3 +329,80 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | User negligence | ✗ | Reused secrets stay reusable; only unique secrets help |
 | Database breach | ✓ (partial) | Argon2id hashes, but root trumps all |
 | Lost everything | ✗ | Admin fallback only |
+
+---
+
+## How to exercise it
+
+Everything below runs offline, with no service and no network, on the PHP version the module
+requires (`^8.1`); the benches here are run on 8.4. Each bench is
+self-contained and exits non-zero on the first failure.
+
+| what | how |
+|---|---|
+| the library, bench by bench | `php bi-self/selfrecover/tests/sanity_<name>.php` — one suite per file, covering the socle, the derivation salt and its declared size, device enrolment, recovery, the resumption suite, the labels, escalation, a user-brought passphrase, the announcement of secrets, construction sites, purging, and the two that cross SelfDataGuard |
+| the cross-language corpus | `tests/vecteurs-derivation.json` and `tests/vecteurs-argon2.json`, replayed on both sides: `derivation.php` / `derivation.js`, `argon2.php` / `argon2.js`. A derivation that drifts between PHP and the browser locks every account enrolled before the drift, and nothing else would catch it |
+| a storage implementation | `tests/banc_stockage_pdo.php`, whose own total is printed at the end of the run, and `tests/banc_portabilite_schema.php` against your own `StockageInterface`; `tests/StockageMemoire.php` is the in-memory double the suites use |
+| the level-3 state machine | `php tests/fuzz_escalade.php --tours=500 --graine=<N>` — random sequences of opens, answers, verdicts, abandons and expiries against the invariants |
+| the reference integration | `demo/bi-self-duo/` consumes the library as a deployment would, and `demo/bi-self-duo/tests/equivalence_selfrecover.php` checks the demo and the library answer alike |
+
+Two scripts replay the guards themselves, and they are the ones to run after touching anything here:
+`scripts/check-portes.sh` replays every bench and checks its total still matches the count the
+workflow asserts — for every bench in the repository, not only this module's — and
+`scripts/check-canaris.sh` plants, in the code, the very defect each
+CI guard claims to catch and requires it to go red. A guard that has never been seen failing does not
+differ from a guard that measures nothing: both report green.
+
+## How we rate severity
+
+The scale is written once for the whole repository, in [`GRAVITE.md`](../../../GRAVITE.md) at its root,
+and it is the one used in audit reports and review findings. Four levels:
+
+- **Critical** — a secret or a user's data becomes readable by someone holding nothing; or a third
+  party durably deprives the holder of their account; or user data is destroyed with no human
+  decision; or an administrative power is exercised without a trace that cannot be forged.
+- **High** — exploitable with a realistic prerequisite: one database write, an already-leaked secret,
+  an integrator following the contract to the letter, a configuration the documentation recommends.
+  Or: an announced security property the code does not hold.
+- **Medium** — degrades without opening: denial of service, an oracle that is expensive to exploit, a
+  silent failure a caller can read as success, a wrong value returned to the user.
+- **Low — debt** — the property holds today, but nothing enforces it: a docblock asks for it, the
+  database engine supplies it by accident, or call order guarantees it until someone changes it.
+
+Three rules specific to this project can each raise a finding on their own, and `GRAVITE.md` states
+them in full: the **last-resort rule** (a defect on the last door open to someone who did nothing
+wrong goes up one level), the **conforming-integrator rule** (what an integrator who follows the
+documented contract can break is High at minimum), and the **docblock rule** (a property held only by
+a comment is rated by how loudly its violation fails, not by how clearly it is documented).
+
+Answering the questions the template asks outright: a brake that a third party can trip on an
+account they do not own is Critical, not High — it closes the holder's last door. An offline oracle
+is Medium, not High: its cost per guess is the protection, and that is stated, not promised. A
+property documented but unenforced is Low, however serious it would be if it broke — and it becomes
+High the day a text claims the code holds it.
+
+## Anything to leave alone
+
+These are declared choices, each documented above or in the module's texts. Re-reporting one as a
+vulnerability costs a round trip, and more than once it has cost a correction that broke a published
+promise instead.
+
+- **The recovery word is a master key**, and the level-1 passphrase never expires. Both are in the
+  section above, with what bounds them.
+- **The offline Argon2id oracle.** A leaked database lets an attacker test guesses at one Argon2id
+  each. That cost is the whole protection, and no attempt counter applies offline.
+- **`'label'` mode offers no phishing resistance.** This is not a bug in the mode; it is why the mode
+  is explicit and why a deployment using it must not be described as phishing-resistant.
+- **Holding a level-3 slot with a name alone is open, by design of the level.** Nobody can prove a
+  link to an account they have lost everything of, so no automatic check separates a squatter from a
+  holder. The arbitrator is the answer.
+- **Level 1 behind a hidden service carries load that is named, not promised.** The same goes for the
+  service-wide ceiling on level-3 opens: since 0.13.0 an open costs a challenge instead of being
+  refused, and the ceiling behind it is a last resort, not a per-account brake.
+- **`demo/lab/` is a CTF target, and some of its defects are published on purpose.** Its login brake
+  counts failures under the *submitted* name, so a third party closes an account's login in five
+  requests — published in the lab's own limits page and held by
+  `demo/lab/tests/sanity_frein_login.php`, whose header says that if the case fails, the defect has
+  been fixed and the published limit must be removed. Correcting it is not a fix; it is changing a
+  published choice, and it unsettles a page external researchers read. The lab's private messages are
+  encrypted under a *server* key, not a per-user envelope, and its README says so.
