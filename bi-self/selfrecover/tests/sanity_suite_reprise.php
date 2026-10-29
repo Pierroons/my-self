@@ -177,6 +177,10 @@ verifier('niveau 3 : la suite reçoit les secrets neufs, le mot mémorisé déri
     && $p?->chemin === Reprise::NIVEAU_3 && $p->compte === 'alice' && $p->secretServi === null
     && $p->motDePasse === 'le mot de passe du demandeur' && $p->passphrase === $r3['passphrase']
     && $p->motMemorise === $MOT_L3 && $p->numeroLitige === (string) $o['numero']);
+$ticketL3 = (string) $p?->ticket;
+verifier('niveau 3 : un ticket rangé dans la transaction, de son genre, et que la fenêtre garde',
+    ($st->ticketEmis($ticketL3)['genre'] ?? null) === Reprise::NIVEAU_3 && $p->ticketNiveau3 === $ticketL3
+    && ($st->fenetreDuCompte(1)['ticket_niveau3'] ?? null) === $ticketL3);
 
 $retour = $rec->parPassphrase('alice', $PHRASE, '10.0.0.8', $now + 100);
 $p = $suite->derniere();
@@ -185,12 +189,31 @@ verifier('retour : la suite reçoit la passphrase d\'avant et les secrets neufs 
     && $suite->recues[1]['enTransaction'] && $p?->chemin === Reprise::RETOUR_TITULAIRE
     && $p->serrureServie === Reprise::SERRURE_PASSPHRASE && $p->secretServi === $PHRASE
     && $p->motDePasse === $retour['mot_de_passe'] && $p->passphrase === $retour['passphrase']);
+verifier('retour : son propre ticket, et celui du niveau 3 sous lequel l\'archive du titulaire attend',
+    ($st->ticketEmis((string) $p?->ticket)['genre'] ?? null) === Reprise::RETOUR_TITULAIRE && $p->ticketNiveau3 === $ticketL3);
 
 $clos = $esc->cloreFenetre('alice', 'arbitre', $now + 200);
 $p = $suite->derniere();
 verifier('clôture : la suite est appelée dans la transaction, sans secret',
     ($clos['suite'] ?? null) === 'suivie' && $suite->recues[2]['enTransaction']
     && $p?->chemin === Reprise::CLOTURE && $p->compte === 'alice' && $p->secretServi === null && $p->motDePasse === null);
+verifier('clôture : son ticket, et celui du niveau 3',
+    ($st->ticketEmis((string) $p?->ticket)['genre'] ?? null) === Reprise::CLOTURE && $p->ticketNiveau3 === $ticketL3);
+
+// 🔑 Deux niveaux 3 dans une même fenêtre : l'archive du titulaire est celle du
+// PREMIER. Le second émet son ticket, mais la fenêtre garde celui du premier.
+$suite = null;
+[$st, $rec, $esc] = $banc($suite);
+foreach (['premier', 'second'] as $i => $qui) {
+    $sesameI = bin2hex(random_bytes(32));
+    $oI = $esc->ouvrir('alice', Escalade::empreinteSesame($sesameI), '10.0.0.7', $now + 1000 * $i);
+    $esc->trancher((string) $oI['numero'], 'accepte', 'arbitre', $now + 1000 * $i + 10);
+    $esc->reEnroler((string) $oI['numero'], $sesameI, "le mot de passe du {$qui} demandeur", $MOT_L3, $SEL_L3, $now + 1000 * $i + 20);
+}
+[$premier, $second] = [$suite->recues[0]['reprise'], $suite->recues[1]['reprise']];
+verifier('⭐ un second niveau 3 dans la fenêtre a son ticket, mais la fenêtre garde celui du premier',
+    $premier->ticket !== $second->ticket && $second->ticketNiveau3 === $premier->ticket
+    && ($st->fenetreDuCompte(1)['ticket_niveau3'] ?? null) === $premier->ticket);
 
 // Une suite qui lève à la clôture : la fenêtre reste reprise, rien n'est clos.
 $suite = null;

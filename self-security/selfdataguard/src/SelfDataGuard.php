@@ -18,6 +18,7 @@ use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
+use Pierroons\SelfDataGuard\Vault\RecoveryTicketException;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
@@ -88,6 +89,10 @@ final class SelfDataGuard
      * @param list<string> $sharedIndexes the indexed fields several accounts may
      *        hold the same value of (a household phone). Every other indexed
      *        field names one account.
+     * @param RecoveryTickets|null $tickets where reEnroll(), reinstateArchive(),
+     *        freeze() and unfreeze() check that a recovery was accepted. Given,
+     *        each of them refuses without a ticket of its kind for the userId,
+     *        before any Argon2id; null, they take none.
      *
      * @throws InvalidArgumentException when the key, or the shared fields, are
      *         not the ones the database recorded, or when it recorded none and
@@ -96,7 +101,8 @@ final class SelfDataGuard
     public function __construct(
         private readonly StorageInterface $storage,
         #[\SensitiveParameter] private readonly string $blindKey,
-        array $sharedIndexes = []
+        array $sharedIndexes = [],
+        private readonly ?RecoveryTickets $tickets = null,
     ) {
         if (strlen($blindKey) < 32) {
             throw new InvalidArgumentException(
@@ -482,21 +488,27 @@ final class SelfDataGuard
      * The new vault starts empty; the old data comes back through
      * openArchive(). A userId with no live vault goes through register().
      *
+     * Given RecoveryTickets, $ticket is the level-3 ticket SelfRecover issued
+     * for this account; the archive is recorded under it (archiveOfTicket()),
+     * and a ticket already applied throws TicketAlreadyAppliedException.
+     *
      * @return array{unlocked: UnlockedVault, archiveId: string}
      */
     public function reEnroll(
         VaultGeneration $replacing,
         #[\SensitiveParameter] string $newPassword,
         #[\SensitiveParameter] ?string $newMemorized = null,
-        #[\SensitiveParameter] ?string $newPassphrase = null
+        #[\SensitiveParameter] ?string $newPassphrase = null,
+        ?string $ticket = null,
     ): array {
+        $this->requireTicket($ticket, $replacing->userId, RecoveryTickets::LEVEL_3);
         // The vault set aside keeps its seal: one that does not hold would make
         // an archive nothing can repair, as an unsealed one would make one
         // without a seal.
         $this->load($replacing->userId);
         $result    = $this->vault->register($replacing->userId, $newPassword, $newMemorized, $newPassphrase);
         $record    = $this->sealed($result['record']);
-        $archiveId = $this->storage->replaceWithArchive($replacing, $record);
+        $archiveId = $this->storage->replaceWithArchive($replacing, $record, $ticket);
         $this->assertVaultPersisted($record, 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
@@ -602,10 +614,11 @@ final class SelfDataGuard
      * @throws DuplicateIndexException  naming the fields whose index another account took since
      * @throws VaultFrozenException     if the vault $replacing names is frozen
      */
-    public function reinstateArchive(VaultGeneration $replacing, string $archiveId): string
+    public function reinstateArchive(VaultGeneration $replacing, string $archiveId, ?string $ticket = null): string
     {
+        $this->requireTicket($ticket, $replacing->userId, RecoveryTickets::HOLDER_RETURN);
         $record = $this->sealedArchive($replacing->userId, $archiveId);
-        $setAside = $this->storage->swapWithArchive($replacing, $archiveId);
+        $setAside = $this->storage->swapWithArchive($replacing, $archiveId, $ticket);
         $this->assertVaultPersisted($record, $record->revision);
         return $setAside;
     }
@@ -634,15 +647,26 @@ final class SelfDataGuard
      * @param string $by who froze it, as the caller names them (an arbiter, a case)
      * @return bool true if this call froze it; false if it was frozen already, by whoever froze it first
      */
-    public function freeze(VaultGeneration $generation, string $by): bool
+    public function freeze(VaultGeneration $generation, string $by, ?string $ticket = null): bool
     {
-        return $this->storage->freezeVault($generation, $by, new DateTimeImmutable());
+        $this->requireTicket($ticket, $generation->userId, RecoveryTickets::HOLDER_RETURN);
+        return $this->storage->freezeVault($generation, $by, new DateTimeImmutable(), $ticket);
     }
 
     /** @return bool true if the vault was frozen */
-    public function unfreeze(VaultGeneration $generation): bool
+    public function unfreeze(VaultGeneration $generation, ?string $ticket = null): bool
     {
-        return $this->storage->unfreezeVault($generation);
+        $this->requireTicket($ticket, $generation->userId, RecoveryTickets::CLOSURE);
+        return $this->storage->unfreezeVault($generation, $ticket);
+    }
+
+    /**
+     * The archive a re-enrolment set aside under $ticket — the level-3 ticket a
+     * returning holder's window keeps —, or null.
+     */
+    public function archiveOfTicket(string $ticket): ?string
+    {
+        return $this->storage->archiveOfTicket($ticket);
     }
 
     /**
@@ -944,6 +968,22 @@ final class SelfDataGuard
         }
         $this->assertProfileSealed($archive->record, $archive->record->kdfOpslimit, $archive->record->kdfMemlimit, archive: true);
         return $archive->record;
+    }
+
+    /**
+     * With RecoveryTickets given, $ticket must be of $kind and issued for
+     * $userId. Checked first, so that a call without one costs no Argon2id.
+     */
+    private function requireTicket(?string $ticket, string $userId, string $kind): void
+    {
+        if ($this->tickets === null) {
+            return;
+        }
+        if ($ticket === null || $this->tickets->kindOf($ticket, $userId) !== $kind) {
+            throw new RecoveryTicketException(
+                "No accepted recovery of kind '{$kind}' for '{$userId}' carries this ticket: the gesture is refused"
+            );
+        }
     }
 
     private function sealed(VaultRecord $record): VaultRecord

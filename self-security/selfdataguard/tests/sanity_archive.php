@@ -467,6 +467,44 @@ $storage->eraseAccount('user-frz') === 2 && !$storage->vaultExists('user-frz')
 
 // -----------------------------------------------------------------------------
 
+section('A recovery ticket is recorded with what it applied, once');
+
+$dg->register('user-tk', 'tk-password-0001');
+$tkFirst = $storage->loadVault('user-tk');
+$tkNew = $uv->register('user-tk', 'tk-password-0002')['record'];
+$tkArchive = $storage->replaceWithArchive($tkFirst->generation(), $tkNew, 'ticket-niveau-3');
+$storage->archiveOfTicket('ticket-niveau-3') === $tkArchive && $storage->archiveOfTicket('ticket-inconnu') === null
+    ? ok('archiveOfTicket() names the archive the re-enrolment under that ticket set aside, and nothing for another')
+    : ko('archiveOfTicket() did not name the archive of its ticket');
+$replayed = null;
+try {
+    $storage->replaceWithArchive($tkNew->generation(), $uv->register('user-tk', 'tk-password-0003')['record'], 'ticket-niveau-3');
+} catch (Pierroons\SelfDataGuard\Storage\TicketAlreadyAppliedException $e) {
+    $replayed = $e;
+}
+$replayed !== null && hash_equals($tkNew->userSalt, $storage->loadVault('user-tk')->userSalt)
+    && count($storage->listArchives('user-tk')) === 1
+    ? ok('a ticket applied twice: TicketAlreadyAppliedException, and nothing re-enrolled')
+    : ko('a replayed ticket re-enrolled the vault again');
+$tkGen = $storage->loadVault('user-tk')->generation();
+$storage->freezeVault($tkGen, 'arbitre', new DateTimeImmutable(), 'ticket-retour');
+$storage->unfreezeVault($tkGen, 'ticket-cloture');
+$replayed = null;
+try {
+    $storage->freezeVault($tkGen, 'arbitre', new DateTimeImmutable(), 'ticket-retour');
+} catch (Pierroons\SelfDataGuard\Storage\TicketAlreadyAppliedException $e) {
+    $replayed = $e;
+}
+$replayed !== null && $storage->frozenState('user-tk') === null
+    ? ok('a freeze replayed under its ticket is refused, and the vault stays unfrozen')
+    : ko('a replayed freeze froze the vault again');
+$storage->eraseAccount('user-tk');
+(int) $pdo->query("SELECT COUNT(*) FROM selfdataguard_tickets WHERE user_id = 'user-tk'")->fetchColumn() === 0
+    ? ok('eraseAccount() erases the tickets of the account')
+    : ko('tickets survived the erasure of their account');
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Archive Sanity — {$passes} passed, {$failures} failed\n";

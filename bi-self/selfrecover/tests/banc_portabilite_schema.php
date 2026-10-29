@@ -149,7 +149,7 @@ if ($attendu === 0 && $refus === []) {
     $tables = $pdo->query(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
     )->fetchColumn();
-    verifier('les 12 tables du schéma existent après exécution', (int) $tables === 12, "$tables trouvée(s)");
+    verifier('les 13 tables du schéma existent après exécution', (int) $tables === 13, "$tables trouvée(s)");
 
     $uniques = $pdo->query(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND sql LIKE '%UNIQUE%'"

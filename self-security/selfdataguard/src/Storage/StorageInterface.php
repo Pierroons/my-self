@@ -182,9 +182,14 @@ interface StorageInterface
      * throws StaleVaultException, instead of archiving it in turn.
      * $new->userId must be $replacing's.
      *
+     * $ticket, when given, is recorded with the archive id in the same
+     * transaction (archiveOfTicket() reads it back); a ticket already recorded
+     * for this operation throws TicketAlreadyAppliedException, and nothing is
+     * written.
+     *
      * @return string the archive id
      */
-    public function replaceWithArchive(VaultGeneration $replacing, VaultRecord $new): string;
+    public function replaceWithArchive(VaultGeneration $replacing, VaultRecord $new, ?string $ticket = null): string;
 
     /**
      * @return list<array{id: string, archivedAt: \DateTimeImmutable, locks: list<Lock>}> oldest first
@@ -214,10 +219,13 @@ interface StorageInterface
      * An archive written before 0.8.0 kept no index: its fields come back
      * without one.
      *
+     * $ticket, when given, is recorded in the same transaction, once per
+     * operation, as for replaceWithArchive().
+     *
      * @return string the id of the archive the live vault became
      * @throws VaultNotFoundException if the userId has no such archive
      */
-    public function swapWithArchive(VaultGeneration $generation, string $archiveId): string;
+    public function swapWithArchive(VaultGeneration $generation, string $archiveId, ?string $ticket = null): string;
 
     /**
      * Bring archive $archiveId back live for a userId that holds no live
@@ -238,17 +246,27 @@ interface StorageInterface
      * and eraseAccount() still erases. The freeze stays with the vault, not
      * with the generation: archived, it is gone with the live row.
      *
+     * $ticket, when given, is recorded in the same transaction, once per
+     * operation, as for replaceWithArchive().
+     *
      * @return bool true if this call froze it; false if it was frozen already,
      *              in which case the first $by and $at stay
      */
-    public function freezeVault(VaultGeneration $generation, string $by, DateTimeImmutable $at): bool;
+    public function freezeVault(VaultGeneration $generation, string $by, DateTimeImmutable $at, ?string $ticket = null): bool;
 
     /**
-     * Lift the freeze of the live vault of $generation.
+     * Lift the freeze of the live vault of $generation. $ticket, as for
+     * freezeVault(): recorded in the same transaction, once.
      *
      * @return bool true if it was frozen
      */
-    public function unfreezeVault(VaultGeneration $generation): bool;
+    public function unfreezeVault(VaultGeneration $generation, ?string $ticket = null): bool;
+
+    /**
+     * The archive replaceWithArchive() set aside under $ticket; null when no
+     * re-enrolment applied that ticket. Never writes.
+     */
+    public function archiveOfTicket(string $ticket): ?string;
 
     /**
      * Who froze the live vault of $userId, and when; null when it is not
@@ -285,8 +303,8 @@ interface StorageInterface
     public function indexedFields(): array;
 
     /**
-     * Erase the account: the live vault, its fields and escrow, and every
-     * archive of the userId, in one transaction. Works on a userId that has
+     * Erase the account: the live vault, its fields and escrow, every archive
+     * of the userId and the recovery tickets applied to it, in one transaction. Works on a userId that has
      * archives and no live vault.
      *
      * @return int how many vaults were erased, live and archived

@@ -45,6 +45,16 @@ final class Reprise
         /** Au niveau 3 : l'empreinte dérivée du mot mémorisé neuf, telle que le navigateur l'a envoyée. */
         #[\SensitiveParameter] public readonly ?string $motMemorise = null,
         public readonly ?string $numeroLitige = null,
+        /**
+         * Le ticket que cette récupération a rangé (niveau 3, retour, clôture) :
+         * ce qui suit sans secret s'autorise par lui. `null` aux niveaux 1 et 2.
+         */
+        public readonly ?string $ticket = null,
+        /**
+         * Au retour et à la clôture : le ticket du premier niveau 3 de la
+         * fenêtre, sous lequel le coffre a rangé l'archive du titulaire.
+         */
+        public readonly ?string $ticketNiveau3 = null,
     ) {
     }
 
@@ -57,6 +67,8 @@ final class Reprise
             'instant'       => $this->instant,
             'serrureServie' => $this->serrureServie,
             'numeroLitige'  => $this->numeroLitige,
+            'ticket'        => $this->ticket,
+            'ticketNiveau3' => $this->ticketNiveau3,
             'secrets'       => '[masqués]',
         ];
     }

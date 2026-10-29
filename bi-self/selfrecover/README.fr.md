@@ -150,10 +150,10 @@ CREATE TABLE accounts (
 );
 ```
 
-[`schema.sql`](./schema.sql) fait foi, et porte douze tables : celle-ci, les sessions, les
+[`schema.sql`](./schema.sql) fait foi, et porte treize tables : celle-ci, les sessions, les
 tentatives, les dix codes papier, l'appareil et ses défis, les dossiers du niveau 3, leurs
-messages, leur gel, les épreuves du niveau 3 déjà servies, et la fenêtre d'après un niveau 3
-avec ses anciens codes papier. `StockagePdo` les lit toutes.
+messages, leur gel, les épreuves du niveau 3 déjà servies, la fenêtre d'après un niveau 3
+avec ses anciens codes papier, et les tickets de reprise. `StockagePdo` les lit toutes.
 
 Le mot de récupération ne parvient jamais au serveur : le navigateur en dérive une empreinte HMAC-SHA256, et `Device::estCleDerivee()` refuse toute valeur qui n'en a pas la forme. Le mot de passe et la passphrase prennent l'autre chemin — le serveur **engendre** le mot de passe, et la passphrase quand l'utilisateur n'apporte pas la sienne ; il les rend une fois à leur titulaire, puis les revoit en clair quand ils lui sont soumis : la passphrase au niveau 1, le mot de passe au niveau 3, où c'est le titulaire qui le choisit. Dans les trois cas, la base ne conserve qu'une empreinte Argon2id.
 

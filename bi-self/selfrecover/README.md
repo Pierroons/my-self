@@ -150,10 +150,10 @@ CREATE TABLE accounts (
 );
 ```
 
-[`schema.sql`](./schema.sql) is the reference, and carries twelve tables: this one, sessions,
+[`schema.sql`](./schema.sql) is the reference, and carries thirteen tables: this one, sessions,
 attempts, the ten paper codes, the device and its challenges, level-3 disputes, their
-messages, their freeze, the level-3 challenges already served, and the window after a
-level 3 with its former paper codes. `StockagePdo` reads all of them.
+messages, their freeze, the level-3 challenges already served, the window after a
+level 3 with its former paper codes, and the recovery tickets. `StockagePdo` reads all of them.
 
 The recovery word never reaches the server: the browser derives an HMAC-SHA256 fingerprint from it, and `Device::estCleDerivee()` rejects any value that does not have that shape. The password and the passphrase take the other path — the server **generates** the password, and the passphrase when the user does not bring their own; it hands them once to their owner, then sees them again in the clear when they are submitted: the passphrase at level 1, the password at level 3, where the owner is the one who picks it. In all three cases, the database keeps nothing but an Argon2id hash.
 

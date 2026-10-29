@@ -549,7 +549,7 @@ final class ForgetfulStorage extends DelegatingStorage
 {
     public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r->withWrapPhrase(null, $r->updatedAt)); }
     public function updateVault(VaultRecord $r): int { return $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
-    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($g, $r->withWrapPhrase(null, $r->updatedAt)); }
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r->withWrapPhrase(null, $r->updatedAt), $t); }
 }
 
 $forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey);
@@ -1255,6 +1255,66 @@ try {
 } catch (VaultNotFoundException | VaultExistsException) {
     ok('a second restoration is refused');
 }
+
+// -----------------------------------------------------------------------------
+
+section('Given RecoveryTickets, the gestures without a secret need an accepted recovery');
+
+final class TicketsOfTheBench implements Pierroons\SelfDataGuard\RecoveryTickets
+{
+    /** @var array<string, array{userId: string, kind: string}> */
+    public array $issued = [];
+
+    public function kindOf(string $ticket, string $userId): ?string
+    {
+        $t = $this->issued[$ticket] ?? null;
+        return $t !== null && $t['userId'] === $userId ? $t['kind'] : null;
+    }
+}
+
+$tickets = new TicketsOfTheBench();
+$dgT = new SelfDataGuard($storage, $blindKey, tickets: $tickets);
+$sT = $dgT->register('user-ticket', 'ticket-password-01', 'ticket-memorized', 'girafe orage piment velours tapis lundi');
+$gT = $sT->generation();
+$refused = static function (callable $call): bool {
+    try {
+        $call();
+        return false;
+    } catch (Pierroons\SelfDataGuard\Vault\RecoveryTicketException) {
+        return true;
+    }
+};
+$tickets->issued['t-other-kind'] = ['userId' => 'user-ticket', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::CLOSURE];
+$tickets->issued['t-other-user'] = ['userId' => 'user-someone-else', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::LEVEL_3];
+$t0 = hrtime(true);
+$withoutTicket = $refused(static fn () => $dgT->reEnroll($gT, 'ticket-password-02'));
+$refusedMs = (hrtime(true) - $t0) / 1e6;
+$withoutTicket && $refused(static fn () => $dgT->reEnroll($gT, 'ticket-password-02', ticket: 't-other-kind'))
+    && $refused(static fn () => $dgT->reEnroll($gT, 'ticket-password-02', ticket: 't-other-user'))
+    && hash_equals($sT->vaultSalt, $storage->loadVault('user-ticket')->userSalt)
+    ? ok('reEnroll() refuses without a ticket, with one of another kind, and with one for another account')
+    : ko('reEnroll() went through without an accepted level 3');
+$refusedMs < 30
+    ? ok(sprintf('the refusal comes before any Argon2id (%.1f ms)', $refusedMs))
+    : ko('a refused reEnroll() still paid for its Argon2id', sprintf('%.1f ms', $refusedMs));
+$refused(static fn () => $dgT->freeze($gT, 'arbitre')) && $refused(static fn () => $dgT->unfreeze($gT))
+    && $refused(static fn () => $dgT->reinstateArchive($gT, 'nope'))
+    ? ok('freeze(), unfreeze() and reinstateArchive() refuse without a ticket too')
+    : ko('a gesture without a secret went through without a ticket');
+
+$tickets->issued['t-l3'] = ['userId' => 'user-ticket', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::LEVEL_3];
+$reT = $dgT->reEnroll($gT, 'ticket-password-02', ticket: 't-l3');
+$dgT->archiveOfTicket('t-l3') === $reT['archiveId']
+    ? ok('with its level-3 ticket the re-enrolment goes through, and its archive is found by the ticket')
+    : ko('the archive of the level-3 ticket is not found');
+$tickets->issued['t-return'] = ['userId' => 'user-ticket', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::HOLDER_RETURN];
+$tickets->issued['t-close']  = ['userId' => 'user-ticket', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::CLOSURE];
+$dgT->reinstateArchive($reT['unlocked']->generation(), (string) $dgT->archiveOfTicket('t-l3'), 't-return');
+$gBack = $dgT->generationOf('user-ticket');
+$dgT->freeze($gBack, 'arbitre', 't-return') && hash_equals($sT->vaultSalt, $gBack->userSalt)
+    && $dgT->unfreeze($gBack, 't-close') && $dgT->frozenState('user-ticket') === null
+    ? ok('the return ticket reinstates and freezes, the closure ticket unfreezes')
+    : ko('the return or the closure did not go through under their tickets');
 
 // -----------------------------------------------------------------------------
 

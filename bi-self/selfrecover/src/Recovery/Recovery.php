@@ -657,9 +657,12 @@ final class Recovery
             $codes = $this->emettreCodes($compteId, self::CODES_PAR_LOT, $maintenant);
             $this->stockage->revoquerSessions($compteId);
             $appareils = $this->stockage->revoquerAppareils($compteId);
+            $ticket = bin2hex(random_bytes(16));
+            $this->stockage->emettreTicket($ticket, $compteId, Reprise::RETOUR_TITULAIRE, $maintenant);
             $suite = $this->suivre(new Reprise(
                 Reprise::RETOUR_TITULAIRE, $compteId, $nomCompte, $maintenant,
                 $serrureServie, $secretServi, $motDePasse, $nouvellePhrase,
+                ticket: $ticket, ticketNiveau3: $fenetre['ticket_niveau3'] ?? null,
             ));
             $this->stockage->validerTransaction();
         } catch (\Throwable $e) {

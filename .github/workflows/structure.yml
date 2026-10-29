@@ -59,8 +59,8 @@ jobs:
             echo "→ $(basename "$t")"
             php "$t" || { echo "::error::$(basename "$t") rouge sous PHP ${{ matrix.php }}"; rc=1; }
           done
-          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 10/10 ' \
-            || { echo "::error::couplage hors 10/10 sous PHP ${{ matrix.php }}"; rc=1; }
+          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 13/13 ' \
+            || { echo "::error::couplage hors 13/13 sous PHP ${{ matrix.php }}"; rc=1; }
           php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 27/27$' \
             || { echo "::error::parcours hors 27/27 sous PHP ${{ matrix.php }}"; rc=1; }
           exit $rc
@@ -544,8 +544,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_suite_reprise.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la suite a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 13/13$' \
-            || { echo "::error::le banc de la suite n'a pas joué ses 13 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 17/17$' \
+            || { echo "::error::le banc de la suite n'a pas joué ses 17 cas"; exit 1; }
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
@@ -564,9 +564,13 @@ jobs:
             "        return \$this->suite?->suivre(\$reprise) ?? 'aucune';" "        return 'aucune';" \
             $R/tests/sanity_suite_reprise.php '❌ la suite est appelée une fois, dans la transaction'
           canari $R/src/Recovery/Escalade.php \
-            "new Reprise(Reprise::CLOTURE, (int) \$compte['id'], \$nomCompte, \$maintenant)" \
-            "new Reprise(Reprise::CLOTURE, (int) \$compte['id'], \$nomCompte, \$maintenant + (int) \$this->stockage->validerTransaction())" \
+            "Reprise::CLOTURE, (int) \$compte['id'], \$nomCompte, \$maintenant, ticket: \$ticket," \
+            "Reprise::CLOTURE, (int) \$compte['id'], \$nomCompte, \$maintenant + (int) \$this->stockage->validerTransaction(), ticket: \$ticket," \
             $R/tests/sanity_suite_reprise.php '❌ clôture : la suite est appelée dans la transaction'
+          canari $R/src/Storage/StockagePdo.php \
+            "UPDATE l3_fenetres SET ferme_le = MAX(ferme_le, ?) WHERE account_id = ?" \
+            "UPDATE l3_fenetres SET ferme_le = MAX(ferme_le, ?), ticket_niveau3 = NULL WHERE account_id = ?" \
+            $R/tests/banc_stockage_pdo.php "… et le ticket du premier niveau 3"
 
       # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
       # code. Le canari la fait répondre « rien » à un code inconnu, l'oracle que la
@@ -2997,8 +3001,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=59 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=67 [sanity_escrow]=63
-            [sanity_facade]=134 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=38 [sanity_primitives]=56
+            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=69 [sanity_escrow]=63
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=38 [sanity_primitives]=56
             [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -3087,8 +3091,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 10/10 ' \
-            || { echo "::error::le banc du couplage n'a pas jugé ses 10 valeurs"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 13/13 ' \
+            || { echo "::error::le banc du couplage n'a pas jugé ses 13 valeurs"; exit 1; }
           F=self-security/selfdataguard/src/Vault/UserVault.php
           cp "$F" /tmp/UserVault.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -3297,6 +3301,12 @@ jobs:
             $D/tests/sanity_conformance.php 'CheckThenSwapStorage passed a case it breaks'
           canari $D/src/Storage/Conformance.php "            'joins-callers-transaction'     => 'joinsCallersTransaction'," '' \
             $D/tests/sanity_conformance.php 'CallerCommittingStorage passed a case it breaks'
+          canari $D/src/SelfDataGuard.php '        if ($ticket === null || $this->tickets->kindOf($ticket, $userId) !== $kind) {' '        if (false) {' \
+            $D/tests/sanity_facade.php 'reEnroll() went through without an accepted level 3'
+          canari $D/src/Storage/SqliteAdapter.php "            \$this->recordTicket(\$ticket, 'replace-with-archive', \$new->userId, \$archiveId);" '' \
+            $D/tests/sanity_archive.php 'archiveOfTicket() did not name the archive of its ticket'
+          canari $D/src/Storage/Conformance.php "            'tickets-applied-once'          => 'ticketsAppliedOnce'," '' \
+            $D/tests/sanity_conformance.php 'TicketDroppingStorage passed a case it breaks'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
@@ -3317,8 +3327,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
-          echo "$sortie" | grep -qE '^✅ 204 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 204 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 207 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 207 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)

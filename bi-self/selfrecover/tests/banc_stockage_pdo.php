@@ -185,7 +185,7 @@ verifier('aucune méthode du contrat ne manque', $manquantes === [], (string) co
 // ⚠️ Compter ne suffit pas : une méthode qui rend toujours `null` compte pareil.
 // Ce décompte sert à faire ROUGIR le banc si le contrat gagne une méthode que
 // l'adaptateur n'a pas suivie — c'est le seul cas où le compte dit quelque chose.
-verifier('le contrat en porte 53, comme annoncé partout ailleurs', count($attendues) === 53,
+verifier('le contrat en porte 55, comme annoncé partout ailleurs', count($attendues) === 55,
     (string) count($attendues));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -346,7 +346,7 @@ section('fenêtre d\'après un niveau 3');
 $fenId = creerCompte($pdo, 'fenetre', 'mot-fenetre', 'phrase fenetre', $T0);
 $selAvant = (string) $pdo->query("SELECT recovery_salt FROM accounts WHERE id = {$fenId}")->fetchColumn();
 $codesFen = $recovery->emettreCodes($fenId, 2, $T0);
-$stockage->ouvrirFenetre($fenId, $T0, $T0 + 1000);
+$stockage->ouvrirFenetre($fenId, $T0, $T0 + 1000, 'ticket-du-premier-niveau-3');
 $f0 = $stockage->fenetreDuCompte($fenId);
 verifier('la fenêtre range la passphrase, le mot mémorisé et le sel du compte',
     Hashing::verify('phrase fenetre', (string) $f0['empreinte_passphrase']) && Hashing::verify('mot-fenetre', (string) $f0['empreinte_mot'])
@@ -357,10 +357,23 @@ verifier('et les codes non consommés, avec le mot d\'avant',
 $pdo->prepare("UPDATE accounts SET passphrase_hash = ?, recovery_salt = 'autre' WHERE id = ?")->execute([Hashing::hash('celle du demandeur'), $fenId]);
 $pdo->exec("DELETE FROM recovery_codes WHERE account_id = {$fenId}");
 verifier('⭐ la route du sel rend l\'ancien sel d\'un code d\'avant', $stockage->selDuCompteParIndexCode($indexFen) === $selAvant);
-$stockage->ouvrirFenetre($fenId, $T0 + 10, $T0 + 2000);
+$stockage->ouvrirFenetre($fenId, $T0 + 10, $T0 + 2000, 'ticket-du-second-niveau-3');
 $f1 = $stockage->fenetreDuCompte($fenId);
 verifier('⭐ une seconde reprise dans la fenêtre garde les secrets du titulaire, et recule la fermeture',
     Hashing::verify('phrase fenetre', (string) $f1['empreinte_passphrase']) && $f1['ferme_le'] === $T0 + 2000);
+verifier('⭐ … et le ticket du premier niveau 3, sous lequel le coffre a rangé l\'archive du titulaire',
+    $f1['ticket_niveau3'] === 'ticket-du-premier-niveau-3', (string) $f1['ticket_niveau3']);
+$stockage->emettreTicket('ticket-emis', $fenId, 'niveau_3', $T0 + 15);
+verifier('un ticket émis se relit avec son compte rangé, son genre et sa date',
+    $stockage->ticketEmis('ticket-emis') === ['compte_id' => $fenId, 'nom_compte' => 'fenetre', 'genre' => 'niveau_3', 'emis_le' => $T0 + 15]
+    && $stockage->ticketEmis('ticket-jamais-emis') === null);
+$ticketDouble = false;
+try {
+    $stockage->emettreTicket('ticket-emis', $fenId, 'cloture', $T0 + 16);
+} catch (\PDOException) {
+    $ticketDouble = true;
+}
+verifier('un ticket ne se réécrit pas', $ticketDouble && $stockage->ticketEmis('ticket-emis')['genre'] === 'niveau_3');
 verifier('⭐ une fenêtre encore ouverte n\'est ni comptée ni purgée',
     $stockage->compterFenetresEchues($T0 + 100) === 0 && $stockage->purgerFenetresEchues($T0 + 100) === 0
     && $stockage->fenetreDuCompte($fenId)['empreinte_passphrase'] !== null);
@@ -372,12 +385,12 @@ verifier('la reprise efface les anciens secrets et les anciens codes',
 verifier('puis l\'arbitre clôt, une fois', $stockage->cloreFenetre($fenId, 'arbitre', $T0 + 40) === true
     && $stockage->cloreFenetre($fenId, 'arbitre', $T0 + 41) === false);
 $echId = creerCompte($pdo, 'echue', 'mot-echue', 'phrase echue', $T0);
-$stockage->ouvrirFenetre($echId, $T0, $T0 + 100);
+$stockage->ouvrirFenetre($echId, $T0, $T0 + 100, 'ticket-echue');
 verifier('⭐ une fenêtre échue se compte, se purge et garde sa ligne',
     $stockage->compterFenetresEchues($T0 + 100) === 1 && $stockage->purgerFenetresEchues($T0 + 100) === 1
     && $stockage->fenetreDuCompte($echId) !== null && $stockage->fenetreDuCompte($echId)['empreinte_mot'] === null);
 $echId2 = creerCompte($pdo, 'echue2', 'mot-echue2', 'phrase echue2', $T0);
-$stockage->ouvrirFenetre($echId2, $T0, $T0 + 100);
+$stockage->ouvrirFenetre($echId2, $T0, $T0 + 100, 'ticket-echue-2');
 verifier('⭐ une fenêtre échue ne se reprend pas, même avant sa purge', $stockage->reprendreFenetre($echId2, $T0 + 100) === false);
 
 // ═══════════════════════════════════════════════════════════════════════════

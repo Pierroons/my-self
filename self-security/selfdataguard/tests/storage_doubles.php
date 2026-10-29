@@ -39,14 +39,15 @@ abstract class DelegatingStorage implements StorageInterface
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
     public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($g, $f); }
     public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
-    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($g, $r); }
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r, $t); }
     public function listArchives(string $u): array { return $this->inner->listArchives($u); }
     public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
-    public function swapWithArchive(VaultGeneration $g, string $id): string { return $this->inner->swapWithArchive($g, $id); }
+    public function swapWithArchive(VaultGeneration $g, string $id, ?string $t = null): string { return $this->inner->swapWithArchive($g, $id, $t); }
     public function restoreArchive(string $u, string $id): void { $this->inner->restoreArchive($u, $id); }
-    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at): bool { return $this->inner->freezeVault($g, $by, $at); }
-    public function unfreezeVault(VaultGeneration $g): bool { return $this->inner->unfreezeVault($g); }
+    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at, ?string $t = null): bool { return $this->inner->freezeVault($g, $by, $at, $t); }
+    public function unfreezeVault(VaultGeneration $g, ?string $t = null): bool { return $this->inner->unfreezeVault($g, $t); }
+    public function archiveOfTicket(string $t): ?string { return $this->inner->archiveOfTicket($t); }
     public function frozenState(string $u): ?array { return $this->inner->frozenState($u); }
     public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
     public function claimSetting(string $n, string $v): string { return $this->inner->claimSetting($n, $v); }
@@ -116,7 +117,7 @@ final class GenerationBlindStorage extends DelegatingStorage
     public function createEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->createEscrow($this->live($g), $r); }
     public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->replaceEscrow($this->live($g), $r); }
     public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($this->live($g), $f); }
-    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($this->live($g), $r); }
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($this->live($g), $r, $t); }
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($this->live($g), $id); }
 }
 
@@ -478,10 +479,10 @@ final class FreezeSkippingUpdateStorage extends DelegatingStorage
 /** A second freeze replaces the first: who froze the vault is the last caller. */
 final class FreezeOverwritingStorage extends DelegatingStorage
 {
-    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at): bool
+    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at, ?string $t = null): bool
     {
         $this->inner->unfreezeVault($g);
-        return $this->inner->freezeVault($g, $by, $at);
+        return $this->inner->freezeVault($g, $by, $at, $t);
     }
 }
 
@@ -498,9 +499,9 @@ final class IndexDroppingRestoreStorage extends DelegatingStorage
         $this->pdo->prepare('UPDATE selfdataguard_fields SET blind_index = NULL, shared_index = NULL WHERE user_id = ?')->execute([$u]);
     }
 
-    public function swapWithArchive(VaultGeneration $g, string $id): string
+    public function swapWithArchive(VaultGeneration $g, string $id, ?string $t = null): string
     {
-        $setAside = $this->inner->swapWithArchive($g, $id);
+        $setAside = $this->inner->swapWithArchive($g, $id, $t);
         $this->dropIndexes($g->userId);
         return $setAside;
     }
@@ -539,7 +540,7 @@ final class CheckThenSwapStorage extends DelegatingStorage
         parent::__construct($inner);
     }
 
-    public function swapWithArchive(VaultGeneration $g, string $id): string
+    public function swapWithArchive(VaultGeneration $g, string $id, ?string $t = null): string
     {
         $live = $this->inner->findVault($g->userId) ?? throw new VaultNotFoundException('none');
         if (!hash_equals($live->userSalt, $g->userSalt)) {
@@ -548,7 +549,7 @@ final class CheckThenSwapStorage extends DelegatingStorage
         usleep(200_000);
         $this->pdo->exec('BEGIN IMMEDIATE');
         try {
-            $setAside = $this->inner->swapWithArchive($this->inner->loadVault($g->userId)->generation(), $id);
+            $setAside = $this->inner->swapWithArchive($this->inner->loadVault($g->userId)->generation(), $id, $t);
             $this->pdo->exec('COMMIT');
             return $setAside;
         } catch (\Throwable $e) {
@@ -573,4 +574,11 @@ final class CallerCommittingStorage extends DelegatingStorage
         }
         $this->inner->saveVault($r);
     }
+}
+
+/** Takes the ticket and records nothing: a replay re-enrols, and the archive of a ticket is never found. */
+final class TicketDroppingStorage extends DelegatingStorage
+{
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r); }
+    public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at, ?string $t = null): bool { return $this->inner->freezeVault($g, $by, $at); }
 }

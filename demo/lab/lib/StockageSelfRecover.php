@@ -286,7 +286,7 @@ final class StockageSelfRecover implements StorageInterface
 
     // ── La fenêtre d'après un niveau 3 ─────────────────────────────────────
 
-    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void
     {
         $existante = $this->fenetreDuCompte($compteId);
         if ($existante !== null && $existante['reprise_le'] === null && $existante['close_le'] === null
@@ -298,9 +298,10 @@ final class StockageSelfRecover implements StorageInterface
         $this->pdo->prepare('DELETE FROM l3_anciens_codes WHERE account_id = ?')->execute([$compteId]);
         $this->pdo->prepare(
             'INSERT OR REPLACE INTO l3_fenetres
-                    (account_id, ouverte_le, ferme_le, passphrase_hash, recovery_hash, recovery_salt, reprise_le, close_le, close_par)
-             SELECT id, ?, ?, pass_hash, recovery_hash, recovery_salt, NULL, NULL, NULL FROM accounts WHERE id = ?'
-        )->execute([$ouverteLe, $fermeLe, $compteId]);
+                    (account_id, ouverte_le, ferme_le, passphrase_hash, recovery_hash, recovery_salt, reprise_le, close_le, close_par,
+                     ticket_niveau3)
+             SELECT id, ?, ?, pass_hash, recovery_hash, recovery_salt, NULL, NULL, NULL, ? FROM accounts WHERE id = ?'
+        )->execute([$ouverteLe, $fermeLe, $ticketNiveau3, $compteId]);
         $this->pdo->prepare(
             'INSERT INTO l3_anciens_codes (account_id, code_lookup, code_hash)
              SELECT account_id, code_lookup, code_hash FROM recovery_codes WHERE account_id = ? AND used = 0'
@@ -323,7 +324,27 @@ final class StockageSelfRecover implements StorageInterface
             'reprise_le'           => $entier($f['reprise_le']),
             'close_le'             => $entier($f['close_le']),
             'close_par'            => $f['close_par'],
+            'ticket_niveau3'       => $f['ticket_niveau3'],
         ];
+    }
+
+    public function emettreTicket(string $ticket, int $compteId, string $genre, int $quand): void
+    {
+        $this->pdo->prepare('INSERT INTO l3_tickets (ticket, account_id, genre, emis_le) VALUES (?, ?, ?, ?)')
+            ->execute([$ticket, $compteId, $genre, $quand]);
+    }
+
+    public function ticketEmis(string $ticket): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT t.account_id, a.username, t.genre, t.emis_le FROM l3_tickets t JOIN accounts a ON a.id = t.account_id
+              WHERE t.ticket = ?'
+        );
+        $st->execute([$ticket]);
+        $ligne = $st->fetch(PDO::FETCH_ASSOC);
+
+        return $ligne === false ? null : ['compte_id' => (int) $ligne['account_id'], 'nom_compte' => (string) $ligne['username'],
+                                          'genre' => (string) $ligne['genre'], 'emis_le' => (int) $ligne['emis_le']];
     }
 
     public function trouverAncienCodeParIndex(string $indexRecherche): ?array
@@ -848,7 +869,7 @@ final class StockageSelfRecover implements StorageInterface
         // quelqu'un qui sort précisément d'une perte totale.
         $this->pdo->prepare(
             'UPDATE accounts SET pw_hash = ?, pass_hash = ?, recovery_hash = ?, recovery_salt = ?,
-                                 pass_emise_le = ?, banned_until = 0 WHERE id = ?'
+                                 pass_emise_le = ? WHERE id = ?'
         )->execute([$empreinteMotDePasse, $empreintePassphrase, $empreinteMotDerive, $sel,
                     time(), $compteId]);
     }

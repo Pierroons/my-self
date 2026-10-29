@@ -145,16 +145,37 @@ interface StorageInterface
      * ⚠️ **Une fenêtre déjà ouverte et non reprise garde ses secrets** : ce sont
      * ceux du titulaire, et une seconde reprise dans la fenêtre ne doit pas les
      * remplacer par ceux du demandeur. Seule sa fermeture recule (`$fermeLe`).
+     * Elle garde aussi son `$ticketNiveau3` : celui du premier niveau 3, sous
+     * lequel le coffre a mis de côté l'archive du titulaire.
      */
-    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void;
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void;
 
     /**
      * La fenêtre du compte, ou `null` s'il n'en a jamais eu.
      *
      * @return array{ouverte_le: int, ferme_le: int, empreinte_passphrase: ?string, empreinte_mot: ?string,
-     *               sel: ?string, reprise_le: ?int, close_le: ?int, close_par: ?string}|null
+     *               sel: ?string, reprise_le: ?int, close_le: ?int, close_par: ?string,
+     *               ticket_niveau3: ?string}|null
      */
     public function fenetreDuCompte(int $compteId): ?array;
+
+    /**
+     * Range un ticket de reprise, dans la transaction de la récupération qui
+     * l'accepte : ce qui suit sans secret (le coffre ré-enrôlé, rendu, gelé,
+     * dégelé) s'autorise par lui. Un ticket est tiré au hasard ; il ne se
+     * réécrit pas.
+     *
+     * @param string $genre une constante de `Reprise` : niveau 3, retour du titulaire, clôture
+     */
+    public function emettreTicket(string $ticket, int $compteId, string $genre, int $quand): void;
+
+    /**
+     * Le ticket, s'il a été émis : son compte sous sa forme rangée, son genre,
+     * sa date. Ne écrit rien.
+     *
+     * @return array{compte_id: int, nom_compte: string, genre: string, emis_le: int}|null
+     */
+    public function ticketEmis(string $ticket): ?array;
 
     /**
      * L'ancien code de cet index, avec l'ancien mot mémorisé de sa fenêtre, ou

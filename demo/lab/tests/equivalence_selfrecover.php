@@ -315,7 +315,7 @@ $esc3   = new \Pierroons\SelfRecover\Recovery\Escalade(
 
 verifier('une épreuve se consomme une fois sur le schéma du lab',
     $stock3->consommerEpreuve('ab', $now3 + 300, $now3) && !$stock3->consommerEpreuve('ab', $now3 + 300, $now3 + 1));
-$stock3->ouvrirFenetre(1, $now3, $now3 + 14 * 86400);
+$stock3->ouvrirFenetre(1, $now3, $now3 + 14 * 86400, 'ticket-du-banc');
 $fen3 = $stock3->fenetreDuCompte(1);
 verifier('la fenêtre d\'après un niveau 3 range la passphrase de la colonne pass_hash',
     is_string($fen3['empreinte_passphrase'] ?? null) && Hashing::verify('y', (string) $fen3['empreinte_passphrase']));
@@ -369,8 +369,8 @@ $apres3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts W
 verifier('la ligne du compte existe toujours après trois refus',
     (int) $pdo3->query('SELECT COUNT(*) FROM accounts WHERE id = 1')->fetchColumn() === 1);
 verifier('ses trois empreintes sont inchangées', $avant3 === $apres3);
-verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, pas le compte',
-    (int) ($pdo3->query('SELECT COALESCE(banned_until, 0) FROM accounts WHERE id = 1')->fetchColumn()) === 0);
+verifier('aucune peine n\'a été posée — c\'est la procédure qui gèle, pas le compte',
+    (int) $pdo3->query('SELECT COUNT(*) FROM member_moderation WHERE account_id = 1 AND banned_until > 0')->fetchColumn() === 0);
 
 // 🔑 Ces trois refus sont déposés sur le compte VISÉ par un demandeur qui n'a
 // fourni qu'un nom : s'ils gelaient, un tiers fermerait d'ici la dernière porte

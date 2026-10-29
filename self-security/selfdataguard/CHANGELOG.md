@@ -34,6 +34,20 @@ frozen vault.
 - Conformance: `swap-with-archive`, `restore-archive`, `freeze-refuses-writes` and
   `concurrent-archive-swaps`, each made to fail by a storage that breaks its clause. A freeze is checked
   in sequence only: no case races it against a write.
+- **Recovery tickets.** `new SelfDataGuard($storage, $blindKey, tickets: $source)`, where `$source`
+  implements `RecoveryTickets` (SelfRecover's bridge provides one): `reEnroll()`, `reinstateArchive()`,
+  `freeze()` and `unfreeze()` then refuse without a ticket of their kind, issued for that userId by the
+  recovery that was accepted (`RecoveryTicketException`, before any Argon2id). Measured before: a
+  `reEnroll()` on the generation `generationOf()` returns went through as often as it was called, with
+  no recovery behind it. Without a source, the four take no ticket, as before.
+- The ticket a write applies is recorded in that write's transaction, once per operation: a replay —
+  a response lost, a retry — throws `TicketAlreadyAppliedException` and writes nothing.
+  `archiveOfTicket()` names the archive a level-3 ticket set aside: a holder who comes back after two
+  level-3 recoveries in the window gets the archive of the first, which is theirs, not the most recent.
+  `eraseAccount()` erases the tickets of the account. **BREAKING** for a storage of your own:
+  `replaceWithArchive()`, `swapWithArchive()`, `freezeVault()` and `unfreezeVault()` take `?string
+  $ticket`, `archiveOfTicket()` is added, and the table `selfdataguard_tickets` with it; conformance case
+  `tickets-applied-once`.
 - Conformance: `joins-callers-transaction` — writes made inside a transaction the caller opened go with
   the caller's rollback, and the storage leaves that transaction to the caller. An integrator that writes
   its account and the vault in one commit depends on it. The case needs a connection the contract does

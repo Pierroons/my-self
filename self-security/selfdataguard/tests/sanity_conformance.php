@@ -171,6 +171,7 @@ $broken = [
     RestoreOverLiveStorage::class      => ['restore-archive'],
     CheckThenSwapStorage::class        => ['concurrent-archive-swaps'],
     CallerCommittingStorage::class     => ['joins-callers-transaction'],
+    TicketDroppingStorage::class       => ['tickets-applied-once'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file, $withCaller] = connection($work, $class);

@@ -711,7 +711,7 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
     /** @var list<array{compte_id: int, index: string, empreinte: string}> */
     public array $anciensCodes = [];
 
-    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void
     {
         $f = $this->fenetres[$compteId] ?? null;
         if ($f !== null && $f['reprise_le'] === null && $f['close_le'] === null && $f['ferme_le'] > $ouverteLe) {
@@ -729,7 +729,7 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         $this->fenetres[$compteId] = [
             'ouverte_le' => $ouverteLe, 'ferme_le' => $fermeLe, 'empreinte_passphrase' => $passphrase,
             'empreinte_mot' => $mot, 'sel' => $this->sels[$compteId] ?? null,
-            'reprise_le' => null, 'close_le' => null, 'close_par' => null,
+            'reprise_le' => null, 'close_le' => null, 'close_par' => null, 'ticket_niveau3' => $ticketNiveau3,
         ];
         $this->anciensCodes = array_values(array_filter($this->anciensCodes, static fn (array $c): bool => $c['compte_id'] !== $compteId));
         foreach ($this->codes as $c) {
@@ -742,6 +742,30 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
     public function fenetreDuCompte(int $compteId): ?array
     {
         return $this->fenetres[$compteId] ?? null;
+    }
+
+    /** @var array<string, array{compte_id: int, genre: string, emis_le: int}> */
+    public array $tickets = [];
+
+    public function emettreTicket(string $ticket, int $compteId, string $genre, int $quand): void
+    {
+        if (isset($this->tickets[$ticket])) {
+            throw new \RuntimeException('UNIQUE constraint failed: l3_tickets.ticket');
+        }
+        $this->tickets[$ticket] = ['compte_id' => $compteId, 'genre' => $genre, 'emis_le' => $quand];
+    }
+
+    public function ticketEmis(string $ticket): ?array
+    {
+        $t = $this->tickets[$ticket] ?? null;
+        if ($t === null) {
+            return null;
+        }
+        $nom = '';
+        foreach ($this->comptes as $cle => $compte) {
+            if ($compte['id'] === $t['compte_id']) { $nom = $cle; }
+        }
+        return ['compte_id' => $t['compte_id'], 'nom_compte' => $nom, 'genre' => $t['genre'], 'emis_le' => $t['emis_le']];
     }
 
     public function trouverAncienCodeParIndex(string $indexRecherche): ?array
@@ -826,6 +850,7 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
             'litiges' => $this->litiges, 'messages' => $this->messages,
             'gels' => $this->gels, 'faits' => $this->faits, 'sels' => $this->sels,
             'hotes' => $this->hotes, 'fenetres' => $this->fenetres, 'anciensCodes' => $this->anciensCodes,
+            'tickets' => $this->tickets,
         ];
     }
 

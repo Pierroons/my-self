@@ -67,6 +67,10 @@ use Throwable;
  *
  *   selfdataguard_escrow_fields   — escrow fields encrypted with escrow_key
  *
+ *   selfdataguard_tickets         — recovery tickets applied (added in 0.8.0)
+ *     ticket, operation  PRIMARY KEY: a ticket applies once per operation
+ *     user_id, archive_id (the archive a re-enrolment set aside), applied_at
+ *
  *   selfdataguard_archives        — vaults set aside by a re-enrolment
  *     archive_id  TEXT PRIMARY KEY (random — a counter would tell how many
  *                 re-enrolments the service has seen)
@@ -399,14 +403,15 @@ final class SqliteAdapter implements StorageInterface
 
     // -- Archives ---------------------------------------------------------------
 
-    public function replaceWithArchive(VaultGeneration $replacing, VaultRecord $new): string
+    public function replaceWithArchive(VaultGeneration $replacing, VaultRecord $new, ?string $ticket = null): string
     {
         if ($new->userId !== $replacing->userId) {
             throw new InvalidArgumentException('The new vault belongs to another userId than the one it replaces');
         }
-        return $this->atomic(function () use ($replacing, $new): string {
+        return $this->atomic(function () use ($replacing, $new, $ticket): string {
             $this->assertGeneration($replacing);
             $archiveId = $this->archiveLive($new->userId);
+            $this->recordTicket($ticket, 'replace-with-archive', $new->userId, $archiveId);
             $this->purgeLive($new->userId);
             $this->saveVault($new);
             return $archiveId;
@@ -525,10 +530,11 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
-    public function swapWithArchive(VaultGeneration $generation, string $archiveId): string
+    public function swapWithArchive(VaultGeneration $generation, string $archiveId, ?string $ticket = null): string
     {
-        return $this->atomic(function () use ($generation, $archiveId): string {
+        return $this->atomic(function () use ($generation, $archiveId, $ticket): string {
             $this->assertGeneration($generation);
+            $this->recordTicket($ticket, 'swap-with-archive', $generation->userId, $archiveId);
             $package = $this->takeArchive($generation->userId, $archiveId);
             $setAside = $this->archiveLive($generation->userId);
             $this->purgeLive($generation->userId);
@@ -547,10 +553,11 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
-    public function freezeVault(VaultGeneration $generation, string $by, DateTimeImmutable $at): bool
+    public function freezeVault(VaultGeneration $generation, string $by, DateTimeImmutable $at, ?string $ticket = null): bool
     {
-        return $this->atomic(function () use ($generation, $by, $at): bool {
+        return $this->atomic(function () use ($generation, $by, $at, $ticket): bool {
             $this->assertGeneration($generation, evenFrozen: true);
+            $this->recordTicket($ticket, 'freeze', $generation->userId, null);
             $stmt = $this->pdo->prepare(
                 'UPDATE selfdataguard_vaults SET frozen_by = :by, frozen_at = :at
                  WHERE user_id = :uid AND frozen_by IS NULL'
@@ -564,10 +571,11 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
-    public function unfreezeVault(VaultGeneration $generation): bool
+    public function unfreezeVault(VaultGeneration $generation, ?string $ticket = null): bool
     {
-        return $this->atomic(function () use ($generation): bool {
+        return $this->atomic(function () use ($generation, $ticket): bool {
             $this->assertGeneration($generation, evenFrozen: true);
+            $this->recordTicket($ticket, 'unfreeze', $generation->userId, null);
             $stmt = $this->pdo->prepare(
                 'UPDATE selfdataguard_vaults SET frozen_by = NULL, frozen_at = NULL
                  WHERE user_id = :uid AND frozen_by IS NOT NULL'
@@ -575,6 +583,17 @@ final class SqliteAdapter implements StorageInterface
             $stmt->execute([':uid' => $generation->userId]);
             return $stmt->rowCount() > 0;
         });
+    }
+
+    public function archiveOfTicket(string $ticket): ?string
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT archive_id FROM selfdataguard_tickets WHERE ticket = :t AND operation = 'replace-with-archive'"
+        );
+        $stmt->execute([':t' => $ticket]);
+        $id = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        return $id === false || $id === null ? null : (string) $id;
     }
 
     public function frozenState(string $userId): ?array
@@ -595,7 +614,9 @@ final class SqliteAdapter implements StorageInterface
             $this->purgeLive($userId);
             $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid');
             $stmt->execute([':uid' => $userId]);
-            return $live + $stmt->rowCount();
+            $erased = $live + $stmt->rowCount();
+            $this->pdo->prepare('DELETE FROM selfdataguard_tickets WHERE user_id = :uid')->execute([':uid' => $userId]);
+            return $erased;
         });
     }
 
@@ -710,6 +731,37 @@ final class SqliteAdapter implements StorageInterface
             );
         }
         return $package;
+    }
+
+    /**
+     * $ticket recorded as applied to $operation, inside the caller's atomic():
+     * the primary key makes a second application fail, so a replay writes
+     * nothing twice. A null ticket records nothing.
+     */
+    private function recordTicket(?string $ticket, string $operation, string $userId, ?string $archiveId): void
+    {
+        if ($ticket === null) {
+            return;
+        }
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO selfdataguard_tickets (ticket, operation, user_id, archive_id, applied_at)
+             VALUES (:t, :op, :uid, :aid, :at)'
+        );
+        try {
+            $stmt->execute([
+                ':t'   => $ticket,
+                ':op'  => $operation,
+                ':uid' => $userId,
+                ':aid' => $archiveId,
+                ':at'  => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
+            ]);
+        } catch (PDOException $e) {
+            $stmt->closeCursor();
+            if (str_contains($e->getMessage(), 'UNIQUE') || str_contains($e->getMessage(), 'PRIMARY KEY')) {
+                throw new TicketAlreadyAppliedException("The ticket was already applied to {$operation}", 0, $e);
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -977,6 +1029,16 @@ final class SqliteAdapter implements StorageInterface
             'CREATE TABLE IF NOT EXISTS selfdataguard_settings (
                 name   TEXT PRIMARY KEY,
                 value  TEXT NOT NULL
+            )'
+        );
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS selfdataguard_tickets (
+                ticket      TEXT NOT NULL,
+                operation   TEXT NOT NULL,
+                user_id     TEXT NOT NULL,
+                archive_id  TEXT,
+                applied_at  TEXT NOT NULL,
+                PRIMARY KEY (ticket, operation)
             )'
         );
         $this->pdo->exec(

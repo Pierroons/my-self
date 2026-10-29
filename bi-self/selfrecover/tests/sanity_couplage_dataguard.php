@@ -16,10 +16,12 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/../../../self-security/selfdataguard/src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\RecoveryTickets;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Recovery;
+use Pierroons\SelfRecover\Recovery\Reprise;
 
 // Le profil d'écriture de `sr-kdf.js` se dit « celui de SelfDataGuard ».
 $js = (string) file_get_contents(__DIR__ . '/../client/sr-kdf.js');
@@ -92,6 +94,14 @@ $controles = [
         => [(int) ($plusCourteApportee >= UserVault::PASSWORD_MIN_LEN), 1],
     'formes rangées des passphrases apportées déjà normalisées pour SelfDataGuard'
         => [$canoniquesNormales, count($desordres)],
+    // Le genre d'un ticket de reprise, tel que SelfRecover l'émet et que la
+    // façade de SelfDataGuard l'exige (1 = même mot).
+    'genre de ticket « niveau 3 » identique des deux côtés'
+        => [(int) (Reprise::NIVEAU_3 === RecoveryTickets::LEVEL_3), 1],
+    'genre de ticket « retour du titulaire » identique des deux côtés'
+        => [(int) (Reprise::RETOUR_TITULAIRE === RecoveryTickets::HOLDER_RETURN), 1],
+    'genre de ticket « clôture » identique des deux côtés'
+        => [(int) (Reprise::CLOTURE === RecoveryTickets::CLOSURE), 1],
 ];
 
 $echecs = 0;

@@ -295,7 +295,14 @@ CREATE TABLE IF NOT EXISTS l3_fenetres (
     recovery_salt   TEXT,
     reprise_le      INTEGER,
     close_le        INTEGER,
-    close_par       TEXT
+    close_par       TEXT,
+    ticket_niveau3  TEXT
+);
+CREATE TABLE IF NOT EXISTS l3_tickets (
+    ticket     TEXT    PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    genre      TEXT    NOT NULL,
+    emis_le    INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS l3_anciens_codes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

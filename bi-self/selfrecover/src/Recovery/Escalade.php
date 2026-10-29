@@ -1057,7 +1057,9 @@ final class Escalade
             $this->stockage->cloreLitige($litige->id, $maintenant);
             // Les secrets du titulaire, rangés avant d'être remplacés : il a la
             // fenêtre pour revenir avec l'un d'eux et l'emporter.
-            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree);
+            $ticket = bin2hex(random_bytes(16));
+            $this->stockage->emettreTicket($ticket, $litige->compteId, Reprise::NIVEAU_3, $maintenant);
+            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree, $ticket);
             $this->stockage->reposerSecrets(
                 $litige->compteId,
                 $empreinteMotDePasse,
@@ -1077,7 +1079,8 @@ final class Escalade
             $suite = $this->recovery->suite()?->suivre(new Reprise(
                 Reprise::NIVEAU_3, $litige->compteId, $litige->nomCompte, $maintenant,
                 motDePasse: $motDePasse, passphrase: $passphrase, motMemorise: $motDerive,
-                numeroLitige: $litige->numero,
+                numeroLitige: $litige->numero, ticket: $ticket,
+                ticketNiveau3: $this->stockage->fenetreDuCompte($litige->compteId)['ticket_niveau3'] ?? null,
             )) ?? 'aucune';
             $this->stockage->validerTransaction();
         } catch (LitigeDejaClos) {
@@ -1220,9 +1223,12 @@ final class Escalade
 
                 return $refus;
             }
-            $suite = $this->recovery->suite()?->suivre(
-                new Reprise(Reprise::CLOTURE, (int) $compte['id'], $nomCompte, $maintenant)
-            ) ?? 'aucune';
+            $ticket = bin2hex(random_bytes(16));
+            $this->stockage->emettreTicket($ticket, (int) $compte['id'], Reprise::CLOTURE, $maintenant);
+            $suite = $this->recovery->suite()?->suivre(new Reprise(
+                Reprise::CLOTURE, (int) $compte['id'], $nomCompte, $maintenant, ticket: $ticket,
+                ticketNiveau3: $this->stockage->fenetreDuCompte((int) $compte['id'])['ticket_niveau3'] ?? null,
+            )) ?? 'aucune';
             $this->stockage->validerTransaction();
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();

@@ -328,9 +328,20 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $this->pasDeNiveau3('consommerEpreuve');
     }
 
-    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe): void
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void
     {
         $this->pasDeNiveau3('ouvrirFenetre');
+    }
+
+    public function emettreTicket(string $ticket, int $compteId, string $genre, int $quand): void
+    {
+        $this->pasDeNiveau3('emettreTicket');
+    }
+
+    // Sans niveau 3, aucun ticket n'est jamais émis.
+    public function ticketEmis(string $ticket): ?array
+    {
+        return null;
     }
 
     // ⚠️ Une lecture que les niveaux 1 et 2 font à chaque échec. Sans niveau 3,

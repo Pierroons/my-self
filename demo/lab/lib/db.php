@@ -447,7 +447,6 @@ final class Db
             'pass_emise_le' => 'INTEGER',
             'last_login_at' => 'INTEGER',
             'login_count'   => 'INTEGER NOT NULL DEFAULT 0',
-            'banned_until'  => 'INTEGER',
         ] as $col => $type) {
             if (!in_array($col, $cols, true)) {
                 self::$pdo->exec("ALTER TABLE accounts ADD COLUMN $col $type");
@@ -514,9 +513,22 @@ final class Db
                 recovery_salt   TEXT,
                 reprise_le      INTEGER,
                 close_le        INTEGER,
-                close_par       TEXT
+                close_par       TEXT,
+                ticket_niveau3  TEXT
             )'
         );
+        self::$pdo->exec(
+            'CREATE TABLE IF NOT EXISTS l3_tickets (
+                ticket     TEXT    PRIMARY KEY,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                genre      TEXT    NOT NULL,
+                emis_le    INTEGER NOT NULL
+            )'
+        );
+        // Une base créée avant le ticket du niveau 3 le reçoit ici, une fois.
+        if (!in_array('ticket_niveau3', self::$pdo->query('PRAGMA table_info(l3_fenetres)')->fetchAll(PDO::FETCH_COLUMN, 1), true)) {
+            self::$pdo->exec('ALTER TABLE l3_fenetres ADD COLUMN ticket_niveau3 TEXT');
+        }
         self::$pdo->exec(
             'CREATE TABLE IF NOT EXISTS l3_anciens_codes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,

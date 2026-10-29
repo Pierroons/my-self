@@ -149,6 +149,7 @@ final class Conformance
             'swap-with-archive'             => 'swapWithArchive',
             'restore-archive'               => 'restoreArchive',
             'freeze-refuses-writes'         => 'freezeRefusesWrites',
+            'tickets-applied-once'          => 'ticketsAppliedOnce',
             'concurrent-updates'            => 'concurrentUpdates',
             'concurrent-re-enrolments'      => 'concurrentReEnrolments',
             'concurrent-unique-index'       => 'concurrentUniqueIndex',
@@ -724,6 +725,45 @@ final class Conformance
                 && $this->storage->loadEscrow($vault->userId) === null,
             'writes made inside the caller\'s transaction survived its rollback: the storage committed them itself'
         );
+        return null;
+    }
+
+    /**
+     * A recovery ticket is recorded in the transaction of the write it names,
+     * once per operation; a replay writes nothing. The archive a level-3
+     * ticket set aside is found by the ticket, and erasing the account erases
+     * its tickets.
+     */
+    private function ticketsAppliedOnce(): ?string
+    {
+        $old = $this->newVault('ticket');
+        $this->storage->saveVault($old);
+        $new = $this->newVault('ticket');
+        $ticket = "{$this->prefix}-ticket-l3";
+        $id = $this->storage->replaceWithArchive($old->generation(), $new, $ticket);
+        $this->assert($this->storage->archiveOfTicket($ticket) === $id, 'archiveOfTicket() does not name the archive its ticket set aside');
+        $this->assert($this->storage->archiveOfTicket("{$this->prefix}-ticket-unknown") === null, 'archiveOfTicket() names an archive for a ticket never applied');
+        $this->expect(
+            TicketAlreadyAppliedException::class,
+            fn () => $this->storage->replaceWithArchive($new->generation(), $this->newVault('ticket'), $ticket),
+            'a second replaceWithArchive() under the same ticket'
+        );
+        $this->assert(
+            hash_equals($new->userSalt, $this->storage->loadVault($new->userId)->userSalt)
+                && count($this->storage->listArchives($new->userId)) === 1,
+            'a replayed ticket re-enrolled the vault again: the ticket is not recorded inside the write'
+        );
+        $g = $new->generation();
+        $this->storage->freezeVault($g, 'arbiter', new DateTimeImmutable(), "{$this->prefix}-ticket-return");
+        $this->storage->unfreezeVault($g, "{$this->prefix}-ticket-close");
+        $this->expect(
+            TicketAlreadyAppliedException::class,
+            fn () => $this->storage->freezeVault($g, 'arbiter', new DateTimeImmutable(), "{$this->prefix}-ticket-return"),
+            'a second freezeVault() under the same ticket'
+        );
+        $this->assert($this->storage->frozenState($new->userId) === null, 'a replayed freeze froze the vault again');
+        $this->storage->eraseAccount($new->userId);
+        $this->assert($this->storage->archiveOfTicket($ticket) === null, 'eraseAccount() left the tickets of the account');
         return null;
     }
 

@@ -228,6 +228,19 @@ CREATE TABLE IF NOT EXISTS l3_fenetres (
     reprise_le      INTEGER,
     close_le        INTEGER,
     close_par       TEXT,
+    -- Le ticket du premier niveau 3 de la fenêtre : le coffre a rangé sous lui
+    -- l'archive du titulaire.
+    ticket_niveau3  TEXT,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Les tickets de reprise : ce qui suit sans secret une récupération acceptée
+-- (le coffre ré-enrôlé, rendu, gelé, dégelé) s'autorise par eux.
+CREATE TABLE IF NOT EXISTS l3_tickets (
+    ticket     TEXT    PRIMARY KEY,
+    account_id INTEGER NOT NULL,
+    genre      TEXT    NOT NULL,
+    emis_le    INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
