@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.0](https://img.shields.io/badge/status-v0.13.0-green.svg)](#status)
+[![Status: v0.13.1](https://img.shields.io/badge/status-v0.13.1-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -471,7 +471,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.13.0 (April → October 2026)
+### Shipped — v0.1.0 to v0.13.1 (April → October 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -497,6 +497,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **Behind a hidden service, opening a level-3 case is paid for instead of being refused** — where no address discriminates, an open costs a computation challenge, and the service-wide ceiling behind it is a last resort rather than a per-account brake: twenty anonymous requests an hour no longer close level 3 for everyone (v0.13.0)
 - [x] **A fraudulent level 3 is undone within a window** — the secrets from before stay valid for 14 days, each once; one of them served at level 1 or 2 gives the account back to its holder, the vault stays read-only until the arbitrator closes, and the price is declared: a stolen paper takes back a level 3 its holder made because of the theft (v0.13.0)
 - [x] **A passphrase is consumed once, even under concurrency**, and **no vault write driven by a recovery happens without its ticket** — two requests carrying the same passphrase no longer both succeed, and SelfDataGuard refuses a re-enrolment or an archive reinstatement that no recovery decided (v0.13.0)
+- [x] **The holder who comes back with their old codes is no longer stopped by the requester** — the requester's new batch no longer counts against the holder's old codes, the salt route serves the old salt for an old code, and `Recovery::estCodeDeRetour()` lets an integrator's service-wide cap step aside for a return (v0.13.1)
 
 ### Next
 

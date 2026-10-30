@@ -10,6 +10,38 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.1 — le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur, ni par son propre sel — 30 octobre 2026
+
+Correctif de la fenêtre de la 0.13.0. Aucune rupture de contrat : `StorageInterface` ne change pas.
+
+Après un niveau 3, le compte porte deux lots de codes : ceux d'avant, qui restent au titulaire pendant la
+fenêtre, et le lot neuf que `reEnroler()` remet au demandeur. Deux défauts fermaient le retour par code,
+mesurés sur la 0.13.0 en comparant la montée d'un intégrateur à la bibliothèque.
+
+- **Le demandeur remplissait, avec ses propres codes, le compteur qui juge ceux du titulaire.** Les deux
+  lots étaient comptés sous la même étiquette, celle du nom : vingt échecs étalés sur une heure
+  suspendaient le niveau 2 du compte, et le code d'avant était refusé jusqu'à l'échéance de la fenêtre,
+  au profit du demandeur. Un code d'avant est désormais compté sous `Etiquette::PREFIXE_L2_RETOUR`
+  (`Recovery::etiquetteRetourL2()`), que seul qui tient un code d'avant peut écrire.
+- **La route du sel du lab ne cherchait que le lot en place.** Elle rendait un faux sel pour un code
+  d'avant, le navigateur dérivait le mot sous ce sel, et `parCode()` refusait : le retour par code ne
+  pouvait pas aboutir. Le lab passe désormais par `Recovery::selDeDerivation()`, son adaptateur
+  implémente `SelParCodeInterface`, et le docblock de l'interface dit le cas, qu'il taisait.
+- **`Recovery::estCodeDeRetour()`**, neuve : elle dit, avant le plafond de service d'un intégrateur, qu'un
+  code est un code d'avant d'une fenêtre encore ouverte. Un plafond compté avant de savoir quel compte est
+  visé se remplit avec des codes au hasard, et ferme le retour comme le compteur partagé le fermait. Un
+  HMAC et deux lectures indexées, sans Argon2id ; la réponse vraie suppose de détenir un code d'avant.
+- **Le lab montre le lot neuf au titulaire revenu.** Son enveloppe recopiait la forme d'un niveau 2
+  ordinaire : le lot neuf et le message de la bibliothèque se perdaient, et la réponse levait un
+  avertissement PHP sur `codes_restants`.
+
+Le modèle de menace dit les deux lots, le plafond de l'intégrateur et la route du sel.
+
+Mesuré : `sanity_escalade` 254 cas (cinq neufs), `sanity_sel_session` du lab 10 (cinq neufs, jusqu'au parcours
+du navigateur après un vrai niveau 3), la console du lab 16 — le préfixe neuf y entre seul ; `sanity_recovery`
+89, `banc_stockage_pdo` 207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence du lab 128. Une
+étape de quatre canaris, rejouée seule, chacun vu rouge sur son cas.
+
 ### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
 
 Rupture de contrat : `StorageInterface` gagne les méthodes des tickets, et SelfDataGuard 0.8.0 les exige.

@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.0](https://img.shields.io/badge/status-v0.13.0-green.svg)](#statut)
+[![Status: v0.13.1](https://img.shields.io/badge/status-v0.13.1-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -473,7 +473,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.13.0 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.13.1 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -499,6 +499,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Sous un service caché, ouvrir un dossier de niveau 3 se paie au lieu d'être refusé** — là où aucune adresse ne discrimine, une ouverture coûte une épreuve de calcul, et le plafond de service derrière elle est un dernier recours plutôt qu'un frein par compte : vingt requêtes anonymes par heure ne ferment plus le niveau 3 de tout le monde (v0.13.0)
 - [x] **Un niveau 3 frauduleux se défait dans une fenêtre** — les secrets d'avant restent valables 14 jours, une fois chacun ; l'un d'eux servi au niveau 1 ou 2 rend le compte à son titulaire, le coffre reste en lecture seule jusqu'à la clôture par l'arbitre, et le prix est déclaré : un papier volé reprend un niveau 3 que son titulaire avait fait à cause du vol (v0.13.0)
 - [x] **Une passphrase est consommée une seule fois, même sous concurrence**, et **aucune écriture de coffre décidée par une récupération ne passe sans son ticket** — deux requêtes portant la même passphrase ne réussissent plus toutes les deux, et SelfDataGuard refuse un réenrôlement ou une remise en service d'archive qu'aucune récupération n'a décidés (v0.13.0)
+- [x] **Le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur** — le lot neuf du demandeur ne compte plus contre les codes d'avant, la route du sel rend l'ancien sel pour un code d'avant, et `Recovery::estCodeDeRetour()` permet au plafond de service d'un intégrateur de laisser passer un retour (v0.13.1)
 
 ### Ensuite
 
