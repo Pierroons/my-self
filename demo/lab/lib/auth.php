@@ -354,6 +354,9 @@ final class Auth
         if (!$r['ok']) {
             return refus_publiable($r);
         }
+        if (($r['titulaire_reprend'] ?? false) === true) {
+            return self::retourDuTitulaire($r);
+        }
 
         return [
             'ok'             => true,
@@ -371,12 +374,33 @@ final class Auth
         if (!$r['ok']) {
             return refus_publiable($r);
         }
+        if (($r['titulaire_reprend'] ?? false) === true) {
+            return self::retourDuTitulaire($r);
+        }
 
         return [
             'ok'          => true,
             'credentials' => ['password' => $r['mot_de_passe'], 'passphrase' => $r['passphrase']],
             'note'        => 'Nouveau mot de passe et nouvelle passphrase générés — copie-les maintenant. '
                              . 'Ton mot de récupération, lui, reste inchangé.',
+        ];
+    }
+
+    /**
+     * Le titulaire revenu dans la fenêtre d'après un niveau 3, par un secret d'avant.
+     *
+     * La bibliothèque lui remet un lot de codes neuf — l'ancien ne vaut plus — et
+     * lui demande de changer son mot mémorisé ; son message le dit. Les deux
+     * doivent arriver jusqu'à l'écran, sans quoi il repart sans codes valables.
+     */
+    private static function retourDuTitulaire(array $r): array
+    {
+        return [
+            'ok'          => true,
+            'username'    => $r['compte'],
+            'credentials' => ['password' => $r['mot_de_passe'], 'passphrase' => $r['passphrase']],
+            'codes'       => $r['codes'],
+            'note'        => $r['message'],
         ];
     }
 
@@ -413,12 +437,10 @@ final class Auth
      * On rend TOUJOURS un sel : pour un code inconnu, un sel fabriqué,
      * déterministe, de même longueur, stable si le code est retenté.
      *
-     * Deux raffinements repris de l'implémentation qui a écrit ce patron en
-     * premier :
-     * la normalisation est celle de `parCode` — sinon un code en majuscules
-     * obtiendrait un faux sel ici et serait accepté là-bas — et le `WHERE` ne
-     * filtre pas `used = 0`, sans quoi la route dirait « ce compte vient d'être
-     * récupéré ».
+     * Pour un code, le calcul est à la bibliothèque (`Recovery::selDeDerivation()`,
+     * par `SelParCodeInterface`) : la normalisation de `parCode`, le code consommé
+     * compris, et le code d'avant un niveau 3, qui se dérive sous le sel de sa
+     * fenêtre.
      */
     public static function selDeDerivation(PDO $pdo, string $code): string
     {
@@ -439,21 +461,7 @@ final class Auth
             }
         }
 
-        if (Recovery::estFormeCode($code)) {
-            $st = $pdo->prepare(
-                'SELECT a.recovery_salt FROM recovery_codes c
-                   JOIN accounts a ON a.id = c.account_id
-                  WHERE c.code_lookup = ?'
-            );
-            $st->execute([self::protocole($pdo)->indexRecherche($code)]);
-            $trouve = $st->fetchColumn();
-            $st->closeCursor();
-            if ($trouve !== false && $trouve !== '') {
-                return (string) $trouve;
-            }
-        }
-
-        return substr(hash_hmac('sha256', 'sel-absent:' . $code, self::siteSalt()), 0, 2 * Recovery::SEL_OCTETS);
+        return self::protocole($pdo)->selDeDerivation($code);
     }
 
     public static function logout(PDO $pdo, string $token): void

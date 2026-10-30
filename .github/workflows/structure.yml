@@ -597,6 +597,42 @@ jobs:
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
           echo "✓ le banc rougit quand la route du sel cesse de mentir sur un code inconnu"
 
+      # Après un niveau 3, le compte porte deux lots : les codes d'avant, ceux du
+      # titulaire, et celui remis au demandeur. Le titulaire qui revient par un code
+      # d'avant doit recevoir le sel d'avant, être jugé sous un compteur que le lot du
+      # demandeur ne remplit pas, et repartir avec son lot neuf. Chaque canari retire
+      # l'une de ces gardes et exige le rouge sur son cas.
+      - name: Canaris — le titulaire qui revient par un code d'avant
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          L=demo/lab
+          canari $R/src/Recovery/Recovery.php \
+            ": \$this->etiquetteRetourL2((string) \$cible['nom_compte']);" \
+            ": \$this->etiquetteEchecsL2((string) \$cible['nom_compte']);" \
+            $R/tests/sanity_escalade.php "❌ ⭐ et le demandeur qui a échoué avec ses propres codes ne l'en a pas empêché"
+          canari $R/src/Recovery/Recovery.php \
+            'return $fenetre !== null && self::fenetreOuverte($fenetre, $maintenant ?? time());' \
+            'return $fenetre !== null;' \
+            $R/tests/sanity_escalade.php '❌ une fenêtre échue ne reconnaît plus de retour'
+          canari $L/lib/StockageSelfRecover.php 'if ($sel === false) {' 'if (false) {' \
+            $L/tests/sanity_sel_session.php "✗ ⭐ la route rend le sel d'avant pour un code d'avant"
+          canari $L/lib/auth.php "'codes'       => \$r['codes']," "'codes'       => []," \
+            $L/tests/sanity_sel_session.php '✗ ⭐ la réponse porte le lot neuf et le message de la bibliothèque, sans avertissement'
+
       # La passphrase qu'un utilisateur apporte, tirée aux dés, au lieu d'en recevoir
       # une du serveur. Le banc se joue sous les deux profils et compte ses cas. Chaque
       # canari retire une garde et exige le rouge sur son cas : le contrôle de liste,
@@ -1008,8 +1044,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 249 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 249 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 254 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 254 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -1703,8 +1739,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_sel_session.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 5/5$' \
-            || { echo "::error::le banc du sel de session n'a pas joué ses 5 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 10/10$' \
+            || { echo "::error::le banc du sel de session n'a pas joué ses 10 cas"; exit 1; }
 
       # `login_attempts` est partagée entre la page de connexion et les compteurs de
       # la bibliothèque. Deux fois, un filtre censé écarter les seconds a emporté les
@@ -1715,8 +1751,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc des compteurs de la console a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 15/15$' \
-            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 15 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 16/16$' \
+            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 16 cas"; exit 1; }
 
       # Le filtre des trois consoles écarte des préfixes par leur forme en clair.
       # Rien ne lançait ce banc : une garde contre la publication d'une clé non

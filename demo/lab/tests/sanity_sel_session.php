@@ -28,6 +28,11 @@ require_once __DIR__ . '/../lib/device.php';
 
 use Pierroons\MySelfLab\Auth;
 use Pierroons\MySelfLab\Device;
+use Pierroons\MySelfLab\StockageSelfRecover;
+use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\ProfilDeploiement;
+use Pierroons\SelfRecover\Recovery\Escalade;
+use Pierroons\SelfRecover\Recovery\Recovery;
 
 $reussites = 0;
 $echecs = 0;
@@ -67,6 +72,49 @@ verifier("l'enrôlement accepte le bon mot", ($r['ok'] ?? false) === true, (stri
 
 $r = Device::enroll($pdo, 'banc_sel', bin2hex(random_bytes(16)), $b64u, sr_derive_like_browser('autre-mot', $rendu, $HOTE), '192.0.2.1');
 verifier("l'enrôlement refuse un autre mot", ($r['ok'] ?? true) === false);
+
+// Après un niveau 3, les codes du titulaire passent dans les anciens codes de la
+// fenêtre, et son mot reste dérivé sous le sel d'avant. Une route qui ne cherchait
+// que le lot en place lui rendait un faux sel : son retour par code ne pouvait pas
+// aboutir, et aucun banc ne faisait le parcours du navigateur jusque-là.
+echo "\n→ Après un niveau 3, le titulaire revient par un code d'avant\n";
+$_COOKIE  = [];
+$MOT_AVANT = 'mot-memorise-du-titulaire';
+$selAvant = sr_sel_aleatoire();
+Auth::register($pdo, 'banc_retour', sr_derive_like_browser($MOT_AVANT, $selAvant, $HOTE), $selAvant, '192.0.2.20');
+$idRetour = (int) $pdo->query("SELECT id FROM accounts WHERE username = 'banc_retour'")->fetchColumn();
+$codesAvant = Auth::generateRecoveryCodes($pdo, $idRetour);
+// Le niveau 3 monté comme `RecoverL3::escalade()`, l'horloge reculée d'une heure.
+$stockage = new StockageSelfRecover($pdo);
+$escalade = new Escalade($stockage, new Recovery($stockage, Auth::siteSalt(), ProfilDeploiement::CLEARWEB, Langue::FR,
+    delaiRefusUs: 0), delaiRefusUs: 0);
+$t      = time() - 3600;
+$sesame = bin2hex(random_bytes(32));
+$dossier = $escalade->ouvrir('banc_retour', Escalade::empreinteSesame($sesame), '192.0.2.21', $t);
+$escalade->trancher((string) $dossier['numero'], 'accepte', 'arbitre', $t + 10);
+$selL3 = sr_sel_aleatoire();
+$reprise = $escalade->reEnroler((string) $dossier['numero'], $sesame, 'mot de passe du demandeur',
+    sr_derive_like_browser('mot du demandeur', $selL3, $HOTE), $selL3, $t + 20);
+
+$renduAvant = Auth::selDeDerivation($pdo, $codesAvant[0]);
+verifier("⭐ la route rend le sel d'avant pour un code d'avant", $renduAvant === $selAvant, "rendu $renduAvant, attendu $selAvant");
+verifier('et le sel du demandeur pour son propre lot', Auth::selDeDerivation($pdo, (string) $reprise['codes'][0]) === $selL3);
+
+$avertissements = [];
+set_error_handler(static function (int $n, string $m) use (&$avertissements): bool {
+    $avertissements[] = $m;
+
+    return true;
+});
+$retour = Auth::recoverByCode($pdo, $codesAvant[0], sr_derive_like_browser($MOT_AVANT, $renduAvant, $HOTE), '192.0.2.22');
+restore_error_handler();
+verifier("⭐ le parcours du navigateur rend le compte à son titulaire", ($retour['ok'] ?? false) === true
+    && ($retour['username'] ?? '') === 'banc_retour', (string) ($retour['message'] ?? ''));
+verifier("⭐ la réponse porte le lot neuf et le message de la bibliothèque, sans avertissement",
+    count($retour['codes'] ?? []) === Recovery::CODES_PAR_LOT && ($retour['note'] ?? '') !== '' && $avertissements === [],
+    implode(' · ', $avertissements));
+verifier("le lot neuf est celui du compte : il rend le sel d'avant",
+    Auth::selDeDerivation($pdo, (string) ($retour['codes'][0] ?? '')) === $selAvant);
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0 ? "OK — $reussites/$total" : "ÉCHEC — $echecs sur $total") . "\n";

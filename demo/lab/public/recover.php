@@ -86,6 +86,7 @@ const REC = <?= json_encode([
     'copy'     => t('rec.js.copy'),
     'newpw'    => t('rec.js.newpw'),
     'newpp'    => t('rec.js.newpp'),
+    'newcodes' => t('rec.js.newcodes'),
     'goto'     => t('rec.js.goto'),
     'neterr'   => t('rec.js.neterr'),
     'err'      => t('log.error'),
@@ -197,6 +198,8 @@ function afficherSucces(d){
   r.innerHTML='<p>'+REC.copy+'</p>'
     +'<div class="field"><label>'+esc(REC.newpw)+'</label><input value="'+esc(d.credentials.password)+'" readonly></div>'
     +'<div class="field"><label>'+esc(REC.newpp)+'</label><input value="'+esc(d.credentials.passphrase)+'" readonly></div>'
+    // Un retour dans la fenêtre d'après un niveau 3 remet un lot neuf : l'ancien ne vaut plus.
+    +(Array.isArray(d.codes) ? '<div class="field"><label>'+esc(REC.newcodes)+'</label><textarea rows="'+d.codes.length+'" readonly>'+esc(d.codes.join('\n'))+'</textarea></div>' : '')
     +'<p class="muted">⚠️ '+esc(d.note||'')+'</p>'
     +'<a class="btn" href="/login.php">'+esc(REC.goto)+'</a>';
 }

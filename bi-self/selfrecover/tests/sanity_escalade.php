@@ -1431,15 +1431,48 @@ verifier('⭐ seul l\'arbitre clôt : le gel se lève, le séquestre s\'ouvre à
     && $fC['lecture_admin_permise'] === true && $fC['close_par'] === 'arbitre');
 verifier('une clôture ne se refait pas', ($escF->cloreFenetre('alice', 'arbitre', $now + 220)['ok'] ?? true) === false);
 
-[, $escO, $recO, $codesO] = $repris($now);
-$repriseCode = $recO->parCode($codesO[0], $MOT_AVANT, '10.0.0.8', $now + 100);
+// Le compte porte deux lots après un niveau 3 : les codes d'avant, et celui que
+// `reEnroler()` a remis au demandeur. Une origine par essai, pour que seul le
+// frein par compte puisse refuser. Ses deux seuils sont abaissés (2 pour le frein,
+// 3 pour la suspension) : la propriété ne dépend pas de leur valeur, et le banc
+// paie sept appels de `parCode()` au lieu de vingt-sept.
+[$stD, $escO, , $codesD, $rD] = $repris($now);
+$recD       = new Recovery($stD, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0,
+    maxEchecsCompte: 2, maxEchecsL2AvantSuspension: 3);
+$parOrigine = static fn (int $i): string => '198.51.100.' . (10 + $i);
+$MOT_FAUX   = str_repeat('ee', 32);
+verifier('⭐ un code d\'avant, dans la fenêtre, est reconnu comme un retour ; ni le lot du demandeur ni un code inconnu',
+    $recD->estCodeDeRetour(' ' . strtoupper($codesD[0]) . ' ', $now + 25)
+    && !$recD->estCodeDeRetour((string) $rD['codes'][0], $now + 25)
+    && !$recD->estCodeDeRetour('00000-00000', $now + 25) && !$recD->estCodeDeRetour('pas-un-code', $now + 25));
+$recD->parCode($codesD[1], $MOT_FAUX, $parOrigine(0), $now + 30);
+$recD->parCode($codesD[1], $MOT_FAUX, $parOrigine(1), $now + 31);
+verifier('⭐ les échecs d\'un code d\'avant freinent le retour, sous leur propre compteur',
+    ($recD->parCode($codesD[0], $MOT_AVANT, '10.0.0.8', $now + 40)['ok'] ?? true) === false
+    && $stD->compterEchecsCompte($recD->etiquetteRetourL2('alice'), $now) === 2
+    && $stD->compterEchecsCompte($recD->etiquetteEchecsL2('alice'), $now) === 0);
+// Le quart d'heure passé, le demandeur échoue avec son propre lot jusqu'à ce que
+// le frein le refuse : deux échecs comptés, et quatre sous un compteur partagé —
+// le frein puis la suspension y fermaient le retour jusqu'à l'échéance de la
+// fenêtre (vingt échecs étalés sur une heure aux seuils livrés, mesuré sur la 0.13.0).
+for ($i = 0; $i < 3; $i++) {
+    $recD->parCode((string) $rD['codes'][0], $MOT_FAUX, $parOrigine(2 + $i), $now + 1000 + $i);
+}
+$repriseCode = $recD->parCode($codesD[0], $MOT_AVANT, '10.0.0.8', $now + 1060);
 verifier('⭐ un code d\'avant, avec le mot d\'avant, rend aussi le compte à son titulaire',
-    ($repriseCode['ok'] ?? false) === true && ($repriseCode['titulaire_reprend'] ?? false) === true);
+    ($repriseCode['ok'] ?? false) === true && ($repriseCode['titulaire_reprend'] ?? false) === true,
+    (string) ($repriseCode['error'] ?? ''));
+verifier('⭐ et le demandeur qui a échoué avec ses propres codes ne l\'en a pas empêché',
+    ($repriseCode['ok'] ?? false) === true && $stD->compterEchecsCompte($recD->etiquetteEchecsL2('alice'), $now) === 2);
 verifier('l\'horloge seule ne clôt pas une fenêtre reprise',
     $escO->fenetre('alice', $now + 60 * 86400)['etat'] === 'reprise');
+verifier('une fenêtre reprise ne reconnaît plus de retour', !$recD->estCodeDeRetour($codesD[1], $now + 1070));
 
-[$stE, $escE2, $recE] = $repris($now);
+
+[$stE, $escE2, $recE, $codesE] = $repris($now);
 $tard = $now + 20 + 14 * 86400;
+verifier('une fenêtre échue ne reconnaît plus de retour',
+    $recE->estCodeDeRetour($codesE[0], $tard - 1) && !$recE->estCodeDeRetour($codesE[0], $tard));
 verifier('⭐ la fenêtre échue, la passphrase d\'avant ne sert plus',
     ($recE->parPassphrase('alice', $PHRASE_AVANT, '10.0.0.8', $tard)['ok'] ?? true) === false);
 $fE = $escE2->fenetre('alice', $tard);

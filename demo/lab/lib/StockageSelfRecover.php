@@ -11,6 +11,7 @@ use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\LitigeDejaTranche;
 use Pierroons\SelfRecover\Storage\PassphraseDejaConsommee;
+use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Storage\TransactionsPdo;
 
@@ -23,7 +24,7 @@ use Pierroons\SelfRecover\Storage\TransactionsPdo;
  * empreintes, cet adaptateur sait où les prendre. Un autre consommateur, avec
  * d'autres colonnes, écrit le sien sans qu'aucune base ait à migrer.
  */
-final class StockageSelfRecover implements StorageInterface
+final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
 {
     public function __construct(private readonly PDO $pdo)
     {
@@ -366,6 +367,30 @@ final class StockageSelfRecover implements StorageInterface
             'empreinte_mot'  => (string) $ligne['recovery_hash'],
             'ferme_le'       => (int) $ligne['ferme_le'],
         ];
+    }
+
+    public function selDuCompteParIndexCode(string $indexRecherche): ?string
+    {
+        $st = $this->pdo->prepare(
+            'SELECT a.recovery_salt FROM recovery_codes c
+               JOIN accounts a ON a.id = c.account_id
+              WHERE c.code_lookup = ?'
+        );
+        $st->execute([$indexRecherche]);
+        $sel = $st->fetchColumn();
+        $st->closeCursor();
+        if ($sel === false) {
+            // Un code d'avant un niveau 3 : son mot mémorisé est dérivé sous le sel de la fenêtre.
+            $st = $this->pdo->prepare(
+                'SELECT f.recovery_salt FROM l3_anciens_codes c JOIN l3_fenetres f ON f.account_id = c.account_id
+                  WHERE c.code_lookup = ?'
+            );
+            $st->execute([$indexRecherche]);
+            $sel = $st->fetchColumn();
+            $st->closeCursor();
+        }
+
+        return $sel === false || $sel === null || $sel === '' ? null : (string) $sel;
     }
 
     public function reprendreFenetre(int $compteId, int $quand): bool

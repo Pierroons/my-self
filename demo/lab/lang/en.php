@@ -542,6 +542,7 @@ return [
     'rec.js.copy' => '<strong>Copy these credentials now</strong> — they will not be shown again:',
     'rec.js.newpw' => 'New password',
     'rec.js.newpp' => 'Passphrase',
+    'rec.js.newcodes' => 'Your new recovery codes — the old ones no longer work',
     'rec.js.goto' => 'Go to log in',
     'rec.js.neterr' => 'Network error.',
 

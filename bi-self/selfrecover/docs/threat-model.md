@@ -51,7 +51,10 @@ profile, and the library refuses an address where none can mean anything, and re
 where the brake is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it
 has two steps: a short window, then suspension of the level for that account until it is rearmed.
 That brake is safe to keep because its counter cannot be filled from outside: charging it requires
-one of the account's codes, and its label is not forgeable without the deployment salt.
+one of the account's codes, and its label is not forgeable without the deployment salt. After a level
+3 the account holds two batches — the holder's old codes and the requester's new ones — and since
+0.13.1 each has its own counter, so the requester's batch cannot charge the one that judges the
+holder's (see the window below).
 
 ⚠️ **The level-1 classification counter has no such protection**, and that is why nothing may depend
 on it. Its label is not forgeable either, but the level-1 route itself fills it: three requests under
@@ -137,6 +140,27 @@ once; the dispute stays open, read-only, until a human closes it; the deployment
 from 7 to 30 days, for every account at once. An arbitrator cannot close a window that no secret
 from before has entered yet. What the library cannot do is tell the two cases apart — both present a
 secret the account really held.
+
+**The requester holds a batch of codes, and 0.13.0 counted it with the holder's.** `reEnroler()`
+hands the requester ten new codes. In 0.13.0 a failure with one of them and a failure with an old
+code landed on the same per-account counter, so the requester could fill it with their own batch:
+five failures held the return by code for fifteen minutes, twenty spread over an hour suspended it
+until the window expired — in their favour. Since 0.13.1 old codes are counted under their own label
+(`Etiquette::PREFIXE_L2_RETOUR`), which only someone holding an old code can write. Whoever stole the
+holder's old sheet still can, and that sheet already opens the window.
+
+**A service-wide cap in front of the library reopens the same door.** A cap counts before it knows
+which account is targeted, so anyone fills it with random names or codes, and while it refuses, the
+holder cannot come back before the window expires. The section on level-1 load already advises a
+queue rather than a cap. A deployment that keeps one should let returns through it. At level 2,
+`Recovery::estCodeDeRetour()` answers before the cap from an old code alone: one HMAC and two indexed
+reads, no Argon2id, and nothing learned by whoever holds no old code. At level 1 the name comes with
+the request and `Escalade::fenetre()` answers; the price is that while the cap refuses, a different
+answer tells anyone who knows the name that the account is in a window.
+
+The route that serves the derivation salt must look in the window too: an old code is derived under
+the salt from before. `SelParCodeInterface` says so since 0.13.1; an adapter that searched only the
+current batch handed the returning holder a decoy salt, and the return by code could not succeed.
 
 ### ~ Bot-driven account enumeration
 
@@ -322,7 +346,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Holding an L3 slot with a name alone | ✗ — open, by design of the level | Nobody can prove a link to an account they have lost everything of, so no automatic check can tell squatter from holder. The arbitrator is the answer: `abandonner()` frees the slot, and since 0.12.0 the collision count they read is reliable |
 | A third party freezing the holder's level-3 procedure | ✓ since 0.12.0 | No counter poses a freeze; refusals inform, an administrator decides and can lift it. Taking the slot is the row above |
-| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft |
+| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Since 0.13.1 the requester's own codes cannot close the return by code. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |

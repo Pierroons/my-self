@@ -405,7 +405,11 @@ final class Recovery
         // Sans compte, il n'y a pas de compteur à consulter, et le frein par
         // origine tient seul. Les cas ⭐ de `sanity_recovery` le font rougir.
         if ($cible !== null) {
-            $etiquette = $this->etiquetteEchecsL2((string) $cible['nom_compte']);
+            // Un code d'avant se compte à part : sous l'étiquette du niveau 2, le
+            // demandeur la remplirait avec le lot neuf que le niveau 3 lui a remis.
+            $etiquette = $trouve !== null
+                ? $this->etiquetteEchecsL2((string) $cible['nom_compte'])
+                : $this->etiquetteRetourL2((string) $cible['nom_compte']);
             $frein     = $this->freinerNiveau2(
                 $etiquette,
                 (string) $cible['nom_compte'],
@@ -764,6 +768,40 @@ final class Recovery
     }
 
     /**
+     * Ce code est-il un code d'avant un niveau 3, dans une fenêtre encore ouverte ?
+     *
+     * 🔑 **Pour le plafond de l'intégrateur, à appeler avant lui.** Un plafond
+     * de service compte avant de savoir quel compte est visé, et n'importe qui le
+     * remplit avec des codes au hasard. Le demandeur d'un niveau 3 frauduleux y
+     * gagne : tant que le plafond refuse, le titulaire ne revient pas, et la
+     * fenêtre échoit à son profit. Un code pour lequel ceci rend vrai est un
+     * retour, qu'un plafond global n'a pas à refuser ; le frein par compte de
+     * `parCode()` le juge ensuite, sous `etiquetteRetourL2()`.
+     *
+     * Sans oracle : la réponse vraie suppose de détenir un code d'avant, et rien
+     * ne dit à qui n'en a pas qu'un compte sort d'un niveau 3. Un HMAC et deux
+     * lectures indexées, sans Argon2id : de quoi l'appeler sur chaque requête,
+     * avant le plafond.
+     *
+     * Au niveau 1, le nom arrive avec la requête : `Escalade::fenetre()` répond
+     * pour lui, au prix dit par le modèle de menace.
+     */
+    public function estCodeDeRetour(#[\SensitiveParameter] string $code, ?int $maintenant = null): bool
+    {
+        $code = strtolower(trim($code));
+        if (!self::estFormeCode($code)) {
+            return false;
+        }
+        $ancien = $this->stockage->trouverAncienCodeParIndex($this->indexRecherche($code));
+        if ($ancien === null) {
+            return false;
+        }
+        $fenetre = $this->stockage->fenetreDuCompte((int) $ancien['compte_id']);
+
+        return $fenetre !== null && self::fenetreOuverte($fenetre, $maintenant ?? time());
+    }
+
+    /**
      * Le code a-t-il la forme de ceux qu'`emettreCodes()` fabrique ?
      *
      * Les intégrateurs qui filtrent avant d'appeler `parCode()` l'appellent au
@@ -882,6 +920,18 @@ final class Recovery
     public function etiquetteEchecsL2(string $nomCompte): string
     {
         return Etiquette::sous(Etiquette::PREFIXE_L2, $nomCompte, $this->selDeploiement);
+    }
+
+    /**
+     * L'étiquette du compteur d'échecs des codes d'avant un niveau 3, pendant la
+     * fenêtre. `Etiquette::PREFIXE_L2_RETOUR` dit pourquoi elle n'est pas celle
+     * du niveau 2.
+     *
+     * 🔑 **Publique**, pour la raison dite par `etiquetteEchecsL2()`.
+     */
+    public function etiquetteRetourL2(string $nomCompte): string
+    {
+        return Etiquette::sous(Etiquette::PREFIXE_L2_RETOUR, $nomCompte, $this->selDeploiement);
     }
 
     /**
