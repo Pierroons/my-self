@@ -243,12 +243,8 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
                 return $this->sels[$c['compte_id']] ?? null;
             }
         }
-        foreach ($this->anciensCodes as $c) {
-            if (hash_equals($c['index'], $indexRecherche)) {
-                return $this->fenetres[$c['compte_id']]['sel'] ?? null;
-            }
-        }
-
+        // Le lot en place seul, comme le contrat le permet : le repli vers un code
+        // d'avant est à `Recovery::selDeDerivation()`, et le banc doit le voir.
         return null;
     }
 

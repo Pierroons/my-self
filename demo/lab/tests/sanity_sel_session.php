@@ -116,6 +116,26 @@ verifier("⭐ la réponse porte le lot neuf et le message de la bibliothèque, s
 verifier("le lot neuf est celui du compte : il rend le sel d'avant",
     Auth::selDeDerivation($pdo, (string) ($retour['codes'][0] ?? '')) === $selAvant);
 
+// Le même retour au niveau 1, par la passphrase d'avant : l'enveloppe le branche à part.
+$insUn = Auth::register($pdo, 'banc_retour_un', sr_derive_like_browser($MOT_AVANT, $selAvant, $HOTE), $selAvant, '192.0.2.23');
+$sesameUn  = bin2hex(random_bytes(32));
+$dossierUn = $escalade->ouvrir('banc_retour_un', Escalade::empreinteSesame($sesameUn), '192.0.2.24', $t);
+$escalade->trancher((string) $dossierUn['numero'], 'accepte', 'arbitre', $t + 10);
+$escalade->reEnroler((string) $dossierUn['numero'], $sesameUn, 'mot de passe du demandeur',
+    sr_derive_like_browser('mot du demandeur', $selL3, $HOTE), $selL3, $t + 20);
+$avertissements = [];
+set_error_handler(static function (int $n, string $m) use (&$avertissements): bool {
+    $avertissements[] = $m;
+
+    return true;
+});
+$retourUn = Auth::recoverByPassphrase($pdo, 'banc_retour_un', (string) ($insUn['credentials']['passphrase'] ?? ''), '192.0.2.25');
+restore_error_handler();
+verifier("⭐ au niveau 1 aussi, la réponse d'un retour porte le lot neuf et le message de la bibliothèque",
+    ($retourUn['ok'] ?? false) === true && count($retourUn['codes'] ?? []) === Recovery::CODES_PAR_LOT
+    && ($retourUn['note'] ?? '') !== '' && $avertissements === [],
+    (string) ($retourUn['message'] ?? implode(' · ', $avertissements)));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0 ? "OK — $reussites/$total" : "ÉCHEC — $echecs sur $total") . "\n";
 exit($echecs === 0 ? 0 : 1);

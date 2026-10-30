@@ -379,17 +379,8 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $st->execute([$indexRecherche]);
         $sel = $st->fetchColumn();
         $st->closeCursor();
-        if ($sel === false) {
-            // Un code d'avant un niveau 3 : son mot mémorisé est dérivé sous le sel de la fenêtre.
-            $st = $this->pdo->prepare(
-                'SELECT f.recovery_salt FROM l3_anciens_codes c JOIN l3_fenetres f ON f.account_id = c.account_id
-                  WHERE c.code_lookup = ?'
-            );
-            $st->execute([$indexRecherche]);
-            $sel = $st->fetchColumn();
-            $st->closeCursor();
-        }
 
+        // Le lot en place seul : un code d'avant un niveau 3, la bibliothèque le cherche elle-même.
         return $sel === false || $sel === null || $sel === '' ? null : (string) $sel;
     }
 

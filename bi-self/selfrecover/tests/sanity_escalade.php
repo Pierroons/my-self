@@ -51,6 +51,13 @@ $echecs = 0;
  */
 const SANS_EPREUVE = ['epreuveBase' => 0, 'epreuvePasService' => PHP_INT_MAX, 'epreuvePasCompte' => PHP_INT_MAX];
 
+/** Ce qu'une réponse dit d'elle-même, pour le détail d'un cas qui échoue. */
+function resume_retour(array $r): string
+{
+    return ($r['ok'] ?? false) ? 'ok' . (($r['titulaire_reprend'] ?? false) ? ' + titulaire_reprend' : '')
+        : 'refus ' . ($r['error'] ?? '') . ' ' . mb_substr((string) ($r['message'] ?? ''), 0, 40);
+}
+
 function verifier(string $intitule, bool $condition, string $detail = ''): void
 {
     global $passes, $echecs;
@@ -1464,10 +1471,30 @@ verifier('⭐ un code d\'avant, avec le mot d\'avant, rend aussi le compte à so
     (string) ($repriseCode['error'] ?? ''));
 verifier('⭐ et le demandeur qui a échoué avec ses propres codes ne l\'en a pas empêché',
     ($repriseCode['ok'] ?? false) === true && $stD->compterEchecsCompte($recD->etiquetteEchecsL2('alice'), $now) === 2);
+// Ses deux échecs ont moins d'un quart d'heure, sous le compteur où le lot neuf du
+// titulaire est jugé : le retour réarme ce compteur, et le frein compte depuis lui.
+$codeNeuf = $recD->parCode((string) ($repriseCode['codes'][0] ?? ''), $MOT_AVANT, '10.0.0.8', $now + 1100);
+verifier('⭐ le lot neuf du titulaire revenu n\'hérite pas du frein que le demandeur vient de remplir',
+    ($codeNeuf['ok'] ?? false) === true, (string) ($codeNeuf['error'] ?? $codeNeuf['message'] ?? ''));
 verifier('l\'horloge seule ne clôt pas une fenêtre reprise',
     $escO->fenetre('alice', $now + 60 * 86400)['etat'] === 'reprise');
 verifier('une fenêtre reprise ne reconnaît plus de retour', !$recD->estCodeDeRetour($codesD[1], $now + 1070));
 
+
+// Qui tient la feuille d'avant sans le mot suspend le retour par code ; le demandeur,
+// qui tient le compte pendant la fenêtre, ne doit pas pouvoir lever cette suspension
+// par ses propres gestes — sinon, la feuille en main, il essaierait le mot sans fin.
+[$stA, , , $codesA, $rA] = $repris($now);
+$recA = new Recovery($stA, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0,
+    maxEchecsCompte: 2, maxEchecsL2AvantSuspension: 3);
+$recA->parCode($codesA[1], $MOT_FAUX, $parOrigine(20), $now + 30);
+$recA->parCode($codesA[1], $MOT_FAUX, $parOrigine(21), $now + 31);
+$recA->parCode($codesA[1], $MOT_FAUX, $parOrigine(22), $now + 1000);
+$niveau1Demandeur = $recA->parPassphrase('alice', (string) $rA['passphrase'], $parOrigine(23), $now + 1100);
+$apres            = $recA->parCode($codesA[0], $MOT_AVANT, $parOrigine(24), $now + 1200);
+verifier('⭐ une réussite du demandeur au niveau 1 ne réarme pas le compteur des codes d\'avant',
+    ($niveau1Demandeur['ok'] ?? false) === true && ($apres['error'] ?? '') === 'l2_suspendu',
+    resume_retour($apres));
 
 [$stE, $escE2, $recE, $codesE] = $repris($now);
 $tard = $now + 20 + 14 * 86400;

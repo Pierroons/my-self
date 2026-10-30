@@ -174,7 +174,14 @@ final class Recovery
      * pas la saisie. C'est lui que l'application emploie pour enchaîner (session,
      * clé de SelfDataGuard), comme au niveau 2.
      *
-     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, compte?: string, age_jours?: int|null}
+     * 🔑 **Le retour du titulaire a sa propre forme.** Dans la fenêtre d'après un
+     * niveau 3, un secret d'avant rend le compte à son titulaire : la réponse porte
+     * `titulaire_reprend`, un lot `codes` neuf — l'ancien ne vaut plus, et il n'y a
+     * pas de `codes_restants` —, `mot_memorise_a_changer`, `appareils_retires` et
+     * `suite`. Une enveloppe qui recopie la forme ordinaire perd le lot neuf, en
+     * silence.
+     *
+     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, compte?: string, age_jours?: int|null, titulaire_reprend?: bool, mot_memorise_a_changer?: bool, codes?: list<string>, appareils_retires?: int, suite?: string}
      */
     public function parPassphrase(
         string $nomCompte,
@@ -345,7 +352,14 @@ final class Recovery
      * `$nouvellePassphrase` : comme au niveau 1, la passphrase apportée qui
      * remplace l'ancienne. Un refus la concernant ne consomme pas le code.
      *
-     * @return array{ok: bool, error?: string, motif?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int}
+     * 🔑 **Le retour du titulaire a sa propre forme.** Dans la fenêtre d'après un
+     * niveau 3, un secret d'avant rend le compte à son titulaire : la réponse porte
+     * `titulaire_reprend`, un lot `codes` neuf — l'ancien ne vaut plus, et il n'y a
+     * pas de `codes_restants` —, `mot_memorise_a_changer`, `appareils_retires` et
+     * `suite`. Une enveloppe qui recopie la forme ordinaire perd le lot neuf, en
+     * silence.
+     *
+     * @return array{ok: bool, error?: string, motif?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int, titulaire_reprend?: bool, mot_memorise_a_changer?: bool, codes?: list<string>, appareils_retires?: int, suite?: string}
      */
     public function parCode(
         #[\SensitiveParameter] string $code,
@@ -415,6 +429,7 @@ final class Recovery
                 (string) $cible['nom_compte'],
                 (int) $cible['compte_id'],
                 $maintenant,
+                $trouve !== null ? null : ($this->stockage->fenetreDuCompte((int) $cible['compte_id'])['ouverte_le'] ?? null),
             );
             if ($frein !== null) {
                 return $frein;
@@ -762,7 +777,15 @@ final class Recovery
         if (!self::estFormeCode($code)) {
             return $faux;
         }
-        $vrai = $this->stockage->selDuCompteParIndexCode($this->indexRecherche($code));
+        $index = $this->indexRecherche($code);
+        $vrai  = $this->stockage->selDuCompteParIndexCode($index);
+        if ($vrai === null || $vrai === '') {
+            // Un code d'avant un niveau 3 se dérive sous le sel que la fenêtre garde.
+            // Cherché ici plutôt qu'exigé de l'adaptateur : celui qui ne voit que le
+            // lot en place rendait un leurre au titulaire qui revient, sans erreur.
+            $ancien = $this->stockage->trouverAncienCodeParIndex($index);
+            $vrai   = $ancien === null ? null : ($this->stockage->fenetreDuCompte((int) $ancien['compte_id'])['sel'] ?? null);
+        }
 
         return $vrai !== null && $vrai !== '' ? $vrai : $faux;
     }
@@ -927,7 +950,10 @@ final class Recovery
      * fenêtre. `Etiquette::PREFIXE_L2_RETOUR` dit pourquoi elle n'est pas celle
      * du niveau 2.
      *
-     * 🔑 **Publique**, pour la raison dite par `etiquetteEchecsL2()`.
+     * 🔑 **Publique**, pour la raison dite par `etiquetteEchecsL2()` : un frein
+     * posé devant le niveau 2 lit celle-ci pour un code que `estCodeDeRetour()`
+     * reconnaît. Sous l'étiquette du niveau 2, il refermerait le retour que ce
+     * compteur à part tient ouvert.
      */
     public function etiquetteRetourL2(string $nomCompte): string
     {
@@ -1086,8 +1112,15 @@ final class Recovery
         string $nomCompte,
         int $compteId,
         int $maintenant,
+        ?int $fenetreOuverteLe = null,
     ): ?array {
-        $rearmements = array_filter([
+        // 🔑 **Un compteur ne se réarme que par les gestes de qui tient les secrets
+        // qu'il juge.** Pendant la fenêtre d'après un niveau 3, le dernier lot émis
+        // et la dernière réussite du niveau 1 sont ceux du demandeur : s'ils
+        // réarmaient le compteur des codes d'avant, qui tient aussi la feuille
+        // d'avant essaierait le mot sans fin. Celui-là ne se réarme qu'à
+        // l'ouverture de la fenêtre ; le retour, qui réussirait sous lui, la ferme.
+        $rearmements = $fenetreOuverteLe !== null ? [$fenetreOuverteLe] : array_filter([
             $this->stockage->dateDernierCodeEmis($compteId),
             $this->stockage->dateDerniereReussite($etiquette),
             $this->stockage->dateDerniereReussite($this->etiquetteEchecsL1($nomCompte)),
@@ -1112,12 +1145,21 @@ final class Recovery
             }
         }
 
+        // Le quart d'heure glissant, borné par le dernier réarmement : le lot neuf du
+        // titulaire revenu n'hérite pas des échecs que le demandeur vient de faire
+        // sous le même compteur. Borné, pas remplacé : sous le compteur des codes
+        // d'avant, que seule l'ouverture de la fenêtre réarme, compter depuis elle
+        // ferait d'un frein d'un quart d'heure un refus jusqu'à l'échéance.
+        $depuisFrein = $maintenant - $this->fenetreEchecs;
+        if ($rearmements !== []) {
+            $depuisFrein = max($depuisFrein, max($rearmements) - 1);
+        }
+
         // 🔑 Le message est celui du frein par origine, au mot près, et le délai
         // est payé : un refus qui nomme le compte dirait à qui détient un code que
         // ce code appartient à un compte réel — et le dirait sans payer les deux
         // Argon2id, donc en offrant un oracle gratuit sur le premier facteur.
-        if ($this->stockage->compterEchecsCompte($etiquette, $maintenant - $this->fenetreEchecs)
-            >= $this->maxEchecsCompte) {
+        if ($this->stockage->compterEchecsCompte($etiquette, $depuisFrein) >= $this->maxEchecsCompte) {
             usleep($this->delaiRefusUs);
 
             return $this->refusFrein();

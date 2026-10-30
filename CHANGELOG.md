@@ -12,35 +12,48 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ### SelfRecover 0.13.1 — le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur, ni par son propre sel — 30 octobre 2026
 
-Correctif de la fenêtre de la 0.13.0. Aucune rupture de contrat : `StorageInterface` ne change pas.
+Correctif de la fenêtre de la 0.13.0. Aucune rupture de contrat : `StorageInterface` ne change pas, et
+`SelParCodeInterface` demande moins qu'avant.
 
 Après un niveau 3, le compte porte deux lots de codes : ceux d'avant, qui restent au titulaire pendant la
 fenêtre, et le lot neuf que `reEnroler()` remet au demandeur. Deux défauts fermaient le retour par code,
-mesurés sur la 0.13.0 en comparant la montée d'un intégrateur à la bibliothèque.
+mesurés sur la 0.13.0 en comparant la montée d'un intégrateur à la bibliothèque ; l'audit du correctif à deux
+visions en a trouvé trois de plus, corrigés ici avant l'envoi.
 
-- **Le demandeur remplissait, avec ses propres codes, le compteur qui juge ceux du titulaire.** Les deux
-  lots étaient comptés sous la même étiquette, celle du nom : vingt échecs étalés sur une heure
-  suspendaient le niveau 2 du compte, et le code d'avant était refusé jusqu'à l'échéance de la fenêtre,
-  au profit du demandeur. Un code d'avant est désormais compté sous `Etiquette::PREFIXE_L2_RETOUR`
-  (`Recovery::etiquetteRetourL2()`), que seul qui tient un code d'avant peut écrire.
-- **La route du sel du lab ne cherchait que le lot en place.** Elle rendait un faux sel pour un code
-  d'avant, le navigateur dérivait le mot sous ce sel, et `parCode()` refusait : le retour par code ne
-  pouvait pas aboutir. Le lab passe désormais par `Recovery::selDeDerivation()`, son adaptateur
-  implémente `SelParCodeInterface`, et le docblock de l'interface dit le cas, qu'il taisait.
-- **`Recovery::estCodeDeRetour()`**, neuve : elle dit, avant le plafond de service d'un intégrateur, qu'un
-  code est un code d'avant d'une fenêtre encore ouverte. Un plafond compté avant de savoir quel compte est
-  visé se remplit avec des codes au hasard, et ferme le retour comme le compteur partagé le fermait. Un
-  HMAC et deux lectures indexées, sans Argon2id ; la réponse vraie suppose de détenir un code d'avant.
-- **Le lab montre le lot neuf au titulaire revenu.** Son enveloppe recopiait la forme d'un niveau 2
-  ordinaire : le lot neuf et le message de la bibliothèque se perdaient, et la réponse levait un
-  avertissement PHP sur `codes_restants`.
+- **Le demandeur remplissait, avec ses propres codes, le compteur qui juge ceux du titulaire.** Les deux lots
+  étaient comptés sous la même étiquette, celle du nom : vingt échecs étalés sur une heure suspendaient le
+  niveau 2 du compte, et le code d'avant était refusé jusqu'à l'échéance de la fenêtre, au profit du demandeur.
+  Un code d'avant est désormais compté sous `Etiquette::PREFIXE_L2_RETOUR` (`Recovery::etiquetteRetourL2()`),
+  que seul qui tient un code d'avant peut écrire.
+- **Le demandeur réarmait la suspension des codes d'avant par ses propres gestes** — préexistant. Le dernier
+  lot émis et la dernière réussite de niveau 1 sont, pendant la fenêtre, les siens : qui tenait aussi la feuille
+  d'avant essayait le mot d'avant 58 fois en trois heures au lieu de 20, et un mot trouvé lui donnait le retour
+  du titulaire. Le compteur des codes d'avant ne se réarme plus qu'à l'ouverture de la fenêtre. La règle : un
+  compteur ne se réarme que par les gestes de qui tient les secrets qu'il juge.
+- **Le lot neuf du titulaire revenu héritait du frein que le demandeur venait de remplir**, un quart d'heure. Le
+  frein par compte compte désormais depuis le dernier réarmement quand il est plus récent que le quart d'heure
+  glissant. Posé sans la correction précédente, ce remède aurait laissé le mot d'avant se chercher sans fin :
+  un cas du banc le garde.
+- **La route du sel rendait un faux sel pour un code d'avant**, dans le lab, et chez tout adaptateur qui ne
+  cherchait que le lot en place, sans erreur. `Recovery::selDeDerivation()` cherche désormais elle-même le sel
+  que la fenêtre garde (`trouverAncienCodeParIndex()`, `fenetreDuCompte()`), et `SelParCodeInterface` ne demande
+  plus que le lot en place. Le lab passe par la bibliothèque.
+- **`Recovery::estCodeDeRetour()`**, neuve : elle dit, avant le plafond de service d'un intégrateur, qu'un code
+  est un code d'avant d'une fenêtre encore ouverte. Un plafond compté avant de savoir quel compte est visé se
+  remplit avec des codes au hasard, et ferme le retour comme le compteur partagé le fermait. Un HMAC et deux
+  lectures indexées, sans Argon2id ; la réponse vraie suppose de détenir un code d'avant.
+- **La forme de la réponse d'un retour entre au contrat** : `titulaire_reprend`, un lot `codes` neuf et pas de
+  `codes_restants`, `mot_memorise_a_changer`, aux deux niveaux. Le README disait « `codes_restants` à chaque
+  usage » ; l'enveloppe du lab, qui l'avait suivi, perdait le lot neuf et levait un avertissement. Elle le
+  transmet, aux deux niveaux, et la page le montre.
 
-Le modèle de menace dit les deux lots, le plafond de l'intégrateur et la route du sel.
+Le modèle de menace dit les deux lots, la règle du réarmement, le demandeur qui partage l'adresse du titulaire,
+le plafond de l'intégrateur et l'étiquette que doit lire son frein.
 
-Mesuré : `sanity_escalade` 254 cas (cinq neufs), `sanity_sel_session` du lab 10 (cinq neufs, jusqu'au parcours
-du navigateur après un vrai niveau 3), la console du lab 16 — le préfixe neuf y entre seul ; `sanity_recovery`
-89, `banc_stockage_pdo` 207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence du lab 128. Une
-étape de quatre canaris, rejouée seule, chacun vu rouge sur son cas.
+Mesuré : `sanity_escalade` 256 cas (sept neufs), `sanity_sel_session` du lab 11 (six neufs, jusqu'au parcours du
+navigateur après un vrai niveau 3, aux deux niveaux), la console du lab 16 — le préfixe neuf y entre seul ;
+`sanity_recovery` 89, `banc_stockage_pdo` 207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence
+du lab 128. Une étape de huit canaris, chacun vu rouge sur son cas.
 
 ### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
 
