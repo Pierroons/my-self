@@ -156,6 +156,12 @@ jobs:
       - name: Garde-fou — le périmètre des canaris est déclaré, pas devin
         run: bash scripts/check-canaris.sh --statique
 
+      # Le rejeu complet ne tourne qu'en local, sur l'arbre de quelqu'un. Son banc
+      # tient ici : des dépôts jetables sous `mktemp`, aucun prérequis, rien de
+      # planté dans celui-ci.
+      - name: Garde-fou — un rejeu des canaris rend l'arbre comme il l'a trouvé
+        run: bash scripts/tests/test_check_canaris.sh
+
       # 🔑 Les portes de comptage disent-elles encore le total de leur banc ? Un
       # banc qui gagne des cas laisse derrière lui le littéral qui le garde, et
       # la porte tombe sur un banc VERT.
