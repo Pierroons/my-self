@@ -442,11 +442,13 @@ class Moderate
      * remonte toujours : c'est une erreur d'intégration — un journal qui
      * rappelle le moteur —, pas une panne du journal.
      */
-    private static function rattraper(PDO $pdo, int $accountId, bool $contenir, bool $clore = true): ?bool
+    private static function rattraper(PDO $pdo, int $accountId, bool $contenir, bool $clore = true, bool $creer = true): ?bool
     {
         $row = self::ligne($pdo, $accountId);
         if ($row === null) {
-            self::ensureRow($pdo, $accountId);
+            if ($creer) {
+                self::ensureRow($pdo, $accountId);
+            }
 
             return false;
         }
@@ -456,7 +458,7 @@ class Moderate
         if ($avance['fin'] !== null) {
             $signaux = self::signauxDe($pdo, $accountId);
             try {
-                self::$journal?->inscrire([
+                self::inscrireAuJournal([
                     'acte'      => 'ban_fin',
                     'compte'    => $accountId,
                     'origine'   => $avance['fin']['origine'],
@@ -475,6 +477,11 @@ class Moderate
                 }
                 error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
                 self::signaler($pdo, $accountId, 'journal_en_panne');
+                // Un signal d'état ne bouge plus une fois posé (`poserSignal()`) : ici,
+                // sa date dit le dernier refus, et le balayage passe d'abord le compte
+                // refusé depuis le plus longtemps.
+                $pdo->prepare("UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ? AND cause = 'journal_en_panne'")
+                    ->execute([$t, $accountId]);
                 $avance = self::avancer($row, $t, clore: false);
                 $refusee = true;
             }
@@ -532,7 +539,7 @@ class Moderate
                 return;
             }
         }
-        self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, $accountId, contenir: true));
+        self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, $accountId, contenir: true, creer: false));
     }
 
     /**
@@ -549,16 +556,26 @@ class Moderate
      * premier refus, la passe n'appelle plus le journal — une panne se paie une
      * fois par passe, pas une fois par compte : les convalescences s'inscrivent
      * encore, les fins attendent la passe suivante, où les comptes déjà signalés
-     * passent en dernier.
+     * passent en dernier, le plus anciennement refusé d'abord : un compte que le
+     * journal refuse à chaque passe ne retient pas ceux qui le suivent.
+     *
+     * Un compte dont la reprise d'avant la 0.7.0 manque (`RepriseManquante`)
+     * n'arrête pas la passe non plus : il est sauté, et levé à la fin, avant le
+     * refus du journal. Hors de la transaction d'un hôte seulement : une fin y
+     * serait inscrite au journal et survivrait à l'annulation que l'hôte décide.
      */
     public static function balayerBansEchus(PDO $pdo, int $limite = 500): int
     {
+        if (self::dansLaTransactionDeLHote($pdo)) {
+            throw new \LogicException('SelfModerate : balayerBansEchus() s\'appelle hors de la transaction de l\'hôte — une fin inscrite au journal y survivrait à son annulation.');
+        }
         $stmt = $pdo->prepare(
             "SELECT account_id FROM member_moderation m
               WHERE (banned_until > 0 AND banned_until <= :t)
                  OR (convalescent = 1 AND (last_regen_at <= 0 OR last_regen_at <= :t - :i OR reputation >= :sortie
                                            OR (reputation >= :vote AND voting_rights = 0)))
            ORDER BY EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),
+                    (SELECT s.derniere_le FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),
                     banned_until = 0, banned_until
               LIMIT :n"
         );
@@ -569,15 +586,24 @@ class Moderate
         $stmt->bindValue('n', $limite, PDO::PARAM_INT);
         $stmt->execute();
 
-        $clos   = 0;
-        $refuse = null;
+        $clos        = 0;
+        $refuse      = null;
+        $sansReprise = null;
         foreach ($stmt->fetchAll() as $row) {
-            $close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true, clore: $refuse === null));
+            try {
+                $close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true, clore: $refuse === null));
+            } catch (RepriseManquante $e) {
+                $sansReprise ??= $e;
+                continue;
+            }
             if ($close === null) {
                 $refuse = (int) $row['account_id'];
             } elseif ($close) {
                 $clos++;
             }
+        }
+        if ($sansReprise !== null) {
+            throw $sansReprise;
         }
         if ($refuse !== null) {
             throw new \RuntimeException(sprintf(
@@ -768,7 +794,9 @@ class Moderate
      * la détection en tire tiennent dans une transaction — celle du moteur,
      * ouverte s'il n'y en a pas, ou un point de reprise dans celle de l'hôte,
      * qui reste maître de la sienne. Ce qui refuse sans rien écrire se décide
-     * avant : paramètres, droit de vote, motif, cible.
+     * avant : paramètres, droit de vote, motif, cible — sauf dans la transaction
+     * d'un hôte, où le rattrapage du votant prend d'abord le verrou d'écriture,
+     * refus compris, et l'hôte le garde jusqu'à sa fin (`rattraperSeul()`).
      *
      * Le journal s'écrit hors de la base, avant elle : une validation qui
      * échoue après lui laisse une entrée sans effet, jamais une peine sans
@@ -855,8 +883,9 @@ class Moderate
      * seule, sans décider pour la transaction qui la contient. Un point de
      * reprise ne prend aucun verrou, et la transaction d'un hôte est souvent
      * différée : une écriture qui ne touche rien le prend, avant toute lecture
-     * qui décide et tout acte au journal. Si une autre connexion le tient,
-     * SQLite refuse aussitôt, et rien n'est inscrit.
+     * qui décide et tout acte au journal. Si une autre connexion le tient, elle
+     * l'attend dans le délai que PDO accorde ; si l'hôte a déjà lu dans sa
+     * transaction, SQLite refuse aussitôt, et rien n'est inscrit.
      *
      * @template T
      * @param callable(): T $ecriture
@@ -1286,9 +1315,16 @@ class Moderate
             // ancienneté écarterait. Une troncature muette se lirait comme une
             // absence de meute : la cible est signalée à l'arbitre.
             if (count($voters) > self::config()->meuteVotantsMax) {
+                $signale = self::surAutrui($author, $voteSur, static function () use ($pdo, $author): bool {
+                    self::signaler($pdo, $author, 'votants_tronques');
+
+                    return true;
+                });
+                if ($signale === null) {
+                    continue;
+                }
                 $tronques[] = ['target_author' => $author, 'voters' => count($voters), 'scanned' => self::config()->meuteVotantsMax];
                 $voters = array_slice($voters, 0, self::config()->meuteVotantsMax);
-                self::signaler($pdo, $author, 'votants_tronques');
             }
 
             foreach (self::linkedGroups($pdo, $voters) as $groupe) {
@@ -1318,7 +1354,7 @@ class Moderate
                 // rattraperait — les votes annulés ne s'annulent plus. Les rangs
                 // passent avant la restitution, qui peut écrire au journal : un
                 // échec sur eux défait tout avant que rien ne soit inscrit.
-                $episode = self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {
+                $episode = self::surAutrui($author, $voteSur, static fn (): ?array => self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {
                     $voteIds = self::annulerVotes($pdo, $aAnnuler);
                     if (!$voteIds) {
                         return null;
@@ -1327,7 +1363,7 @@ class Moderate
                     self::restoreAfterCancel($pdo, $author, $voteIds);
 
                     return ['votes' => $voteIds, 'rangs' => $rangs];
-                });
+                }));
                 if ($episode === null) {
                     continue;
                 }
@@ -1385,7 +1421,14 @@ class Moderate
             // le signal sans regarder celui en place laisserait un tiers remplacer
             // un motif d'arbitrage par le plus bénin de la liste, et le rendre
             // indélébile. `signaler()` porte la règle pour tous les poseurs.
-            self::signaler($pdo, $author, 'salve_rapide', $author === $voteSur);
+            $signale = self::surAutrui($author, $voteSur, static function () use ($pdo, $author, $voteSur): bool {
+                self::signaler($pdo, $author, 'salve_rapide', $author === $voteSur);
+
+                return true;
+            });
+            if ($signale === null) {
+                continue;
+            }
             $salves[] = ['target_author' => $author, 'voters' => array_keys($best)];
         }
 
@@ -1396,6 +1439,34 @@ class Moderate
             'salves'           => $salves,
             'voters_truncated' => $tronques,
         ];
+    }
+
+    /**
+     * Ce qu'un balayage fait sur un compte que le vote qui le lance ne vise pas.
+     * Une reprise oubliée sur ce compte, ou un journal qui refuse l'acte d'une
+     * levée pour meute, ne défont pas le vote d'un tiers : le compte est sauté et
+     * consigné, son point de reprise défait, et la détection le retrouve au
+     * balayage suivant. La cible du vote n'y passe pas : ce que le vote cause
+     * s'inscrit, ou le vote tombe. Une `LectureDansUneEcriture` remonte toujours.
+     *
+     * @template T
+     * @param callable(): T $geste
+     * @return T|null null quand le compte est sauté
+     */
+    private static function surAutrui(int $compte, ?int $voteSur, callable $geste): mixed
+    {
+        if ($compte === $voteSur) {
+            return $geste();
+        }
+        try {
+            return $geste();
+        } catch (LectureDansUneEcriture $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            error_log(sprintf('SelfModerate : le balayage saute le compte %d, qu\'il retrouvera au balayage suivant — %s', $compte, $e->getMessage()));
+
+            return null;
+        }
     }
 
     /**
@@ -1461,7 +1532,7 @@ class Moderate
             (int) $v['effet'] < 0 && (int) $v['created_at'] <= $rep['ban_debut']);
         if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []
             && $rep['reputation'] > self::config()->banA) {
-            self::$journal?->inscrire([
+            self::inscrireAuJournal([
                 'acte'      => 'ban_leve',
                 'compte'    => $author,
                 'origine'   => 'auto',
@@ -1761,7 +1832,8 @@ class Moderate
 
     /**
      * Recale la case `needs_review` / `review_reason` sur la table, pour qui lit
-     * la base sans passer par le moteur. Le moteur ne la relit jamais.
+     * la base sans passer par le moteur. Le moteur ne la relit que pour refuser
+     * une case ouverte sans signal (`exigerReprise()`).
      */
     private static function resumer(PDO $pdo, int $accountId): void
     {
@@ -1790,9 +1862,29 @@ class Moderate
         }
     }
 
-    private static function repriseManquante(int $accountId): \LogicException
+    /**
+     * La même garde pour les listes de l'arbitre, qui lisent les tables sans
+     * passer par la ligne d'un compte : sans elle, une reprise oubliée s'y lirait
+     * « rien à revoir ».
+     */
+    private static function exigerRepriseFaite(PDO $pdo): void
     {
-        return new \LogicException(sprintf(
+        $case = $pdo->prepare(
+            'SELECT m.account_id FROM member_moderation m
+              WHERE m.needs_review = 1
+                AND NOT EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id)
+              LIMIT 1'
+        );
+        $case->execute();
+        $compte = $case->fetchColumn();
+        if ($compte !== false) {
+            throw self::repriseManquante((int) $compte);
+        }
+    }
+
+    private static function repriseManquante(int $accountId): RepriseManquante
+    {
+        return new RepriseManquante(sprintf(
             'SelfModerate : le compte %d a une case de signalement ouverte et aucun signal dans mod_signaux — '
             . 'la reprise n\'a pas été faite : appelle Moderate::migrerSignaux() une fois, juste après avoir créé la table.',
             $accountId
@@ -1905,6 +1997,23 @@ class Moderate
     }
 
     /**
+     * Le seul passage vers le journal. Chaque chaîne de l'acte y arrive en UTF-8
+     * valide : une cause ou un motif lus en base peuvent porter des octets qu'un
+     * journal qui encode strictement refuse, et ce refus fermerait au compte les
+     * gestes de l'arbitre. Les octets invalides prennent le caractère de
+     * remplacement, comme dans `causesEnTexte()` ; la base garde les siens.
+     */
+    private static function inscrireAuJournal(array $acte): void
+    {
+        array_walk_recursive($acte, static function (mixed &$valeur): void {
+            if (is_string($valeur) && preg_match('//u', $valeur) !== 1) {
+                $valeur = json_decode(json_encode($valeur, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR);
+            }
+        });
+        self::$journal?->inscrire($acte);
+    }
+
+    /**
      * Les causes ouvertes, telles que le journal les reçoit : du texte JSON. Une
      * valeur d'acte reste scalaire, et un journal qui range une colonne par clé
      * n'a rien à sérialiser — avec une liste, il rangeait `Array` sans un mot.
@@ -2014,7 +2123,7 @@ class Moderate
         $jusqua  = $maintenant + $duree;
         $signaux = self::signauxDe($pdo, $accountId);
 
-        self::$journal->inscrire([
+        self::inscrireAuJournal([
             'acte'    => 'ban_debut',
             'compte'  => $accountId,
             'origine' => 'auto',
@@ -2204,7 +2313,7 @@ class Moderate
             $jusqua     = $maintenant + $seconds;
             $episode    = $etat['strikes'] + 1;
             $parArbitre = $etat['strikes_admin'] + 1;
-            self::$journal->inscrire([
+            self::inscrireAuJournal([
                 'acte'    => 'ban_debut',
                 'compte'  => $accountId,
                 'origine' => 'admin',
@@ -2308,7 +2417,7 @@ class Moderate
                         date('d/m/Y H:i', $plancher)
                     )];
                 }
-                self::$journal->inscrire([
+                self::inscrireAuJournal([
                     'acte'      => 'ban_leve',
                     'compte'    => $accountId,
                     'origine'   => $etat['ban_origine'],
@@ -2324,7 +2433,7 @@ class Moderate
                     'ferme'     => $ferme,
                 ]);
             } else {
-                self::$journal->inscrire([
+                self::inscrireAuJournal([
                     'acte'       => 'grace',
                     'compte'     => $accountId,
                     'arbitre'    => $arbitre,
@@ -2407,7 +2516,7 @@ class Moderate
             if (is_string($vise)) {
                 return ['ok' => false, 'message' => $vise];
             }
-            self::$journal->inscrire([
+            self::inscrireAuJournal([
                 'acte'    => 'ban_maintenu',
                 'compte'  => $accountId,
                 'origine' => $etat['ban_origine'],
@@ -2480,7 +2589,7 @@ class Moderate
             if (is_string($vise)) {
                 return ['ok' => false, 'message' => $vise];
             }
-            self::$journal->inscrire([
+            self::inscrireAuJournal([
                 'acte'    => 'revue_classee',
                 'compte'  => $accountId,
                 'arbitre' => $arbitre,
@@ -2516,6 +2625,7 @@ class Moderate
      */
     public static function bansEnCours(PDO $pdo, int $limite = 100): array
     {
+        self::exigerRepriseFaite($pdo);
         $maintenant = time();
         $stmt = $pdo->prepare(
             "SELECT m.account_id, a.username, m.ban_origine, m.ban_motif, m.ban_debut, m.banned_until,
@@ -2594,6 +2704,7 @@ class Moderate
      */
     public static function flaggedForReview(PDO $pdo, int $limit = 50): array
     {
+        self::exigerRepriseFaite($pdo);
         $stmt = $pdo->prepare(
             'SELECT m.account_id, a.username, m.reputation, m.strikes, m.convalescent
                FROM mod_signaux s
@@ -2624,6 +2735,7 @@ class Moderate
      */
     public static function signauxOuverts(PDO $pdo, int $parCause = 50, ?string $cause = null): array
     {
+        self::exigerRepriseFaite($pdo);
         $causes = $pdo->prepare(
             'SELECT cause, COUNT(*) AS total FROM mod_signaux WHERE vu_le IS NULL' . ($cause === null ? '' : ' AND cause = ?')
             . ' GROUP BY cause ORDER BY MIN(ouvert_le), cause'

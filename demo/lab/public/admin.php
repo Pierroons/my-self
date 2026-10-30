@@ -42,10 +42,18 @@ try {
 } catch (\Throwable $e) {
     $finsEnPanne = $e->getMessage();
 }
-$bans     = Moderate::bansEnCours($pdo);
-// Une page par cause, la plus ancienne en tête : un flot de salves remplit la sienne
-// sans pousser les autres hors de la vue. Le ban automatique se lit avec les bans.
-$aRevoir  = array_values(array_filter(Moderate::signauxOuverts($pdo), static fn (array $s): bool => $s['cause'] !== 'ban_auto'));
+// Une reprise oubliée (`RepriseManquante`) se dit ici, au niveau du site, plutôt
+// que de se lire « rien à revoir ».
+$repriseManquante = null;
+try {
+    $bans     = Moderate::bansEnCours($pdo);
+    // Une page par cause, la plus ancienne en tête : un flot de salves remplit la sienne
+    // sans pousser les autres hors de la vue. Le ban automatique se lit avec les bans.
+    $aRevoir  = array_values(array_filter(Moderate::signauxOuverts($pdo), static fn (array $s): bool => $s['cause'] !== 'ban_auto'));
+} catch (\Pierroons\SelfModerate\RepriseManquante $e) {
+    $bans = $aRevoir = [];
+    $repriseManquante = $e->getMessage();
+}
 // L'état du journal se lit, il ne se suppose pas : une chaîne rompue ou
 // illisible doit se voir ici avant qu'un arbitre ne s'y fie.
 $journalMod = Moderate::journal();
@@ -158,6 +166,9 @@ table.adm tr:last-child td{border-bottom:none}
 <div class="card">
   <h2>⛔ Bans en cours <span class="muted" style="font-size:12px">(vote et publication bloqués ; messages privés ouverts)</span></h2>
   <p class="muted" style="margin-top:0;font-size:12.5px">
+    <?php if ($repriseManquante !== null): ?>
+      <span style="color:var(--danger)">⚠ Les bans et les signalements ne peuvent pas s'afficher : <?= h($repriseManquante) ?></span><br>
+    <?php endif; ?>
     <?php if ($finsEnPanne !== null): ?>
       <span style="color:var(--danger)">⚠ Des peines échues attendent leur clôture : le balayage a échoué (<?= h($finsEnPanne) ?>).</span><br>
     <?php endif; ?>

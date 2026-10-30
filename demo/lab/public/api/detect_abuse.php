@@ -12,5 +12,12 @@ $pdo = Db::pdo();
 require_admin($pdo);   // le balayage de tout le site est un geste d'arbitre
 
 $result = Moderate::detectPackVoting($pdo);
+// Les peines échues se referment aussi ici : un planificateur qui appelle cette route
+// n'en laisse aucune attendre la console. Un refus du journal se dit dans la réponse.
+try {
+    $result['fins_refermees'] = Moderate::balayerBansEchus($pdo);
+} catch (\RuntimeException $e) {
+    $result['fins_en_attente'] = $e->getMessage();
+}
 $result['flagged_for_review'] = Moderate::flaggedForReview($pdo);
 json_out(['ok' => true] + $result);
