@@ -10,6 +10,27 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfModerate 0.7.1 : une reprise oubliée se dit à l'arbitre, et le vote d'un tiers ne tombe plus pour un autre compte — 30 octobre 2026
+
+La 0.7.1 corrige ce qu'un audit à deux visions de la 0.7.0 a relevé. Aucun changement de schéma.
+
+- **Une reprise oubliée se dit à l'arbitre** : `bansEnCours()`, `flaggedForReview()` et `signauxOuverts()` lèvent
+  `RepriseManquante`, une `LogicException` nommée, au lieu d'afficher « rien à revoir ». Le balayage saute ce compte au
+  lieu de s'y arrêter.
+- **Le vote d'un tiers ne tombe plus pour un autre compte** : le premier vote négatif d'une tranche balaie le site, et
+  une reprise oubliée, ou une levée pour meute que le journal refuse, sur un compte qu'il ne vise pas, ne le défont plus.
+- **Toute valeur texte d'un acte arrive au journal en UTF-8 valide** : une cause lue en base n'empêche plus de classer,
+  de bannir, ni de refermer une peine.
+- **Un compte que le journal refuse à chaque passe ne retient plus les comptes signalés qui le suivent.**
+- **`balayerBansEchus()` refuse la transaction d'un hôte**, et un vote refusé dans celle-ci n'écrit plus la ligne de son
+  votant.
+- Le lab : une page qui lève après son en-tête rend un 500 et non une page coupée ; la console dit la reprise oubliée ;
+  le planificateur referme aussi les peines échues.
+
+**Pour un intégrateur** : une console d'arbitre entoure ses listes comme son balayage, et `balayerBansEchus()`
+s'appelle hors de la transaction de l'hôte. Le détail : la section « Statut » de
+[`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+
 ### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
 
 Rupture de contrat : `StorageInterface` gagne les méthodes des tickets, et SelfDataGuard 0.8.0 les exige.
