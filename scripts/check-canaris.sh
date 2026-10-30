@@ -18,14 +18,22 @@
 # vérifierait la présence des motifs par `grep` dirait qu'ils existent, pas
 # qu'ils plantent — et la plantation est ce qui donne sa valeur au rouge.
 #
-# ⚠️ Les canaris MODIFIENT des fichiers du dépôt puis les restaurent, chacun
-# contre une empreinte prise avant plantation. À lancer sur un arbre propre : un
-# canari interrompu laisse son fichier planté, et `git status` est alors le seul
-# à le dire.
+# ⚠️ Les canaris MODIFIENT des fichiers du dépôt puis les restaurent eux-mêmes.
+# Le rejeu ne s'y fie pas : il photographie l'arbre avant de commencer — par git,
+# sans toucher l'index —, le compare après chaque canari et rétablit ce qu'un
+# canari a laissé, depuis la photo : un travail non commité revient tel quel. Un
+# rejeu coupé net (arrêt de la machine, `kill -9`) laisse un journal, et le
+# lancement suivant refuse de rejouer : il nomme les fichiers sans rien rétablir,
+# puisqu'ils ont pu être modifiés depuis.
+# Limites : un fichier écrit dans un chemin ignoré échappe à la photo ; un
+# processus qui se détache (`setsid`) échappe à l'arrêt du canari ; une édition
+# faite PENDANT le rejeu passe pour un résidu — rétablie, mais gardée sous
+# `refs/worktree/check-canaris/residu-NN`.
 #
-# Usage : scripts/check-canaris.sh [--statique] [chemin du workflow]
+# Usage : scripts/check-canaris.sh [--statique | --abandonner] [chemin du workflow]
 # Sortie : 0 si le périmètre est déclaré et si chaque canari plante et rougit
-#          comme il l'annonce, 1 sinon.
+#          comme il l'annonce, 1 sinon, 130 si le rejeu est interrompu.
+#          `--abandonner` lève le journal d'un rejeu coupé, une fois l'arbre vérifié.
 #
 # 🔑 **Deux sens, deux natures.** « Une étape qui plante dans le dépôt est
 # déclarée » se lit sur le YAML, sans prérequis : c'est `--statique`, et c'est
@@ -36,8 +44,11 @@
 
 set -uo pipefail
 
-STATIQUE=0
-if [ "${1:-}" = "--statique" ]; then STATIQUE=1; shift; fi
+STATIQUE=0 ABANDONNER=0
+case "${1:-}" in
+  --statique)   STATIQUE=1; shift ;;
+  --abandonner) ABANDONNER=1; shift ;;
+esac
 
 WORKFLOW="${1:-.github/workflows/structure.yml}"
 cd "$(dirname "$0")/.." || exit 1
@@ -46,18 +57,116 @@ cd "$(dirname "$0")/.." || exit 1
 
 if [ "$STATIQUE" = 1 ]; then
   echo "▸ périmètre des canaris de $WORKFLOW (statique, rien n'est lancé)"
-else
+elif [ "$ABANDONNER" = 0 ]; then
   echo "▸ canaris de $WORKFLOW"
 fi
 
-python3 - "$WORKFLOW" "$STATIQUE" <<'PY'
+# `exec` : un SIGTERM adressé au script doit atteindre le Python, qui sait rétablir
+# l'arbre — pas un `bash` qui mourrait seul en laissant le rejeu tourner. `-u` : la
+# progression s'écrit au fil des canaris, même quand la sortie va dans un fichier.
+exec python3 -u - "$WORKFLOW" "$STATIQUE" "$ABANDONNER" <<'PY'
+import fcntl
+import hashlib
+import json
 import os
 import re
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 MARQUEUR = '# @plante'
+DELAI = int(os.environ.get('CHECK_CANARIS_DELAI', '900'))
+STATIQUE, ABANDONNER = sys.argv[2] == '1', sys.argv[3] == '1'
+
+
+def git(*args, env=None):
+    r = subprocess.run(['git', *args], capture_output=True, text=True, env=env)
+    if r.returncode != 0:
+        raise SystemExit(f"✗ git {' '.join(args[:4])} : {r.stderr.strip()[:200]}")
+    return r.stdout
+
+
+# ── L'état d'un rejeu ─────────────────────────────────────────────────────────
+# Propre à cet arbre, hors de `git status`, et il survit au redémarrage : ni
+# `/tmp`, vidé au démarrage, ni un dossier temporaire, que Python efface en
+# sortant sur une erreur — avec la sauvegarde du canari dedans.
+ETAT = git('rev-parse', '--path-format=absolute', '--git-path', 'check-canaris').strip()
+INDEX = git('rev-parse', '--path-format=absolute', '--git-path', 'index').strip()
+JOURNAL = os.path.join(ETAT, 'journal.json')
+ESPACE = 'refs/worktree/check-canaris/'
+AVANT = ESPACE + 'avant'
+
+
+def verrouiller():
+    os.makedirs(ETAT, exist_ok=True)
+    fd = os.open(os.path.join(ETAT, 'verrou'), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print("✗ un rejeu tourne déjà dans cet arbre — rien n'est lancé")
+        sys.exit(1)
+    # Gardé ouvert, et non hérité par les canaris : le verrou meurt avec ce
+    # processus, même tué net.
+    return fd
+
+
+def ecrire_journal(etat):
+    provisoire = JOURNAL + '.provisoire'
+    with open(provisoire, 'w', encoding='utf-8') as f:
+        json.dump(etat, f, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(provisoire, JOURNAL)
+    d = os.open(ETAT, os.O_RDONLY)
+    os.fsync(d)
+    os.close(d)
+
+
+def photo():
+    """L'arbre tel qu'il est sur le disque, en un objet `tree` : fichiers suivis
+    avec leurs modifications, non suivis non ignorés, suppressions. L'index réel
+    n'est jamais écrit — la photo passe par une copie."""
+    copie = os.path.join(ETAT, 'index.photo')
+    shutil.copyfile(INDEX, copie)
+    env = dict(os.environ, GIT_INDEX_FILE=copie)
+    git('-c', 'core.fsync=committed', 'add', '-A', '--', ':/', env=env)
+    return git('-c', 'core.fsync=committed', 'write-tree', env=env).strip()
+
+
+def ecarts(avant, apres):
+    if avant == apres:
+        return []
+    champs = git('diff-tree', '-r', '-z', '--no-renames', '--name-status', avant, apres).split('\0')
+    return list(zip(champs[0::2], champs[1::2]))
+
+
+def empreinte_index():
+    return hashlib.sha256(git('ls-files', '-s', '-z').encode()).hexdigest()
+
+
+def references():
+    return git('for-each-ref', '--format=%(refname)', ESPACE).split()
+
+
+if ABANDONNER:
+    verrou = verrouiller()
+    if not os.path.exists(JOURNAL) and not references():
+        print('• aucun rejeu à lever dans cet arbre')
+        sys.exit(0)
+    for ref in references():
+        git('update-ref', '-d', ref)
+        print(f'  • {ref} effacée')
+    if os.path.exists(JOURNAL):
+        os.remove(JOURNAL)
+        print('  • journal levé')
+    print("✓ état levé — le prochain rejeu photographie l'arbre tel qu'il est")
+    sys.exit(0)
+
+if STATIQUE and os.path.exists(JOURNAL):
+    print("⚠️ un rejeu complet n'a pas fini dans cet arbre — lance le volet complet : il dira ce qu'il a laissé")
 
 lignes = open(sys.argv[1], encoding='utf-8').read().split('\n')
 
@@ -171,7 +280,7 @@ if muets or orphelins or breves_qui_plantent:
 
 print('✓ périmètre déclaré complet : tout ce qui plante dans le dépôt porte son marqueur.')
 
-if sys.argv[2] == '1':
+if STATIQUE:
     sys.exit(0)
 
 if not canaris:
@@ -185,12 +294,134 @@ if not canaris:
 
 print()
 
+# ── Interruption ──────────────────────────────────────────────────────────────
+# Un signal ne lève rien au milieu d'une réparation : il tue le canari en cours,
+# et la boucle s'arrête une fois l'arbre rétabli.
+ARRET, EN_COURS = [], []
+
+
+def tuer(p):
+    try:
+        os.killpg(p.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def arreter(signum, _):
+    ARRET.append(signum)
+    for p in EN_COURS:
+        tuer(p)
+
+
+for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+    signal.signal(s, arreter)
+
+
+def lancer(script, prive):
+    # Son propre groupe : à l'arrêt, le banc PHP qu'il a lancé meurt avec lui.
+    p = subprocess.Popen(['bash', '-e', script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, env=dict(os.environ, TMPDIR=prive), start_new_session=True)
+    EN_COURS.append(p)
+    if ARRET:
+        tuer(p)
+    depasse = False
+    try:
+        sortie, _ = p.communicate(timeout=DELAI)
+    except subprocess.TimeoutExpired:
+        depasse = True
+        tuer(p)
+        try:
+            sortie, _ = p.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            sortie = ''
+            p.wait()
+    finally:
+        EN_COURS.clear()
+    return p.returncode, sortie.split('\n'), depasse
+
+
+def retablir(n, avant):
+    """Rétablit ce que le canari n a laissé, depuis la photo d'avant le rejeu —
+    jamais depuis HEAD. Rend la liste des écarts trouvés."""
+    apres = photo()
+    laisses = ecarts(avant, apres)
+    if not laisses:
+        return []
+    git('update-ref', f'{ESPACE}residu-{n:02d}', apres)
+    for statut, chemin in laisses:
+        present = os.path.lexists(chemin)
+        if statut == 'D':
+            if not present:
+                git('restore', f'--source={avant}', '--worktree', '--', chemin)
+            continue
+        # N'écraser que ce que le canari a laissé : un contenu qui a bougé depuis
+        # la photo prise juste après lui (`apres`) n'est plus le sien.
+        if not present or (git('hash-object', '--', chemin).strip()
+                           != git('rev-parse', f'{apres}:{chemin}').strip()):
+            continue
+        if statut == 'A':
+            os.remove(chemin)
+        else:
+            git('restore', f'--source={avant}', '--worktree', '--', chemin)
+    reste = ecarts(avant, photo())
+    if reste:
+        print(f'  ✗ {n:2d}. le rejeu ne sait pas rétablir ce que ce canari a laissé :')
+        for statut, chemin in reste:
+            print(f'        {statut} {chemin}')
+        print(f'  Le journal reste : relance le script pour la marche à suivre.')
+        sys.exit(1)
+    return laisses
+
+
+# ── Le rejeu précédent a-t-il fini ? ──────────────────────────────────────────
+verrou = verrouiller()
+
+if os.path.exists(JOURNAL):
+    with open(JOURNAL, encoding='utf-8') as f:
+        ancien = json.load(f)
+    try:
+        laisses = ecarts(ancien['photo'], photo())
+    except SystemExit:
+        laisses = None
+    if laisses == []:
+        print(f"• le rejeu du {ancien['debut']} s'est arrêté sans rien laisser : son journal est levé")
+        git('update-ref', '-d', AVANT)
+        os.remove(JOURNAL)
+    else:
+        print(f"✗ le rejeu du {ancien['debut']} n'a pas fini — arrêté pendant le canari "
+              f"{ancien['canari']} « {ancien['nom'][:60]} »")
+        print(f"  HEAD d'alors {ancien['head'][:7]} · d'aujourd'hui {git('rev-parse', 'HEAD').strip()[:7]}")
+        if laisses is None:
+            print("  ✗ sa photo est illisible : compare l'arbre à la main (`git status`, `git diff`)")
+        else:
+            print(f"  {len(laisses)} chemin(s) diffèrent de l'arbre d'avant ce rejeu :")
+            for statut, chemin in laisses:
+                print(f'    {statut}  {chemin}')
+            print(f'  Voir :      git diff {AVANT} -- <chemin>')
+            print(f'  Rétablir :  git restore --source={AVANT} --worktree -- <chemin>')
+            print('              (statut A : le fichier est apparu, rm -- <chemin>)')
+        print("  Rien n'est rejoué ni rétabli : ces fichiers ont pu changer depuis.")
+        print('  Une fois vérifié : scripts/check-canaris.sh --abandonner')
+        sys.exit(1)
+
+# ── Photo, puis rejeu ─────────────────────────────────────────────────────────
+avant = photo()
+git('update-ref', AVANT, avant)          # protège les objets de la photo du `gc`
+index_avant = empreinte_index()
+rejeu = {'debut': time.strftime('%Y-%m-%d %H:%M:%S'), 'head': git('rev-parse', 'HEAD').strip(),
+         'photo': avant, 'canari': 0, 'nom': ''}
+ecrire_journal(rejeu)
+
 print(f'▸ {len(canaris)} canari(s) rejoué(s), chacun comme la CI le lance')
 print()
 
-verts, rouges, absents = 0, [], []
+verts, rouges, absents, residus = 0, [], [], 0
 with tempfile.TemporaryDirectory(prefix='check-canaris-') as tmp:
     for n, (nom, corps) in enumerate(canaris, 1):
+        if ARRET:
+            break
+        rejeu.update(canari=n, nom=nom)
+        ecrire_journal(rejeu)
         creux = min((len(l) - len(l.lstrip()) for l in corps if l.strip()), default=0)
         # Un `/tmp` à lui : les `run:` sauvegardent dans des chemins fixes de
         # `/tmp`, que deux rejeux lancés en même temps depuis deux arbres
@@ -202,31 +433,63 @@ with tempfile.TemporaryDirectory(prefix='check-canaris-') as tmp:
         with open(script, 'w', encoding='utf-8') as f:
             f.write('\n'.join(l[creux:] if len(l) >= creux else l for l in corps).replace('/tmp/', prive + '/'))
 
-        r = subprocess.run(['bash', '-e', script], capture_output=True, text=True, timeout=900,
-                           env=dict(os.environ, TMPDIR=prive))
-        sortie = (r.stdout + r.stderr).split('\n')
+        rc, sortie, depasse = lancer(script, prive)
+        laisses = retablir(n, avant)
+        index_bouge = empreinte_index() != index_avant
+        if index_bouge:
+            index_avant = empreinte_index()
+        if ARRET:
+            break
 
-        if r.returncode == 0:
-            verts += 1
-            print(f'  ✓ {n:2d}. {nom[:68]}')
-            continue
+        # Un canari vert qui laisse un fichier changé est rouge : en CI, les
+        # étapes suivantes tourneraient sur son défaut.
+        notes = []
+        if laisses:
+            residus += 1
+            notes.append('a laissé ' + ', '.join(f'{s} {c}' for s, c in laisses) + ' — rétabli')
+        if index_bouge:
+            notes.append("a modifié l'index — non rétabli")
 
-        # Un outil manquant n'est pas un canari périmé : le dire, ne pas le compter rouge.
-        manque = [l for l in sortie if 'command not found' in l or 'commande introuvable' in l]
-        erreurs = [l for l in sortie if '::error::' in l]
-        if manque and not erreurs:
-            absents.append((nom, manque[0].strip()))
-            print(f'  • {n:2d}. {nom[:68]}')
-            print(f'        non rejoué — {manque[0].strip()[:72]}')
-            continue
+        if depasse:
+            cause = f"dépasse {DELAI} s — arrêté avec tout ce qu'il avait lancé"
+        elif rc == 0:
+            if not notes:
+                verts += 1
+                print(f'  ✓ {n:2d}. {nom[:68]}')
+                continue
+            cause = None
+        else:
+            # Un outil manquant n'est pas un canari périmé : le dire, ne pas le compter rouge.
+            manque = [l for l in sortie if 'command not found' in l or 'commande introuvable' in l]
+            erreurs = [l for l in sortie if '::error::' in l]
+            if manque and not erreurs and not notes:
+                absents.append((nom, manque[0].strip()))
+                print(f'  • {n:2d}. {nom[:68]}')
+                print(f'        non rejoué — {manque[0].strip()[:72]}')
+                continue
+            cause = (erreurs[-1].replace('::error::', '').strip() if erreurs
+                     else f'rc={rc} · ' + ' ⏎ '.join(x for x in sortie[-3:] if x.strip()))
 
-        cause = (erreurs[-1].replace('::error::', '').strip() if erreurs
-                 else f'rc={r.returncode} · ' + ' ⏎ '.join(x for x in sortie[-3:] if x.strip()))
+        cause = ' · '.join(x for x in [cause, *notes] if x)
         rouges.append((nom, cause))
         print(f'  ✗ {n:2d}. {nom[:68]}')
         print(f'        {cause[:100]}')
 
+# La photo de fin doit rendre celle d'avant : c'est elle qui autorise à lever l'état.
+if ecarts(avant, photo()):
+    print("✗ l'arbre ne rend pas la photo d'avant le rejeu — le journal reste : relance pour la marche à suivre")
+    sys.exit(1)
+git('update-ref', '-d', AVANT)
+os.remove(JOURNAL)
+os.remove(os.path.join(ETAT, 'index.photo'))
+
 print()
+if residus:
+    print(f"• {residus} canari(s) ont laissé un fichier changé, rétabli. Ce qu'ils ont laissé est gardé sous"
+          f' {ESPACE}residu-NN (`git show <réf>:<chemin>`) ; `--abandonner` l\'efface.')
+if ARRET:
+    print(f"✗ rejeu interrompu au canari {rejeu['canari']} — l'arbre est rendu tel qu'avant le rejeu")
+    sys.exit(130)
 if absents:
     print(f'• {len(absents)} canari(s) non rejoué(s) : un outil manque sur cette machine.')
 if not rouges:
