@@ -37,7 +37,9 @@ visions en a trouvé trois de plus, corrigés ici avant l'envoi.
 - **La route du sel rendait un faux sel pour un code d'avant**, dans le lab, et chez tout adaptateur qui ne
   cherchait que le lot en place, sans erreur. `Recovery::selDeDerivation()` cherche désormais elle-même le sel
   que la fenêtre garde (`trouverAncienCodeParIndex()`, `fenetreDuCompte()`), et `SelParCodeInterface` ne demande
-  plus que le lot en place. Le lab passe par la bibliothèque.
+  plus que le lot en place. Elle fait ces lectures pour tout code, trouvé ou non : lire seulement quand
+  l'adaptateur ne trouvait rien rendait un code inconnu plus lent qu'un code en place, à l'encontre de ce que
+  la route promet. Le lab passe par la bibliothèque, et le repli de `StockagePdo`, devenu redondant, sort.
 - **`Recovery::estCodeDeRetour()`**, neuve : elle dit, avant le plafond de service d'un intégrateur, qu'un code
   est un code d'avant d'une fenêtre encore ouverte. Un plafond compté avant de savoir quel compte est visé se
   remplit avec des codes au hasard, et ferme le retour comme le compteur partagé le fermait. Un HMAC et deux
@@ -50,10 +52,11 @@ visions en a trouvé trois de plus, corrigés ici avant l'envoi.
 Le modèle de menace dit les deux lots, la règle du réarmement, le demandeur qui partage l'adresse du titulaire,
 le plafond de l'intégrateur et l'étiquette que doit lire son frein.
 
-Mesuré : `sanity_escalade` 256 cas (sept neufs), `sanity_sel_session` du lab 11 (six neufs, jusqu'au parcours du
-navigateur après un vrai niveau 3, aux deux niveaux), la console du lab 16 — le préfixe neuf y entre seul ;
-`sanity_recovery` 89, `banc_stockage_pdo` 207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence
-du lab 128. Une étape de huit canaris, chacun vu rouge sur son cas.
+Mesuré : `sanity_escalade` 257 cas (huit neufs), `sanity_sel_session` du lab 11 (six neufs, jusqu'au parcours du
+navigateur après un vrai niveau 3, aux deux niveaux), `sanity_sel_derivation` 12 (deux neufs : les mêmes lectures
+pour tout code), la console du lab 16 — le préfixe neuf y entre seul ; `sanity_recovery` 89, `banc_stockage_pdo`
+207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence du lab 128. Une étape de dix canaris, chacun
+vu rouge sur son cas.
 
 ### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
 

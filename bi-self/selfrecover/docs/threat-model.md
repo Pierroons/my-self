@@ -50,6 +50,9 @@ Which brake applies — per account, per address, or both — is not guessed: th
 profile, and the library refuses an address where none can mean anything, and refuses the absence of one
 where the brake is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it
 has two steps: a short window, then suspension of the level for that account until it is rearmed.
+Since 0.13.1 the short window also starts again at the last rearm when it is more recent: each success
+of the holder gives whoever guesses with a stolen sheet up to four more tries at once — a gesture only
+a holder can make.
 That brake is safe to keep because its counter cannot be filled from outside: charging it requires
 one of the account's codes, and its label is not forgeable without the deployment salt. After a level
 3 the account holds two batches — the holder's old codes and the requester's new ones — and since
@@ -174,9 +177,10 @@ the request and `Escalade::fenetre()` answers; the price is that while the cap r
 answer tells anyone who knows the name that the account is in a window.
 
 The route that serves the derivation salt must look in the window too: an old code is derived under
-the salt from before. Since 0.13.1 `Recovery::selDeDerivation()` looks there itself when the adapter
-finds nothing — an adapter that searched only the current batch handed the returning holder a decoy
-salt, without an error, and the return by code could not succeed.
+the salt from before. Since 0.13.1 `Recovery::selDeDerivation()` looks there itself — an adapter that
+searched only the current batch handed the returning holder a decoy salt, without an error, and the
+return by code could not succeed. It makes the same three reads for every code, current, old or
+unknown, for the reason the decoy salt is computed in every case.
 
 An integrator's own brake in front of level 2 reads the label `parCode()` will write: `etiquetteRetourL2()`
 for a code `estCodeDeRetour()` recognises, `etiquetteEchecsL2()` for one of the current batch. Under

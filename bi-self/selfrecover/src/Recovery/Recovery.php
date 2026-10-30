@@ -777,14 +777,17 @@ final class Recovery
         if (!self::estFormeCode($code)) {
             return $faux;
         }
-        $index = $this->indexRecherche($code);
-        $vrai  = $this->stockage->selDuCompteParIndexCode($index);
-        if ($vrai === null || $vrai === '') {
-            // Un code d'avant un niveau 3 se dérive sous le sel que la fenêtre garde.
-            // Cherché ici plutôt qu'exigé de l'adaptateur : celui qui ne voit que le
-            // lot en place rendait un leurre au titulaire qui revient, sans erreur.
-            $ancien = $this->stockage->trouverAncienCodeParIndex($index);
-            $vrai   = $ancien === null ? null : ($this->stockage->fenetreDuCompte((int) $ancien['compte_id'])['sel'] ?? null);
+        // Un code d'avant un niveau 3 se dérive sous le sel que la fenêtre garde.
+        // Cherché ici plutôt qu'exigé de l'adaptateur : celui qui ne voit que le lot
+        // en place rendait un leurre au titulaire qui revient, sans erreur. Les trois
+        // lectures sont faites pour tout code, trouvé ou non, pour la même raison que
+        // le faux sel est calculé dans tous les cas.
+        $index   = $this->indexRecherche($code);
+        $vrai    = $this->stockage->selDuCompteParIndexCode($index);
+        $ancien  = $this->stockage->trouverAncienCodeParIndex($index);
+        $fenetre = $this->stockage->fenetreDuCompte($ancien === null ? 0 : (int) $ancien['compte_id']);
+        if (($vrai === null || $vrai === '') && $ancien !== null) {
+            $vrai = $fenetre['sel'] ?? null;
         }
 
         return $vrai !== null && $vrai !== '' ? $vrai : $faux;

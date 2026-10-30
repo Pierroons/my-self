@@ -581,8 +581,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_sel_derivation.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la route du sel a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 10/10$' \
-            || { echo "::error::le banc de la route du sel n'a pas joué ses 10 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 12/12$' \
+            || { echo "::error::le banc de la route du sel n'a pas joué ses 12 cas"; exit 1; }
           F=bi-self/selfrecover/src/Recovery/Recovery.php
           cp "$F" /tmp/recovery.intact; avant=$(md5sum "$F" | cut -d" " -f1)
           python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' \
@@ -644,8 +644,15 @@ jobs:
             '$depuisFrein = max($depuisFrein, max($rearmements) - 1);' '$depuisFrein = $depuisFrein + 0;' \
             $R/tests/sanity_escalade.php "❌ ⭐ le lot neuf du titulaire revenu n'hérite pas du frein que le demandeur vient de remplir"
           canari $R/src/Recovery/Recovery.php \
-            '$ancien = $this->stockage->trouverAncienCodeParIndex($index);' '$ancien = null;' \
+            '$ancien  = $this->stockage->trouverAncienCodeParIndex($index);' '$ancien  = null;' \
             $R/tests/sanity_escalade.php "❌ ⭐ la route du sel rend l'ancien sel pour un code d'avant"
+          canari $R/src/Recovery/Recovery.php \
+            '$ancien  = $this->stockage->trouverAncienCodeParIndex($index);' \
+            '$ancien  = $vrai !== null ? null : $this->stockage->trouverAncienCodeParIndex($index);' \
+            $R/tests/sanity_sel_derivation.php "❌ ⭐ la route fait les mêmes lectures pour un code en place, un code d'avant et un code inconnu"
+          canari $R/src/Recovery/Recovery.php \
+            "if (\$ancien !== null && \$ancien['ferme_le'] <= \$maintenant) {" 'if (false) {' \
+            $R/tests/sanity_escalade.php "❌ un code d'avant d'une fenêtre échue est traité en code inconnu"
           canari $L/lib/auth.php \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip);' \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip); unset($r['"'"'titulaire_reprend'"'"']);' \
@@ -941,7 +948,7 @@ jobs:
           canari $P "              WHERE account_id = ? AND reprise_le IS NULL AND close_le IS NULL AND ferme_le > ?'" \
             "              WHERE account_id = ? AND close_le IS NULL AND ferme_le > ?'" \
             bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ une fenêtre ne se reprend qu'une fois"
-          canari $P "            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel." '            return null;' \
+          canari $R '$ancien  = $this->stockage->trouverAncienCodeParIndex($index);' '$ancien  = null;' \
             bi-self/selfrecover/tests/banc_stockage_pdo.php "❌ ⭐ la route du sel rend l'ancien sel d'un code d'avant"
           canari $R "if (\$ip !== null && \$this->stockage->compterEchecsIp(\$ip, \$depuis, Etiquette::PREFIXES) >= \$this->maxEchecsIp) {" \
             'if (false) {' \
@@ -1062,8 +1069,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 256 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 256 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 257 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 257 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

@@ -1502,6 +1502,13 @@ verifier('une fenêtre échue ne reconnaît plus de retour',
     $recE->estCodeDeRetour($codesE[0], $tard - 1) && !$recE->estCodeDeRetour($codesE[0], $tard));
 verifier('⭐ la fenêtre échue, la passphrase d\'avant ne sert plus',
     ($recE->parPassphrase('alice', $PHRASE_AVANT, '10.0.0.8', $tard)['ok'] ?? true) === false);
+// Un code d'avant d'une fenêtre échue est un code inconnu : son échec ne se compte pas
+// sous le compteur du retour, que plus rien ne juge.
+$inconnusAvant = $stE->compterEchecsCompte(Etiquette::PREFIXE_L2_INCONNU, $now);
+$echu          = $recE->parCode($codesE[1], $MOT_FAUX, '10.0.0.9', $tard + 1);
+verifier('un code d\'avant d\'une fenêtre échue est traité en code inconnu',
+    ($echu['ok'] ?? true) === false && $stE->compterEchecsCompte($recE->etiquetteRetourL2('alice'), $now) === 0
+    && $stE->compterEchecsCompte(Etiquette::PREFIXE_L2_INCONNU, $now) === $inconnusAvant + 1);
 $fE = $escE2->fenetre('alice', $tard);
 verifier('et l\'état dit échue : l\'arbitre peut lire le séquestre de l\'archive',
     $fE['etat'] === 'echue' && $fE['lecture_admin_permise'] === true);
