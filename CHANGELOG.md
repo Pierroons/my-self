@@ -10,6 +10,35 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
+
+Correctif du retour du titulaire dans la fenêtre d'après un niveau 3. Aucune rupture de contrat : ni
+`StorageInterface` ni la forme des réponses ne changent ; un refus neuf, `reprise_en_cours`, s'ajoute.
+Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur code.
+
+- **Au retour, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur.** La règle « celle que
+  tu apportes doit différer de l'ancienne » n'était jugée que sur une récupération ordinaire : au retour, le
+  titulaire pouvait reposer la passphrase d'avant — celle qu'il vient de servir, et peut-être celle qu'on lui a
+  volée —, ou celle du demandeur, que le demandeur connaît. Elle est désormais jugée contre les deux, aux deux
+  niveaux ; au niveau 1, celle d'avant dans n'importe quel ordre de ses mots.
+- **Un second niveau 3 n'écrase plus une fenêtre reprise.** Le titulaire revenu, la fenêtre attend que l'arbitre
+  la close ; un second niveau 3 accordé entre-temps la remplaçait, effaçait la trace du retour, et l'arbitre ne
+  pouvait plus clore — le coffre restait gelé sans issue. `Escalade::trancher()` refuse d'accorder et
+  `reEnroler()` de réenrôler tant qu'elle n'est pas close (`reprise_en_cours`) ; `reEnroler()` le lit dans sa
+  transaction.
+- **Le message du retour dit quand changer le mot mémorisé** : après la clôture, pas avant, car d'ici là le coffre
+  d'avant ne s'ouvre qu'avec lui. Sans suite branchée, il n'annonce plus de coffre en lecture seule.
+- **Des textes qui disaient faux** :
+  - « les secrets d'avant valent une fois chacun » : ils valent pour un seul retour, le premier servi ferme la
+    fenêtre — dans les docblocks, les schémas, le modèle de menace, l'architecture, les whitepapers et les README.
+    L'entrée de la 0.13.0 ci-dessous le disait aussi ;
+  - le frein par compte du niveau 2 « indiscernable » : il rend le libellé du frein par adresse, pas son temps ;
+  - « le litige reste ouvert » après le retour : c'est la fenêtre qui attend sa clôture ;
+  - le pont `Pont\CoffreSuitLaReprise`, annoncé par `SuiteDeReprise`, n'existe pas : l'intégrateur l'écrit.
+- **Le modèle de menace dit une condition** : au niveau 1, l'échéance commune des refus cache le second Argon2id
+  d'une passphrase d'avant tant que deux Argon2id tiennent dans `delaiRefusUs` sur l'hôte — à mesurer là.
+- Les deux whitepapers en DOCX sont régénérés depuis leur Markdown : ils dataient de la 0.12.5.
+
 ### SelfRecover 0.13.1 — le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur, ni par son propre sel — 30 octobre 2026
 
 Correctif de la fenêtre de la 0.13.0. Aucune rupture de contrat : `StorageInterface` ne change pas, et

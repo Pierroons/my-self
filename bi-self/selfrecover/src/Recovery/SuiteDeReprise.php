@@ -6,7 +6,8 @@ namespace Pierroons\SelfRecover\Recovery;
 
 /**
  * Ce qui suit une récupération acceptée — typiquement le coffre de
- * SelfDataGuard, par le pont `Pierroons\SelfRecover\Pont\CoffreSuitLaReprise`.
+ * SelfDataGuard, par un pont que l'intégrateur écrit ; la bibliothèque n'en
+ * livre pas.
  *
  * `suivre()` est appelé **dans la transaction de SelfRecover**, après ses
  * écritures et avant sa validation, sur chaque chemin qui change un secret du

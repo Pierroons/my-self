@@ -215,8 +215,8 @@ CREATE TABLE IF NOT EXISTS device_challenges (
 CREATE INDEX IF NOT EXISTS idx_challenges_age ON device_challenges(created_at);
 
 -- La fenêtre d'après un niveau 3 : les secrets du titulaire d'avant la reprise,
--- valables une fois chacun jusqu'à `ferme_le`. Un ancien secret servi rend le
--- compte à son titulaire (`reprise_le`) ; seul l'arbitre clôt ensuite le litige.
+-- valables pour un seul retour jusqu'à `ferme_le`. Un ancien secret servi rend le
+-- compte à son titulaire (`reprise_le`) ; seul l'arbitre clôt ensuite la fenêtre.
 -- Une fenêtre échue sans ancien secret servi efface ses secrets et garde sa ligne.
 CREATE TABLE IF NOT EXISTS l3_fenetres (
     account_id      INTEGER PRIMARY KEY,

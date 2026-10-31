@@ -38,6 +38,7 @@ use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
 use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Messages;
 
 // 🔑 Ce banc ne se joue PAS sous un profil unique, contrairement à celui de la
 // récupération : ses cas éprouvent les deux mondes exprès — le quota par adresse
@@ -1379,10 +1380,10 @@ $SEL_AVANT    = str_repeat('5e', 16);
 $MOT_L3       = str_repeat('c3', 32);
 $SEL_L3       = str_repeat('d4', 16);
 /** Un compte aux secrets connus, repris par un niveau 3 à `$t` ; rend [stockage, escalade, recovery, codes d'avant]. */
-$repris = static function (int $t, int $fenetreDuree = 14 * 86400) use ($PHRASE_AVANT, $MOT_AVANT, $SEL_AVANT, $MOT_L3, $SEL_L3): array {
+$repris = static function (int $t, int $fenetreDuree = 14 * 86400, ?string $phrase = null) use ($PHRASE_AVANT, $MOT_AVANT, $SEL_AVANT, $MOT_L3, $SEL_L3): array {
     $st = new StockageMemoire();
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT_AVANT)];
-    $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash(Recovery::normaliserPassphrase($PHRASE_AVANT))];
+    $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash(Recovery::normaliserPassphrase($phrase ?? $PHRASE_AVANT))];
     $st->empreintes[1] = Hashing::hash('mot de passe de connexion');
     $st->sels[1]       = $SEL_AVANT;
     $st->faits[1]      = ['cree_le' => $t - 400 * 86400, 'derniere_connexion' => null, 'nombre_connexions' => null];
@@ -1443,7 +1444,10 @@ verifier('une clôture ne se refait pas', ($escF->cloreFenetre('alice', 'arbitre
 // frein par compte puisse refuser. Ses deux seuils sont abaissés (2 pour le frein,
 // 3 pour la suspension) : la propriété ne dépend pas de leur valeur, et le banc
 // paie sept appels de `parCode()` au lieu de vingt-sept.
-[$stD, $escO, , $codesD, $rD] = $repris($now);
+// Une passphrase d'avant tirée des listes : apportée au retour, elle doit être refusée
+// pour ce qu'elle est, pas pour sa forme.
+$PHRASE_LISTE = Recovery::engendrerPassphrase(Langue::FR);
+[$stD, $escO, , $codesD, $rD] = $repris($now, 14 * 86400, $PHRASE_LISTE);
 $recD       = new Recovery($stD, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0,
     maxEchecsCompte: 2, maxEchecsL2AvantSuspension: 3);
 $parOrigine = static fn (int $i): string => '198.51.100.' . (10 + $i);
@@ -1465,6 +1469,13 @@ verifier('⭐ les échecs d\'un code d\'avant freinent le retour, sous leur prop
 for ($i = 0; $i < 3; $i++) {
     $recD->parCode((string) $rD['codes'][0], $MOT_FAUX, $parOrigine(2 + $i), $now + 1000 + $i);
 }
+// Au retour, la passphrase apportée ne reprend ni celle d'avant, ni celle du demandeur ;
+// ces refus ne consomment rien, et le retour reste possible.
+$apportAvantL2     = $recD->parCode($codesD[0], $MOT_AVANT, '10.0.0.8', $now + 1050, $PHRASE_LISTE);
+$apportDemandeurL2 = $recD->parCode($codesD[0], $MOT_AVANT, '10.0.0.8', $now + 1051, (string) $rD['passphrase']);
+verifier('⭐ au retour par code, la passphrase apportée ne peut être ni celle d\'avant ni celle du demandeur',
+    ($apportAvantL2['error'] ?? '') === 'passphrase_deja_servie' && ($apportDemandeurL2['error'] ?? '') === 'passphrase_deja_servie',
+    resume_retour($apportAvantL2) . ' / ' . resume_retour($apportDemandeurL2));
 $repriseCode = $recD->parCode($codesD[0], $MOT_AVANT, '10.0.0.8', $now + 1060);
 verifier('⭐ un code d\'avant, avec le mot d\'avant, rend aussi le compte à son titulaire',
     ($repriseCode['ok'] ?? false) === true && ($repriseCode['titulaire_reprend'] ?? false) === true,
@@ -1476,10 +1487,48 @@ verifier('⭐ et le demandeur qui a échoué avec ses propres codes ne l\'en a p
 $codeNeuf = $recD->parCode((string) ($repriseCode['codes'][0] ?? ''), $MOT_AVANT, '10.0.0.8', $now + 1100);
 verifier('⭐ le lot neuf du titulaire revenu n\'hérite pas du frein que le demandeur vient de remplir',
     ($codeNeuf['ok'] ?? false) === true, (string) ($codeNeuf['error'] ?? $codeNeuf['message'] ?? ''));
+$dossierO2 = $escO->ouvrir('alice', Escalade::empreinteSesame(bin2hex(random_bytes(32))), '10.0.0.35', $now + 1080);
+$accordO2  = $escO->trancher((string) ($dossierO2['numero'] ?? ''), 'accepte', 'arbitre', $now + 1090);
+verifier('⭐ sous une fenêtre reprise, l\'arbitre ne peut pas accorder un second niveau 3 avant de la clore',
+    ($dossierO2['ok'] ?? false) === true && ($accordO2['error'] ?? '') === 'reprise_en_cours',
+    (string) ($accordO2['error'] ?? 'accordé'));
 verifier('l\'horloge seule ne clôt pas une fenêtre reprise',
     $escO->fenetre('alice', $now + 60 * 86400)['etat'] === 'reprise');
 verifier('une fenêtre reprise ne reconnaît plus de retour', !$recD->estCodeDeRetour($codesD[1], $now + 1070));
 
+
+// Au retour par la passphrase d'avant, les mêmes deux refus ; et un second niveau 3,
+// accordé pendant la fenêtre, ne remplace pas la fenêtre que le titulaire a reprise.
+$PHRASE_P = Recovery::engendrerPassphrase(Langue::FR);
+[$stP, $escP, $recP, , $rP] = $repris($now, 14 * 86400, $PHRASE_P);
+$sesameP2 = bin2hex(random_bytes(32));
+$dossierP2 = $escP->ouvrir('alice', Escalade::empreinteSesame($sesameP2), '10.0.0.30', $now + 40);
+$accordP2  = $escP->trancher((string) ($dossierP2['numero'] ?? ''), 'accepte', 'arbitre', $now + 50);
+$melange   = implode(' ', array_reverse(explode(' ', $PHRASE_P)));
+$apportAvantL1     = $recP->parPassphrase('alice', $PHRASE_P, '10.0.0.31', $now + 60, $melange);
+$apportDemandeurL1 = $recP->parPassphrase('alice', $PHRASE_P, '10.0.0.32', $now + 61, (string) $rP['passphrase']);
+verifier('⭐ au retour par la passphrase d\'avant, l\'apportée ne peut être ni elle, dans aucun ordre, ni celle du demandeur',
+    ($apportAvantL1['error'] ?? '') === 'passphrase_deja_servie' && ($apportDemandeurL1['error'] ?? '') === 'passphrase_deja_servie'
+    && $escP->fenetre('alice', $now + 62)['etat'] === 'ouverte',
+    resume_retour($apportAvantL1) . ' / ' . resume_retour($apportDemandeurL1));
+$neuveP  = Recovery::engendrerPassphrase(Langue::FR);
+$retourP = $recP->parPassphrase('alice', $PHRASE_P, '10.0.0.33', $now + 70, $neuveP);
+verifier('une passphrase neuve, elle, est prise au retour, et le message ne parle d\'aucun coffre quand aucun n\'est branché',
+    ($retourP['ok'] ?? false) === true && ($retourP['titulaire_reprend'] ?? false) === true && ($retourP['passphrase'] ?? '') === $neuveP
+    && ($retourP['message'] ?? '') === Messages::dire(Langue::FR, 'l3.titulaire_reprend_sans_coffre'),
+    resume_retour($retourP));
+$fenetreP  = $escP->fenetre('alice', $now + 80);
+$repriseP2 = $escP->reEnroler((string) ($dossierP2['numero'] ?? ''), $sesameP2, 'le mot de passe du second demandeur',
+    str_repeat('e5', 32), str_repeat('f6', 16), $now + 110);
+verifier('⭐ sous une fenêtre reprise, un second niveau 3 accordé avant ne s\'exécute pas, et la trace du retour reste',
+    ($accordP2['ok'] ?? false) === true && ($repriseP2['error'] ?? '') === 'reprise_en_cours'
+    && $escP->fenetre('alice', $now + 120)['etat'] === 'reprise'
+    && $escP->fenetre('alice', $now + 120)['reprise_le'] === $fenetreP['reprise_le'],
+    (string) ($repriseP2['error'] ?? 'exécuté'));
+$escP->cloreFenetre('alice', 'arbitre', $now + 130);
+verifier('la fenêtre close par l\'arbitre, l\'accord du second niveau 3 s\'exécute',
+    ($escP->reEnroler((string) ($dossierP2['numero'] ?? ''), $sesameP2, 'le mot de passe du second demandeur',
+        str_repeat('e5', 32), str_repeat('f6', 16), $now + 140)['ok'] ?? false) === true);
 
 // Qui tient la feuille d'avant sans le mot suspend le retour par code ; le demandeur,
 // qui tient le compte pendant la fenêtre, ne doit pas pouvoir lever cette suspension

@@ -158,8 +158,8 @@ final class Escalade
         private readonly int $epreuveDuree = 300,
         /**
          * Secondes pendant lesquelles, après une reprise par le niveau 3, les
-         * secrets d'avant restent valables une fois chacun : le temps laissé au
-         * titulaire pour revenir. Entre `FENETRE_MINIMUM` et `FENETRE_MAXIMUM`.
+         * secrets d'avant restent valables pour un seul retour — le premier servi
+         * ferme la fenêtre : le temps laissé au titulaire pour revenir. Entre `FENETRE_MINIMUM` et `FENETRE_MAXIMUM`.
          */
         private readonly int $fenetreDuree = 14 * 86400,
     ) {
@@ -824,6 +824,12 @@ final class Escalade
         if ($litige->expire($maintenant)) {
             return ['ok' => false, 'error' => 'expire', 'message' => Messages::dire($this->langue(), 'l3.expire_archive')];
         }
+        // Un accord sur un compte dont la fenêtre attend sa clôture ne pourrait pas
+        // s'exécuter (`reEnroler()` le refuse) : l'arbitre l'apprend ici, et clôt d'abord.
+        if ($decision === 'accepte' && $this->repriseEnAttente($litige->compteId)) {
+            return ['ok' => false, 'error' => 'reprise_en_cours',
+                    'message' => Messages::dire($this->langue(), 'l3.reprise_en_cours')];
+        }
 
         // 🔑 `enCours()` porte sur une lecture, et un second arbitre a pu trancher
         // depuis. L'écriture conditionnelle du stockage décide : le perdant
@@ -1051,6 +1057,17 @@ final class Escalade
 
         $this->stockage->commencerTransaction();
         try {
+            // 🔑 Une fenêtre reprise attend que l'arbitre la close. La remplacer par
+            // celle d'un second niveau 3 effacerait la trace du retour du titulaire :
+            // l'arbitre ne pourrait plus clore, et le coffre resterait gelé sans que
+            // personne puisse le rendre. Lu dans la transaction de la reprise, pour
+            // qu'un retour validé entre-temps ne passe pas entre la lecture et l'écriture.
+            if ($this->repriseEnAttente($litige->compteId)) {
+                $this->stockage->annulerTransaction();
+
+                return ['ok' => false, 'error' => 'reprise_en_cours',
+                        'message' => Messages::dire($this->langue(), 'l3.reprise_en_cours')];
+            }
             // 🔑 Consommer d'abord, agir ensuite. Deux reprises concurrentes ont lu
             // le même accord ; la clôture ne réussit qu'une fois, et la perdante
             // sort ici, avant d'avoir rien écrit.
@@ -1158,14 +1175,24 @@ final class Escalade
         return $this->stockage->purgerFenetresEchues($maintenant ?? time());
     }
 
+    /** La fenêtre de ce compte est-elle reprise par son titulaire, en attente de sa clôture ? */
+    private function repriseEnAttente(int $compteId): bool
+    {
+        $f = $this->stockage->fenetreDuCompte($compteId);
+
+        return $f !== null && $f['reprise_le'] !== null && $f['close_le'] === null;
+    }
+
     /**
      * L'état de la fenêtre d'après un niveau 3, pour l'application et pour
      * l'arbitre.
      *
      * - `aucune` : pas de niveau 3 repris sur ce compte ;
      * - `ouverte` : les secrets d'avant valent encore, jusqu'à `ferme_le` ;
-     * - `reprise` : le titulaire l'a emporté avec l'un d'eux. Le litige reste
-     *   ouvert jusqu'à `cloreFenetre()`, et le coffre reste en lecture seule ;
+     * - `reprise` : le titulaire l'a emporté avec l'un d'eux. Le dossier du niveau
+     *   3 est clos depuis la reprise ; c'est la fenêtre qui attend `cloreFenetre()`,
+     *   et le coffre reste en lecture seule jusque-là. Aucun second niveau 3 ne la
+     *   remplace d'ici là (`reprise_en_cours`) ;
      * - `close` : l'arbitre a clos le litige ;
      * - `echue` : la fenêtre s'est fermée sans qu'aucun ancien secret serve.
      *

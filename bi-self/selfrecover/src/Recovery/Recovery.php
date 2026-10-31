@@ -244,9 +244,10 @@ final class Recovery
             && $compte !== null;
 
         // 🔑 Dans la fenêtre d'après un niveau 3, la passphrase d'avant vaut encore,
-        // une fois : le titulaire qui revient l'emporte sur le demandeur. Elle coûte
-        // un Argon2id de plus, que l'échéance commune des refus couvre : le
-        // chronomètre ne dit pas qu'un compte sort d'un niveau 3.
+        // pour un seul retour : le titulaire qui revient l'emporte sur le demandeur.
+        // Elle coûte un Argon2id de plus, que l'échéance commune des refus couvre tant
+        // que deux Argon2id tiennent dans `delaiRefusUs` sur l'hôte : le chronomètre
+        // ne dit alors pas qu'un compte sort d'un niveau 3.
         $fenetre = null;
         if (!$ok && $compte !== null) {
             $f = $this->stockage->fenetreDuCompte((int) $compte['id']);
@@ -260,15 +261,19 @@ final class Recovery
         // pour qui a le papier, c'est la même. Jugé seulement quand elle est bonne,
         // donc bornée par celle qui est rangée, quoi que pèse la saisie ; le refus
         // ne touche ni au compteur ni à la passphrase.
-        if ($ok && $apport !== null) {
-            $neuve    = array_unique(explode(' ', $apport));
-            $ancienne = array_unique(explode(' ', strtolower($passphrase)));
-            sort($neuve);
-            sort($ancienne);
-            if ($neuve === $ancienne) {
-                return ['ok' => false, 'error' => 'passphrase_deja_servie',
-                        'message' => Messages::dire($this->langue, 'passphrase.identique')];
-            }
+        if ($ok && $apport !== null && self::memesMots($apport, $passphrase)) {
+            return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                    'message' => Messages::dire($this->langue, 'passphrase.identique')];
+        }
+        // 🔑 Au retour, la même règle vaut contre les DEUX passphrases que le compte a
+        // portées : celle d'avant, qu'on vient de servir et qui a pu être volée — c'est
+        // souvent ce vol qui a mené au niveau 3 —, et celle du demandeur, qu'il connaît.
+        // La seconde n'est connue que par son empreinte : elle se compare à l'identique.
+        if ($fenetre !== null && $apport !== null
+            && (self::memesMots($apport, $passphrase)
+                || Hashing::verify($apport, (string) $compte['empreinte_passphrase']))) {
+            return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                    'message' => Messages::dire($this->langue, 'passphrase.identique')];
         }
 
         // L'étiquette du niveau 1 est celle où `freinerNiveau2()` cherche la
@@ -418,6 +423,9 @@ final class Recovery
         // 2 du service entier dès que le plafond est atteint, par n'importe qui.
         // Sans compte, il n'y a pas de compteur à consulter, et le frein par
         // origine tient seul. Les cas ⭐ de `sanity_recovery` le font rougir.
+        $fenetreAncien = $trouve === null && $ancien !== null
+            ? $this->stockage->fenetreDuCompte((int) $ancien['compte_id'])
+            : null;
         if ($cible !== null) {
             // Un code d'avant se compte à part : sous l'étiquette du niveau 2, le
             // demandeur la remplirait avec le lot neuf que le niveau 3 lui a remis.
@@ -429,7 +437,7 @@ final class Recovery
                 (string) $cible['nom_compte'],
                 (int) $cible['compte_id'],
                 $maintenant,
-                $trouve !== null ? null : ($this->stockage->fenetreDuCompte((int) $cible['compte_id'])['ouverte_le'] ?? null),
+                $fenetreAncien['ouverte_le'] ?? null,
             );
             if ($frein !== null) {
                 return $frein;
@@ -457,6 +465,18 @@ final class Recovery
                         'message' => Messages::dire($this->langue, 'passphrase.identique')];
             }
         }
+        // Au retour, contre les deux passphrases que le compte a portées, comme au
+        // niveau 1 : celle d'avant, que la fenêtre garde, et celle du demandeur.
+        $retourOuvert = $okAncien && $fenetreAncien !== null && self::fenetreOuverte($fenetreAncien, $maintenant);
+        if ($retourOuvert && $apport !== null) {
+            $actuelle = $this->stockage->trouverComptePourPassphrase((string) $ancien['nom_compte']);
+            $avant    = $fenetreAncien['empreinte_passphrase'] ?? null;
+            if (($avant !== null && Hashing::verify($apport, (string) $avant))
+                || ($actuelle !== null && Hashing::verify($apport, (string) $actuelle['empreinte_passphrase']))) {
+                return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                        'message' => Messages::dire($this->langue, 'passphrase.identique')];
+            }
+        }
 
         // 🔑 Un code introuvable n'est rattaché à AUCUN compte : sa ligne porte
         // `PREFIXE_L2_INCONNU`, la même pour tous. Elle garde son adresse, et
@@ -464,12 +484,9 @@ final class Recovery
         // plutôt que sous `null`, qu'aucun filtre de préfixe ne peut compter.
         $this->stockage->tracerTentative($etiquette, $ok || $okAncien, $ip, $maintenant);
 
-        if ($okAncien) {
-            $fenetre = $this->stockage->fenetreDuCompte((int) $ancien['compte_id']);
-            if ($fenetre !== null && self::fenetreOuverte($fenetre, $maintenant)) {
-                return $this->reprendreParTitulaire((int) $ancien['compte_id'], (string) $ancien['nom_compte'],
-                    $fenetre, $maintenant, $apport, $refus, Reprise::SERRURE_MOT_MEMORISE, $motDerive);
-            }
+        if ($retourOuvert) {
+            return $this->reprendreParTitulaire((int) $ancien['compte_id'], (string) $ancien['nom_compte'],
+                $fenetreAncien, $maintenant, $apport, $refus, Reprise::SERRURE_MOT_MEMORISE, $motDerive);
         }
         if (!$ok) {
             usleep($this->delaiRefusUs);
@@ -640,8 +657,9 @@ final class Recovery
      * codes neufs, et retrouve son mot mémorisé d'avant avec son sel : le
      * serveur ne sait pas en engendrer un, et celui du demandeur doit sortir.
      * Les sessions et les appareils du demandeur tombent. La fenêtre passe
-     * reprise, et le litige reste ouvert jusqu'à ce qu'un arbitre le close
-     * (`Escalade::cloreFenetre()`) ; jusque-là, le coffre reste en lecture seule.
+     * reprise et attend qu'un arbitre la close (`Escalade::cloreFenetre()`) ;
+     * jusque-là, le coffre reste en lecture seule, et aucun second niveau 3 ne
+     * la remplace.
      *
      * @param array{empreinte_mot: ?string, sel: ?string} $fenetre
      * @return array<string, mixed>
@@ -694,7 +712,9 @@ final class Recovery
             'ok'                     => true,
             'titulaire_reprend'      => true,
             'mot_memorise_a_changer' => true,
-            'message'                => Messages::dire($this->langue, 'l3.titulaire_reprend'),
+            // Sans suite branchée, aucun coffre n'est gelé : le message ne l'annonce pas.
+            'message'                => Messages::dire($this->langue,
+                $this->suite === null ? 'l3.titulaire_reprend_sans_coffre' : 'l3.titulaire_reprend'),
             'mot_de_passe'           => $motDePasse,
             'passphrase'             => $nouvellePhrase,
             'codes'                  => $codes,
@@ -702,6 +722,20 @@ final class Recovery
             'appareils_retires'      => $appareils,
             'suite'                  => $suite,
         ];
+    }
+
+    /**
+     * Deux passphrases portent-elles les mêmes mots, dans n'importe quel ordre ?
+     * Pour qui a le papier, c'est la même.
+     */
+    private static function memesMots(#[\SensitiveParameter] string $apport, #[\SensitiveParameter] string $servie): bool
+    {
+        $neuve    = array_unique(explode(' ', $apport));
+        $ancienne = array_unique(explode(' ', strtolower($servie)));
+        sort($neuve);
+        sort($ancienne);
+
+        return $neuve === $ancienne;
     }
 
     /** @param array{ferme_le: int, reprise_le: ?int, close_le: ?int} $f */
@@ -1090,7 +1124,11 @@ final class Recovery
      * plus vite que le refus ordinaire, faute des deux Argon2id. Aucune énumération
      * n'en sort — il faut déjà détenir un code —, mais un code partiellement
      * illisible se complète à ce prix. Le frein par fenêtre, lui, rend le message
-     * du frein par origine et paie le délai : il est indiscernable.
+     * du frein par origine — mais pas son temps : le frein par origine répond
+     * aussitôt, celui-ci après le délai commun et sans les deux Argon2id. Le
+     * chronomètre les sépare, et derrière un service caché, où le frein par
+     * origine n'existe pas, ce refus ne peut venir que du compte. La concession
+     * est celle de la suspension : il faut déjà tenir un code.
      *
      * ⚠️ **La suspension exige une sortie, et elle vient du déploiement.** Trois
      * gestes la lèvent, parce que tous les trois réarment le compteur : un lot de

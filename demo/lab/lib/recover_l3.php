@@ -75,6 +75,7 @@ final class RecoverL3
         'trop_tot'           => 429,
         'trop_de_demandes'   => 429,
         'aucune_fenetre_reprise' => 409,
+        'reprise_en_cours'   => 409,
     ];
 
     private static function escalade(PDO $pdo): Escalade

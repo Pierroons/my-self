@@ -550,8 +550,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_suite_reprise.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la suite a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 17/17$' \
-            || { echo "::error::le banc de la suite n'a pas joué ses 17 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 18/18$' \
+            || { echo "::error::le banc de la suite n'a pas joué ses 18 cas"; exit 1; }
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
@@ -659,6 +659,25 @@ jobs:
           canari $R/src/Recovery/Recovery.php \
             "if (\$ancien !== null && \$ancien['ferme_le'] <= \$maintenant) {" 'if (false) {' \
             $R/tests/sanity_escalade.php "❌ un code d'avant d'une fenêtre échue est traité en code inconnu"
+          # Le retour lui-même (0.13.2) : la passphrase apportée ne reprend ni celle
+          # d'avant ni celle du demandeur, un second niveau 3 n'écrase pas une fenêtre
+          # reprise, et le message ne promet un coffre gelé que s'il y en a un.
+          canari $R/src/Recovery/Recovery.php \
+            '        if ($fenetre !== null && $apport !== null' '        if (false && $fenetre !== null && $apport !== null' \
+            $R/tests/sanity_escalade.php "❌ ⭐ au retour par la passphrase d'avant, l'apportée ne peut être ni elle"
+          canari $R/src/Recovery/Recovery.php '        if ($retourOuvert && $apport !== null) {' '        if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ au retour par code, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur"
+          canari $R/src/Recovery/Escalade.php '            if ($this->repriseEnAttente($litige->compteId)) {' '            if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ sous une fenêtre reprise, un second niveau 3 accordé avant ne s'exécute pas"
+          canari $R/src/Recovery/Escalade.php \
+            "        if (\$decision === 'accepte' && \$this->repriseEnAttente(\$litige->compteId)) {" '        if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ sous une fenêtre reprise, l'arbitre ne peut pas accorder un second niveau 3"
+          canari $R/src/Recovery/Recovery.php \
+            "\$this->suite === null ? 'l3.titulaire_reprend_sans_coffre' : 'l3.titulaire_reprend')," "'l3.titulaire_reprend')," \
+            $R/tests/sanity_escalade.php "❌ une passphrase neuve, elle, est prise au retour, et le message ne parle d'aucun coffre"
+          canari $R/src/Recovery/Recovery.php \
+            "\$this->suite === null ? 'l3.titulaire_reprend_sans_coffre' : 'l3.titulaire_reprend')," "'l3.titulaire_reprend_sans_coffre')," \
+            $R/tests/sanity_suite_reprise.php "❌ retour : avec un coffre branché, le message dit la lecture seule"
           canari $L/lib/auth.php \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip);' \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip); unset($r['"'"'titulaire_reprend'"'"']);' \
@@ -810,7 +829,7 @@ jobs:
           canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
             '        $this->stockage->tracerTentative($this->etiquetteSuspicionL1($nomCompte), false, $ip, $maintenant);' \
             $B '❌ 🔑 et il ne charge pas le classement non plus'
-          canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
+          canari $R 'if ($ok && $apport !== null && self::memesMots($apport, $passphrase)) {' 'if (false) {' \
             $B '❌ apporter celle qui sert est refusé'
           canari $E "if (\$jugee['canonique'] === strtolower(Recovery::normaliserPassphrase(\$motDePasse))) {" 'if (false) {' \
             $B '❌ une passphrase égale au mot de passe choisi est refusée'
@@ -1075,8 +1094,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 257 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 257 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 263 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 263 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

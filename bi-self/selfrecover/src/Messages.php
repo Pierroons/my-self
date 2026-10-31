@@ -373,10 +373,24 @@ final class Messages
         'l3.titulaire_reprend' => [
             'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '
                   . 'tu le retrouves. Celui qui l\'avait repris en est sorti. Tu reçois des secrets neufs : note-les. Un arbitre va '
-                  . 'prendre contact, et ton coffre reste en lecture seule jusque-là. Pense à changer ton mot mémorisé.',
+                  . 'prendre contact, et ton coffre reste en lecture seule jusque-là. Change ton mot mémorisé une fois le litige '
+                  . 'clos, pas avant : d\'ici là, ton coffre d\'avant ne s\'ouvre qu\'avec lui.',
             'en' => 'Your account was taken over through an arbitration procedure in the last few days, and your former '
                   . 'secret prevails: you get it back. Whoever had taken it is out. You receive new secrets: write them down. An arbitrator '
-                  . 'will get in touch, and your vault stays read-only until then. Remember to change your memorized word.',
+                  . 'will get in touch, and your vault stays read-only until then. Change your memorized word once the dispute is '
+                  . 'closed, not before: until then, only that word opens your former vault.',
+        ],
+        'l3.titulaire_reprend_sans_coffre' => [
+            'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '
+                  . 'tu le retrouves. Celui qui l\'avait repris en est sorti. Tu reçois des secrets neufs : note-les. Un arbitre va '
+                  . 'prendre contact. Pense à changer ton mot mémorisé.',
+            'en' => 'Your account was taken over through an arbitration procedure in the last few days, and your former '
+                  . 'secret prevails: you get it back. Whoever had taken it is out. You receive new secrets: write them down. An arbitrator '
+                  . 'will get in touch. Remember to change your memorized word.',
+        ],
+        'l3.reprise_en_cours' => [
+            'fr' => 'Le titulaire de ce compte l\'a repris avec un secret d\'avant : un arbitre doit d\'abord clore ce litige.',
+            'en' => 'The holder of this account took it back with a secret from before: an arbitrator must close that dispute first.',
         ],
         'l3.message_vide' => [
             'fr' => 'Le message est vide.',

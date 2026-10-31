@@ -134,7 +134,7 @@ interface StorageInterface
     //
     // 🔑 Seul un niveau 3 en ouvre une. Les secrets que le titulaire tenait
     // avant la reprise — passphrase, mot mémorisé et son sel, codes papier non
-    // consommés — y restent valables une fois chacun, jusqu'à sa fermeture : le
+    // consommés — y restent valables pour un seul retour, jusqu'à sa fermeture : le
     // titulaire qui revient l'emporte sur le demandeur. L'ancien mot de passe
     // n'y entre pas : c'est souvent lui qui a fui.
 
