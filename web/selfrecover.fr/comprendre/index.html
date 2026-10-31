@@ -156,7 +156,9 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <code>login_attempts</code>, l'adresse sous le profil <code>CLEARWEB</code>.</p>
       <p>La bibliothèque n'écrit ni ne lit <code>sessions.token</code>&nbsp;: elle n'efface que les sessions d'un compte,
         et le schéma fourni déclare cette colonne <code>TEXT</code> en laissant à l'application ce qu'elle y range. Les
-        compteurs d'échec qu'elle écrit sont des étiquettes HMAC sous le sel du déploiement, aux trois niveaux.</p>
+        compteurs d'échec qu'elle écrit sont des étiquettes HMAC sous le sel du déploiement, aux trois niveaux, sauf
+        celle d'un code rattaché à aucun compte, fixe (<code>PREFIXE_L2_INCONNU</code>)&nbsp;: il n'y a pas de nom à
+        saler.</p>
       <p>Un hachage factice au même profil est vérifié quand le compte ou le code est inconnu, et au niveau 2 les
         deux Argon2id sont toujours calculés&nbsp;: le temps de réponse ne dit pas lequel a échoué.</p>
       <p class="source">Sources&nbsp;: <code>src/Crypto/Hashing.php</code>, <code>schema.sql</code>, <code>src/Recovery/Recovery.php</code>,
@@ -183,13 +185,19 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <code>parPassphrase()</code>&nbsp;: identifiant en <code>strtolower(trim)</code>, espaces réduits, casse
         conservée, hachage factice si le compte est inconnu. Succès&nbsp;: mot de passe et passphrase neufs, empreintes
         remplacées et sessions révoquées dans une même transaction&nbsp;; l'âge de la passphrase est rendu
-        (<code>age_jours</code>), jamais un motif de refus.</p>
+        (<code>age_jours</code>), jamais un motif de refus. Le refus d'une passphrase fausse attend une échéance
+        commune (<code>delaiRefusUs</code>), prise en tête de route&nbsp;: pendant la fenêtre d'après un niveau 3,
+        l'Argon2id de plus que coûte la passphrase d'avant ne se lit pas au chronomètre, tant que deux Argon2id tiennent
+        dans ce délai. La bibliothèque ne le vérifie pas&nbsp;: sur un hôte lent, le délai se relève. Deux requêtes simultanées sur la même passphrase n'en font
+        réussir qu'une&nbsp;: <code>remplacerEmpreintes()</code> n'écrit que si la passphrase rangée est encore celle qui
+        a été lue, sinon <code>PassphraseDejaConsommee</code>.</p>
       <p>Passphrase apportée&nbsp;: paramètre <code>nouvellePassphrase:</code> sur <code>parPassphrase()</code>,
         <code>parCode()</code> et <code>Escalade::reEnroler()</code>. <code>Recovery::validerPassphraseApportee()</code>
         juge la forme avant tout frein, dans cet ordre&nbsp;: 1&nbsp;024 octets au plus, six mots au moins, chaque mot
         dans l'une des deux listes, aucun mot répété. Acceptée, elle rend sa forme <code>canonique</code>&nbsp;:
-        minuscules, une espace entre les mots. Rien ne mesure le hasard — des mots choisis de tête passent. Le refus
-        <code>passphrase_deja_servie</code> compare les deux ensembles de mots, sans tenir compte de l'ordre.</p>
+        minuscules, une espace entre les mots. Rien ne mesure le hasard — des mots choisis de tête passent. Au niveau 1, le
+        refus <code>passphrase_deja_servie</code> compare les deux ensembles de mots, sans tenir compte de l'ordre&nbsp;;
+        aux niveaux 2 et 3, il compare la passphrase telle quelle.</p>
       <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Diceware/Wordlist.php</code>, modèle de menace.</p>
     </div>
   </div></section>
@@ -199,7 +207,8 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <h2>Un code papier et ton mot&nbsp;: deux facteurs, sans identifiant.</h2>
     <p class="lead">Tu reçois dix codes <code>xxxxx-xxxxx</code> à usage unique, affichés une seule fois. Un code
       retrouve ton compte sans que tu donnes ton nom, et prouve que tu possèdes la feuille. Il ne suffit pas&nbsp;: il
-      faut aussi ton mot. Les codes ne sont jamais rangés en clair, et un nouveau lot efface l'ancien.</p>
+      faut aussi ton mot. Les codes ne sont jamais rangés en clair, et un nouveau lot efface l'ancien — sauf au
+      niveau 3, où les codes encore inutilisés gardent une valeur pendant la fenêtre qu'il ouvre.</p>
     <p class="lead">Avant de calculer ton empreinte, ton navigateur demande le sel de ton compte en présentant le code.
       Cette route répond <em class="tl">toujours</em>&nbsp;: un faux sel, de même forme et stable si tu réessaies, pour
       un code mal formé ou rattaché à aucun compte&nbsp;; et le vrai sel du compte pour un code déjà utilisé,
@@ -214,7 +223,9 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         faux sel est calculé avant toute bifurcation&nbsp;: les 32 premiers caractères de
         <code>HMAC-SHA256(clé = sel du déploiement, message = "sel-absent:" + lower(trim(code)))</code> — la normalisation porte sur le
         code seul. Un code déjà utilisé reçoit le vrai sel. Le stockage doit implémenter
-        <code>SelParCodeInterface</code>, sinon <code>LogicException</code>. La bibliothèque fournit la garde&nbsp;;
+        <code>SelParCodeInterface</code>, sinon <code>LogicException</code>. Pendant la fenêtre d'après un niveau 3, un
+        code d'avant reçoit le sel d'avant, que <code>selDeDerivation()</code> cherche elle-même&nbsp;; pour tout code bien
+        formé — en place, d'avant ou inconnu —, elle fait les mêmes trois lectures. La bibliothèque fournit la garde&nbsp;;
         la route reste à l'intégrateur.</p>
       <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Storage/SelParCodeInterface.php</code>, whitepaper v1.5.</p>
     </div>
@@ -249,15 +260,37 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <p class="lead">En cas de refus, ton compte n'est pas touché. En cas d'accord, tu choisis toi-même ton nouveau mot
       de passe et ton nouveau mot&nbsp;; le serveur te remet dix codes neufs et une passphrase — tirée, ou celle que tu
       apportes, qui doit différer de ton mot de passe et de l'ancienne —, puis retire les appareils.</p>
+    <p class="lead">Et si quelqu'un d'autre a convaincu l'arbitre à ta place, tu as une fenêtre pour revenir&nbsp;:
+      14&nbsp;jours par défaut, que le service règle de 7 à 30. Tes secrets d'avant y valent encore, pour un seul
+      retour — ta passphrase au niveau 1, ou un code papier encore inutilisé avec ton mot au niveau 2&nbsp;; ton ancien
+      mot de passe, non. Le premier que tu sers te rend le compte et ferme la fenêtre&nbsp;: des secrets neufs, ton mot
+      d'avant, à changer, et les sessions et appareils de l'autre retirés. Le revers est déclaré&nbsp;: si tu es passé
+      par le niveau 3 parce qu'on t'a volé ta passphrase, le voleur peut te reprendre le compte de la même façon, tant
+      que la fenêtre dure. Qui n'a volé que ta feuille de codes ne la reprend pas sans ton mot, mais peut, à force
+      d'échecs, suspendre ton retour par code jusqu'à la fin de la fenêtre&nbsp;; ta passphrase d'avant, elle, reste.</p>
     <div class="dev">
       <p>Dossier <code>"LIT-" + strtoupper(bin2hex(random_bytes(8)))</code>&nbsp;; le sésame n'est rangé que sous
         forme d'empreinte SHA-256 (<code>claim_hash</code>), comparée par <code>hash_equals</code>. Questions&nbsp;:
         <code>annee_creation</code>, <code>mois_connexion</code>, <code>frequence</code>. Le faisceau ne porte aucun
         signal passif et ne redescend jamais au demandeur. Par défaut&nbsp;: dossier 24&nbsp;h, accord valable 7&nbsp;jours,
-        1&nbsp;h entre deux dépôts, gel de 7&nbsp;jours au 3<sup>e</sup> refus en 30&nbsp;jours. Ré-enrôlement&nbsp;: mot de passe
-        de 12 à 4&nbsp;096 caractères, trois Argon2id, dix codes, sessions et appareils retirés, en une transaction. La
+        1&nbsp;h entre deux dépôts. Au 3<sup>e</sup> refus en 30&nbsp;jours, <code>trancher()</code> suggère un gel de
+        7&nbsp;jours (<code>gel_suggere</code>)&nbsp;: aucun gel n'est automatique, seul l'arbitre le pose
+        (<code>geler()</code>). Ré-enrôlement&nbsp;: mot de passe de 12 à 4&nbsp;096 caractères, trois Argon2id calculés
+        avant la transaction, puis en une transaction la clôture du dossier, l'ouverture de la fenêtre, les secrets
+        reposés, dix codes, sessions et appareils retirés. La
         bibliothèque ne vérifie pas qui a le droit de trancher&nbsp;: c'est l'application.</p>
-      <p class="source">Sources&nbsp;: <code>src/Recovery/Escalade.php</code>, whitepaper v1.5.</p>
+      <p>Fenêtre&nbsp;: <code>fenetreDuree</code>, 14&nbsp;jours par défaut, bornée par <code>FENETRE_MINIMUM</code>
+        (7&nbsp;jours) et <code>FENETRE_MAXIMUM</code> (30), ouverte dans la transaction de <code>reEnroler()</code>, qui
+        rend <code>fenetre_jusqua</code>. Un retour rend <code>titulaire_reprend</code>, un lot de codes neuf et
+        <code>mot_memorise_a_changer</code>, et efface les autres secrets d'avant. Le dossier du niveau 3 a été clos par
+        <code>reEnroler()</code>&nbsp;; c'est la fenêtre qui passe à l'état <code>reprise</code>
+        (<code>lecture_seule</code>) et y reste jusqu'à <code>cloreFenetre()</code>, geste de l'arbitre et jamais de
+        l'horloge, ou jusqu'à un nouveau niveau 3 accordé, qui la remplace. <code>Escalade::fenetre()</code> dit l'état (<code>aucune</code>,
+        <code>ouverte</code>, <code>reprise</code>, <code>close</code>, <code>echue</code>)&nbsp;;
+        <code>purgerFenetres()</code> efface les secrets d'une fenêtre échue, et c'est au déploiement de l'appeler
+        (<code>tools/purger.php</code>). Chaque niveau 3, chaque retour et chaque clôture émettent un ticket dans leur
+        transaction.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Escalade.php</code>, <code>src/Recovery/Recovery.php</code>, modèle de menace, whitepaper v1.5.</p>
     </div>
   </div></section>
 
@@ -268,25 +301,54 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       compte — 5 échecs dans la même fenêtre — garde le niveau 2 et l'enrôlement d'un appareil&nbsp;; le niveau 1 n'en a
       pas, délibérément&nbsp;: un compteur tenu sous ton nom fermerait la seule voie que tu puisses emprunter seul, et
       n'importe qui le remplirait à ta place. Au niveau 2, après 20 échecs, la récupération par code est suspendue pour
-      ce compte. Au niveau 3&nbsp;: 10 ouvertures par adresse, ou 20 pour tout le service là où l'adresse ne distingue
-      personne.</p>
+      ce compte. Au niveau 3, sur le web ordinaire&nbsp;: 10 demandes d'ouverture par adresse et par heure, qu'elles
+      aboutissent ou non.</p>
     <p class="lead">Derrière Tor, tout le monde arrive de la même adresse&nbsp;: il reste le frein par compte et la
-      suspension au niveau 2, le plafond du service au niveau 3, et rien au niveau 1 — où ne s'y opposent que le coût
-      d'un Argon2id par essai et l'entropie de la passphrase. Poser une preuve de travail devant la route d'ouverture
-      est recommandé, mais c'est au déploiement de le faire&nbsp;: la bibliothèque n'en fournit aucune.</p>
-    <p class="lead">Un refus ne dit pas quel facteur était faux, et il prend un délai. Un seul refus nomme son état, et
-      c'est assumé&nbsp;: la suspension du niveau 2. Au niveau 3, c'est le succès qui parle — seul un compte existant
-      obtient un numéro de dossier&nbsp;; les refus, eux, sont identiques et arrivent dans le même temps, qu'il s'agisse
-      d'un nom inconnu, d'un dossier déjà ouvert ou d'une procédure gelée.</p>
+      suspension au niveau 2, et rien au niveau 1 — où ne s'y opposent que le coût d'un Argon2id par essai et
+      l'entropie de la passphrase&nbsp;; lisser le débit de cette route revient au déploiement. Au niveau 3, ouvrir un
+      dossier se paie&nbsp;: ton navigateur résout d'abord une épreuve de calcul, dont le prix monte avec la charge du
+      service et avec l'insistance sur un même nom. Aucun compteur ne bloque ton nom&nbsp;: insister dessus en monte le
+      prix, sans te fermer la porte. Un plafond de 500 demandes par heure, pour tout le service, reste en dernier
+      recours.</p>
+    <p class="lead">Sur le web ordinaire comme derrière Tor, un dossier ouvert par quelqu'un d'autre à ton nom occupe
+      pourtant la place 24&nbsp;heures, et peut se renouveler&nbsp;: c'est l'arbitre qui la libère, et chaque demande
+      refusée pendant ce temps lui est montrée.</p>
+    <p class="lead">Un refus ne dit pas quel facteur était faux, et un refus ordinaire prend un délai. Les freins par
+      adresse des trois niveaux répondent sans délai, délibérément&nbsp;: ils tombent avant toute recherche de compte,
+      et ne disent donc rien d'un compte. Au niveau 2, deux refus apprennent à qui tient déjà un code qu'il appartient
+      à un vrai compte&nbsp;: la suspension, assumée, et le frein par compte, qui répond plus vite qu'un refus
+      ordinaire.
+      Au niveau 3, c'est le succès qui parle —
+      seul un compte existant obtient un numéro de dossier&nbsp;; les refus, eux, sont identiques et arrivent dans le
+      même temps, qu'il s'agisse d'un nom inconnu, d'un dossier déjà ouvert ou d'une procédure gelée.</p>
     <div class="dev">
       <p>Paramètres du constructeur de <code>Recovery</code>&nbsp;: <code>fenetreEchecs 900</code>,
-        <code>maxEchecsCompte 5</code> (lu par <code>freinerNiveau2()</code> et l'enrôlement, jamais au niveau 1, dont
-        <code>freiner()</code> ne compte que par origine), <code>maxEchecsIp 12</code>,
+        <code>maxEchecsCompte 5</code> (lu par <code>freinerNiveau2()</code>, jamais au niveau 1, dont
+        <code>freiner()</code> ne compte que par origine&nbsp;; l'enrôlement a les siens, dans <code>Device</code>),
+        <code>maxEchecsIp 12</code>,
         <code>delaiRefusUs 300000</code>,
         <code>maxEchecsL2AvantSuspension 20</code> — ce sont des paramètres, pas des constantes. Profil de
         déploiement obligatoire&nbsp;: <code>CLEARWEB</code> ou <code>TOR_ONION</code>. Messages génériques&nbsp;:
         « Code ou mot mémorisé incorrect. », « Identifiant ou passphrase incorrect. ».</p>
-      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/ProfilDeploiement.php</code>, whitepaper v1.5.</p>
+      <p>Délais&nbsp;: une échéance commune aux refus ordinaires des niveaux 1 et 3, <code>delaiRefusUs</code> après les
+        deux Argon2id au niveau 2. Sans délai&nbsp;: les freins par adresse de <code>parPassphrase()</code>, de
+        <code>parCode()</code> et d'<code>Escalade::ouvrir()</code>, et le plafond de service. Avec délai, mais sans les
+        deux Argon2id&nbsp;: le frein par compte et la suspension du niveau 2. Le frein par adresse de l'enrôlement fait
+        attendre aussi. Derrière Tor, le frein par adresse du niveau 2 n'existe pas&nbsp;: « Trop de tentatives » n'y
+        vient que du compte.</p>
+      <p>Paramètres d'<code>Escalade</code>&nbsp;: <code>fenetreOuvertures 3600</code>, <code>maxOuverturesIp 10</code>,
+        <code>maxOuverturesService 500</code>, lu seulement là où <code>ProfilDeploiement::adresseDiscriminante()</code>
+        rend <code>false</code>. Épreuve (<code>Escalade::epreuve()</code>, résolue par <code>client/sr-epreuve.js</code>)&nbsp;:
+        exigée seulement là où <code>adresseDiscriminante()</code> rend <code>false</code> — ailleurs sa difficulté
+        vaut 0 et <code>ouvrir()</code> ne la demande pas —, <code>epreuveBase 16</code> bits, un de plus toutes les
+        <code>epreuvePasService 10</code> demandes du service dans l'heure et à chaque demande sur un même nom
+        (<code>epreuvePasCompte 1</code>), <code>epreuvePlafond 19</code>, valable <code>epreuveDuree 300</code>&nbsp;s,
+        consommée une seule fois. Son refus tombe avant la recherche du compte. Ce
+        que le prix trahit est déclaré&nbsp;: qu'un nom a été visé dans l'heure, pas qu'il existe. Pendant la fenêtre
+        d'après un niveau 3, les codes d'avant sont comptés sous leur propre étiquette
+        (<code>Etiquette::PREFIXE_L2_RETOUR</code>), que seule l'ouverture de la fenêtre réarme&nbsp;: un compteur ne se
+        réarme que par les gestes de qui tient les secrets qu'il juge.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Recovery/Escalade.php</code>, <code>src/ProfilDeploiement.php</code>, <code>client/sr-epreuve.js</code>, modèle de menace, whitepaper v1.5.</p>
     </div>
   </div></section>
 
@@ -301,6 +363,9 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <div class="serrure"><b>mot mémorisé</b>Argon2id</div>
       <div class="serrure"><b>passphrase</b>Argon2id</div>
     </div>
+    <p class="lead">Ton mot seul ne donne rien pour ton compte. Avec SelfDataGuard, il ouvre aussi tes données&nbsp;:
+      c'est une serrure de secours voulue, qui vaut ce que vaut ton mot. Qui détient une copie de la base peut l'essayer
+      hors ligne, un Argon2id par essai, sans code ni appareil.</p>
     <p class="lead">Les trois serrures coûtent autant par essai, et c'est voulu&nbsp;: un coffre ne vaut que sa serrure
       la moins chère. Ce coût égal ne dit rien de l'entropie&nbsp;: une passphrase que tu apportes, choisie de tête,
       devient la serrure la moins chère à ouvrir. Seul le mode « Lite » existe&nbsp;: pendant ta session, le serveur
@@ -310,6 +375,11 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       passe ni une récupération ne la font tourner. Les coffres des comptes qui ne se connectent pas, eux, restent
       fermés. Un séquestre, s'il est employé, est un petit compartiment à part, rouvert sous cérémonie, qui ne donne
       jamais accès au coffre privé.</p>
+    <p class="lead">Au niveau 3, l'application met ton coffre de côté, scellé sous ses anciennes serrures, et en crée
+      un neuf&nbsp;: qui a convaincu l'arbitre sans détenir aucune de ces serrures ne lit pas tes données. Si tu reviens
+      pendant la fenêtre avec un secret d'avant, elle peut remettre ton coffre en service et ranger celui de l'autre en
+      archive, puis le tenir en lecture seule jusqu'à ce que l'arbitre close le dossier&nbsp;: SelfRecover lui en donne
+      l'ordre et le ticket, SelfDataGuard les gestes.</p>
     <div class="dev">
       <p><code>data_master_key = random_bytes(32)</code>, sel du coffre <code>random_bytes(16)</code> en clair.
         Clés d'encapsulage&nbsp;: <code>Argon2id(mot de passe, sel)</code>,
@@ -323,6 +393,16 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         0,0064&nbsp;ms, soit 7&nbsp;492). Les index aveugles retrouvent une valeur sans rien déchiffrer, mais révèlent
         quand deux comptes ont la même&nbsp;; leur clé, lue sur un serveur compromis, permet d'y retrouver par
         dictionnaire les valeurs qui s'énumèrent, sur tous les comptes.</p>
+      <p>Niveau 3&nbsp;: <code>reEnroll()</code> range l'ancien coffre en archive, sans péremption, et en crée un neuf.
+        Retour du titulaire&nbsp;: <code>reinstateArchive()</code> remet l'archive en service, index et séquestre compris,
+        et range le coffre du demandeur en archive, en une transaction&nbsp;; <code>freeze()</code> le tient en lecture
+        seule, toute écriture levant <code>VaultFrozenException</code> sauf <code>eraseAccount()</code>, qui efface quand
+        même, jusqu'à <code>unfreeze()</code>. Ces gestes sont des appels de l'intégrateur&nbsp;: <code>reEnroll()</code>
+        au niveau 3, <code>reinstateArchive()</code> et <code>freeze()</code> au retour, <code>unfreeze()</code> après
+        <code>Escalade::cloreFenetre()</code>&nbsp;; SelfRecover rend <code>lecture_seule</code> et passe la reprise à
+        une <code>SuiteDeReprise</code> facultative. Muni d'une source
+        <code>RecoveryTickets</code>, le coffre exige pour ces quatre gestes un ticket de SelfRecover, du bon genre,
+        avant toute dérivation.</p>
       <p class="source">Sources&nbsp;: <code>self-security/selfdataguard/</code> (README, whitepaper, <code>src/</code>).</p>
     </div>
   </div></section>
@@ -331,8 +411,9 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <p class="repere">09 — face aux attaques</p>
     <h2>Ce que SelfRecover protège, et ce qu'il déclare hors de portée.</h2>
     <p class="lead">Attaque par attaque, le verdict de SelfRecover, puis celui de l'email et du SMS&nbsp;: ils ont aussi
-      leurs points forts. Quatre verdicts&nbsp;: <b class="v-ok">protégé</b>, <b class="v-part">en partie</b>,
-      <b class="v-ko">exposé</b>, <b class="v-na">non concerné</b>.</p>
+      leurs points forts. Cinq verdicts&nbsp;: <b class="v-ok">protégé</b>, <b class="v-part">en partie</b>,
+      <b class="v-ko">exposé</b> — un tiers obtient quelque chose —, <b class="v-ko">non couvert</b> — c'est toi qui
+      perds l'accès, sans que personne d'autre l'obtienne —, et <b class="v-na">non concerné</b>.</p>
     <h3 class="groupe">Ce que SelfRecover protège</h3>
     <div class="cartes">
       <article class="carte hud">
@@ -357,14 +438,14 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <h4>Le service d'envoi est compromis ou en panne</h4>
         <dl class="verdicts">
           <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — il n'y a pas d'envoi</dd></div>
-          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés — liens ou codes interceptés, ou jamais reçus</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés — liens ou codes interceptés&nbsp;; non couverts s'ils ne sont jamais reçus</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : SMTP outage.</p>
       </article>
       <article class="carte hud">
         <h4>Quelqu'un essaie de deviner en ligne</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — 12 échecs par adresse en 15 minutes sur le web ordinaire, 5 par compte au niveau 2 et à l'enrôlement, puis suspension du niveau 2 après 20</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé, sauf au niveau 1 derrière Tor — 12 échecs par adresse en 15 minutes sur le web ordinaire, 5 par compte au niveau 2 et à l'enrôlement, puis suspension du niveau 2 après 20&nbsp;; derrière Tor, au niveau 1, seuls le coût d'Argon2id et l'entropie de ta passphrase s'y opposent</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: whitepaper v1.5 ; Recovery.php.</p>
@@ -399,7 +480,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>Tu as tapé ton mot sur un site malveillant</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-part">En partie — ton mot est perdu&nbsp;; il faut encore un code papier ou ton appareil</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — ton mot est perdu&nbsp;; pour ton compte, il faut encore un code papier ou ton appareil&nbsp;; avec SelfDataGuard, qui détient aussi une copie de la base ouvre tes données hors ligne</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : user negligence.</p>
@@ -411,6 +492,14 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
           <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : enumeration.</p>
+      </article>
+      <article class="carte hud">
+        <h4>Quelqu'un se fait passer pour toi au niveau 3</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — pendant la fenêtre, 14&nbsp;jours par défaut, un secret d'avant te rend le compte&nbsp;; ensuite, il ne te reste qu'un nouveau dossier</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : a fraudulent level 3, undone within a window.</p>
       </article>
       <article class="carte hud">
         <h4>Le service change d'adresse</h4>
@@ -450,10 +539,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>On trouve ta feuille de passphrase</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte&nbsp;; si tu as refait ton compte au niveau 3 à cause de ce vol, le voleur peut te le reprendre tant que la fenêtre dure</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase.</p>
+        <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase ; a fraudulent level 3, the price.</p>
       </article>
       <article class="carte hud">
         <h4>Un proche connaît ton mot et prend tes codes ou ton appareil</h4>
@@ -466,7 +555,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>Tu as perdu tous tes secrets de secours</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — plus aucun secret ne te reste&nbsp;; il ne demeure que le niveau 3, où un humain tranche sur des faits bruts, sans garantie</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Non couvert — plus aucun secret ne te reste&nbsp;; il ne demeure que le niveau 3, où un humain tranche sur des faits bruts, sans garantie</dd></div>
           <div><dt>Email</dt><dd class="v-ok">Protégé — si ta boîte, elle, n'est pas perdue</dd></div>
           <div><dt>SMS</dt><dd class="v-ok">Protégé — si ton numéro, lui, n'est pas perdu</dd></div>
         </dl>
@@ -495,7 +584,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <p class="repere">10 — aller plus loin</p>
     <h2>Les textes de référence.</h2>
     <ul class="liste-docs">
-      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md">Whitepaper SelfRecover (FR)</a> · <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md">EN</a> — v1.5 (édition du 16 octobre 2026), décrit la version 0.12.5.</li>
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md">Whitepaper SelfRecover (FR)</a> · <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md">EN</a> — v1.5 (édition du 16 octobre 2026), décrit la version 0.13.1.</li>
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/threat-model.md">Modèle de menace</a> (en anglais) — ce qui est couvert, en partie, ou hors de portée.</li>
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/architecture.md">Architecture</a> — les flux, étape par étape.</li>
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/README.fr.md">README de SelfRecover</a> — le protocole, son intégration, ses limites.</li>
