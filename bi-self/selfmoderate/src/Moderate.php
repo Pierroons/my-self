@@ -1399,7 +1399,9 @@ class Moderate
                     // retirer un et la grâce les remettre à zéro ; la fin de la peine n'en
                     // retire aucun, et une peine neuve, reconnue à son début à la seconde
                     // près, en ajoute un. Ses votes ne disent rien : un passage les annule
-                    // aussi sans lever, quand la peine a échu.
+                    // aussi sans lever, quand la peine a échu. Une levée suivie d'une peine
+                    // neuve déjà échue se lit comme la peine du refus échue : le signal se
+                    // pose, et le journal porte la levée.
                     if ($etatAuRefus !== null) {
                         self::surAutrui($author, $voteSur, static fn (): bool => self::transaction($pdo, static function () use ($pdo, $author, $etatAuRefus): bool {
                             $etat = self::etat($pdo, $author);

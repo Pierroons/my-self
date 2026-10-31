@@ -2294,8 +2294,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 184/184 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 184 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 186/186 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 186 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -3230,7 +3230,8 @@ jobs:
           # avant d'être posée, sur les strikes et la peine du refus — faite par un
           # autre passage, sur la même meute ou une meute rétrécie, graciée, suivie
           # d'une peine neuve, ou due encore quand sa peine échoit entre-temps, que
-          # ses votes soient ensuite annulés ou non —, levée quand celle de sa peine est
+          # ses votes soient ensuite annulés ou non, qu'un ban d'arbitre la suive ou
+          # que sa fin attende le journal —, levée quand celle de sa peine est
           # faite et seulement elle, fermée quand elle est classée ; le compte de la
           # reprise oubliée nommé, lui seul ; le saut qui ne se dit pas d'un vote ; la
           # récidive d'un votant attendue sur un autre compte ; le votant de la meute
@@ -3242,7 +3243,7 @@ jobs:
           # tamponnée du lab, décidée sur le script servi ; la console qui ne dit
           # pas ses listes vides ; le planificateur qui dit une panne de la base, et
           # la page qui le lance, ce qu'il a sauté.
-          for cas in listes autrui levee logique exception classe-levee lecture perdue propre signal saute nomme consigne lance relue votes echue retrecie neuve meme-peine double faite peine classer cible recidive rayon tour date lisible utf8 ligne hote page script console base page-mod; do
+          for cas in listes autrui levee logique exception classe-levee lecture perdue propre signal saute nomme consigne lance relue votes echue retrecie neuve borne meme-peine double faite peine classer cible recidive rayon tour date lisible utf8 ligne hote page script console base page-mod; do
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php demo/lab/public/moderation.php; do cp "$f" "/tmp/autrui.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
           import os
@@ -3273,6 +3274,7 @@ jobs:
               'echue':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if (!$etat['banned']) {", 1),
               'retrecie': (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] === 0) {", 1),
               'neuve':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] < $etatAuRefus['strikes']) {", 1),
+              'borne':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 2 : 0)) {", 1),
               'meme-peine': (M, "$peineNeuve = $etat['ban_debut'] !== 0 && $etat['ban_debut'] !== $etatAuRefus['ban_debut'];", "$peineNeuve = $etat['ban_debut'] !== 0;", 1),
               'classe-levee': (M, "            } catch (\\Exception $e) {\n                $etatAuRefus = ['strikes'", "            } catch (\\RuntimeException $e) {\n                $etatAuRefus = ['strikes'", 1),
               'faite':   (M, "            self::designaler($pdo, $author, 'ban_auto', ...array_column($attente, 'cause'));\n", "            self::designaler($pdo, $author, 'ban_auto');\n", 1),
@@ -3331,6 +3333,7 @@ jobs:
               echue)   attendu="une peine échue entre le refus et la pose du signal perd la levée en attente" ;;
               retrecie) attendu="une course pose une levée en attente sur un compte levé par une meute rétrécie" ;;
               neuve)   attendu="une course pose une levée en attente sur la seconde peine d'un compte levé" ;;
+              borne)   attendu="une peine échue suivie d'un ban d'arbitre perd la levée en attente" ;;
               meme-peine) attendu="une levée refusée se perd en silence quand la peine échoit" ;;
               double)  attendu="ou perd sa récidive sur un autre compte" ;;
               faite)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers, ou la levée se perd" ;;
