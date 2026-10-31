@@ -8,8 +8,8 @@ use RuntimeException;
 
 /**
  * The live vault is frozen: it reads, and refuses every write until whoever
- * froze it unfreezes it — SelfRecover's window after a level 3, while the
- * arbiter has not closed the dispute the returning holder opened.
+ * froze it unfreezes it — SelfRecover's window after a level 3, until the
+ * arbiter closes the window the returning holder took back.
  *
  * Erasing the account stays possible: a freeze holds the data still, it does
  * not stand in the way of eraseAccount().

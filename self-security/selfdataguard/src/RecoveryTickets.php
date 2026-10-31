@@ -23,7 +23,7 @@ interface RecoveryTickets
     public const LEVEL_3 = 'niveau_3';
     /** The holder came back within the window: their archive returns, then the vault freezes. */
     public const HOLDER_RETURN = 'retour_titulaire';
-    /** The arbiter closed the dispute of that return: the vault unfreezes. */
+    /** The arbiter closed the window that return took back: the vault unfreezes. */
     public const CLOSURE = 'cloture';
 
     /** The kind of $ticket if it was issued for $userId; null when it was not, or for another userId. */

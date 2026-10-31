@@ -641,8 +641,8 @@ final class SelfDataGuard
      * Freeze the live vault $generation names: it keeps opening and reading,
      * and every write refuses with VaultFrozenException — fields, escrow,
      * locks, deletion, re-enrolment — until unfreeze(). eraseAccount() still
-     * erases. SelfRecover freezes the vault a returning holder took back, for
-     * as long as the arbiter has not closed the dispute.
+     * erases. SelfRecover freezes the vault a returning holder took back, until
+     * the arbiter closes that window.
      *
      * @param string $by who froze it, as the caller names them (an arbiter, a case)
      * @return bool true if this call froze it; false if it was frozen already, by whoever froze it first

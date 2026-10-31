@@ -241,7 +241,7 @@ verifier('ce que le demandeur a écrit attend en archive, pour l\'arbitre',
 $clos = $esc->cloreFenetre('alice', 'arbitre', $now + 600);
 $dg->unfreeze($dg->generationOf('alice'));
 $dg->recover('alice', Lock::Memorized, $MOT, $r['mot_de_passe'], $r['passphrase']);
-verifier('litige clos, coffre dégelé : la titulaire re-scelle son coffre sous ses secrets neufs',
+verifier('fenêtre close, coffre dégelé : la titulaire re-scelle son coffre sous ses secrets neufs',
     ($clos['ok'] ?? false) === true && $esc->fenetre('alice', $now + 600)['lecture_seule'] === false
         && note($dg, $r['mot_de_passe']) === $NOTE && ouvre($dg, Lock::Passphrase, $r['passphrase'], $r['mot_de_passe']));
 
