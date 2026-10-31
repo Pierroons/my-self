@@ -72,7 +72,8 @@ function facts(sig){
        + '<table style="width:100%;font-size:12px;border-collapse:collapse">'+lignes+'</table>';
 }
 
-function render(disputes){
+function render(disputes, fenetres){
+  fenetres = fenetres || {};
   if(!disputes.length){$('list').innerHTML='<p class="muted">Aucun litige en cours.</p>';return;}
   $('list').innerHTML=disputes.map(function(d){
     var flags=[];
@@ -83,6 +84,8 @@ function render(disputes){
     if(d.decided_by) flags.push('tranché par '+esc(d.decided_by));
     if(d.abandonne_par) flags.push('abandonné par '+esc(d.abandonne_par)
       +(d.abandonne_le>0?' le '+new Date(d.abandonne_le*1000).toLocaleDateString():''));
+    var repris = fenetres[d.username]==='reprise';
+    if(repris) flags.push('↩️ le titulaire est revenu avec un secret d\'avant : la fenêtre attend ta clôture');
     var vivant = (d.status==='awaiting_admin'||d.status==='open') ? '1' : '0';
     return '<div class="card" data-num="'+esc(d.dispute_number)+'" data-vivant="'+vivant+'" style="margin-bottom:14px">'
       +'<div class="row" style="justify-content:space-between"><div><strong>'+esc(d.username)+'</strong> <span class="muted">— '+esc(d.dispute_number)+' · '+esc(d.status)+'</span></div></div>'
@@ -100,6 +103,7 @@ function render(disputes){
       // sinon l'arbitre ferme la dernière porte de quelqu'un sans avoir vu un
       // seul fait, et c'est le cas le moins cher à provoquer pour un tiers.
       +'<div class="row" style="gap:8px;margin-top:8px">'
+      +(repris?'<button class="btn l3-clore" data-user="'+esc(d.username)+'">↩️ Clore la fenêtre</button>':'')
       +(gele?'<button class="btn l3-degel" data-user="'+esc(d.username)+'">🧊 Lever le gel</button>'
             :(vivant==='1'&&d.faisceau
                 ?'<button class="btn l3-gel" data-user="'+esc(d.username)+'">🧊 Geler l\'ouverture</button>'
@@ -168,6 +172,20 @@ function render(disputes){
     // nouveaux dossiers qui est suspendue, et le lever rouvre cette porte à
     // quelqu'un qui n'a plus aucun secret. Qui lève est pris dans la session,
     // côté endpoint, et rangé dans `degele_par`.
+    // Clore rend le coffre et rouvre le niveau 3 de ce compte : c'est l'arbitre qui
+    // décide que le retour du titulaire est acquis. Qui clôt est pris dans la session.
+    var cl=card.querySelector('.l3-clore');
+    if(cl)cl.addEventListener('click',function(){
+      var u=cl.getAttribute('data-user');
+      if(confirm('Clore la fenêtre de « '+u+' » ?\n\n'
+                +'Le titulaire a repris son compte avec un secret d\'avant. Clore rend son coffre et '
+                +'permet à nouveau d\'accorder un niveau 3 sur ce compte. Ton nom sera inscrit comme '
+                +'auteur de la clôture.'))
+        post('/api/admin_window_close.php',{username:u}).then(function(d){
+          if(d && !d.ok) alert(d.message||'La fenêtre n\'a pas pu être close.');
+          load();
+        });
+    });
     var dg=card.querySelector('.l3-degel');
     if(dg)dg.addEventListener('click',function(){
       var u=dg.getAttribute('data-user');
@@ -212,7 +230,7 @@ function suivreLesFils(file){
 }
 function load(){get('/api/admin_disputes.php').then(function(d){
   if(!d.ok&&d.message){ $('list').innerHTML='<p class="muted">'+esc(d.message)+'</p>'; return; }
-  render(d.disputes||[]);
+  render(d.disputes||[], d.fenetres||{});
 });}
 load(); setInterval(load, 8000);
 </script>

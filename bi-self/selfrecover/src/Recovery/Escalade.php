@@ -388,9 +388,6 @@ final class Escalade
     /** Au-delà, on refuse : un Argon2id sur une entrée démesurée se paie en mémoire. */
     public const MOT_DE_PASSE_MAXIMUM = 4096;
 
-    /** Le refus d'un numéro ou d'un sésame qui n'ouvre rien — un seul texte, quelle qu'en soit la cause. */
-    private const REFUS_SESAME = 'Numéro ou sésame invalide.';
-
     /**
      * Les trois questions posées au demandeur.
      *
@@ -569,7 +566,7 @@ final class Escalade
         // Le stockage ne sait pas le faire — il ignore `ttlAccepte` —, et lui
         // apprendre demanderait d'élargir le contrat que tout intégrateur
         // implémente. La date de décision qu'il rend déjà suffit.
-        if ($existant !== null && $this->accordPerime($existant, $maintenant)) {
+        if ($existant !== null && $this->accordPerime($existant, $maintenant) !== null) {
             try {
                 $this->stockage->cloreLitige($existant->id, $maintenant);
             } catch (LitigeDejaClos) {
@@ -1060,13 +1057,17 @@ final class Escalade
             // 🔑 Une fenêtre reprise attend que l'arbitre la close. La remplacer par
             // celle d'un second niveau 3 effacerait la trace du retour du titulaire :
             // l'arbitre ne pourrait plus clore, et le coffre resterait gelé sans que
-            // personne puisse le rendre. Lu dans la transaction de la reprise, pour
-            // qu'un retour validé entre-temps ne passe pas entre la lecture et l'écriture.
-            if ($this->repriseEnAttente($litige->compteId)) {
+            // personne puisse le rendre. `recevable()` a déjà refusé l'accord d'un
+            // compte repris ; on le relit dans la transaction de la reprise, pour
+            // qu'un retour validé entre-temps ne passe pas entre la lecture et
+            // l'écriture — ce que tient l'isolement du stockage, que le contrat exige
+            // (`StorageInterface::ouvrirFenetre()`).
+            $perime = $this->accordPerime($litige, $maintenant);
+            if ($perime !== null) {
                 $this->stockage->annulerTransaction();
 
-                return ['ok' => false, 'error' => 'reprise_en_cours',
-                        'message' => Messages::dire($this->langue(), 'l3.reprise_en_cours')];
+                return ['ok' => false, 'error' => 'accord_perime',
+                        'message' => Messages::dire($this->langue(), $perime)];
             }
             // 🔑 Consommer d'abord, agir ensuite. Deux reprises concurrentes ont lu
             // le même accord ; la clôture ne réussit qu'une fois, et la perdante
@@ -1106,7 +1107,7 @@ final class Escalade
             $this->stockage->annulerTransaction();
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'error' => 'sesame_invalide', 'message' => self::REFUS_SESAME];
+            return ['ok' => false, 'error' => 'sesame_invalide', 'message' => Messages::dire($this->langue(), 'l3.sesame_invalide')];
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
 
@@ -1126,16 +1127,38 @@ final class Escalade
     }
 
     /**
-     * Un accord rendu, jamais repris, et dont le délai est passé.
+     * Un accord rendu qui ne s'exécutera pas. Rend la clé du message qui dit
+     * pourquoi, ou `null` si l'accord vaut encore.
+     *
+     * - `l3.accord_echu` : personne ne l'a repris, et `ttlAccepte` est passé ;
+     * - `l3.accord_avant_retour` : le titulaire est revenu avec un secret d'avant,
+     *   et l'accord n'a pas été rendu après la clôture de sa fenêtre. Il jugeait un
+     *   compte que ce retour a changé. La date seule ne suffit pas : `trancher()`
+     *   lit la fenêtre hors de toute transaction, et un accord écrit pendant le
+     *   retour porte une date égale ou postérieure à `reprise_le`.
+     *
+     * 🔑 Mort ici, l'accord libère aussi la place du niveau 3 : `ouvrir()` le clôt à
+     * la première demande qui bute dessus, au lieu de le laisser tenir la place
+     * jusqu'à l'échéance de `ttlAccepte`.
      *
      * ⚠️ Un litige sans date de décision n'est jamais périmé de ce fait : mieux
      * vaut une place occupée à tort qu'un accord annulé sur une donnée absente.
      */
-    private function accordPerime(Litige $litige, int $maintenant): bool
+    private function accordPerime(Litige $litige, int $maintenant): ?string
     {
-        return $litige->statut === Litige::ACCEPTE
-            && $litige->trancheLe !== null
-            && $litige->trancheLe + $this->ttlAccepte <= $maintenant;
+        if ($litige->statut !== Litige::ACCEPTE || $litige->trancheLe === null) {
+            return null;
+        }
+        if ($litige->trancheLe + $this->ttlAccepte <= $maintenant) {
+            return 'l3.accord_echu';
+        }
+        $fenetre = $this->stockage->fenetreDuCompte($litige->compteId);
+        if ($fenetre !== null && $fenetre['reprise_le'] !== null
+            && ($fenetre['close_le'] === null || $litige->trancheLe < $fenetre['close_le'])) {
+            return 'l3.accord_avant_retour';
+        }
+
+        return null;
     }
 
     /**
@@ -1364,7 +1387,7 @@ final class Escalade
         };
 
         if (!$recevable) {
-            return $refuser('sesame_invalide', self::REFUS_SESAME);
+            return $refuser('sesame_invalide', Messages::dire($this->langue(), 'l3.sesame_invalide'));
         }
         // ⚠️ Un dossier ACCEPTÉ ne périme pas. Le délai borne le temps pendant
         // lequel un dossier reste ouvert sans être instruit ; l'appliquer après
@@ -1373,16 +1396,14 @@ final class Escalade
         // titulaire devrait tout recommencer. C'est le ré-enrôlement qui ferme
         // le dossier, pas l'horloge.
         if ($litige->statut !== Litige::ACCEPTE && $litige->expire($maintenant)) {
-            return $refuser('expire', 'Ce litige a expiré. Il faut en ouvrir un nouveau.');
+            return $refuser('expire', Messages::dire($this->langue(), 'l3.expire'));
         }
         // L'accord, lui, tient `ttlAccepte` après la décision — pas le TTL
-        // d'instruction, qui ne vaut que tant que personne n'a tranché.
-        if ($this->accordPerime($litige, $maintenant)) {
-            return $refuser(
-                'accord_perime',
-                'L\'accord rendu sur ce litige a expiré faute d\'avoir été repris. '
-                . 'Ouvre un nouveau litige : l\'arbitrage sera à refaire.'
-            );
+        // d'instruction, qui ne vaut que tant que personne n'a tranché —, et
+        // tombe si le titulaire est revenu avant la clôture de sa fenêtre.
+        $perime = $this->accordPerime($litige, $maintenant);
+        if ($perime !== null) {
+            return $refuser('accord_perime', Messages::dire($this->langue(), $perime));
         }
 
         return $litige;

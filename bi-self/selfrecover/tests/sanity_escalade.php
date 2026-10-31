@@ -1380,8 +1380,8 @@ $SEL_AVANT    = str_repeat('5e', 16);
 $MOT_L3       = str_repeat('c3', 32);
 $SEL_L3       = str_repeat('d4', 16);
 /** Un compte aux secrets connus, repris par un niveau 3 à `$t` ; rend [stockage, escalade, recovery, codes d'avant]. */
-$repris = static function (int $t, int $fenetreDuree = 14 * 86400, ?string $phrase = null) use ($PHRASE_AVANT, $MOT_AVANT, $SEL_AVANT, $MOT_L3, $SEL_L3): array {
-    $st = new StockageMemoire();
+$repris = static function (int $t, int $fenetreDuree = 14 * 86400, ?string $phrase = null, ?StockageMemoire $st = null) use ($PHRASE_AVANT, $MOT_AVANT, $SEL_AVANT, $MOT_L3, $SEL_L3): array {
+    $st ??= new StockageMemoire();
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT_AVANT)];
     $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash(Recovery::normaliserPassphrase($phrase ?? $PHRASE_AVANT))];
     $st->empreintes[1] = Hashing::hash('mot de passe de connexion');
@@ -1492,6 +1492,8 @@ $accordO2  = $escO->trancher((string) ($dossierO2['numero'] ?? ''), 'accepte', '
 verifier('⭐ sous une fenêtre reprise, l\'arbitre ne peut pas accorder un second niveau 3 avant de la clore',
     ($dossierO2['ok'] ?? false) === true && ($accordO2['error'] ?? '') === 'reprise_en_cours',
     (string) ($accordO2['error'] ?? 'accordé'));
+verifier('sous une fenêtre reprise, l\'arbitre peut encore refuser un dossier',
+    ($escO->trancher((string) ($dossierO2['numero'] ?? ''), 'refuse', 'arbitre', $now + 1095)['ok'] ?? false) === true);
 verifier('l\'horloge seule ne clôt pas une fenêtre reprise',
     $escO->fenetre('alice', $now + 60 * 86400)['etat'] === 'reprise');
 verifier('une fenêtre reprise ne reconnaît plus de retour', !$recD->estCodeDeRetour($codesD[1], $now + 1070));
@@ -1521,14 +1523,72 @@ $fenetreP  = $escP->fenetre('alice', $now + 80);
 $repriseP2 = $escP->reEnroler((string) ($dossierP2['numero'] ?? ''), $sesameP2, 'le mot de passe du second demandeur',
     str_repeat('e5', 32), str_repeat('f6', 16), $now + 110);
 verifier('⭐ sous une fenêtre reprise, un second niveau 3 accordé avant ne s\'exécute pas, et la trace du retour reste',
-    ($accordP2['ok'] ?? false) === true && ($repriseP2['error'] ?? '') === 'reprise_en_cours'
+    ($accordP2['ok'] ?? false) === true && ($repriseP2['error'] ?? '') === 'accord_perime'
     && $escP->fenetre('alice', $now + 120)['etat'] === 'reprise'
     && $escP->fenetre('alice', $now + 120)['reprise_le'] === $fenetreP['reprise_le'],
     (string) ($repriseP2['error'] ?? 'exécuté'));
+verifier('le refus d\'un accord d\'avant le retour dit pourquoi',
+    ($repriseP2['message'] ?? '') === Messages::dire(Langue::FR, 'l3.accord_avant_retour'));
+// L'accord mort ne garde pas la place : un dossier neuf s'ouvre sans que l'arbitre l'abandonne.
+$sesameQ  = bin2hex(random_bytes(32));
+$dossierQ = $escP->ouvrir('alice', Escalade::empreinteSesame($sesameQ), '10.0.0.34', $now + 115);
+verifier('⭐ un accord mort sous la reprise ne garde pas la place du niveau 3',
+    ($dossierQ['ok'] ?? false) === true, (string) ($dossierQ['error'] ?? ''));
+// La course de `trancher()` : l'arbitre a lu une fenêtre ouverte, et son écriture passe
+// après le retour. L'accord porte alors une date postérieure à `reprise_le`.
+$litigeQ = $stP->trouverLitigeParNumero((string) ($dossierQ['numero'] ?? ''));
+if ($litigeQ !== null) {
+    $stP->trancherLitige($litigeQ->id, Litige::ACCEPTE, 'arbitre', $now + 118);
+}
+$repriseQ = $escP->reEnroler((string) ($dossierQ['numero'] ?? ''), $sesameQ, 'le mot de passe du troisième demandeur',
+    str_repeat('e5', 32), str_repeat('f6', 16), $now + 120);
+verifier('⭐ un accord écrit pendant le retour, daté après lui, ne s\'exécute pas non plus',
+    ($repriseQ['error'] ?? '') === 'accord_perime' && $escP->fenetre('alice', $now + 125)['reprise_le'] === $fenetreP['reprise_le'],
+    (string) ($repriseQ['error'] ?? 'exécuté'));
 $escP->cloreFenetre('alice', 'arbitre', $now + 130);
-verifier('la fenêtre close par l\'arbitre, l\'accord du second niveau 3 s\'exécute',
-    ($escP->reEnroler((string) ($dossierP2['numero'] ?? ''), $sesameP2, 'le mot de passe du second demandeur',
-        str_repeat('e5', 32), str_repeat('f6', 16), $now + 140)['ok'] ?? false) === true);
+verifier('⭐ un accord rendu avant la clôture ne s\'exécute pas, même après elle : l\'arbitre décide à nouveau',
+    ($escP->reEnroler((string) ($dossierQ['numero'] ?? ''), $sesameQ, 'le mot de passe du troisième demandeur',
+        str_repeat('e5', 32), str_repeat('f6', 16), $now + 140)['error'] ?? '') === 'accord_perime');
+$sesameP3  = bin2hex(random_bytes(32));
+$dossierP3 = $escP->ouvrir('alice', Escalade::empreinteSesame($sesameP3), '10.0.0.36', $now + 150);
+$escP->trancher((string) ($dossierP3['numero'] ?? ''), 'accepte', 'arbitre', $now + 160);
+verifier('la fenêtre close, un niveau 3 accordé après la clôture s\'exécute',
+    ($escP->reEnroler((string) ($dossierP3['numero'] ?? ''), $sesameP3, 'le mot de passe du troisième demandeur',
+        str_repeat('e5', 32), str_repeat('f6', 16), $now + 170)['ok'] ?? false) === true);
+
+// Un retour validé entre le contrôle d'entrée de `reEnroler()` et sa transaction : le
+// double le simule à l'ouverture de la transaction. Seule la relecture faite dans la
+// transaction le voit — ce que SQLite garantit par son verrou, et que ce cas épingle.
+final class StockageQuiReprend extends StockageMemoire
+{
+    /** @var (callable(): void)|null */
+    public $auDebut = null;
+
+    public function commencerTransaction(): void
+    {
+        // Validé par un autre processus juste avant que celle-ci s'ouvre : hors
+        // d'elle, donc que son annulation ne défait pas.
+        if ($this->auDebut !== null) {
+            $faire = $this->auDebut;
+            $this->auDebut = null;
+            $faire();
+        }
+        parent::commencerTransaction();
+    }
+}
+$stR = new StockageQuiReprend();
+[, $escR] = $repris($now, 14 * 86400, null, $stR);
+$sesameR  = bin2hex(random_bytes(32));
+$dossierR = $escR->ouvrir('alice', Escalade::empreinteSesame($sesameR), '10.0.0.37', $now + 40);
+$escR->trancher((string) ($dossierR['numero'] ?? ''), 'accepte', 'arbitre', $now + 50);
+$stR->auDebut = static function () use ($stR, $now): void {
+    $stR->reprendreFenetre(1, $now + 55);
+};
+$repriseR = $escR->reEnroler((string) ($dossierR['numero'] ?? ''), $sesameR, 'le mot de passe du second demandeur',
+    str_repeat('e5', 32), str_repeat('f6', 16), $now + 60);
+verifier('⭐ un retour validé juste avant la transaction de la reprise est vu par elle : la fenêtre n\'est pas remplacée',
+    ($repriseR['error'] ?? '') === 'accord_perime' && $escR->fenetre('alice', $now + 70)['reprise_le'] === $now + 55,
+    (string) ($repriseR['error'] ?? 'exécuté'));
 
 // Qui tient la feuille d'avant sans le mot suspend le retour par code ; le demandeur,
 // qui tient le compte pendant la fenêtre, ne doit pas pouvoir lever cette suspension

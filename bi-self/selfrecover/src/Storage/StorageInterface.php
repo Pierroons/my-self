@@ -147,6 +147,23 @@ interface StorageInterface
      * remplacer par ceux du demandeur. Seule sa fermeture recule (`$fermeLe`).
      * Elle garde aussi son `$ticketNiveau3` : celui du premier niveau 3, sous
      * lequel le coffre a mis de côté l'archive du titulaire.
+     *
+     * ⚠️ **Une fenêtre reprise et non close n'est jamais remplacée.** La garde est
+     * à `Escalade::reEnroler()`, qui relit l'état de la fenêtre dans la transaction
+     * de la reprise, puis écrit. Elle ne tient que si une transaction qui a lu ne
+     * peut pas écrire par-dessus une validation concurrente :
+     * - SQLite le tient : un seul écrivain à la fois, et la transaction qui a lu
+     *   avant la validation de l'autre échoue au lieu d'écrire ;
+     * - les niveaux par défaut des autres moteurs ne le tiennent pas — `READ
+     *   COMMITTED` sous PostgreSQL, `REPEATABLE READ` sous InnoDB. Il faut
+     *   `SERIALIZABLE`, ou le verrou de la ligne lue (`fenetreDuCompte()` en
+     *   `SELECT … FOR UPDATE` dans une transaction) ;
+     * - quand l'intégrateur enveloppe l'appel dans sa propre transaction, c'est
+     *   l'isolement de **la sienne** qui décide : la bibliothèque n'y pose qu'un
+     *   point de reprise (`TransactionsPdo`).
+     *
+     * Un isolement trop faible ne se voit pas : rien ne lève, et la fenêtre reprise
+     * est remplacée quand un retour et un second niveau 3 se croisent.
      */
     public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void;
 

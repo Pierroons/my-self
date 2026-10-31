@@ -257,7 +257,33 @@ final class RecoverL3
     /** Ce que la console d'arbitrage affiche. Jamais l'IP du demandeur. */
     public static function adminList(PDO $pdo): array
     {
-        return ['ok' => true, 'disputes' => self::escalade($pdo)->litiges(100)];
+        $escalade = self::escalade($pdo);
+        $litiges  = $escalade->litiges(100);
+        // L'état de la fenêtre de chaque compte listé : un retour du titulaire
+        // attend la clôture de l'arbitre, et rien d'autre ne le lui montre.
+        $fenetres = [];
+        foreach ($litiges as $l) {
+            $nom = (string) ($l['username'] ?? '');
+            if ($nom !== '' && !isset($fenetres[$nom])) {
+                $fenetres[$nom] = $escalade->fenetre($nom)['etat'];
+            }
+        }
+
+        return ['ok' => true, 'disputes' => $litiges, 'fenetres' => $fenetres];
+    }
+
+    /**
+     * Clôt la fenêtre d'un compte que son titulaire a repris avec un secret d'avant.
+     *
+     * 🔑 **Le geste de l'arbitre, jamais celui de l'horloge.** Tant qu'il n'est
+     * pas fait, la fenêtre reste reprise et aucun niveau 3 ne s'accorde plus sur
+     * ce compte (`reprise_en_cours`) : sans cette route, le lab n'avait aucun
+     * moyen d'en sortir. Réservé à un arbitre, garde posée par l'endpoint.
+     */
+    public static function adminCloseWindow(PDO $pdo, string $username, string $par = 'admin',
+                                            ?int $maintenant = null): array
+    {
+        return self::http(self::escalade($pdo)->cloreFenetre($username, $par, $maintenant));
     }
 
     /**

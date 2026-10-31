@@ -465,8 +465,10 @@ final class Recovery
                         'message' => Messages::dire($this->langue, 'passphrase.identique')];
             }
         }
-        // Au retour, contre les deux passphrases que le compte a portées, comme au
-        // niveau 1 : celle d'avant, que la fenêtre garde, et celle du demandeur.
+        // Au retour, contre les deux passphrases que le compte a portées : celle d'avant,
+        // que la fenêtre garde, et celle du demandeur. Toutes deux ne sont connues ici
+        // que par leur empreinte, donc comparées à l'identique — l'ordre des mots n'est
+        // jugé qu'au niveau 1, où la passphrase d'avant arrive en clair.
         $retourOuvert = $okAncien && $fenetreAncien !== null && self::fenetreOuverte($fenetreAncien, $maintenant);
         if ($retourOuvert && $apport !== null) {
             $actuelle = $this->stockage->trouverComptePourPassphrase((string) $ancien['nom_compte']);
@@ -713,8 +715,9 @@ final class Recovery
             'titulaire_reprend'      => true,
             'mot_memorise_a_changer' => true,
             // Sans suite branchée, aucun coffre n'est gelé : le message ne l'annonce pas.
-            'message'                => Messages::dire($this->langue,
-                $this->suite === null ? 'l3.titulaire_reprend_sans_coffre' : 'l3.titulaire_reprend'),
+            'message'                => $this->suite === null
+                ? Messages::dire($this->langue, 'l3.titulaire_reprend_sans_coffre')
+                : Messages::dire($this->langue, 'l3.titulaire_reprend'),
             'mot_de_passe'           => $motDePasse,
             'passphrase'             => $nouvellePhrase,
             'codes'                  => $codes,

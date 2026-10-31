@@ -667,16 +667,39 @@ jobs:
             $R/tests/sanity_escalade.php "❌ ⭐ au retour par la passphrase d'avant, l'apportée ne peut être ni elle"
           canari $R/src/Recovery/Recovery.php '        if ($retourOuvert && $apport !== null) {' '        if (false) {' \
             $R/tests/sanity_escalade.php "❌ ⭐ au retour par code, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur"
-          canari $R/src/Recovery/Escalade.php '            if ($this->repriseEnAttente($litige->compteId)) {' '            if (false) {' \
+          # Un accord qui n'a pas été rendu après la clôture d'une fenêtre reprise ne
+          # s'exécute pas — rendu avant le retour, ou écrit pendant lui, daté après —, et
+          # ne garde pas la place du niveau 3 ; la transaction de la reprise le relit.
+          canari $R/src/Recovery/Escalade.php \
+            "            && (\$fenetre['close_le'] === null || \$litige->trancheLe < \$fenetre['close_le'])) {" '            && false) {' \
             $R/tests/sanity_escalade.php "❌ ⭐ sous une fenêtre reprise, un second niveau 3 accordé avant ne s'exécute pas"
+          canari $R/src/Recovery/Escalade.php \
+            "            && (\$fenetre['close_le'] === null || \$litige->trancheLe < \$fenetre['close_le'])) {" \
+            "            && \$litige->trancheLe < \$fenetre['reprise_le']) {" \
+            $R/tests/sanity_escalade.php "❌ ⭐ un accord écrit pendant le retour, daté après lui, ne s'exécute pas non plus"
+          canari $R/src/Recovery/Escalade.php \
+            '        if ($existant !== null && $this->accordPerime($existant, $maintenant) !== null) {' \
+            "        if (\$existant !== null && \$this->accordPerime(\$existant, \$maintenant) === 'l3.accord_echu') {" \
+            $R/tests/sanity_escalade.php "❌ ⭐ un accord mort sous la reprise ne garde pas la place du niveau 3"
+          canari $R/src/Recovery/Escalade.php \
+            '            $perime = $this->accordPerime($litige, $maintenant);' '            $perime = null;' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un retour validé juste avant la transaction de la reprise est vu par elle"
           canari $R/src/Recovery/Escalade.php \
             "        if (\$decision === 'accepte' && \$this->repriseEnAttente(\$litige->compteId)) {" '        if (false) {' \
             $R/tests/sanity_escalade.php "❌ ⭐ sous une fenêtre reprise, l'arbitre ne peut pas accorder un second niveau 3"
+          canari $R/src/Recovery/Escalade.php \
+            "        if (\$decision === 'accepte' && \$this->repriseEnAttente(\$litige->compteId)) {" \
+            '        if ($this->repriseEnAttente($litige->compteId)) {' \
+            $R/tests/sanity_escalade.php "❌ sous une fenêtre reprise, l'arbitre peut encore refuser un dossier"
+          canari $L/lib/recover_l3.php \
+            '        return self::http(self::escalade($pdo)->cloreFenetre($username, $par, $maintenant));' \
+            "        return self::http(['ok' => false, 'error' => 'aucune_fenetre_reprise', 'message' => '']);" \
+            $L/tests/sanity_sel_session.php "✗ ⭐ la route clôt la fenêtre reprise, au nom de l'arbitre"
           canari $R/src/Recovery/Recovery.php \
-            "\$this->suite === null ? 'l3.titulaire_reprend_sans_coffre' : 'l3.titulaire_reprend')," "'l3.titulaire_reprend')," \
+            "? Messages::dire(\$this->langue, 'l3.titulaire_reprend_sans_coffre')" "? Messages::dire(\$this->langue, 'l3.titulaire_reprend')" \
             $R/tests/sanity_escalade.php "❌ une passphrase neuve, elle, est prise au retour, et le message ne parle d'aucun coffre"
           canari $R/src/Recovery/Recovery.php \
-            "\$this->suite === null ? 'l3.titulaire_reprend_sans_coffre' : 'l3.titulaire_reprend')," "'l3.titulaire_reprend_sans_coffre')," \
+            ": Messages::dire(\$this->langue, 'l3.titulaire_reprend')," ": Messages::dire(\$this->langue, 'l3.titulaire_reprend_sans_coffre')," \
             $R/tests/sanity_suite_reprise.php "❌ retour : avec un coffre branché, le message dit la lecture seule"
           canari $L/lib/auth.php \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip);' \
@@ -1094,8 +1117,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 263 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 263 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 269 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 269 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -1789,8 +1812,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_sel_session.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 11/11$' \
-            || { echo "::error::le banc du sel de session n'a pas joué ses 11 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 16/16$' \
+            || { echo "::error::le banc du sel de session n'a pas joué ses 16 cas"; exit 1; }
 
       # `login_attempts` est partagée entre la page de connexion et les compteurs de
       # la bibliothèque. Deux fois, un filtre censé écarter les seconds a emporté les

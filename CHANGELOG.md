@@ -13,8 +13,9 @@ Ce changelog agrège les jalons transversaux du projet.
 ### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
 
 Correctif du retour du titulaire dans la fenêtre d'après un niveau 3. Aucune rupture de contrat : ni
-`StorageInterface` ni la forme des réponses ne changent ; un refus neuf, `reprise_en_cours`, s'ajoute.
-Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur code.
+`StorageInterface` ni la forme des réponses ne changent ; un refus neuf, `reprise_en_cours`, s'ajoute, et
+`accord_perime` gagne une cause. Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur
+code ; l'audit du correctif à deux visions en a trouvé d'autres, corrigés ici avant l'envoi.
 
 - **Au retour, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur.** La règle « celle que
   tu apportes doit différer de l'ancienne » n'était jugée que sur une récupération ordinaire : au retour, le
@@ -23,9 +24,17 @@ Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur c
   niveaux ; au niveau 1, celle d'avant dans n'importe quel ordre de ses mots.
 - **Un second niveau 3 n'écrase plus une fenêtre reprise.** Le titulaire revenu, la fenêtre attend que l'arbitre
   la close ; un second niveau 3 accordé entre-temps la remplaçait, effaçait la trace du retour, et l'arbitre ne
-  pouvait plus clore — le coffre restait gelé sans issue. `Escalade::trancher()` refuse d'accorder et
-  `reEnroler()` de réenrôler tant qu'elle n'est pas close (`reprise_en_cours`) ; `reEnroler()` le lit dans sa
-  transaction.
+  pouvait plus clore — le coffre restait gelé sans issue. `Escalade::trancher()` refuse d'accorder tant qu'elle
+  n'est pas close (`reprise_en_cours`), et un accord qui n'a pas été rendu après sa clôture ne s'exécute pas, même
+  la fenêtre close (`accord_perime`) : rendu avant le retour, il jugeait un compte que ce retour a changé ; écrit
+  pendant lui, il porte une date postérieure au retour, car `trancher()` lit la fenêtre hors de toute transaction.
+  Un tel accord ne garde plus la place du niveau 3 ; `reEnroler()` le relit dans sa transaction.
+- **Cette relecture ne tient que sous un isolement que le stockage fournit, et le contrat le dit**
+  (`StorageInterface::ouvrirFenetre()`, le modèle de menace) : SQLite le tient ; les niveaux par défaut de
+  PostgreSQL (`READ COMMITTED`) et d'InnoDB (`REPEATABLE READ`) ne le tiennent pas. Il faut `SERIALIZABLE` ou le
+  verrou de la ligne lue ; quand l'intégrateur enveloppe l'appel dans sa transaction, c'est la sienne qui décide.
+- **Le lab a une route de clôture.** Sa console d'arbitrage montre une fenêtre reprise et la clôt
+  (`/api/admin_window_close.php`) : sans elle, plus aucun niveau 3 ne s'accordait sur ce compte.
 - **Le message du retour dit quand changer le mot mémorisé** : après la clôture, pas avant, car d'ici là le coffre
   d'avant ne s'ouvre qu'avec lui. Sans suite branchée, il n'annonce plus de coffre en lecture seule.
 - **Des textes qui disaient faux** :
@@ -35,8 +44,17 @@ Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur c
   - le frein par compte du niveau 2 « indiscernable » : il rend le libellé du frein par adresse, pas son temps ;
   - « le litige reste ouvert » après le retour : c'est la fenêtre qui attend sa clôture ;
   - le pont `Pont\CoffreSuitLaReprise`, annoncé par `SuiteDeReprise`, n'existe pas : l'intégrateur l'écrit.
-- **Le modèle de menace dit une condition** : au niveau 1, l'échéance commune des refus cache le second Argon2id
-  d'une passphrase d'avant tant que deux Argon2id tiennent dans `delaiRefusUs` sur l'hôte — à mesurer là.
+- **Trois refus du niveau 3 ne parlaient que français** : `sesame_invalide`, `expire` et `accord_perime` passent
+  désormais par `Messages`, comme les autres.
+- **Le modèle de menace dit une condition et deux prix** :
+  - au niveau 1, l'échéance commune des refus cache le second Argon2id d'une passphrase d'avant tant que deux
+    Argon2id tiennent dans `delaiRefusUs` sur l'hôte — à mesurer là ;
+  - les bornes du cas symétrique valent par fenêtre, pas par compte : chaque niveau 3 ouvre un retour à qui tenait
+    le compte juste avant — le voleur d'un papier, cycle après cycle, ou l'auteur d'un niveau 3 frauduleux remarqué
+    après l'échéance de sa fenêtre. Présent depuis la 0.13.0 ; aucune version n'y répond encore ;
+  - les mêmes mots dans un autre ordre passent là où la passphrase remplacée n'est connue que par son empreinte —
+    niveau 2, retour par code, niveau 3 : qui tient l'ancien papier est alors à 720 ordres au plus pour six mots,
+    au niveau 1.
 - Les deux whitepapers en DOCX sont régénérés depuis leur Markdown : ils dataient de la 0.12.5.
 
 ### SelfRecover 0.13.1 — le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur, ni par son propre sel — 30 octobre 2026

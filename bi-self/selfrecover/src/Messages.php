@@ -389,8 +389,28 @@ final class Messages
                   . 'will get in touch. Remember to change your memorized word.',
         ],
         'l3.reprise_en_cours' => [
-            'fr' => 'Le titulaire de ce compte l\'a repris avec un secret d\'avant : un arbitre doit d\'abord clore ce litige.',
-            'en' => 'The holder of this account took it back with a secret from before: an arbitrator must close that dispute first.',
+            'fr' => 'Le titulaire de ce compte l\'a repris avec un secret d\'avant : un arbitre doit d\'abord clore sa fenêtre.',
+            'en' => 'The holder of this account took it back with a secret from before: an arbitrator must close that window first.',
+        ],
+        'l3.sesame_invalide' => [
+            'fr' => 'Numéro ou sésame invalide.',
+            'en' => 'Invalid number or claim secret.',
+        ],
+        'l3.expire' => [
+            'fr' => 'Ce litige a expiré. Il faut en ouvrir un nouveau.',
+            'en' => 'This dispute has expired. A new one has to be opened.',
+        ],
+        'l3.accord_echu' => [
+            'fr' => 'L\'accord rendu sur ce litige a expiré faute d\'avoir été repris. '
+                  . 'Ouvre un nouveau litige : l\'arbitrage sera à refaire.',
+            'en' => 'The decision on this dispute expired because nobody carried it out. '
+                  . 'Open a new dispute: the arbitration has to be done again.',
+        ],
+        'l3.accord_avant_retour' => [
+            'fr' => 'Le titulaire de ce compte est revenu avec un secret d\'avant, et ce retour a changé ce que l\'arbitre '
+                  . 'avait jugé : l\'accord rendu sur ce litige ne s\'exécute pas. Ouvre un nouveau litige : l\'arbitrage sera à refaire.',
+            'en' => 'The holder of this account came back with a secret from before, and that return changed what the arbitrator '
+                  . 'had judged: the decision on this dispute will not be carried out. Open a new dispute: the arbitration has to be done again.',
         ],
         'l3.message_vide' => [
             'fr' => 'Le message est vide.',
