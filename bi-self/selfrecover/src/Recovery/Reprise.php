@@ -25,7 +25,7 @@ final class Reprise
     public const NIVEAU_3 = 'niveau_3';
     /** Le titulaire revient dans la fenêtre d'après un niveau 3 avec un secret d'avant. */
     public const RETOUR_TITULAIRE = 'retour_titulaire';
-    /** L'arbitre clôt le litige de ce retour. */
+    /** L'arbitre clôt la fenêtre que ce retour a reprise. */
     public const CLOTURE = 'cloture';
 
     /** La serrure du secret servi, quand il y en a un. */

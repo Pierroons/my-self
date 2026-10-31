@@ -363,20 +363,54 @@ final class Messages
             'en' => 'Your browser must first solve a computation challenge. It is attached: send your request again with its solution.',
         ],
         'l3.aucune_fenetre_reprise' => [
-            'fr' => "Ce compte n'a pas de litige ouvert par son titulaire à clore.",
-            'en' => 'This account has no dispute opened by its holder to close.',
+            'fr' => "Ce compte n'a pas de fenêtre reprise par son titulaire à clore.",
+            'en' => 'This account has no window taken back by its holder to close.',
         ],
         'l3.fenetre_close' => [
-            'fr' => 'Litige clos : le coffre du titulaire peut sortir de la lecture seule.',
-            'en' => "Dispute closed: the holder's vault can leave read-only mode.",
+            'fr' => 'Fenêtre close : le coffre du titulaire peut sortir de la lecture seule.',
+            'en' => "Window closed: the holder's vault can leave read-only mode.",
         ],
         'l3.titulaire_reprend' => [
             'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '
                   . 'tu le retrouves. Celui qui l\'avait repris en est sorti. Tu reçois des secrets neufs : note-les. Un arbitre va '
-                  . 'prendre contact, et ton coffre reste en lecture seule jusque-là. Pense à changer ton mot mémorisé.',
+                  . 'prendre contact et clore la procédure ; ton coffre reste en lecture seule jusque-là. Change ton mot mémorisé '
+                  . 'après cette clôture, pas avant : d\'ici là, ton coffre d\'avant ne s\'ouvre qu\'avec lui.',
             'en' => 'Your account was taken over through an arbitration procedure in the last few days, and your former '
                   . 'secret prevails: you get it back. Whoever had taken it is out. You receive new secrets: write them down. An arbitrator '
-                  . 'will get in touch, and your vault stays read-only until then. Remember to change your memorized word.',
+                  . 'will get in touch and close the procedure; your vault stays read-only until then. Change your memorized word '
+                  . 'after that closure, not before: until then, only that word opens your former vault.',
+        ],
+        'l3.titulaire_reprend_sans_coffre' => [
+            'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '
+                  . 'tu le retrouves. Celui qui l\'avait repris en est sorti. Tu reçois des secrets neufs : note-les. Un arbitre va '
+                  . 'prendre contact. Pense à changer ton mot mémorisé.',
+            'en' => 'Your account was taken over through an arbitration procedure in the last few days, and your former '
+                  . 'secret prevails: you get it back. Whoever had taken it is out. You receive new secrets: write them down. An arbitrator '
+                  . 'will get in touch. Remember to change your memorized word.',
+        ],
+        'l3.reprise_en_cours' => [
+            'fr' => 'Le titulaire de ce compte l\'a repris avec un secret d\'avant : un arbitre doit d\'abord clore sa fenêtre.',
+            'en' => 'The holder of this account took it back with a secret from before: an arbitrator must close that window first.',
+        ],
+        'l3.sesame_invalide' => [
+            'fr' => 'Numéro ou sésame invalide.',
+            'en' => 'Invalid number or claim secret.',
+        ],
+        'l3.expire' => [
+            'fr' => 'Ce litige a expiré. Il faut en ouvrir un nouveau.',
+            'en' => 'This dispute has expired. A new one has to be opened.',
+        ],
+        'l3.accord_echu' => [
+            'fr' => 'L\'accord rendu sur ce litige a expiré faute d\'avoir été repris. '
+                  . 'Ouvre un nouveau litige : l\'arbitrage sera à refaire.',
+            'en' => 'The decision on this dispute expired because nobody carried it out. '
+                  . 'Open a new dispute: the arbitration has to be done again.',
+        ],
+        'l3.accord_avant_retour' => [
+            'fr' => 'Le titulaire de ce compte est revenu avec un secret d\'avant, et ce retour a changé ce que l\'arbitre '
+                  . 'avait jugé : l\'accord rendu sur ce litige ne s\'exécute pas. Ouvre un nouveau litige : l\'arbitrage sera à refaire.',
+            'en' => 'The holder of this account came back with a secret from before, and that return changed what the arbitrator '
+                  . 'had judged: the decision on this dispute will not be carried out. Open a new dispute: the arbitration has to be done again.',
         ],
         'l3.message_vide' => [
             'fr' => 'Le message est vide.',

@@ -17,6 +17,8 @@ require __DIR__ . '/../src/autoload.php';
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Recovery\Recovery;
 
 $passes = 0;
 $echecs = 0;
@@ -72,6 +74,25 @@ $tirage = Wordlist::generate(6, 'en');
 verifier('6 mots rendent 77.55 bits', abs($tirage['entropy_bits'] - 77.55) < 0.01,
     sprintf('%.2f bits', $tirage['entropy_bits']));
 verifier('deux tirages diffèrent', Wordlist::generate(6)['words'] !== Wordlist::generate(6)['words']);
+// Avec remise, un tirage de 20 mots répète un mot une fois sur quarante environ :
+// mille tirages par liste ne laissent passer aucun tirage avec remise.
+$repetes = 0;
+foreach (['en', 'fr'] as $langue) {
+    for ($i = 0; $i < 1000; $i++) {
+        $mots = Wordlist::generate(20, $langue)['words'];
+        $repetes += count($mots) - count(array_unique($mots));
+    }
+}
+verifier('⭐ un tirage ne répète aucun mot : 1 000 tirages de 20 mots par liste', $repetes === 0, "$repetes mot(s) répété(s)");
+// La passphrase que la bibliothèque remet, elle la prendrait si on la lui apportait.
+$refusees = 0;
+foreach ([Langue::EN, Langue::FR] as $langue) {
+    for ($i = 0; $i < 2000; $i++) {
+        $refusees += (Recovery::validerPassphraseApportee(Recovery::engendrerPassphrase($langue))['ok'] ?? false) ? 0 : 1;
+    }
+}
+verifier('⭐ une passphrase engendrée passe le validateur de l\'apport : 2 000 tirages par langue', $refusees === 0,
+    "$refusees refusée(s)");
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Socle SelfRecover — %d passés, %d échoués\n", $passes, $echecs);

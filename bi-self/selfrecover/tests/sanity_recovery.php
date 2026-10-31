@@ -316,7 +316,7 @@ verifier('⭐ au sixième essai, même le bon mot est freiné', $r['ok'] === fal
     && str_contains($r['message'], 'Trop de tentatives'), $r['message']);
 // 🔑 Le refus du frein par fenêtre est celui du frein par origine, au mot près :
 // nommer le compte dirait à qui détient un code que ce code en vise un vrai.
-verifier('🔑 et son refus est indiscernable de celui du frein par origine',
+verifier('🔑 et son refus porte le libellé de celui du frein par origine',
     $r['message'] === 'Trop de tentatives. Réessaie dans 15 minutes.'
     && !isset($r['error']), $r['message']);
 verifier('⭐ un AUTRE code du même compte est freiné aussi',

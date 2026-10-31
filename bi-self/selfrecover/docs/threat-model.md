@@ -129,20 +129,30 @@ message — and rate limiting in front of the route, which the library cannot im
 a new dispute to contest the takeover.
 
 Since 0.13.0 a takeover opens a window of 14 days (7 to 30, `fenetreDuree`). The passphrase, the
-memorized word with its salt, and the unused paper codes from before stay valid in it, once each; the
-old password does not. A secret from before served at level 1 or 2 within the window gives the
+memorized word with its salt, and the unused paper codes from before stay valid in it for a single
+return — the first one served closes the window; the old password does not. A secret from before served at level 1 or 2 within the window gives the
 account back: new secrets, the old memorized word and salt restored, the requester's sessions and
-devices revoked. The application's vault then stays read-only until the arbitrator closes the dispute
+devices revoked. The application's vault then stays read-only until the arbitrator closes the window
 (`cloreFenetre()`), never on a timer. A window that expires with none of them served erases them
 (`purgerFenetres()`).
 
 ⚠️ **The price is the symmetric case.** The window trusts a secret from before over the arbitrator's
 judgment. A holder who went to level 3 *because* their sheet was stolen loses the account again to
-whoever holds that sheet, for as long as the window lasts. What bounds it: each old secret serves
-once; the dispute stays open, read-only, until a human closes it; the deployment chooses the length,
+whoever holds that sheet, for as long as the window lasts. What bounds it: the old secrets serve a
+single return; the window it opens stays read-only until a human closes it, and no second level 3
+replaces it meanwhile (`reprise_en_cours`); the deployment chooses the length,
 from 7 to 30 days, for every account at once. An arbitrator cannot close a window that no secret
 from before has entered yet. What the library cannot do is tell the two cases apart — both present a
 secret the account really held.
+
+⚠️ **Those bounds hold per window, not per account.** Each level 3 opens a window that keeps the
+secrets the account held just before it, whoever held them. Whoever stole a sheet comes back; the
+arbitrator closes; the holder wins a new level 3; the thief comes back again with the secrets the
+previous return handed them, as many times as the cycle repeats (measured over three). And a fraudulent
+level 3 noticed after its window expired leaves the holder no clean way back: the holder's own level 3
+opens a window that keeps the fraudster's secrets, and the fraudster comes back as the holder. The
+arbitrator has no gesture that grants a level 3 without opening a return to whoever held the account
+just before. Present since 0.13.0; no release answers it yet.
 
 **The requester holds a batch of codes, and 0.13.0 counted it with the holder's.** `reEnroler()`
 hands the requester ten new codes. In 0.13.0 a failure with one of them and a failure with an old
@@ -161,6 +171,30 @@ return, erasing the secrets from before. The rule since 0.13.1: **a counter is r
 gestures of whoever holds the secrets it judges.** The fifteen-minute brake, for its part, now counts
 from the last rearm when it is more recent, so the batch a returning holder receives does not inherit
 the failures the requester just made under the same counter.
+
+**The return itself follows two rules since 0.13.2.** A passphrase the holder brings when coming back
+may be neither the one from before — just served, and perhaps the stolen one that led to the level 3 — nor
+the requester's, which the requester knows. At level 1 the first is compared word by word in any order;
+everywhere else both are known only by their hash and compared as is — the price is under brought
+passphrases below. And a second level 3 does not replace a window its holder has taken back: until the
+arbitrator closes it, `trancher()` refuses to grant (`reprise_en_cours`), and a grant not made after that
+closure never runs, even once the window is closed (`accord_perime`) — made before the return, or written
+while the return was being validated, since `trancher()` reads the window outside any transaction. Such a
+grant no longer holds the level-3 slot either. Replacing the window erased the trace of the return, the
+arbitrator could no longer close, and the vault stayed frozen with no way out. The holder changes their
+memorized word after that closure, not before: until then, only that word opens their former vault.
+
+**That last guard holds only under an isolation the storage supplies.** `reEnroler()` reads the window
+inside the transaction of the takeover, then writes. Under SQLite a transaction that read before a
+concurrent commit fails instead of writing; the default levels of PostgreSQL (`READ COMMITTED`) and InnoDB
+(`REPEATABLE READ`) let it write. Such a deployment needs `SERIALIZABLE`, or a lock on the window row it
+reads (`SELECT … FOR UPDATE`); when the integrator wraps the call in its own transaction, its isolation
+decides. A weaker isolation shows nothing: a return and a second level 3 that cross replace the window
+(`StorageInterface::ouvrirFenetre()`).
+
+At level 1 the old passphrase costs a second Argon2id, and the shared deadline of refusals hides it only if
+two Argon2id fit within `delaiRefusUs` (300 ms by default) on the serving host. Measure it there: beyond
+that, the timer tells whoever knows a name that the account is in a window.
 
 **A requester who shares the holder's address** — the same household, which is also where an old
 sheet is found — holds the return for fifteen minutes at a time, without end, under `clearweb`:
@@ -203,7 +237,10 @@ recovering that account, or has had requests refused.
 without saying so. That refusal tells whoever already holds one of the account's codes that the code names
 a real account, and tells it without paying the two Argon2id a wrong word costs. No enumeration follows —
 a code is needed first — but a partly illegible code is completed at that price. The short-window brake
-carries no such cost: it returns the per-address wording and pays the same delay.
+returns the per-address wording, but not its timing: the per-address refusal answers at once, the
+per-account one after the shared delay and without the two Argon2id. A timer tells them apart, and behind a
+hidden service, where there is no per-address brake, that refusal can only come from the account. The
+concession is the suspension's: a code is needed first.
 
 **The L2 salt route answers every code, and it has to.** At L2 the browser derives before the account
 is known — the code is what identifies it — so it asks for the account's salt by code first, and that
@@ -338,7 +375,10 @@ and 3 when identical), and at level 3 a passphrase equal to the chosen password.
 is tell dice from a person, or recognise a passphrase older than the last one: it keeps no history,
 so a user who alternates two sheets of paper brings an old door back. Nor does it measure how much
 of the old passphrase survives: a new one that keeps five of the old words, or adds one to all six,
-passes — and whoever holds the old paper is then a few tens of thousands of guesses away.
+passes — and whoever holds the old paper is then a few tens of thousands of guesses away. The same
+words in another order pass wherever the passphrase being replaced is known only by its hash — level 2,
+the return by code, level 3: whoever holds the old paper is then at most 720 orders away for six words,
+at level 1.
 
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor
@@ -370,7 +410,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Holding an L3 slot with a name alone | ✗ — open, by design of the level | Nobody can prove a link to an account they have lost everything of, so no automatic check can tell squatter from holder. The arbitrator is the answer: `abandonner()` frees the slot, and since 0.12.0 the collision count they read is reliable |
 | A third party freezing the holder's level-3 procedure | ✓ since 0.12.0 | No counter poses a freeze; refusals inform, an administrator decides and can lift it. Taking the slot is the row above |
-| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Since 0.13.1 the requester's own codes cannot close the return by code. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft |
+| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Since 0.13.1 the requester's own codes cannot close the return by code. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft — and the bounds hold per window, each level 3 reopening a return to whoever held the account just before |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |

@@ -62,7 +62,10 @@ final class Wordlist {
     }
 
     /**
-     * Génère une passphrase aléatoire de $count mots depuis la liste officielle.
+     * Génère une passphrase aléatoire de $count mots depuis la liste officielle,
+     * sans remise : `Recovery::validerPassphraseApportee()` refuse un mot répété,
+     * et la bibliothèque ne remet pas une passphrase qu'elle refuserait si on la
+     * lui apportait.
      *
      * @return array{words: string[], entropy_bits: float, lang: string}
      */
@@ -73,12 +76,20 @@ final class Wordlist {
         $words = self::load($lang);
         $max = self::LIST_SIZE - 1;
         $picked = [];
+        while (count($picked) < $count) {
+            $mot = $words[random_int(0, $max)];
+            if (!in_array($mot, $picked, true)) {
+                $picked[] = $mot;
+            }
+        }
+        // Sans remise, le i-ième mot se tire parmi LIST_SIZE − i.
+        $bits = 0.0;
         for ($i = 0; $i < $count; $i++) {
-            $picked[] = $words[random_int(0, $max)];
+            $bits += log(self::LIST_SIZE - $i, 2);
         }
         return [
             'words'        => $picked,
-            'entropy_bits' => round($count * log(self::LIST_SIZE, 2), 2),
+            'entropy_bits' => round($bits, 2),
             'lang'         => $lang,
         ];
     }

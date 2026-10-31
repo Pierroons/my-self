@@ -19,6 +19,7 @@ use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Recovery;
@@ -189,6 +190,8 @@ verifier('retour : la suite reçoit la passphrase d\'avant et les secrets neufs 
     && $suite->recues[1]['enTransaction'] && $p?->chemin === Reprise::RETOUR_TITULAIRE
     && $p->serrureServie === Reprise::SERRURE_PASSPHRASE && $p->secretServi === $PHRASE
     && $p->motDePasse === $retour['mot_de_passe'] && $p->passphrase === $retour['passphrase']);
+verifier('retour : avec un coffre branché, le message dit la lecture seule, et de changer le mot après la clôture',
+    ($retour['message'] ?? '') === Messages::dire(Langue::FR, 'l3.titulaire_reprend'));
 verifier('retour : son propre ticket, et celui du niveau 3 sous lequel l\'archive du titulaire attend',
     ($st->ticketEmis((string) $p?->ticket)['genre'] ?? null) === Reprise::RETOUR_TITULAIRE && $p->ticketNiveau3 === $ticketL3);
 

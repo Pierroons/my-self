@@ -34,7 +34,9 @@
     }
 
     /**
-     * Génère une passphrase diceware aléatoire depuis la wordlist chargée.
+     * Génère une passphrase diceware aléatoire depuis la wordlist chargée, sans
+     * remise, comme `Wordlist::generate()` côté serveur : la bibliothèque refuse
+     * un mot répété dans une passphrase apportée.
      */
     function generateDiceware(count, lang, sep) {
         count = count || 4;
@@ -44,9 +46,15 @@
         if (list.length !== WORDS_EFF) {
             throw new Error('Wordlist EFF non chargée ou tronquée (lang=' + lang + ')');
         }
+        if (count > WORDS_EFF) {
+            throw new Error('count hors borne : ' + count);
+        }
         const out = [];
-        for (let i = 0; i < count; i++) {
-            out.push(list[uniformInt(WORDS_EFF)]);
+        while (out.length < count) {
+            const mot = list[uniformInt(WORDS_EFF)];
+            if (out.indexOf(mot) === -1) {
+                out.push(mot);
+            }
         }
         return out.join(sep);
     }

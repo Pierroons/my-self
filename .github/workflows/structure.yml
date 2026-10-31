@@ -550,8 +550,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_suite_reprise.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la suite a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 17/17$' \
-            || { echo "::error::le banc de la suite n'a pas joué ses 17 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 18/18$' \
+            || { echo "::error::le banc de la suite n'a pas joué ses 18 cas"; exit 1; }
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
@@ -659,10 +659,103 @@ jobs:
           canari $R/src/Recovery/Recovery.php \
             "if (\$ancien !== null && \$ancien['ferme_le'] <= \$maintenant) {" 'if (false) {' \
             $R/tests/sanity_escalade.php "❌ un code d'avant d'une fenêtre échue est traité en code inconnu"
+
+      # Le retour lui-même (0.13.2), en deux étapes à part : `check-canaris.sh` borne chaque
+      # étape à 900 s, et chaque canari qui rejoue `sanity_escalade.php` en coûte de 51 à 100
+      # (mesuré le 31/10/2026 sur une machine chargée, où l'étape unique dépassait le plafond).
+      - name: Canaris — le retour du titulaire garde ce qu'il devait reprendre (1/2)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          L=demo/lab
+          # Le retour lui-même (0.13.2) : la passphrase apportée ne reprend ni celle
+          # d'avant ni celle du demandeur, un second niveau 3 n'écrase pas une fenêtre
+          # reprise, et le message ne promet un coffre gelé que s'il y en a un.
+          canari $R/src/Recovery/Recovery.php \
+            '        if ($fenetre !== null && $apport !== null' '        if (false && $fenetre !== null && $apport !== null' \
+            $R/tests/sanity_escalade.php "❌ ⭐ au retour par la passphrase d'avant, l'apportée ne peut être ni elle"
+          canari $R/src/Recovery/Recovery.php '        if ($retourOuvert && $apport !== null) {' '        if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ au retour par code, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur"
+          canari $R/src/Recovery/Escalade.php \
+            "        if (\$decision === 'accepte' && \$this->repriseEnAttente(\$litige->compteId)) {" '        if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ sous une fenêtre reprise, l'arbitre ne peut pas accorder un second niveau 3"
+          canari $R/src/Recovery/Escalade.php \
+            "        if (\$decision === 'accepte' && \$this->repriseEnAttente(\$litige->compteId)) {" \
+            '        if ($this->repriseEnAttente($litige->compteId)) {' \
+            $R/tests/sanity_escalade.php "❌ sous une fenêtre reprise, l'arbitre peut encore refuser un dossier"
+          canari $L/lib/recover_l3.php \
+            '        return self::http(self::escalade($pdo)->cloreFenetre($username, $par, $maintenant));' \
+            "        return self::http(['ok' => false, 'error' => 'aucune_fenetre_reprise', 'message' => '']);" \
+            $L/tests/sanity_sel_session.php "✗ ⭐ la route clôt la fenêtre reprise, au nom de l'arbitre"
+          canari $R/src/Recovery/Recovery.php \
+            "? Messages::dire(\$this->langue, 'l3.titulaire_reprend_sans_coffre')" "? Messages::dire(\$this->langue, 'l3.titulaire_reprend')" \
+            $R/tests/sanity_escalade.php "❌ une passphrase neuve, elle, est prise au retour, et le message ne parle d'aucun coffre"
+          canari $R/src/Recovery/Recovery.php \
+            ": Messages::dire(\$this->langue, 'l3.titulaire_reprend')," ": Messages::dire(\$this->langue, 'l3.titulaire_reprend_sans_coffre')," \
+            $R/tests/sanity_suite_reprise.php "❌ retour : avec un coffre branché, le message dit la lecture seule"
           canari $L/lib/auth.php \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip);' \
             '$r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip); unset($r['"'"'titulaire_reprend'"'"']);' \
             $L/tests/sanity_sel_session.php "✗ ⭐ au niveau 1 aussi, la réponse d'un retour porte le lot neuf"
+
+      # L'accord rendu avant la clôture d'une fenêtre reprise, en étape à part pour la même
+      # raison : six rejeux de `sanity_escalade.php`.
+      - name: Canaris — le retour du titulaire garde ce qu'il devait reprendre (2/2)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          L=demo/lab
+          # Un accord qui n'a pas été rendu après la clôture d'une fenêtre reprise ne
+          # s'exécute pas — rendu avant le retour, ou écrit pendant lui, daté après —, ni
+          # après la clôture, même chez un adaptateur qui efface alors la date du retour ;
+          # il ne garde pas la place du niveau 3, et la transaction de la reprise le relit.
+          canari $R/src/Recovery/Escalade.php \
+            "                : \$fenetre['reprise_le'] !== null)) {" '                : false)) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ sous une fenêtre reprise, un second niveau 3 accordé avant ne s'exécute pas"
+          canari $R/src/Recovery/Escalade.php \
+            "                : \$fenetre['reprise_le'] !== null)) {" \
+            "                : \$litige->trancheLe < (int) \$fenetre['reprise_le'])) {" \
+            $R/tests/sanity_escalade.php "❌ ⭐ un accord écrit pendant le retour, daté après lui, ne s'exécute pas non plus"
+          canari $R/src/Recovery/Escalade.php \
+            "                ? \$litige->trancheLe < \$fenetre['close_le']" '                ? false' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un accord rendu avant la clôture ne s'exécute pas, même après elle"
+          canari $R/src/Recovery/Escalade.php \
+            "        if (\$fenetre !== null && (\$fenetre['close_le'] !== null" \
+            "        if (\$fenetre !== null && \$fenetre['reprise_le'] !== null && (\$fenetre['close_le'] !== null" \
+            $R/tests/sanity_escalade.php "❌ ⭐ un accord rendu avant la clôture reste mort chez un adaptateur qui efface la date du retour"
+          canari $R/src/Recovery/Escalade.php \
+            '        if ($existant !== null && $this->accordPerime($existant, $maintenant) !== null) {' \
+            "        if (\$existant !== null && \$this->accordPerime(\$existant, \$maintenant) === 'l3.accord_echu') {" \
+            $R/tests/sanity_escalade.php "❌ ⭐ un accord mort sous la reprise ne garde pas la place du niveau 3"
+          canari $R/src/Recovery/Escalade.php \
+            '            $perime = $this->accordPerime($litige, $maintenant);' '            $perime = null;' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un retour validé juste avant la transaction de la reprise est vu par elle"
 
       # La passphrase qu'un utilisateur apporte, tirée aux dés, au lieu d'en recevoir
       # une du serveur. Le banc se joue sous les deux profils et compte ses cas. Chaque
@@ -810,8 +903,12 @@ jobs:
           canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
             '        $this->stockage->tracerTentative($this->etiquetteSuspicionL1($nomCompte), false, $ip, $maintenant);' \
             $B '❌ 🔑 et il ne charge pas le classement non plus'
-          canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
+          canari $R 'if ($ok && $apport !== null && self::memesMots($apport, $passphrase)) {' 'if (false) {' \
             $B '❌ apporter celle qui sert est refusé'
+          # La bibliothèque ne remet pas une passphrase qu'elle refuserait si on la lui
+          # apportait : le tirage se fait sans remise, puisqu'un mot répété est refusé.
+          canari bi-self/selfrecover/src/Diceware/Wordlist.php '            if (!in_array($mot, $picked, true)) {' \
+            '            if (true) {' bi-self/selfrecover/tests/sanity_socle.php '❌ ⭐ un tirage ne répète aucun mot'
           canari $E "if (\$jugee['canonique'] === strtolower(Recovery::normaliserPassphrase(\$motDePasse))) {" 'if (false) {' \
             $B '❌ une passphrase égale au mot de passe choisi est refusée'
           # Le refus d'ouverture du niveau 3 est unique : un dossier déjà ouvert qui
@@ -1075,8 +1172,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 257 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 257 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 270 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 270 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -1770,8 +1867,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_sel_session.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 11/11$' \
-            || { echo "::error::le banc du sel de session n'a pas joué ses 11 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 16/16$' \
+            || { echo "::error::le banc du sel de session n'a pas joué ses 16 cas"; exit 1; }
 
       # `login_attempts` est partagée entre la page de connexion et les compteurs de
       # la bibliothèque. Deux fois, un filtre censé écarter les seconds a emporté les

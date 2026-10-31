@@ -134,7 +134,7 @@ interface StorageInterface
     //
     // 🔑 Seul un niveau 3 en ouvre une. Les secrets que le titulaire tenait
     // avant la reprise — passphrase, mot mémorisé et son sel, codes papier non
-    // consommés — y restent valables une fois chacun, jusqu'à sa fermeture : le
+    // consommés — y restent valables pour un seul retour, jusqu'à sa fermeture : le
     // titulaire qui revient l'emporte sur le demandeur. L'ancien mot de passe
     // n'y entre pas : c'est souvent lui qui a fui.
 
@@ -147,6 +147,23 @@ interface StorageInterface
      * remplacer par ceux du demandeur. Seule sa fermeture recule (`$fermeLe`).
      * Elle garde aussi son `$ticketNiveau3` : celui du premier niveau 3, sous
      * lequel le coffre a mis de côté l'archive du titulaire.
+     *
+     * ⚠️ **Une fenêtre reprise et non close n'est jamais remplacée.** La garde est
+     * à `Escalade::reEnroler()`, qui relit l'état de la fenêtre dans la transaction
+     * de la reprise, puis écrit. Elle ne tient que si une transaction qui a lu ne
+     * peut pas écrire par-dessus une validation concurrente :
+     * - SQLite le tient : un seul écrivain à la fois, et la transaction qui a lu
+     *   avant la validation de l'autre échoue au lieu d'écrire ;
+     * - les niveaux par défaut des autres moteurs ne le tiennent pas — `READ
+     *   COMMITTED` sous PostgreSQL, `REPEATABLE READ` sous InnoDB. Il faut
+     *   `SERIALIZABLE`, ou le verrou de la ligne lue (`fenetreDuCompte()` en
+     *   `SELECT … FOR UPDATE` dans une transaction) ;
+     * - quand l'intégrateur enveloppe l'appel dans sa propre transaction, c'est
+     *   l'isolement de **la sienne** qui décide : la bibliothèque n'y pose qu'un
+     *   point de reprise (`TransactionsPdo`).
+     *
+     * Un isolement trop faible ne se voit pas : rien ne lève, et la fenêtre reprise
+     * est remplacée quand un retour et un second niveau 3 se croisent.
      */
     public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void;
 
@@ -196,8 +213,8 @@ interface StorageInterface
     public function reprendreFenetre(int $compteId, int $quand): bool;
 
     /**
-     * L'arbitre clôt le litige d'une fenêtre reprise. `false` si elle n'est pas
-     * reprise, ou déjà close.
+     * L'arbitre clôt une fenêtre reprise. `false` si elle n'est pas reprise, ou
+     * déjà close.
      */
     public function cloreFenetre(int $compteId, string $par, int $quand): bool;
 

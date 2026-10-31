@@ -502,7 +502,7 @@ final class Db
             )'
         );
 
-        // La fenêtre d'après un niveau 3 : les secrets d'avant la reprise, une fois chacun.
+        // La fenêtre d'après un niveau 3 : les secrets d'avant la reprise, pour un seul retour.
         self::$pdo->exec(
             'CREATE TABLE IF NOT EXISTS l3_fenetres (
                 account_id      INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,

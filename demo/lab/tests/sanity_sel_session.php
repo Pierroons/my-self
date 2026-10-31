@@ -28,6 +28,7 @@ require_once __DIR__ . '/../lib/device.php';
 
 use Pierroons\MySelfLab\Auth;
 use Pierroons\MySelfLab\Device;
+use Pierroons\MySelfLab\RecoverL3;
 use Pierroons\MySelfLab\StockageSelfRecover;
 use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\ProfilDeploiement;
@@ -135,6 +136,29 @@ verifier("⭐ au niveau 1 aussi, la réponse d'un retour porte le lot neuf et le
     ($retourUn['ok'] ?? false) === true && count($retourUn['codes'] ?? []) === Recovery::CODES_PAR_LOT
     && ($retourUn['note'] ?? '') !== '' && $avertissements === [],
     (string) ($retourUn['message'] ?? implode(' · ', $avertissements)));
+
+// Le titulaire revenu, la fenêtre attend la clôture de l'arbitre, et aucun niveau 3 ne
+// s'accorde plus sur ce compte d'ici là : la console doit la montrer, et la clore.
+echo "\n→ L'arbitre clôt la fenêtre reprise depuis sa console\n";
+require_once __DIR__ . '/../lib/recover_l3.php';
+$console = RecoverL3::adminList($pdo);
+verifier('la console montre la fenêtre reprise', ($console['fenetres']['banc_retour_un'] ?? '') === 'reprise',
+    (string) ($console['fenetres']['banc_retour_un'] ?? 'absente'));
+$sesameDeux  = bin2hex(random_bytes(32));
+$dossierDeux = $escalade->ouvrir('banc_retour_un', Escalade::empreinteSesame($sesameDeux), '192.0.2.26');
+$avantCloture = $escalade->trancher((string) ($dossierDeux['numero'] ?? ''), 'accepte', 'arbitre');
+verifier("avant la clôture, un niveau 3 ne s'accorde pas", ($avantCloture['error'] ?? '') === 'reprise_en_cours',
+    (string) ($avantCloture['error'] ?? 'accordé'));
+$sansFenetre = RecoverL3::adminCloseWindow($pdo, 'banc_sel', 'arbitre-du-banc');
+verifier('la route refuse un compte sans fenêtre reprise',
+    ($sansFenetre['ok'] ?? true) === false && ($sansFenetre['code'] ?? 0) === 409, (string) ($sansFenetre['error'] ?? ''));
+$cloture = RecoverL3::adminCloseWindow($pdo, ' Banc_Retour_Un ', 'arbitre-du-banc');
+$apres   = $escalade->fenetre('banc_retour_un');
+verifier("⭐ la route clôt la fenêtre reprise, au nom de l'arbitre",
+    ($cloture['ok'] ?? false) === true && $apres['etat'] === 'close' && $apres['close_par'] === 'arbitre-du-banc',
+    (string) ($cloture['error'] ?? $apres['etat']));
+verifier('⭐ et un niveau 3 se tranche de nouveau sur ce compte',
+    ($escalade->trancher((string) ($dossierDeux['numero'] ?? ''), 'accepte', 'arbitre')['ok'] ?? false) === true);
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0 ? "OK — $reussites/$total" : "ÉCHEC — $echecs sur $total") . "\n";
