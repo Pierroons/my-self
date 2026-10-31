@@ -344,6 +344,8 @@ return [
     'mod.js.cancelled' => 'vote(s) cancelled. Pack(s):',
     'mod.js.target'    => 'target',
     'mod.js.none'      => 'No pack-voting detected over the recent period.',
+    'mod.js.sautes'    => 'Accounts skipped by the detection, to review in the console:',
+    'mod.js.fins'      => 'Some penalty ends are waiting for the journal: see the console.',
 
     // ── "Attack Simulator" page ───────────────────────────────────────────
     // ⚠️ Simulation results (titles, steps, verdicts) come from the API in

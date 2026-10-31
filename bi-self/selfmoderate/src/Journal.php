@@ -84,8 +84,9 @@ interface Journal
      * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
      * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
      * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
-     * le fait remonter aussitôt. Et quand le balayage d'un vote lève pour meute
-     * le ban d'un compte que ce vote ne vise pas, le refus ne défait pas le vote :
+     * le fait remonter aussitôt. Et quand le balayage du site, celui d'un vote ou
+     * du planificateur, lève pour meute le ban d'un compte autre que la cible du
+     * vote, le refus ne défait pas le vote :
      * la levée attend le balayage suivant, le compte est signalé
      * (`levee_en_attente`), et `detectPackVoting()` le nomme. Un refus se lève par
      * n'importe quelle exception ; sur ce second chemin, une `\Error` est un

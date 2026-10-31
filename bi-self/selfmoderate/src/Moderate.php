@@ -1280,7 +1280,8 @@ class Moderate
      *
      * `comptes_sautes` nomme les comptes qu'un refus a fait sauter, avec sa
      * raison : `reprise_manquante`, `levee_refusee` (le compte porte alors
-     * `levee_en_attente`), ou `refus`. Le passage les retrouve au suivant.
+     * `levee_en_attente`), ou `refus`. Le passage suivant retrouve un compte
+     * balayé ; un votant de la meute de la cible, voir `consignerMeute()`.
      */
     public static function detectPackVoting(PDO $pdo, ?int $seulement = null): array
     {
@@ -1391,13 +1392,20 @@ class Moderate
                 });
                 if ($episode === null) {
                     // La levée défaite reste due : l'arbitre le voit sur le compte, et le
-                    // balayage suivant la refait tant que la peine court.
+                    // balayage suivant la refait tant que la peine court. Relue sous le
+                    // verrou : un autre passage a pu la faire entre-temps.
                     if ($leveeRefusee) {
-                        self::surAutrui($author, $voteSur, static function () use ($pdo, $author): bool {
+                        self::surAutrui($author, $voteSur, static fn (): bool => self::transaction($pdo, static function () use ($pdo, $author, $aAnnuler): bool {
+                            $ph = implode(',', array_fill(0, count($aAnnuler), '?'));
+                            $encore = $pdo->prepare("SELECT COUNT(*) FROM mod_votes WHERE id IN ($ph) AND blocked = 0");
+                            $encore->execute($aAnnuler);
+                            if ((int) $encore->fetchColumn() === 0 || !self::etat($pdo, $author)['banned']) {
+                                return false;
+                            }
                             self::signaler($pdo, $author, 'levee_en_attente');
 
                             return true;
-                        }, $sautes);
+                        }), $sautes);
                     }
                     continue;
                 }
@@ -1478,13 +1486,14 @@ class Moderate
 
     /**
      * Ce qu'un balayage fait sur un compte que le vote qui le lance ne vise pas :
-     * un compte balayé, ou un votant de la meute d'un autre. Un refus — une
-     * reprise oubliée sur ce compte, un journal qui refuse l'acte d'une levée pour
-     * meute, toute exception — ne défait pas le vote d'un tiers : le compte est
-     * sauté, son point de reprise défait, le saut rendu dans `$sautes` et écrit
-     * au journal d'erreurs, et la détection le retrouve au balayage suivant. La
-     * cible du vote n'y passe pas : ce que le vote cause s'inscrit, ou le vote
-     * tombe.
+     * un compte balayé, ou un votant de la meute de la cible. Un refus — une
+     * reprise oubliée, un journal qui refuse l'acte d'une levée pour meute, toute
+     * exception — ne défait pas le vote d'un tiers : le compte est sauté, son
+     * point de reprise défait, le saut rendu dans `$sautes` — sous le compte de la
+     * reprise oubliée quand c'en est une — et écrit au journal d'erreurs. Un
+     * compte balayé, la détection le retrouve au balayage suivant ; un votant de
+     * la meute de la cible, voir `consignerMeute()`. La cible du vote n'y passe
+     * pas : ce que le vote cause s'inscrit, ou le vote tombe.
      *
      * Remontent toujours : une `LectureDansUneEcriture`, une `\Error` — un défaut
      * de code n'est pas un refus —, et l'erreur après laquelle la base a défait une
@@ -1510,9 +1519,9 @@ class Moderate
             if ($e === self::$transactionDefaitePar) {
                 throw $e;
             }
-            error_log(sprintf('SelfModerate : le balayage saute le compte %d, qu\'il retrouvera au balayage suivant — %s', $compte, $e->getMessage()));
+            error_log(sprintf('SelfModerate : le balayage saute le compte %d, sans défaire le vote qui le lance — %s', $compte, $e->getMessage()));
             $saut = [
-                'compte' => $compte,
+                'compte' => $e instanceof RepriseManquante ? $e->compte : $compte,
                 'raison' => $e instanceof RepriseManquante ? 'reprise_manquante' : ($nommer !== null ? $nommer() : 'refus'),
             ];
             if (!in_array($saut, $sautes, true)) {
@@ -1664,8 +1673,12 @@ class Moderate
      * Le rang appartient au VOTANT. Compté sur la cible, un groupe qui change de
      * proie resterait au premier rang indéfiniment.
      *
-     * Le signal d'un votant que le vote ne vise pas passe par `surAutrui()` : sa
-     * reprise oubliée ne fait pas tomber le vote sur la cible.
+     * Sur l'épisode de la cible du vote, le signal d'un votant passe par
+     * `surAutrui()` : sa reprise oubliée ne fait pas tomber le vote sur la cible,
+     * et l'épisode se consigne sans son signal de récidive — la table des épisodes
+     * le montre à son rang, rien ne le repose après la reprise. Sur un autre
+     * compte, son échec défait l'épisode, que le balayage refait, et signale,
+     * après la reprise.
      *
      * @param  int[] $voters
      * @param  int[] $voteIds
@@ -1715,11 +1728,12 @@ class Moderate
             )->execute([$voter, $author, $rang, $action, json_encode(array_values($voteIds)), $maintenant]);
 
             if (!$memeEpisode && $rang >= 2) {
-                self::surAutrui($voter, $voteSur, static function () use ($pdo, $voter): bool {
+                $recidive = static function () use ($pdo, $voter): bool {
                     self::signaler($pdo, $voter, 'meute_recidive');
 
                     return true;
-                }, $sautes);
+                };
+                $author === $voteSur ? self::surAutrui($voter, $voteSur, $recidive, $sautes) : $recidive();
             }
             $rangs[] = ['voter' => $voter, 'rang' => $rang, 'action' => $action];
         }
@@ -1969,7 +1983,7 @@ class Moderate
             'SelfModerate : le compte %d a une case de signalement ouverte et aucun signal dans mod_signaux — '
             . 'la reprise n\'a pas été faite : appelle Moderate::migrerSignaux() une fois, juste après avoir créé la table.',
             $accountId
-        ));
+        ), $accountId);
     }
 
     /**

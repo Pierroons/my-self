@@ -19,10 +19,10 @@ La 0.7.1 corrige ce qu'un audit à deux visions de la 0.7.0 a relevé. Aucun cha
   lieu de s'y arrêter.
 - **Le vote d'un tiers ne tombe plus pour un autre compte** : le premier vote négatif d'une tranche balaie le site, et
   une reprise oubliée, ou une levée pour meute que le journal refuse, sur un compte qu'il ne vise pas — votants de la
-  meute de sa cible compris —, ne le défont plus. Une levée refusée se signale sur la victime (`levee_en_attente`)
+  meute de sa cible compris, consignés alors sans leur signal de récidive —, ne le défont plus. Une levée refusée se signale sur la victime (`levee_en_attente`)
   jusqu'à ce qu'elle soit faite, graciée ou classée : une peine qui échoit avant le balayage suivant ne la laisse plus
   se perdre en silence. `detectPackVoting()` nomme les comptes sautés (`comptes_sautes`). Une erreur après laquelle la
-  base a défait la transaction du vote, et une `\Error`, remontent.
+  base a défait une transaction du moteur, celle du vote ou celle du planificateur, et une `\Error`, remontent.
 - **Un motif qui n'est pas de l'UTF-8 valide est refusé** par `validateReason()`.
 - **Toute valeur texte d'un acte arrive au journal en UTF-8 valide** : une cause lue en base n'empêche plus de classer,
   de bannir, ni de refermer une peine.
