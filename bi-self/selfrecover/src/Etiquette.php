@@ -48,6 +48,18 @@ final class Etiquette
     public const PREFIXE_L2_INCONNU = 'l2-inconnu:';
 
     /**
+     * Un essai de niveau 2 avec un code d'avant un niveau 3, encore dans sa fenêtre.
+     *
+     * 🔑 **À part du compteur du niveau 2, exprès.** Après un niveau 3, le compte
+     * porte deux lots : les codes d'avant, ceux du titulaire, et le lot neuf remis
+     * au demandeur. Sous une même étiquette, le demandeur remplirait avec SES codes
+     * le compteur qui juge ceux du titulaire : vingt échecs étalés sur une heure
+     * suspendent le retour par code jusqu'à l'échéance de la fenêtre (mesuré sur
+     * la 0.13.0). Sous ce préfixe, seul qui tient un code d'avant peut écrire.
+     */
+    public const PREFIXE_L2_RETOUR = 'l2-retour:';
+
+    /**
      * Niveau 1 : les échecs, et les essais dont tous les mots existent dans une
      * liste publique. `Recovery::etiquetteEchecsL1()` et
      * `Recovery::etiquetteSuspicionL1()` disent ce que chacun range.
@@ -88,6 +100,7 @@ final class Etiquette
         self::PREFIXE_SUSPICION,
         self::PREFIXE_L2,
         self::PREFIXE_L2_INCONNU,
+        self::PREFIXE_L2_RETOUR,
         self::PREFIXE_L3_OUVRIR,
         self::PREFIXE_L3_DEPOT,
         self::PREFIXE_ENROLEMENT,

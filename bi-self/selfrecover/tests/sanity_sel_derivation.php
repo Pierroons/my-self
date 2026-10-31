@@ -63,6 +63,56 @@ verifier('le faux sel dépend du sel du déploiement : il ne se recalcule pas de
 $mal = $rec->selDeDerivation('pas-un-code');
 verifier('une entrée qui n\'a pas la forme d\'un code reçoit aussi un sel, sans erreur', Recovery::estSelCompte($mal), $mal);
 
+echo "\n→ Les mêmes lectures, que le code soit en place, d'avant ou inconnu\n";
+// Le faux sel est calculé dans tous les cas pour que les chemins coûtent pareil ; le
+// repli vers un code d'avant suit la même règle. Lire seulement quand l'adaptateur ne
+// trouve rien rendait un code inconnu plus lent qu'un code en place.
+final class StockageQuiCompte extends StockageMemoire
+{
+    /** @var list<string> */
+    public array $lectures = [];
+
+    public function selDuCompteParIndexCode(string $indexRecherche): ?string
+    {
+        $this->lectures[] = 'sel';
+
+        return parent::selDuCompteParIndexCode($indexRecherche);
+    }
+
+    public function trouverAncienCodeParIndex(string $indexRecherche): ?array
+    {
+        $this->lectures[] = 'ancien';
+
+        return parent::trouverAncienCodeParIndex($indexRecherche);
+    }
+
+    public function fenetreDuCompte(int $compteId): ?array
+    {
+        $this->lectures[] = 'fenetre';
+
+        return parent::fenetreDuCompte($compteId);
+    }
+}
+$stc = new StockageQuiCompte();
+$stc->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash(str_repeat('b2', 32))];
+$stc->sels[1] = $SEL_A;
+$recc     = new Recovery($stc, $SEL_DEP, ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
+$codesAvant = $recc->emettreCodes(1, 2, $now);
+$stc->ouvrirFenetre(1, $now, $now + 1000, 'ticket-du-banc');
+$stc->sels[1] = str_repeat('c3', 16);
+$codesNeufs = $recc->emettreCodes(1, 2, $now + 1);
+$lectures = [];
+foreach (['en place' => $codesNeufs[0], 'd\'avant' => $codesAvant[0], 'inconnu' => '00000-00000'] as $quoi => $c) {
+    $stc->lectures = [];
+    $recc->selDeDerivation($c);
+    $lectures[$quoi] = implode('+', $stc->lectures);
+}
+verifier('⭐ la route fait les mêmes lectures pour un code en place, un code d\'avant et un code inconnu',
+    count(array_unique($lectures)) === 1 && $lectures['inconnu'] === 'sel+ancien+fenetre',
+    json_encode($lectures, JSON_UNESCAPED_UNICODE));
+verifier('et le code d\'avant reçoit le sel d\'avant, le code en place le sel en place',
+    $recc->selDeDerivation($codesAvant[0]) === $SEL_A && $recc->selDeDerivation($codesNeufs[0]) === str_repeat('c3', 16));
+
 echo "\n→ Un stockage qui ne sait pas retrouver le sel\n";
 // Un adaptateur qui n'implémente que StorageInterface, fabriqué depuis l'interface
 // elle-même : chaque méthode lève, aucune ne doit être appelée.

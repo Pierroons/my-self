@@ -473,16 +473,8 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         );
         $st->execute([$indexRecherche]);
         $sel = $st->fetchColumn();
-        if ($sel === false) {
-            // Un ancien code d'une fenêtre : son mot mémorisé est dérivé sous l'ancien sel.
-            $st = $this->pdo->prepare(
-                'SELECT f.recovery_salt FROM l3_anciens_codes c JOIN l3_fenetres f ON f.account_id = c.account_id
-                  WHERE c.code_lookup = ?'
-            );
-            $st->execute([$indexRecherche]);
-            $sel = $st->fetchColumn();
-        }
 
+        // Le lot en place seul : un code d'avant un niveau 3, la bibliothèque le cherche elle-même.
         return $sel === false || $sel === null ? null : (string) $sel;
     }
 

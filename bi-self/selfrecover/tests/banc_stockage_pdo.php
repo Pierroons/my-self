@@ -356,7 +356,8 @@ verifier('et les codes non consommés, avec le mot d\'avant',
     ($stockage->trouverAncienCodeParIndex($indexFen)['compte_id'] ?? 0) === $fenId);
 $pdo->prepare("UPDATE accounts SET passphrase_hash = ?, recovery_salt = 'autre' WHERE id = ?")->execute([Hashing::hash('celle du demandeur'), $fenId]);
 $pdo->exec("DELETE FROM recovery_codes WHERE account_id = {$fenId}");
-verifier('⭐ la route du sel rend l\'ancien sel d\'un code d\'avant', $stockage->selDuCompteParIndexCode($indexFen) === $selAvant);
+verifier('⭐ la route du sel rend l\'ancien sel d\'un code d\'avant — par la bibliothèque, l\'adaptateur ne cherchant que le lot en place',
+    $stockage->selDuCompteParIndexCode($indexFen) === null && $recovery->selDeDerivation($codesFen[0]) === $selAvant);
 $stockage->ouvrirFenetre($fenId, $T0 + 10, $T0 + 2000, 'ticket-du-second-niveau-3');
 $f1 = $stockage->fenetreDuCompte($fenId);
 verifier('⭐ une seconde reprise dans la fenêtre garde les secrets du titulaire, et recule la fermeture',

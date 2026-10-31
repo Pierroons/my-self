@@ -17,6 +17,11 @@ interface SelParCodeInterface
      *
      * ⚠️ **Code consommé compris.** Rendre `null` pour un code déjà utilisé
      * ferait dire à la route « ce compte vient d'être récupéré ».
+     *
+     * Le lot en place suffit. Un code d'avant un niveau 3 se dérive sous le sel
+     * que la fenêtre garde : quand cette méthode rend `null`, `selDeDerivation()`
+     * le cherche elle-même, par `trouverAncienCodeParIndex()` et
+     * `fenetreDuCompte()`, que `StorageInterface` exige déjà.
      */
     public function selDuCompteParIndexCode(string $indexRecherche): ?string;
 }

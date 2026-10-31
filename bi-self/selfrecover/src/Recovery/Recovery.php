@@ -174,7 +174,14 @@ final class Recovery
      * pas la saisie. C'est lui que l'application emploie pour enchaîner (session,
      * clé de SelfDataGuard), comme au niveau 2.
      *
-     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, compte?: string, age_jours?: int|null}
+     * 🔑 **Le retour du titulaire a sa propre forme.** Dans la fenêtre d'après un
+     * niveau 3, un secret d'avant rend le compte à son titulaire : la réponse porte
+     * `titulaire_reprend`, un lot `codes` neuf — l'ancien ne vaut plus, et il n'y a
+     * pas de `codes_restants` —, `mot_memorise_a_changer`, `appareils_retires` et
+     * `suite`. Une enveloppe qui recopie la forme ordinaire perd le lot neuf, en
+     * silence.
+     *
+     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, compte?: string, age_jours?: int|null, titulaire_reprend?: bool, mot_memorise_a_changer?: bool, codes?: list<string>, appareils_retires?: int, suite?: string}
      */
     public function parPassphrase(
         string $nomCompte,
@@ -345,7 +352,14 @@ final class Recovery
      * `$nouvellePassphrase` : comme au niveau 1, la passphrase apportée qui
      * remplace l'ancienne. Un refus la concernant ne consomme pas le code.
      *
-     * @return array{ok: bool, error?: string, motif?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int}
+     * 🔑 **Le retour du titulaire a sa propre forme.** Dans la fenêtre d'après un
+     * niveau 3, un secret d'avant rend le compte à son titulaire : la réponse porte
+     * `titulaire_reprend`, un lot `codes` neuf — l'ancien ne vaut plus, et il n'y a
+     * pas de `codes_restants` —, `mot_memorise_a_changer`, `appareils_retires` et
+     * `suite`. Une enveloppe qui recopie la forme ordinaire perd le lot neuf, en
+     * silence.
+     *
+     * @return array{ok: bool, error?: string, motif?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int, titulaire_reprend?: bool, mot_memorise_a_changer?: bool, codes?: list<string>, appareils_retires?: int, suite?: string}
      */
     public function parCode(
         #[\SensitiveParameter] string $code,
@@ -405,12 +419,17 @@ final class Recovery
         // Sans compte, il n'y a pas de compteur à consulter, et le frein par
         // origine tient seul. Les cas ⭐ de `sanity_recovery` le font rougir.
         if ($cible !== null) {
-            $etiquette = $this->etiquetteEchecsL2((string) $cible['nom_compte']);
+            // Un code d'avant se compte à part : sous l'étiquette du niveau 2, le
+            // demandeur la remplirait avec le lot neuf que le niveau 3 lui a remis.
+            $etiquette = $trouve !== null
+                ? $this->etiquetteEchecsL2((string) $cible['nom_compte'])
+                : $this->etiquetteRetourL2((string) $cible['nom_compte']);
             $frein     = $this->freinerNiveau2(
                 $etiquette,
                 (string) $cible['nom_compte'],
                 (int) $cible['compte_id'],
                 $maintenant,
+                $trouve !== null ? null : ($this->stockage->fenetreDuCompte((int) $cible['compte_id'])['ouverte_le'] ?? null),
             );
             if ($frein !== null) {
                 return $frein;
@@ -758,9 +777,54 @@ final class Recovery
         if (!self::estFormeCode($code)) {
             return $faux;
         }
-        $vrai = $this->stockage->selDuCompteParIndexCode($this->indexRecherche($code));
+        // Un code d'avant un niveau 3 se dérive sous le sel que la fenêtre garde.
+        // Cherché ici plutôt qu'exigé de l'adaptateur : celui qui ne voit que le lot
+        // en place rendait un leurre au titulaire qui revient, sans erreur. Les trois
+        // lectures sont faites pour tout code, trouvé ou non, pour la même raison que
+        // le faux sel est calculé dans tous les cas.
+        $index   = $this->indexRecherche($code);
+        $vrai    = $this->stockage->selDuCompteParIndexCode($index);
+        $ancien  = $this->stockage->trouverAncienCodeParIndex($index);
+        $fenetre = $this->stockage->fenetreDuCompte($ancien === null ? 0 : (int) $ancien['compte_id']);
+        if (($vrai === null || $vrai === '') && $ancien !== null) {
+            $vrai = $fenetre['sel'] ?? null;
+        }
 
         return $vrai !== null && $vrai !== '' ? $vrai : $faux;
+    }
+
+    /**
+     * Ce code est-il un code d'avant un niveau 3, dans une fenêtre encore ouverte ?
+     *
+     * 🔑 **Pour le plafond de l'intégrateur, à appeler avant lui.** Un plafond
+     * de service compte avant de savoir quel compte est visé, et n'importe qui le
+     * remplit avec des codes au hasard. Le demandeur d'un niveau 3 frauduleux y
+     * gagne : tant que le plafond refuse, le titulaire ne revient pas, et la
+     * fenêtre échoit à son profit. Un code pour lequel ceci rend vrai est un
+     * retour, qu'un plafond global n'a pas à refuser ; le frein par compte de
+     * `parCode()` le juge ensuite, sous `etiquetteRetourL2()`.
+     *
+     * Sans oracle : la réponse vraie suppose de détenir un code d'avant, et rien
+     * ne dit à qui n'en a pas qu'un compte sort d'un niveau 3. Un HMAC et deux
+     * lectures indexées, sans Argon2id : de quoi l'appeler sur chaque requête,
+     * avant le plafond.
+     *
+     * Au niveau 1, le nom arrive avec la requête : `Escalade::fenetre()` répond
+     * pour lui, au prix dit par le modèle de menace.
+     */
+    public function estCodeDeRetour(#[\SensitiveParameter] string $code, ?int $maintenant = null): bool
+    {
+        $code = strtolower(trim($code));
+        if (!self::estFormeCode($code)) {
+            return false;
+        }
+        $ancien = $this->stockage->trouverAncienCodeParIndex($this->indexRecherche($code));
+        if ($ancien === null) {
+            return false;
+        }
+        $fenetre = $this->stockage->fenetreDuCompte((int) $ancien['compte_id']);
+
+        return $fenetre !== null && self::fenetreOuverte($fenetre, $maintenant ?? time());
     }
 
     /**
@@ -882,6 +946,21 @@ final class Recovery
     public function etiquetteEchecsL2(string $nomCompte): string
     {
         return Etiquette::sous(Etiquette::PREFIXE_L2, $nomCompte, $this->selDeploiement);
+    }
+
+    /**
+     * L'étiquette du compteur d'échecs des codes d'avant un niveau 3, pendant la
+     * fenêtre. `Etiquette::PREFIXE_L2_RETOUR` dit pourquoi elle n'est pas celle
+     * du niveau 2.
+     *
+     * 🔑 **Publique**, pour la raison dite par `etiquetteEchecsL2()` : un frein
+     * posé devant le niveau 2 lit celle-ci pour un code que `estCodeDeRetour()`
+     * reconnaît. Sous l'étiquette du niveau 2, il refermerait le retour que ce
+     * compteur à part tient ouvert.
+     */
+    public function etiquetteRetourL2(string $nomCompte): string
+    {
+        return Etiquette::sous(Etiquette::PREFIXE_L2_RETOUR, $nomCompte, $this->selDeploiement);
     }
 
     /**
@@ -1036,8 +1115,15 @@ final class Recovery
         string $nomCompte,
         int $compteId,
         int $maintenant,
+        ?int $fenetreOuverteLe = null,
     ): ?array {
-        $rearmements = array_filter([
+        // 🔑 **Un compteur ne se réarme que par les gestes de qui tient les secrets
+        // qu'il juge.** Pendant la fenêtre d'après un niveau 3, le dernier lot émis
+        // et la dernière réussite du niveau 1 sont ceux du demandeur : s'ils
+        // réarmaient le compteur des codes d'avant, qui tient aussi la feuille
+        // d'avant essaierait le mot sans fin. Celui-là ne se réarme qu'à
+        // l'ouverture de la fenêtre ; le retour, qui réussirait sous lui, la ferme.
+        $rearmements = $fenetreOuverteLe !== null ? [$fenetreOuverteLe] : array_filter([
             $this->stockage->dateDernierCodeEmis($compteId),
             $this->stockage->dateDerniereReussite($etiquette),
             $this->stockage->dateDerniereReussite($this->etiquetteEchecsL1($nomCompte)),
@@ -1062,12 +1148,21 @@ final class Recovery
             }
         }
 
+        // Le quart d'heure glissant, borné par le dernier réarmement : le lot neuf du
+        // titulaire revenu n'hérite pas des échecs que le demandeur vient de faire
+        // sous le même compteur. Borné, pas remplacé : sous le compteur des codes
+        // d'avant, que seule l'ouverture de la fenêtre réarme, compter depuis elle
+        // ferait d'un frein d'un quart d'heure un refus jusqu'à l'échéance.
+        $depuisFrein = $maintenant - $this->fenetreEchecs;
+        if ($rearmements !== []) {
+            $depuisFrein = max($depuisFrein, max($rearmements) - 1);
+        }
+
         // 🔑 Le message est celui du frein par origine, au mot près, et le délai
         // est payé : un refus qui nomme le compte dirait à qui détient un code que
         // ce code appartient à un compte réel — et le dirait sans payer les deux
         // Argon2id, donc en offrant un oracle gratuit sur le premier facteur.
-        if ($this->stockage->compterEchecsCompte($etiquette, $maintenant - $this->fenetreEchecs)
-            >= $this->maxEchecsCompte) {
+        if ($this->stockage->compterEchecsCompte($etiquette, $depuisFrein) >= $this->maxEchecsCompte) {
             usleep($this->delaiRefusUs);
 
             return $this->refusFrein();

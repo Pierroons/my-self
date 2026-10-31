@@ -541,6 +541,7 @@ return [
     'rec.js.copy' => '<strong>Copie ces identifiants maintenant</strong> (ils ne seront plus affichés) :',
     'rec.js.newpw' => 'Nouveau mot de passe',
     'rec.js.newpp' => 'Passphrase',
+    'rec.js.newcodes' => 'Tes nouveaux codes de récupération — les anciens ne valent plus',
     'rec.js.goto' => 'Aller à la connexion',
     'rec.js.neterr' => 'Erreur réseau.',
 

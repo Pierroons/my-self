@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.0](https://img.shields.io/badge/status-v0.13.0-green.svg)](#statut)
+[![Status: v0.13.1](https://img.shields.io/badge/status-v0.13.1-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -218,7 +218,7 @@ Chaque code est stocké **deux fois**, jamais en clair :
 - **Usage unique** (marqué `used` après un reset réussi).
 - **Régénérables** à la demande, dans une session ouverte : l'authentification revient à l'application, comme pour l'enrôlement d'un appareil — un nom public et le mot ne suffisent pas, sinon ils donneraient seuls un lot neuf, donc le niveau 2. Le nouveau lot remplace l'ancien. ⚠️ `emettreCodes()` **efface** le lot en place avant d'écrire le suivant : la feuille imprimée cesse de valoir à cet instant. Ne l'appelle que sur une demande du titulaire, et dis-le-lui.
 - **Le sel du déploiement ne tourne pas sans réémission.** `code_lookup` est un HMAC du code sous ce sel, et le code n'est stocké nulle part : changer le sel rend **tous** les codes émis introuvables, sans réindexation possible. Seule procédure : changer le sel, puis faire réémettre chaque feuille. Entre les deux, le niveau 2 par code est fermé ; le niveau 1 et l'appareil restent ouverts.
-- `parCode()` rend `codes_restants` à chaque usage. Le seuil à partir duquel on alerte appartient à l'application : la bibliothèque donne le nombre, elle ne décide pas quand il devient inquiétant.
+- `parCode()` rend `codes_restants` à chaque usage ordinaire. Le seuil à partir duquel on alerte appartient à l'application : la bibliothèque donne le nombre, elle ne décide pas quand il devient inquiétant. Un retour dans la fenêtre d'après un niveau 3 n'est pas un usage ordinaire : il remet un lot neuf dans `codes`, avec `titulaire_reprend` et `mot_memorise_a_changer`, et sans `codes_restants` — aux deux niveaux.
 
 C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la fois « qui » et « une preuve de possession ».
 
@@ -473,7 +473,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.13.0 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.13.1 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -499,6 +499,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Sous un service caché, ouvrir un dossier de niveau 3 se paie au lieu d'être refusé** — là où aucune adresse ne discrimine, une ouverture coûte une épreuve de calcul, et le plafond de service derrière elle est un dernier recours plutôt qu'un frein par compte : vingt requêtes anonymes par heure ne ferment plus le niveau 3 de tout le monde (v0.13.0)
 - [x] **Un niveau 3 frauduleux se défait dans une fenêtre** — les secrets d'avant restent valables 14 jours, une fois chacun ; l'un d'eux servi au niveau 1 ou 2 rend le compte à son titulaire, le coffre reste en lecture seule jusqu'à la clôture par l'arbitre, et le prix est déclaré : un papier volé reprend un niveau 3 que son titulaire avait fait à cause du vol (v0.13.0)
 - [x] **Une passphrase est consommée une seule fois, même sous concurrence**, et **aucune écriture de coffre décidée par une récupération ne passe sans son ticket** — deux requêtes portant la même passphrase ne réussissent plus toutes les deux, et SelfDataGuard refuse un réenrôlement ou une remise en service d'archive qu'aucune récupération n'a décidés (v0.13.0)
+- [x] **Le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur** — le lot neuf du demandeur ne compte plus contre les codes d'avant et ses gestes ne réarment plus ce compteur, la route du sel rend l'ancien sel pour un code d'avant, et `Recovery::estCodeDeRetour()` permet au plafond de service d'un intégrateur de laisser passer un retour (v0.13.1)
 
 ### Ensuite
 

@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.0](https://img.shields.io/badge/status-v0.13.0-green.svg)](#status)
+[![Status: v0.13.1](https://img.shields.io/badge/status-v0.13.1-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -218,7 +218,7 @@ Each code is stored **twice**, never in clear:
 - **Single-use** (marked `used` after a successful reset).
 - **Regenerable** on demand, within an open session: authentication belongs to the application, as for enrolling a device — a public name and the word are not enough, or they alone would yield a new batch, hence level 2. The new batch replaces the old one. ⚠️ `emettreCodes()` **erases** the current batch before writing the next: the printed sheet stops being valid at that moment. Call it only on the holder's request, and tell them.
 - **The deployment salt does not rotate without reissuing.** `code_lookup` is an HMAC of the code under that salt, and the code is stored nowhere: changing the salt makes **every** issued code unfindable, with no possible reindexing. The only procedure: change the salt, then have every sheet reissued. In between, level 2 by code is closed; level 1 and the device stay open.
-- `parCode()` returns `codes_restants` on every use. The threshold at which to warn belongs to the application: the library gives the count, it does not decide when the count becomes worrying.
+- `parCode()` returns `codes_restants` on every ordinary use. The threshold at which to warn belongs to the application: the library gives the count, it does not decide when the count becomes worrying. A return within the window after a level 3 is not an ordinary use: it hands over a fresh batch in `codes`, with `titulaire_reprend` and `mot_memorise_a_changer`, and no `codes_restants` — at either level.
 
 This is what enables an **identifier-less L2**: the code is both "who" and a proof of possession.
 
@@ -471,7 +471,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.13.0 (April → October 2026)
+### Shipped — v0.1.0 to v0.13.1 (April → October 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -497,6 +497,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **Behind a hidden service, opening a level-3 case is paid for instead of being refused** — where no address discriminates, an open costs a computation challenge, and the service-wide ceiling behind it is a last resort rather than a per-account brake: twenty anonymous requests an hour no longer close level 3 for everyone (v0.13.0)
 - [x] **A fraudulent level 3 is undone within a window** — the secrets from before stay valid for 14 days, each once; one of them served at level 1 or 2 gives the account back to its holder, the vault stays read-only until the arbitrator closes, and the price is declared: a stolen paper takes back a level 3 its holder made because of the theft (v0.13.0)
 - [x] **A passphrase is consumed once, even under concurrency**, and **no vault write driven by a recovery happens without its ticket** — two requests carrying the same passphrase no longer both succeed, and SelfDataGuard refuses a re-enrolment or an archive reinstatement that no recovery decided (v0.13.0)
+- [x] **The holder who comes back with their old codes is no longer stopped by the requester** — the requester's new batch no longer counts against the holder's old codes and their own gestures no longer rearm that counter, the salt route serves the old salt for an old code, and `Recovery::estCodeDeRetour()` lets an integrator's service-wide cap step aside for a return (v0.13.1)
 
 ### Next
 
