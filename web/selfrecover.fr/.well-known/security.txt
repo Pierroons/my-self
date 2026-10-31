@@ -1,0 +1,5 @@
+Contact: https://github.com/Pierroons/my-self/security/advisories/new
+Expires: 2027-10-01T00:00:00.000Z
+Preferred-Languages: fr, en
+Canonical: https://selfrecover.fr/.well-known/security.txt
+Policy: https://github.com/Pierroons/my-self/blob/main/SECURITY.md

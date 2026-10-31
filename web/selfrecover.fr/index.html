@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfRecover — récupérer un compte sans email ni SMS</title>
+<meta name="description" content="SelfRecover : récupérer un compte sans email ni SMS. Un mot retenu de tête, une empreinte liée au site, trois niveaux de récupération. Essaie-le dans ton navigateur, et regarde les coulisses.">
+<link rel="canonical" href="https://selfrecover.fr/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://selfrecover.fr/">
+<meta property="og:title" content="SelfRecover — récupérer un compte sans email ni SMS">
+<meta property="og:description" content="Un mot retenu de tête, une empreinte liée au site, trois niveaux de récupération. Essaie-le, et regarde les coulisses.">
+<meta property="og:image" content="https://selfrecover.fr/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SelfRecover — Récupère ton compte. Sans email, sans SMS.">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/pluie.js" defer></script>
+<script src="/js/coulisses.js" defer></script>
+<script src="/js/sr-derive.js" defer></script>
+<script src="/js/essai.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#contenu">Aller au contenu</a>
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<nav class="barre" aria-label="Navigation principale">
+  <a class="brand" href="/">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 84 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 97 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+    <span><span class="self">Self</span><span class="rec">Recover</span></span>
+  </a>
+  <div class="navlinks">
+    <a href="#essai">Essayer</a>
+    <a href="/comprendre/">Comprendre</a>
+    <a href="#niveaux">3 niveaux</a>
+    <a href="#limites">Limites</a>
+    <a class="garde" href="/forum/">Forum</a>
+    <button type="button" class="jack" aria-label="Coulisses" aria-pressed="false" aria-controls="coulisses" hidden><span class="mot">COULISSES </span><span class="etat">░ OFF</span><span class="compte"></span></button>
+    <a class="lang" href="/en/" hreflang="en" lang="en">EN</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="lock">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" role="img" aria-label="SelfRecover">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 82 h14" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 93 h10" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 104 h6" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <span class="wm" aria-hidden="true"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
+  </div>
+  <p class="invite">Ton mot. Tes sites. Sans email.</p>
+  <h1>Récupère ton compte. <em>Sans email, sans SMS.</em></h1>
+  <p class="sub">Tu retiens un mot. Il ne quitte pas ton navigateur&nbsp;: le serveur n'en reçoit qu'une empreinte,
+    liée à ce site.</p>
+  <div class="cta">
+    <a class="btn btn-p" href="#essai">Essayer dans mon navigateur</a>
+    <a class="btn btn-g" href="/forum/">Entrer dans le forum →</a>
+  </div>
+  <p class="astuce">Active les <b>coulisses</b>, en haut à droite, pour voir chaque étape en direct.</p>
+</header>
+
+<main class="below" id="contenu">
+  <section id="probleme"><div class="wrap">
+    <p class="repere">01 — le problème</p>
+    <h2>« Mot de passe oublié&nbsp;? » → on t'envoie un email.</h2>
+    <p class="lead">Sauf que l'email est un <em class="tl">tiers</em>. Si ta boîte tombe, si on te la pirate,
+      si le service ferme ou te bannit, tu perds l'accès à chaque compte qui dépend d'elle. Le SMS porte le
+      même défaut, avec le détournement de carte SIM en prime. SelfRecover retire l'email et le téléphone
+      de la récupération.</p>
+  </div></section>
+
+  <section id="essai"><div class="wrap">
+    <p class="repere">02 — essaie, rien ne part</p>
+    <h2>Même mot, deux sites, deux empreintes.</h2>
+    <p class="lead">Tape un mot&nbsp;: ton navigateur calcule l'empreinte que ce site recevrait, et celle qu'obtiendrait
+      une copie piégée. Rien n'est envoyé&nbsp;: coupe ton réseau, ça marche encore.</p>
+    <div class="essai">
+      <div class="champ">
+        <label for="essai-mot">Ton mot (il reste ici)</label>
+        <input type="text" id="essai-mot" autocomplete="off" spellcheck="false" autocapitalize="off">
+      </div>
+      <div class="term" aria-live="polite">
+        <div class="ligne"><span class="cle-l">ce site · <span id="essai-hote"></span></span><span class="val" id="essai-ici"></span></div>
+        <div class="ligne"><span class="cle-l">copie piégée · <span id="essai-hote-piege"></span></span><span class="val piege" id="essai-piege"></span></div>
+        <p class="verdict vide" id="essai-verdict">Les deux empreintes apparaîtront ici.</p>
+      </div>
+      <p class="note">Si la copie te fait taper ton mot dans son propre formulaire, elle le lit&nbsp;: voir
+        <a class="lnk" href="#limites">Limites</a>. Le calcul lui-même, maillon par maillon&nbsp;:
+        <a class="lnk" href="/comprendre/#derivation">Comprendre</a>.</p>
+    </div>
+  </div></section>
+
+  <section id="comprendre"><div class="wrap">
+    <p class="repere">03 — comment ça marche</p>
+    <h2>Ce que tu sais devient ta clé.</h2>
+    <div class="grid3">
+      <div class="hud">
+        <h3>Connaissance partagée</h3>
+        <p>Le mot seul ne prouve rien. L'algorithme seul non plus. Réunis dans ton navigateur, ils donnent une
+          <em class="tl">empreinte</em> HMAC-SHA256 que le serveur sait vérifier&nbsp;: l'un des deux facteurs du
+          niveau&nbsp;2.</p>
+      </div>
+      <div class="hud">
+        <h3>Lié au site</h3>
+        <p>Le mode se choisit, sans défaut. Ce site est en mode nom d'hôte&nbsp;: l'empreinte dépend de l'adresse
+          que lit ton navigateur, et une copie servie ailleurs dérive une empreinte <em class="tl">sans valeur</em>
+          ici. Le prix&nbsp;: changer d'adresse ferait perdre le niveau&nbsp;2 aux comptes existants.</p>
+        <p>L'autre mode, une étiquette fixe, survit au changement d'adresse mais ne protège plus du hameçonnage
+          passif.</p>
+      </div>
+      <div class="hud">
+        <h3>Ce que voit le serveur</h3>
+        <p>De ton mot, le dériveur livré ne lui envoie que l'empreinte. La passphrase et le mot de passe, il les
+          engendre et les revoit quand ils servent.</p>
+        <p>Ton mot de passe, ta passphrase, tes codes et l'empreinte de ton mot ne sont rangés que sous forme de
+          <em class="tl">hachages Argon2id</em>.</p>
+      </div>
+    </div>
+    <div class="cta cta-start">
+      <a class="btn btn-g" href="/comprendre/">Tout comprendre, formules comprises →</a>
+    </div>
+  </div></section>
+
+  <section id="niveaux"><div class="wrap">
+    <p class="repere">04 — trois niveaux</p>
+    <h2>Trois façons distinctes de récupérer ton accès.</h2>
+    <p class="lead">Passer au niveau suivant est ton choix, jamais une escalade automatique&nbsp;: chaque niveau
+      demande autre chose, et toi seul sais ce qu'il te reste.</p>
+    <ol class="echelle">
+      <li class="hud">
+        <p class="niv">Niveau 1</p>
+        <h3>Passphrase</h3>
+        <p>Ton identifiant et une passphrase de six mots, tirée par le serveur dans la liste diceware de l'EFF
+          (≈&nbsp;77,5&nbsp;bits). Elle se garde sur papier et ne sert qu'une fois&nbsp;: chaque usage t'en rend
+          une neuve.</p>
+      </li>
+      <li class="hud">
+        <p class="niv">Niveau 2</p>
+        <h3>Mot + code</h3>
+        <p>Ton mot mémorisé et l'un de tes dix codes papier à usage unique. Aucun identifiant à saisir&nbsp;: le
+          code retrouve le compte.</p>
+        <p>En option, un appareil enrôlé remplace le code&nbsp;: ton mot y déverrouille une clé gardée dans ton
+          navigateur, dont le serveur vérifie la signature.</p>
+      </li>
+      <li class="hud">
+        <p class="niv">Niveau 3</p>
+        <h3>L'humain</h3>
+        <p>Tout perdu&nbsp;? Tu réponds à quelques questions&nbsp;; un administrateur lit les faits bruts et
+          tranche. <em class="tl">Jamais</em> de score ni de réinitialisation automatique, et un refus ne touche
+          jamais au compte.</p>
+        <p>En cas d'accord, tu redéfinis toi-même ton mot de passe et ton mot&nbsp;; une passphrase et des codes
+          neufs te sont remis.</p>
+      </li>
+    </ol>
+  </div></section>
+
+  <section id="coffre"><div class="wrap">
+    <p class="repere">05 — et tes données</p>
+    <h2>Ta clé ouvre la porte. <em>SelfDataGuard garde ce qu'il y a derrière.</em></h2>
+    <p class="lead">SelfRecover te rend l'<b>accès</b>. SelfDataGuard chiffre au repos les <b>données</b> que le
+      service lui confie. Les deux bibliothèques ne s'appellent pas&nbsp;: c'est le service qui leur passe les
+      mêmes secrets.</p>
+    <div class="grid3">
+      <div class="hud hud-teal">
+        <h3>Chiffré au repos</h3>
+        <p>Dans un dump de la base, les champs confiés à SelfDataGuard restent <em class="tl">chiffrés</em>&nbsp;:
+          il faut l'un de tes secrets pour les rouvrir, hors séquestre administrateur s'il est employé. Pendant une
+          session ouverte, le serveur tient la clé en mémoire.</p>
+      </div>
+      <div class="hud hud-teal">
+        <h3>Plusieurs serrures</h3>
+        <p>Ta clé de données peut être scellée sous chacun de tes secrets&nbsp;: mot de passe, mot mémorisé,
+          passphrase. Chacun l'ouvre seul&nbsp;: si le service les scelle tous, en oublier un ne te fait pas perdre
+          tes données.</p>
+        <p>Le revers&nbsp;: avec un dump de la base, un seul secret volé suffit à les ouvrir.</p>
+      </div>
+      <div class="hud hud-teal">
+        <h3>Le même principe pour ton disque</h3>
+        <p>SelfRecover-LUKS déverrouille un volume chiffré LUKS2 avec une passphrase de récupération propre à chaque
+          machine, distincte de ton mot&nbsp;: aucun des deux n'ouvre l'autre.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="limites"><div class="wrap">
+    <p class="repere">06 — limites</p>
+    <h2>Ce que SelfRecover ne couvre pas.</h2>
+    <p class="lead">Ces limites sont celles que déclare son modèle de menace, résumé dans son README.</p>
+    <ul class="liste">
+      <li>Un accès root au serveur contourne tout le protocole&nbsp;: il pourrait même servir une autre page que
+        le dériveur livré.</li>
+      <li>Comme tout protocole qui vit dans le navigateur, SelfRecover ne protège ni d'une page piégée qui capte
+        ton mot pendant que tu le tapes (hameçonnage actif), ni d'un poste compromis par un enregistreur de
+        frappe.</li>
+      <li>Une passphrase volée ouvre le compte une fois, et c'est le voleur qui reçoit la neuve&nbsp;: rien ne te
+        prévient. Tu le découvres quand ton mot de passe cesse de marcher.</li>
+      <li>Réutiliser ton mot sur un site malveillant le lui livre&nbsp;: la dérivation par site empêche de croiser
+        les bases, pas cette fuite-là. Un mot propre à chaque service reste plus sûr.</li>
+      <li>Un mot faible reste attaquable&nbsp;: en ligne, les freins de débit et la suspension du niveau&nbsp;2 le
+        bornent&nbsp;; hors ligne, avec une base volée, seul le coût d'Argon2id le freine.</li>
+      <li>Aucun audit de sécurité externe à ce jour. Un audit adverse interne a été mené.</li>
+    </ul>
+  </div></section>
+
+  <section id="forum"><div class="wrap">
+    <p class="repere">07 — le forum</p>
+    <h2>Un vrai forum, protégé par tout ce que tu viens de lire.</h2>
+    <p class="lead">Ses comptes reposent sur SelfRecover, ses messages privés sur SelfDataGuard. Inscris-toi sans
+      email, et garde les coulisses ouvertes&nbsp;: chaque étape s'y affiche.</p>
+    <div class="cta cta-start">
+      <a class="btn btn-p" href="/forum/">Entrer dans le forum →</a>
+    </div>
+  </div></section>
+</main>
+
+<footer>
+  <div class="foot">
+    <span><span class="self">Self</span><span class="rec">Recover</span>
+      <span class="dot">·</span> un module de l'écosystème <a href="https://my-self.fr">MySelf</a></span>
+    <span>
+      <a href="https://github.com/Pierroons/my-self">Code source</a>
+      <span class="dot">·</span> <a href="https://github.com/Pierroons/my-self/security/advisories/new">Signaler une faille</a>
+      <span class="dot">·</span> AGPL-3.0-or-later
+      <span class="dot">·</span> <span class="ver">maquette</span>
+    </span>
+  </div>
+</footer>
+</body>
+</html>
