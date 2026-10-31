@@ -857,8 +857,9 @@ class Moderate
     private static ?PDO $transactionOuverteSur = null;
 
     /**
-     * L'exception après laquelle la base a défait la transaction qui contenait un
-     * point de reprise : rien ne s'écrit plus sous elle (`surAutrui()`).
+     * L'exception après laquelle la base a défait une transaction du moteur, ou
+     * celle qui contenait son point de reprise : ce n'est pas un refus, et rien
+     * ne s'écrit plus sous elle (`surAutrui()`).
      */
     private static ?\Throwable $transactionDefaitePar = null;
 
@@ -927,9 +928,7 @@ class Moderate
                 } catch (\Throwable) {
                     // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
                     // Un point de reprise disparu dit que la transaction qui le contenait l'est aussi.
-                    if (!$propre) {
-                        self::$transactionDefaitePar = $e;
-                    }
+                    self::$transactionDefaitePar = $e;
                 }
             }
             throw $e;
@@ -1488,8 +1487,9 @@ class Moderate
      * tombe.
      *
      * Remontent toujours : une `LectureDansUneEcriture`, une `\Error` — un défaut
-     * de code n'est pas un refus —, et l'erreur après laquelle la base a défait la
-     * transaction du vote, sous laquelle plus rien ne s'écrit.
+     * de code n'est pas un refus —, et l'erreur après laquelle la base a défait une
+     * transaction du moteur, celle du vote ou celle du planificateur : une panne,
+     * pas un refus. Un compte n'est nommé qu'une fois par raison.
      *
      * @template T
      * @param callable(): T            $geste
@@ -1511,10 +1511,13 @@ class Moderate
                 throw $e;
             }
             error_log(sprintf('SelfModerate : le balayage saute le compte %d, qu\'il retrouvera au balayage suivant — %s', $compte, $e->getMessage()));
-            $sautes[] = [
+            $saut = [
                 'compte' => $compte,
                 'raison' => $e instanceof RepriseManquante ? 'reprise_manquante' : ($nommer !== null ? $nommer() : 'refus'),
             ];
+            if (!in_array($saut, $sautes, true)) {
+                $sautes[] = $saut;
+            }
 
             return null;
         }
@@ -1552,9 +1555,10 @@ class Moderate
      * Un ban automatique ne se lève que si la meute l'a CAUSÉ : des votes
      * annulés, posés avant son début, avaient un effet — sans eux, la
      * réputation ne serait pas tombée à zéro. La levée retire le strike de ce
-     * ban, et lui seul, et lève une levée restée en attente (`levee_en_attente`).
-     * Un refus du journal sur son acte remonte, et `$leveeRefusee` le dit à
-     * qui la défait (`detecter()`).
+     * ban, et lui seul, et lève la levée restée en attente pendant cette peine
+     * (`levee_en_attente`) : celle d'une peine antérieure garde son strike à
+     * rendre, et reste à l'arbitre. Un refus du journal sur son acte remonte, et
+     * `$leveeRefusee` le dit à qui la défait (`detecter()`).
      *
      * @param int[] $voteIds
      */
@@ -1585,6 +1589,8 @@ class Moderate
             (int) $v['effet'] < 0 && (int) $v['created_at'] <= $rep['ban_debut']);
         if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []
             && $rep['reputation'] > self::config()->banA) {
+            $attente = array_values(array_filter(self::deCause($rep['signaux'], 'levee_en_attente'),
+                static fn (array $s): bool => $s['ouvert_le'] >= $rep['ban_debut']));
             try {
                 self::inscrireAuJournal([
                     'acte'      => 'ban_leve',
@@ -1596,7 +1602,7 @@ class Moderate
                     'anticipee' => false,
                     'reste'     => $rep['banned_until'] - time(),
                     'ouverts'   => self::causesEnTexte($rep['signaux']),
-                    'ferme'     => self::fermesEnTexte(self::deCause($rep['signaux'], 'ban_auto', 'levee_en_attente')),
+                    'ferme'     => self::fermesEnTexte([...self::deCause($rep['signaux'], 'ban_auto'), ...$attente]),
                 ]);
             } catch (\Exception $e) {
                 $leveeRefusee = true;
@@ -1609,7 +1615,7 @@ class Moderate
                         updated_at = ?
                   WHERE account_id = ?'
             )->execute([time(), $author]);
-            self::designaler($pdo, $author, 'ban_auto', 'levee_en_attente');
+            self::designaler($pdo, $author, 'ban_auto', ...array_column($attente, 'cause'));
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -1725,9 +1731,9 @@ class Moderate
      * Deux familles de signaux. Un signal d'ÉTAT dit un état du compte, et se lève
      * seul quand l'état cesse : `reputation_zero`, `ban_auto`, `journal_en_panne`
      * se déduisent de la base ; `levee_en_attente`, une levée pour meute que le
-     * journal a refusée, cesse quand la levée est faite, par une grâce, ou quand
-     * un arbitre la classe — aucune colonne ne la porte, et la fin de la peine ne
-     * la lève pas. Un signal de COMPORTEMENT (une salve, une récidive de meute…)
+     * journal a refusée, cesse quand la levée de sa peine est faite, par une
+     * grâce, ou quand un arbitre la classe — aucune colonne ne la porte, et ni la
+     * fin de la peine ni la levée d'une peine suivante ne la lèvent. Un signal de COMPORTEMENT (une salve, une récidive de meute…)
      * dit ce qui s'est passé, et seul un arbitre le ferme. Une cause que le moteur
      * ne connaît pas — reprise d'une base ancienne — est un comportement : ce
      * qu'il ne sait pas lever, un humain le ferme.

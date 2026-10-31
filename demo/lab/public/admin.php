@@ -72,7 +72,7 @@ $causes = [
     'votant_etendu'   => 'votant qui vise trop de membres différents',
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
-    'levee_en_attente' => 'meute reconnue, levée du ban non inscrite : le journal l\'a refusée — la grâce rend le strike',
+    'levee_en_attente' => 'meute reconnue, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',
     'ban_auto'        => 'ban automatique en cours',
     'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
 ];
