@@ -2572,7 +2572,7 @@ function invariantsSignaux(PDO $p): array
                        EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
                        COALESCE(
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
-                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne') ORDER BY id LIMIT 1),
+                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente') ORDER BY id LIMIT 1),
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
                        ) AS attendu_cause
                   FROM member_moderation m)
@@ -3928,7 +3928,8 @@ $fins101 === [1, 0, 1] && str_contains((string) $leve101, "compte $fautif101 ") 
 // ── 102. ⭐ Un journal qui refuse une levée pour meute ne défait pas le vote d'un tiers ─
 // La meute se découvre au balayage du site, après un lien formé après les votes.
 // Le journal refuse la levée du ban qu'elle a causé : le vote qui balaie passe,
-// l'annulation attend, et le balayage suivant la fait quand le journal accepte.
+// l'annulation attend, la victime porte `levee_en_attente`, et le balayage
+// suivant fait la levée quand le journal accepte, ce qui lève le signal.
 $journalAvant102 = Moderate::journal();
 $journal102 = new class implements \Pierroons\SelfModerate\Journal {
     public array $actes = [];
@@ -3962,15 +3963,15 @@ try {
 } catch (\Throwable $e102) {
     $vote102 = $e102::class;
 }
-$attente102 = [Moderate::estBanni($pdo, $proie102), bloquesMeute($pdo, $proie102)];
+$attente102 = [Moderate::estBanni($pdo, $proie102), bloquesMeute($pdo, $proie102), in_array('levee_en_attente', causes($pdo, $proie102), true)];
 $journal102->refuse = null;
 $pdo->exec('DELETE FROM mod_sweeps');
 Moderate::applyVote($pdo, membre($pdo, 'tiers-2-102'), 'member', $ailleurs102, -1, motif(), 'agressif');
 $leve102 = array_values(array_filter($journal102->actes, static fn (array $a): bool => $a['acte'] === 'ban_leve' && $a['compte'] === $proie102));
-$fin102 = [Moderate::estBanni($pdo, $proie102), bloquesMeute($pdo, $proie102)];
+$fin102 = [Moderate::estBanni($pdo, $proie102), bloquesMeute($pdo, $proie102), in_array('levee_en_attente', causes($pdo, $proie102), true)];
 Moderate::setJournal($journalAvant102);
-$banni102 && $vote102 === 'passé' && $attente102 === [true, 0] && $fin102 === [false, 1] && count($leve102) === 1
-    ? ok('⭐ un refus du journal sur la levée d\'un compte que le vote ne vise pas ne le fait pas tomber ; la levée se fait au balayage suivant')
+$banni102 && $vote102 === 'passé' && $attente102 === [true, 0, true] && $fin102 === [false, 1, false] && count($leve102) === 1
+    ? ok('⭐ un refus du journal sur la levée d\'un compte que le vote ne vise pas ne le fait pas tomber ; la levée se signale, et se fait au balayage suivant')
     : nok('⭐ un refus de levée pour meute fait tomber le vote d\'un tiers, ou la levée se perd : ' . json_encode([
         'banni' => $banni102, 'vote' => $vote102, 'attente' => $attente102, 'fin' => $fin102, 'levees' => count($leve102),
     ], JSON_UNESCAPED_UNICODE));
@@ -3978,7 +3979,9 @@ $banni102 && $vote102 === 'passé' && $attente102 === [true, 0] && $fin102 === [
 // ── 103. ⭐ Un compte refusé à chaque passe ne retient pas les signalés qui le suivent ─
 // Les comptes déjà signalés passent en dernier, le plus anciennement refusé
 // d'abord. Rangés par fin de peine, un compte que le journal refuse à chaque
-// passe ouvrait le groupe, et son refus coupait tous ceux qui le suivaient.
+// passe ouvrait le groupe, et son refus coupait tous ceux qui le suivaient. Le
+// refusé est ici le plus anciennement signalé : il ne passe derrière les autres
+// que parce que son refus le date.
 $journalAvant103 = Moderate::journal();
 $journal103 = new class implements \Pierroons\SelfModerate\Journal {
     public ?int $refuse = null;
@@ -4001,7 +4004,7 @@ Moderate::setJournal($journal103);
 $refuse103 = membre($pdo, 'refuse-103');
 $signaleA103 = membre($pdo, 'signale-a-103');
 $signaleB103 = membre($pdo, 'signale-b-103');
-foreach ([$refuse103 => [500, 5], $signaleA103 => [400, 3000], $signaleB103 => [300, 3000]] as $id103 => [$fin103, $refus103]) {
+foreach ([$refuse103 => [500, 6000], $signaleA103 => [400, 3000], $signaleB103 => [300, 3000]] as $id103 => [$fin103, $refus103]) {
     Moderate::ensureRow($pdo, $id103);
     $pdo->prepare("UPDATE member_moderation
                       SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
@@ -4011,21 +4014,26 @@ foreach ([$refuse103 => [500, 5], $signaleA103 => [400, 3000], $signaleB103 => [
     planterSignal($pdo, $id103, 'journal_en_panne', time() - $refus103);
 }
 $journal103->refuse = $refuse103;
-$leve103 = null;
-try {
-    Moderate::balayerBansEchus($pdo);
-} catch (\RuntimeException $e103) {
-    $leve103 = $e103->getMessage();
+$leves103 = [];
+$fins103 = [];
+foreach ([1, 2] as $passe103) {
+    try {
+        Moderate::balayerBansEchus($pdo);
+        $leves103[] = null;
+    } catch (\RuntimeException $e103) {
+        $leves103[] = $e103->getMessage();
+    }
+    $fins103[] = array_map(static fn (int $id): int => count($journal103->inscrits->de($id, 'ban_fin')), [$refuse103, $signaleA103, $signaleB103]);
 }
-$fins103 = array_map(static fn (int $id): int => count($journal103->inscrits->de($id, 'ban_fin')), [$refuse103, $signaleA103, $signaleB103]);
 $journal103->refuse = null;
 Moderate::balayerBansEchus($pdo);
 $repris103 = count($journal103->inscrits->de($refuse103, 'ban_fin'));
 Moderate::setJournal($journalAvant103);
-$fins103 === [0, 1, 1] && str_contains((string) $leve103, "compte $refuse103") && $repris103 === 1
+$fins103 === [[0, 0, 0], [0, 1, 1]] && count(array_filter($leves103, static fn (?string $l): bool => str_contains((string) $l, "compte $refuse103"))) === 2
+    && $repris103 === 1
     ? ok('⭐ les comptes signalés derrière un compte refusé à chaque passe se referment dès la passe suivante ; lui attend son tour')
     : nok('⭐ un compte refusé à chaque passe retient les signalés qui le suivent : ' . json_encode([
-        'fins' => $fins103, 'levee' => $leve103, 'repris' => $repris103,
+        'fins' => $fins103, 'levees' => $leves103, 'repris' => $repris103,
     ], JSON_UNESCAPED_UNICODE));
 
 // ── 104. ⭐ Dans la transaction d'un hôte, un vote refusé ne crée pas la ligne du votant ─
@@ -4126,52 +4134,411 @@ $gestes106 === ['classer' => 'passé', 'bannir' => 'passé'] && count($fin106) =
         'gestes' => $gestes106, 'fins' => count($fin106), 'panne' => $panne106,
     ], JSON_UNESCAPED_UNICODE));
 
+/**
+ * Un serveur du lab sur l'instance du banc, pour jouer une route comme un client.
+ * Les prises sont celles que le banc a reposées, pas celles de la naissance de
+ * l'instance : la base du banc n'est pas celle qu'`instance_isolee()` a nommée.
+ *
+ * @param array<string, string> $prises celles qui changent pour ce serveur
+ * @return array{proc: resource, port: int, debout: bool}
+ */
+function serveurLab(array $prises = []): array
+{
+    static $lances = 0;
+    $port = 9900 + ((getmypid() + $lances++) % 90);
+    $env = [];
+    foreach (array_keys(instance_isolee()) as $prise) {
+        $env[$prise] = (string) getenv($prise);
+    }
+    $proc = proc_open(
+        [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', __DIR__ . '/../public'],
+        [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $tuyaux,
+        null,
+        array_merge($env, $prises)
+    );
+    $debout = false;
+    for ($i = 0; $i < 50 && !$debout; $i++) {
+        $sonde = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+        if ($sonde) {
+            fclose($sonde);
+            $debout = true;
+        } else {
+            usleep(100000);
+        }
+    }
+
+    return ['proc' => $proc, 'port' => $port, 'debout' => $debout];
+}
+
+function arreterLab(array $serveur): void
+{
+    proc_terminate($serveur['proc']);
+    proc_close($serveur['proc']);
+}
+
+/**
+ * Une requête au serveur du lab : son code et son corps. Avec un jeton de session,
+ * la session qu'il ouvre ; avec un jeton CSRF en plus, un POST.
+ *
+ * @return array{code: int, corps: string}
+ */
+function requeteLab(array $serveur, string $chemin, ?string $session = null, ?string $csrf = null): array
+{
+    if (!$serveur['debout']) {
+        return ['code' => 0, 'corps' => ''];
+    }
+    $entetes = $session !== null ? ['Cookie: lab_session=' . $session] : [];
+    $http = ['ignore_errors' => true, 'timeout' => 10];
+    if ($csrf !== null) {
+        $entetes[] = 'X-CSRF-Token: ' . $csrf;
+        $entetes[] = 'Content-Type: application/json';
+        $http += ['method' => 'POST', 'content' => '{}'];
+    }
+    $http['header'] = implode("\r\n", $entetes);
+    $corps = (string) @file_get_contents('http://127.0.0.1:' . $serveur['port'] . $chemin, false, stream_context_create(['http' => $http]));
+
+    return ['code' => (int) (explode(' ', $http_response_header[0] ?? 'HTTP/1.1 0')[1] ?? 0), 'corps' => $corps];
+}
+
+/** Une session d'arbitre, posée en base comme la connexion la pose : rend le jeton du cookie. */
+function sessionArbitre(PDO $pdo, string $nom): string
+{
+    $id = membre($pdo, $nom);
+    $pdo->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$id]);
+    // La forme qu'`Auth::estJeton()` accepte : 24 octets en hexadécimal.
+    $jeton = bin2hex(random_bytes(24));
+    $pdo->prepare('INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)')
+        ->execute([$id, Db::empreinteJeton($jeton), time()]);
+
+    return $jeton;
+}
+
+/** Le jeton CSRF qu'une page rend au navigateur. */
+function csrfDeLaPage(string $corps): ?string
+{
+    return preg_match('/window\.LAB_CSRF = "([^"]+)"/', $corps, $m) === 1 ? $m[1] : null;
+}
+
 // ── 107. ⭐ Une page qui lève après son en-tête rend un 500, pas une page coupée ─
 // Par HTTP, comme le visiteur. Le profil public lit la réputation après avoir écrit
 // son en-tête : sous la garde de la reprise, la page partait en 200, coupée à cet
-// endroit, l'erreur au milieu.
+// endroit, l'erreur au milieu. Un `PATH_INFO` qui glisse `/api/` dans l'URI n'en
+// fait pas une route d'API.
 $coupe107 = membre($pdo, 'page-coupee-107');
 poserReputation($pdo, $coupe107, 20);
 $pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")
     ->execute([$coupe107]);
-$port107 = 9900 + (getmypid() % 90);
-// Les prises telles que le banc les a reposées, pas celles de la naissance de
-// l'instance : la base du banc n'est pas celle qu'`instance_isolee()` a nommée.
-$env107 = [];
-foreach (array_keys(instance_isolee()) as $prise107) {
-    $env107[$prise107] = (string) getenv($prise107);
+$session108 = sessionArbitre($pdo, 'arbitre-108');
+$serveur107 = serveurLab();
+$pages107 = [];
+foreach (['/profile.php?u=page-coupee-107', '/profile.php/api/?u=page-coupee-107'] as $chemin107) {
+    $pages107[$chemin107] = requeteLab($serveur107, $chemin107);
 }
-$serveur107 = proc_open(
-    [PHP_BINARY, '-S', '127.0.0.1:' . $port107, '-t', __DIR__ . '/../public'],
-    [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
-    $tuyaux107,
-    null,
-    $env107
-);
-$debout107 = false;
-for ($i = 0; $i < 50 && !$debout107; $i++) {
-    $c107 = @fsockopen('127.0.0.1', $port107, $e1, $e2, 0.2);
-    if ($c107) {
-        fclose($c107);
-        $debout107 = true;
-    } else {
-        usleep(100000);
+$coupees107 = array_keys(array_filter($pages107, static fn (array $r): bool =>
+    $r['code'] !== 500 || !str_starts_with($r['corps'], '<!doctype html><meta charset="utf-8"><title>500</title>')));
+$serveur107['debout'] && $coupees107 === []
+    ? ok('⭐ une page qui lève après son en-tête rend un 500 et la page d\'erreur seule, sans le début de la page, `/api/` glissé dans son chemin compris')
+    : nok('⭐ une page qui lève après son en-tête part coupée : ' . json_encode([
+        'serveur' => $serveur107['debout'],
+        'coupees' => array_map(static fn (string $c): array => [$c, $pages107[$c]['code'], substr($pages107[$c]['corps'], 0, 80)], $coupees107),
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 108. ⭐ Sous une reprise oubliée, la console ne dit pas « aucun ban » ─────
+// La bannière dit que les listes ne peuvent pas s'afficher : la même page ne dit
+// pas, en dessous, qu'il n'y a ni ban ni signalement.
+$console108 = requeteLab($serveur107, '/admin.php', $session108);
+arreterLab($serveur107);
+Moderate::migrerSignaux($pdo);
+$console108['code'] === 200 && str_contains($console108['corps'], 'Les bans et les signalements ne peuvent pas s\'afficher')
+    && !str_contains($console108['corps'], 'Aucun ban en cours.') && !str_contains($console108['corps'], 'Aucun signalement en attente.')
+    ? ok('⭐ sous une reprise oubliée, la console dit pourquoi ses listes manquent, et ne les dit pas vides')
+    : nok('⭐ la console dit la reprise oubliée, puis « aucun ban » sur la même page : ' . json_encode([
+        'code' => $console108['code'],
+        'banniere' => str_contains($console108['corps'], 'ne peuvent pas s\'afficher'),
+        'aucun_ban' => str_contains($console108['corps'], 'Aucun ban en cours.'),
+        'aucun_signal' => str_contains($console108['corps'], 'Aucun signalement en attente.'),
+    ], JSON_UNESCAPED_UNICODE));
+
+/**
+ * Une proie bannie par deux votants qui ne se liaient pas encore : la meute ne se
+ * découvre qu'à un balayage du site, sur un compte que le vote qui balaie ne vise pas.
+ */
+function proieDeMeute(PDO $pdo, string $nom): int
+{
+    $proie = membre($pdo, 'proie-' . $nom);
+    poserReputation($pdo, $proie, 2);
+    $lie1 = membre($pdo, 'lie-1-' . $nom);
+    $lie2 = membre($pdo, 'lie-2-' . $nom);
+    trancheBalayee($pdo);
+    Moderate::applyVote($pdo, $lie1, 'member', $proie, -1, motif(), 'agressif');
+    Moderate::applyVote($pdo, $lie2, 'member', $proie, -1, motif(), 'agressif');
+    echangePrive($pdo, $lie1, $lie2);
+
+    return $proie;
+}
+
+/** Le premier vote négatif d'une tranche, sur un compte sans histoire : il balaie le site. */
+function voteQuiBalaie(PDO $pdo, string $nom): string
+{
+    $ailleurs = membre($pdo, 'ailleurs-' . $nom);
+    poserReputation($pdo, $ailleurs, 20);
+    $pdo->exec('DELETE FROM mod_sweeps');
+    try {
+        return (Moderate::applyVote($pdo, membre($pdo, 'tiers-' . $nom), 'member', $ailleurs, -1, motif(), 'agressif')['ok'] ?? false)
+            ? 'passé' : 'refusé';
+    } catch (\Throwable $e) {
+        return $e::class . ' : ' . $e->getMessage();
     }
 }
-$code107 = 0;
-$corps107 = '';
-if ($debout107) {
-    $corps107 = (string) @file_get_contents('http://127.0.0.1:' . $port107 . '/profile.php?u=page-coupee-107', false,
-        stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]]));
-    $code107 = (int) (explode(' ', $http_response_header[0] ?? 'HTTP/1.1 0')[1] ?? 0);
+
+/** Un journal qui accepte tout, sauf ce que `$refus` lève pour un acte. */
+final class JournalQuiRefuse implements \Pierroons\SelfModerate\Journal
+{
+    public array $actes = [];
+    /** @var (callable(array): void)|null */
+    public $refus = null;
+
+    public function inscrire(array $acte): void
+    {
+        if ($this->refus !== null) {
+            ($this->refus)($acte);
+        }
+        $this->actes[] = $acte;
+    }
+
+    public function de(int $compte, string $acte): array
+    {
+        return array_values(array_filter($this->actes, static fn (array $a): bool => $a['acte'] === $acte && $a['compte'] === $compte));
+    }
 }
-proc_terminate($serveur107);
-proc_close($serveur107);
+
+/** Le refus d'une seule levée pour meute, celle de ce compte. */
+function refuserLaLevee(int $compte, \Throwable $refus): callable
+{
+    return static function (array $acte) use ($compte, $refus): void {
+        if ($acte['acte'] === 'ban_leve' && $acte['compte'] === $compte) {
+            throw $refus;
+        }
+    };
+}
+
+function strikes(PDO $pdo, int $id): int
+{
+    return (int) etatBan($pdo, $id)['strikes'];
+}
+
+/** Le balayage du planificateur ; une exception qui en sort se rend, pour que le banc rougisse au lieu de s'arrêter. */
+function balayerLeSite(PDO $pdo): array
+{
+    try {
+        return Moderate::detectPackVoting($pdo);
+    } catch (\Throwable $e) {
+        return ['erreur' => $e::class . ' : ' . $e->getMessage()];
+    }
+}
+
+// ── 109. ⭐ Une levée refusée ne se perd pas en silence quand la peine échoit ───
+// La levée qu'un journal refuse attend le balayage suivant. Si la peine échoit
+// avant, ce balayage referme la peine et ne lève plus rien : la victime garde son
+// strike. Le planificateur la nomme, elle porte `levee_en_attente` jusqu'à
+// l'arbitre, la grâce rend le strike, et classée, la levée en attente se ferme.
+$journalAvant109 = Moderate::journal();
+$journal109 = new JournalQuiRefuse();
+Moderate::setJournal($journal109);
+$proie109 = proieDeMeute($pdo, '109');
+$classee109 = proieDeMeute($pdo, '109-classee');
+$journal109->refus = static function (array $acte) use ($proie109, $classee109): void {
+    if ($acte['acte'] === 'ban_leve' && in_array($acte['compte'], [$proie109, $classee109], true)) {
+        throw new RuntimeException('levée refusée');
+    }
+};
+$strikesAvant109 = strikes($pdo, $proie109);
+$planif109 = balayerLeSite($pdo);
+$nommes109 = array_values(array_filter($planif109['comptes_sautes'] ?? [], static fn (array $sa): bool =>
+    $sa['compte'] === $proie109 && $sa['raison'] === 'levee_refusee'));
+$signale109 = in_array('levee_en_attente', causes($pdo, $proie109), true);
+// La peine échoit avant le balayage suivant ; le journal revient.
+vieillirBan($pdo, $proie109, 400 * 86400);
+$journal109->refus = refuserLaLevee($classee109, new RuntimeException('levée refusée'));
+balayerLeSite($pdo);
+Moderate::balayerBansEchus($pdo);
+$echu109 = [
+    'leve'    => count($journal109->de($proie109, 'ban_leve')),
+    'fin'     => count($journal109->de($proie109, 'ban_fin')),
+    'signal'  => in_array('levee_en_attente', causes($pdo, $proie109), true),
+    'strikes' => strikes($pdo, $proie109),
+];
+Moderate::adminPardon($pdo, $proie109, 'arbitre-109');
+$gracie109 = ['strikes' => strikes($pdo, $proie109), 'signal' => in_array('levee_en_attente', causes($pdo, $proie109), true)];
+$vu109 = array_values(array_filter(Moderate::signauxOuverts($pdo, 500, 'levee_en_attente'), static fn (array $sg): bool => $sg['account_id'] === $classee109));
+$classe109 = $vu109 !== []
+    ? Moderate::adminClasser($pdo, $classee109, 'arbitre-109', motif(), ['signal' => $vu109[0]['signal'], 'detections' => $vu109[0]['detections']])
+    : ['ok' => false];
+$resteClasse109 = (int) $pdo->query("SELECT COUNT(*) FROM mod_signaux WHERE account_id = $classee109 AND cause = 'levee_en_attente'")->fetchColumn();
+$journal109->refus = null;
+Moderate::detectPackVoting($pdo);
+Moderate::setJournal($journalAvant109);
+$strikesAvant109 === 1 && count($nommes109) === 1 && $signale109
+    && $echu109 === ['leve' => 0, 'fin' => 1, 'signal' => true, 'strikes' => 1]
+    && $gracie109 === ['strikes' => 0, 'signal' => false]
+    && ($classe109['ok'] ?? false) && $resteClasse109 === 0
+    ? ok('⭐ une levée refusée se nomme au planificateur et reste signalée quand la peine échoit avant le balayage suivant ; la grâce rend le strike, le classement la ferme')
+    : nok('⭐ une levée refusée se perd en silence quand la peine échoit : ' . json_encode([
+        'strikes_avant' => $strikesAvant109, 'nommes' => $nommes109, 'signale' => $signale109,
+        'echu' => $echu109, 'gracie' => $gracie109, 'classe' => $classe109['ok'] ?? null, 'reste_classe' => $resteClasse109,
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 110. ⭐ Une erreur qui défait la transaction du vote remonte telle quelle ──
+// `SQLITE_FULL` défait toute la transaction, point de reprise compris. Contenue,
+// le vote poursuivait hors transaction en s'y croyant, et tombait plus loin sur
+// une autre erreur. Elle remonte, et la base reste comme avant le vote.
+$journalAvant110 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$proie110 = proieDeMeute($pdo, '110');
+$pdo->exec("CREATE TRIGGER defaite110 BEFORE UPDATE ON mod_votes WHEN OLD.target_author = $proie110
+            BEGIN SELECT RAISE(ROLLBACK, 'base défaite au banc'); END");
+$votesAvant110 = (int) $pdo->query('SELECT COUNT(*) FROM mod_votes')->fetchColumn();
+$vote110 = voteQuiBalaie($pdo, '110');
+$votesApres110 = (int) $pdo->query('SELECT COUNT(*) FROM mod_votes')->fetchColumn();
+$pdo->exec('DROP TRIGGER defaite110');
+Moderate::detectPackVoting($pdo);
+Moderate::setJournal($journalAvant110);
+str_contains($vote110, 'base défaite au banc') && $votesApres110 === $votesAvant110
+    ? ok('⭐ une erreur qui défait la transaction du vote remonte telle quelle, et le vote ne laisse rien')
+    : nok('⭐ le balayage avale une erreur qui a défait la transaction du vote : ' . json_encode([
+        'vote' => $vote110, 'votes_avant' => $votesAvant110, 'votes_apres' => $votesApres110,
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 111. ⭐ Un journal qui rappelle le moteur pendant la levée d'autrui remonte ──
+// Une `LectureDansUneEcriture` est une erreur d'intégration : le vote d'un tiers
+// la rend, au lieu de sauter le compte comme pour un refus.
+$journalAvant111 = Moderate::journal();
+$journal111 = new JournalQuiRefuse();
+Moderate::setJournal($journal111);
+$proie111 = proieDeMeute($pdo, '111');
+$journal111->refus = static function (array $acte) use ($pdo, $proie111): void {
+    if ($acte['acte'] === 'ban_leve' && $acte['compte'] === $proie111) {
+        Moderate::getReputation($pdo, $proie111);
+    }
+};
+$vote111 = voteQuiBalaie($pdo, '111');
+$journal111->refus = null;
+Moderate::detectPackVoting($pdo);
+Moderate::setJournal($journalAvant111);
+str_starts_with($vote111, \Pierroons\SelfModerate\LectureDansUneEcriture::class)
+    ? ok('⭐ un journal qui rappelle le moteur pendant la levée d\'un autre compte fait remonter l\'erreur d\'intégration')
+    : nok('⭐ le balayage saute une erreur d\'intégration comme un refus : ' . $vote111);
+
+// ── 112. ⭐ Un refus est une exception, un défaut de code n'en est pas un ──────
+// Le contrat du journal : un refus se lève par n'importe quelle exception —
+// `InvalidArgumentException` comprise, que le balayage contient. Une `TypeError`
+// est un bug : le vote d'un tiers la rend.
+$journalAvant112 = Moderate::journal();
+$journal112 = new JournalQuiRefuse();
+Moderate::setJournal($journal112);
+$proieLogique112 = proieDeMeute($pdo, '112-logique');
+$journal112->refus = refuserLaLevee($proieLogique112, new InvalidArgumentException('acte refusé par sa politique'));
+$voteLogique112 = voteQuiBalaie($pdo, '112-logique');
+$journal112->refus = null;
+Moderate::detectPackVoting($pdo);
+$proieBug112 = proieDeMeute($pdo, '112-bug');
+$journal112->refus = refuserLaLevee($proieBug112, new TypeError('un défaut du journal'));
+$voteBug112 = voteQuiBalaie($pdo, '112-bug');
+$journal112->refus = null;
+Moderate::detectPackVoting($pdo);
+Moderate::setJournal($journalAvant112);
+$voteLogique112 === 'passé' && str_starts_with($voteBug112, 'TypeError')
+    ? ok('⭐ un refus par une exception ordinaire est contenu, une Error remonte dans le vote d\'un tiers')
+    : nok('⭐ le balayage prend un défaut de code pour un refus, ou un refus pour un défaut : ' . json_encode([
+        'logique' => $voteLogique112, 'bug' => $voteBug112,
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 113. ⭐ Un votant de la meute de la cible ne fait pas tomber le vote sur elle ─
+// Son second épisode le signale à l'arbitre ; sa reprise oubliée refuse ce signal.
+// Le votant n'est pas la cible du vote : il est sauté, l'épisode se consigne.
+$journalAvant113 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$meute113 = [membre($pdo, 'meute-1-113'), membre($pdo, 'meute-2-113')];
+episodeMeute($pdo, $meute113, 'premiere-113');
+vieillirSanctions($pdo, $meute113, Moderate::config()->meuteEpisodeCooldown + 60);
+$cible113 = membre($pdo, 'cible-113');
+$post113 = message($pdo, $cible113, 'fil-113');
+Moderate::applyVote($pdo, $meute113[0], 'post', $post113, -1, motif(), 'agressif');
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")->execute([$meute113[0]]);
+$pdo->prepare('DELETE FROM mod_signaux WHERE account_id = ?')->execute([$meute113[0]]);
+try {
+    $vote113 = (Moderate::applyVote($pdo, $meute113[1], 'post', $post113, -1, motif(), 'agressif')['ok'] ?? false) ? 'passé' : 'refusé';
+} catch (\Throwable $e113) {
+    $vote113 = $e113::class;
+}
 Moderate::migrerSignaux($pdo);
-$debout107 && $code107 === 500 && str_starts_with($corps107, '<!doctype html><meta charset="utf-8"><title>500</title>')
-    ? ok('⭐ une page qui lève après son en-tête rend un 500 et la page d\'erreur seule, sans le début de la page')
-    : nok('⭐ une page qui lève après son en-tête part coupée : ' . json_encode([
-        'serveur' => $debout107, 'code' => $code107, 'debut' => substr($corps107, 0, 80),
+$rang113 = Moderate::rangDe($pdo, $meute113[0]);
+Moderate::setJournal($journalAvant113);
+$vote113 === 'passé' && $rang113 === 2
+    ? ok('⭐ la reprise oubliée d\'un votant de la meute de la cible ne fait pas tomber le vote sur elle ; l\'épisode se consigne')
+    : nok('⭐ la reprise oubliée d\'un votant fait tomber le vote sur la cible de sa meute : ' . json_encode([
+        'vote' => $vote113, 'rang' => $rang113,
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 114. ⭐ Un motif qui n'est pas du texte se refuse avant la base ───────────
+// Le validateur est un écrivain de plus du motif : des octets hors UTF-8 se
+// refusent là, avant que la base les garde et que le journal les substitue.
+$journalAvant114 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$illisible114 = 'Il a répondu plut' . "\xF4" . 't que de lire, trois fois de suite ce soir sur le forum.';
+[$valide114, $pourquoi114] = Moderate::validateReason($illisible114);
+$cible114 = membre($pdo, 'motif-illisible-114');
+$ban114 = Moderate::adminBan($pdo, $cible114, 'arbitre-114', $illisible114);
+Moderate::setJournal($journalAvant114);
+$valide114 === false && ($ban114['ok'] ?? true) === false && ($ban114['message'] ?? '') === $pourquoi114
+    && !Moderate::estBanni($pdo, $cible114)
+    ? ok('⭐ un motif qui n\'est pas de l\'UTF-8 valide est refusé, au validateur comme au ban d\'arbitre')
+    : nok('⭐ un motif illisible passe le validateur, et la base garde ses octets : ' . json_encode([
+        'valide' => $valide114, 'ban' => $ban114['ok'] ?? null, 'banni' => Moderate::estBanni($pdo, $cible114),
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+
+// ── 115. ⭐ Le planificateur nomme ce qu'il saute, et dit une panne comme une panne ─
+// Par la route, avec une session d'arbitre. Sous un journal qui refuse, la levée
+// pour meute d'un compte se nomme dans `comptes_sautes`. Une `PDOException` du
+// balayage n'est pas un refus du journal : elle ne se range pas dans
+// `fins_en_attente` avec `ok: true` et le message SQL, elle rend le 500 du lab.
+$journalAvant115 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$proie115 = proieDeMeute($pdo, '115');
+Moderate::setJournal($journalAvant115);
+$refuse115 = $dir . '/journal-qui-refuse-115';
+mkdir($refuse115);
+$serveurRefus115 = serveurLab(['LAB_MODERATION_LOG' => $refuse115]);
+$sessionRefus115 = sessionArbitre($pdo, 'arbitre-refus-115');
+$csrfRefus115 = csrfDeLaPage(requeteLab($serveurRefus115, '/admin.php', $sessionRefus115)['corps']);
+$sautes115 = $csrfRefus115 !== null ? requeteLab($serveurRefus115, '/api/detect_abuse.php', $sessionRefus115, $csrfRefus115) : ['code' => 0, 'corps' => ''];
+arreterLab($serveurRefus115);
+rmdir($refuse115);
+Moderate::detectPackVoting($pdo);
+$nommes115 = array_values(array_filter(json_decode($sautes115['corps'], true)['comptes_sautes'] ?? [], static fn (array $sa): bool =>
+    $sa['compte'] === $proie115 && $sa['raison'] === 'levee_refusee'));
+$session115 = sessionArbitre($pdo, 'arbitre-115');
+$echu115 = membre($pdo, 'echu-115');
+Moderate::ensureRow($pdo, $echu115);
+$pdo->prepare("UPDATE member_moderation SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = 'motif du banc'
+                WHERE account_id = ?")->execute([time() - 10, time() - 100, $echu115]);
+$pdo->exec("CREATE TRIGGER panne115 BEFORE UPDATE ON member_moderation WHEN OLD.account_id = $echu115
+            BEGIN SELECT RAISE(ABORT, 'disque plein simulé'); END");
+$serveur115 = serveurLab();
+$csrf115 = csrfDeLaPage(requeteLab($serveur115, '/admin.php', $session115)['corps']);
+$planif115 = $csrf115 !== null ? requeteLab($serveur115, '/api/detect_abuse.php', $session115, $csrf115) : ['code' => 0, 'corps' => ''];
+arreterLab($serveur115);
+$pdo->exec('DROP TRIGGER panne115');
+$pdo->prepare('UPDATE member_moderation SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL WHERE account_id = ?')
+    ->execute([$echu115]);
+$reponse115 = json_decode($planif115['corps'], true);
+$sautes115['code'] === 200 && count($nommes115) === 1
+    && $planif115['code'] === 500 && ($reponse115['ok'] ?? null) === false && !str_contains($planif115['corps'], 'SQLSTATE')
+    ? ok('⭐ le planificateur nomme la levée qu\'un journal refuse, et une panne de la base rend son 500, pas un « ok » qui la range parmi les refus du journal')
+    : nok('⭐ le planificateur tait un compte sauté, ou dit une panne de la base comme un refus du journal : ' . json_encode([
+        'sautes' => [$sautes115['code'], substr($sautes115['corps'], 0, 160)],
+        'csrf' => $csrf115 !== null, 'code' => $planif115['code'], 'debut' => substr($planif115['corps'], 0, 160),
     ], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─

@@ -2233,8 +2233,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 166/166 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 166 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 174/174 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 174 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -3158,46 +3158,70 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate tait une reprise oubliée à l'arbitre, fait tomber le vote d'un tiers, ou laisse le journal fermer un geste
+      - name: Canari — SelfModerate tait une reprise oubliée à l'arbitre, fait tomber le vote d'un tiers, perd en silence une levée refusée, ou laisse le journal fermer un geste
         run: |
           # @plante
           # Les gardes de la 0.7.1, retirées tour à tour : la sonde des listes de
           # l'arbitre ; la prise du balayage sur un compte que le vote ne vise pas,
-          # pour une reprise oubliée puis pour un refus du journal ; la reprise
-          # oubliée sautée par le balayage ; la file des signalés rangée par leur
-          # dernier refus ; la valeur texte rendue lisible avant le journal ; la
-          # ligne du votant que le rattrapage d'un hôte ne crée pas ; le balayage
-          # qui refuse la transaction d'un hôte ; la page tamponnée du lab.
-          for cas in listes autrui levee rayon tour lisible ligne hote page; do
-            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php; do cp "$f" "/tmp/autrui.$(basename "$f").intact"; done
+          # pour une reprise oubliée, pour un refus du journal, pour une exception
+          # ordinaire, et ce qu'elle laisse remonter — une erreur d'intégration, une
+          # Error, une transaction défaite ; la levée refusée signalée, nommée, levée
+          # quand elle est faite, fermée quand elle est classée ; le votant de la
+          # meute de la cible ; la reprise oubliée sautée par le balayage ; la file
+          # des signalés rangée par leur dernier refus, et la date de ce refus ; la
+          # valeur texte rendue lisible avant le journal ; le motif refusé s'il n'est
+          # pas du texte ; la ligne du votant que le rattrapage d'un hôte ne crée
+          # pas ; le balayage qui refuse la transaction d'un hôte ; la page
+          # tamponnée du lab, décidée sur le script servi ; la console qui ne dit
+          # pas ses listes vides ; le planificateur qui dit une panne de la base.
+          for cas in listes autrui levee logique exception lecture perdue signal saute faite classer cible rayon tour date lisible utf8 ligne hote page script console base; do
+            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php; do cp "$f" "/tmp/autrui.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
           import os
           M, B = 'bi-self/selfmoderate/src/Moderate.php', 'demo/lab/lib/bootstrap.php'
+          A, D = 'demo/lab/public/admin.php', 'demo/lab/public/api/detect_abuse.php'
           fichier, avant, apres, n = {
               'listes':  (M, "        self::exigerRepriseFaite($pdo);\n        $maintenant = time();\n", "        $maintenant = time();\n", 1),
               'autrui':  (M, "        if ($compte === $voteSur) {\n            return $geste();\n        }\n", "        if (true) {\n            return $geste();\n        }\n", 1),
-              'levee':   (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Throwable $e) {\n            error_log(sprintf('SelfModerate : le balayage saute",
-                             "        } catch (LectureDansUneEcriture | \\RuntimeException $e) {\n            throw $e;\n        } catch (\\Throwable $e) {\n            error_log(sprintf('SelfModerate : le balayage saute", 1),
+              'levee':   (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                             "        } catch (LectureDansUneEcriture | \\RuntimeException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'logique': (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                             "        } catch (LectureDansUneEcriture | \\LogicException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'exception': (M, "        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                               "        } catch (\\Throwable $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'lecture': (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                             "        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'perdue':  (M, "            if ($e === self::$transactionDefaitePar) {\n                throw $e;\n            }\n", "", 1),
+              'signal':  (M, "                    if ($leveeRefusee) {\n                        self::surAutrui(", "                    if (false) {\n                        self::surAutrui(", 1),
+              'saute':   (M, "            $sautes[] = [\n                'compte' => $compte,", "            $sautesTus[] = [\n                'compte' => $compte,", 1),
+              'faite':   (M, "            self::designaler($pdo, $author, 'ban_auto', 'levee_en_attente');\n", "            self::designaler($pdo, $author, 'ban_auto');\n", 1),
+              'classer': (M, "            if ($vise['cause'] === 'levee_en_attente') {\n                self::designaler(", "            if (false) {\n                self::designaler(", 1),
+              'cible':   (M, "                self::surAutrui($voter, $voteSur, static function () use ($pdo, $voter): bool {", "                self::surAutrui($voter, $voter, static function () use ($pdo, $voter): bool {", 1),
               'rayon':   (M, "            } catch (RepriseManquante $e) {\n                $sansReprise ??= $e;\n", "            } catch (\\DomainException $e) {\n                $sansReprise ??= $e;\n", 1),
               'tour':    (M, "                    (SELECT s.derniere_le FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),\n", "", 1),
+              'date':    (M, "                $pdo->prepare(\"UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ? AND cause = 'journal_en_panne'\")\n                    ->execute([$t, $accountId]);\n", "", 1),
               'lisible': (M, "            if (is_string($valeur) && preg_match('//u', $valeur) !== 1) {\n", "            if (false) {\n", 1),
+              'utf8':    (M, "        if (preg_match('//u', $texte) !== 1) {\n", "        if (false) {\n", 1),
               'ligne':   (M, "contenir: true, creer: false));", "contenir: true));", 1),
               'hote':    (M, "        if (self::dansLaTransactionDeLHote($pdo)) {\n            throw new \\LogicException('SelfModerate : balayerBansEchus()",
                              "        if (false) {\n            throw new \\LogicException('SelfModerate : balayerBansEchus()", 1),
-              'page':    (B, "    if (!est_route_api($_SERVER['REQUEST_URI'] ?? '/')) {\n        ob_start();\n    }\n", "", 1),
+              'page':    (B, "    if (!est_route_api($_SERVER['SCRIPT_NAME'] ?? '/')) {\n        ob_start();\n    }\n", "", 1),
+              'script':  (B, "    if (!est_route_api($_SERVER['SCRIPT_NAME'] ?? '/')) {\n", "    if (!est_route_api($_SERVER['REQUEST_URI'] ?? '/')) {\n", 1),
+              'console': (A, "  <?php if ($repriseManquante !== null): ?><?php elseif (!$bans): ?>", "  <?php if (!$bans): ?>", 1),
+              'base':    (D, "} catch (\\PDOException $e) {\n    throw $e;\n} catch (\\RuntimeException $e) {\n", "} catch (\\RuntimeException $e) {\n", 1),
           }[os.environ['CAS']]
           s = open(fichier, encoding='utf-8').read()
           assert s.count(avant) == n, 'plantation impossible'
           open(fichier, 'w', encoding='utf-8').write(s.replace(avant, apres))
           PY
             plante=$?
-            restaurer() { for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php; do cp "/tmp/autrui.$(basename "$f").intact" "$f"; done; }
+            restaurer() { for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php; do cp "/tmp/autrui.$(basename "$f").intact" "$f"; done; }
             [ $plante -eq 0 ] || { restaurer; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
             if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
               restaurer; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
             fi
             restaurer
-            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php; do
+            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php; do
               cmp -s "/tmp/autrui.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
             done
             if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
@@ -3207,12 +3231,26 @@ jobs:
               listes)  attendu="une liste de l'arbitre tait une reprise oubliée" ;;
               autrui)  attendu="la reprise oubliée d'un compte fait tomber le vote d'un tiers" ;;
               levee)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers" ;;
+              logique) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
+              exception) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
+              lecture) attendu="le balayage saute une erreur d'intégration comme un refus" ;;
+              perdue)  attendu="le balayage avale une erreur qui a défait la transaction du vote" ;;
+              signal)  attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              saute)   attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              faite)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers, ou la levée se perd" ;;
+              classer) attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              cible)   attendu="la reprise oubliée d'un votant fait tomber le vote sur la cible de sa meute" ;;
               rayon)   attendu="une reprise oubliée arrête le balayage" ;;
               tour)    attendu="un compte refusé à chaque passe retient les signalés qui le suivent" ;;
+              date)    attendu="un compte refusé à chaque passe retient les signalés qui le suivent" ;;
               lisible) attendu="une cause illisible ferme un geste de l'arbitre, ou fige une peine" ;;
+              utf8)    attendu="un motif illisible passe le validateur" ;;
               ligne)   attendu="un vote refusé écrit la ligne de son votant" ;;
               hote)    attendu="le balayage inscrit des fins dans la transaction d'un hôte" ;;
               page)    attendu="une page qui lève après son en-tête part coupée" ;;
+              script)  attendu="une page qui lève après son en-tête part coupée" ;;
+              console) attendu="la console dit la reprise oubliée, puis « aucun ban »" ;;
+              base)    attendu="dit une panne de la base comme un refus du journal" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

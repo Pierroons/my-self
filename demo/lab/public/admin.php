@@ -72,6 +72,7 @@ $causes = [
     'votant_etendu'   => 'votant qui vise trop de membres différents',
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
+    'levee_en_attente' => 'meute reconnue, levée du ban non inscrite : le journal l\'a refusée — la grâce rend le strike',
     'ban_auto'        => 'ban automatique en cours',
     'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
 ];
@@ -183,7 +184,7 @@ table.adm tr:last-child td{border-bottom:none}
     <?php endif; ?>
     Lever un ban avant son plancher (<?= (int) round(Moderate::config()->plancherFraction * 100) ?> % de la peine) exige un motif, et s'inscrit comme levée anticipée.
   </p>
-  <?php if (!$bans): ?><p class="muted">Aucun ban en cours.</p><?php else: ?>
+  <?php if ($repriseManquante !== null): ?><?php elseif (!$bans): ?><p class="muted">Aucun ban en cours.</p><?php else: ?>
   <table class="adm"><tr><th>Compte</th><th>Origine</th><th>Motif</th><th>Chute</th><th>Fin</th><th>Reste</th><th>Plancher</th><th></th></tr>
     <?php foreach ($bans as $b): ?>
       <tr><td>@<?= h($b['username']) ?><?php if ($b['a_revoir']): ?> <span class="tag-sm" style="color:var(--warn);border-color:var(--warn)">à revoir</span><?php endif; ?></td>
@@ -204,7 +205,7 @@ table.adm tr:last-child td{border-bottom:none}
   </table><?php endif; ?>
 
   <h3 style="margin:16px 0 6px;font-size:14px">🔎 Signalements à arbitrer</h3>
-  <?php if (!$aRevoir): ?><p class="muted">Aucun signalement en attente.</p><?php else: ?>
+  <?php if ($repriseManquante !== null): ?><?php elseif (!$aRevoir): ?><p class="muted">Aucun signalement en attente.</p><?php else: ?>
   <table class="adm"><tr><th>Compte</th><th>Fois</th><th>Depuis</th><th>Réputation</th><th></th></tr>
     <?php $causeVue = null; foreach ($aRevoir as $f): ?>
       <?php if ($f['cause'] !== $causeVue): $causeVue = $f['cause']; $affiches = count(array_filter($aRevoir, static fn (array $s): bool => $s['cause'] === $causeVue)); ?>

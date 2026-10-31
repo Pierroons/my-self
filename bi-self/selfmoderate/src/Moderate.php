@@ -560,8 +560,8 @@ class Moderate
      * journal refuse à chaque passe ne retient pas ceux qui le suivent.
      *
      * Un compte dont la reprise d'avant la 0.7.0 manque (`RepriseManquante`)
-     * n'arrête pas la passe non plus : il est sauté, et levé à la fin, avant le
-     * refus du journal. Hors de la transaction d'un hôte seulement : une fin y
+     * n'arrête pas la passe non plus : il est sauté, et levé à la fin, à la place
+     * d'un refus du journal, qui reste signalé sur son compte. Hors de la transaction d'un hôte seulement : une fin y
      * serait inscrite au journal et survivrait à l'annulation que l'hôte décide.
      */
     public static function balayerBansEchus(PDO $pdo, int $limite = 500): int
@@ -688,6 +688,11 @@ class Moderate
     public static function validateReason(?string $reason): array
     {
         $texte = trim((string) $reason);
+        // Un motif est lu par l'arbitre et inscrit au journal : des octets qui ne
+        // forment pas de l'UTF-8 se refusent ici, avant que la base les garde.
+        if (preg_match('//u', $texte) !== 1) {
+            return [false, static::t('Ce motif n\'est pas du texte lisible : réécris-le.')];
+        }
         $n = mb_strlen($texte, 'UTF-8');
         if ($n < self::REASON_MIN_CHARS) {
             return [false, sprintf(
@@ -796,7 +801,8 @@ class Moderate
      * qui reste maître de la sienne. Ce qui refuse sans rien écrire se décide
      * avant : paramètres, droit de vote, motif, cible — sauf dans la transaction
      * d'un hôte, où le rattrapage du votant prend d'abord le verrou d'écriture,
-     * refus compris, et l'hôte le garde jusqu'à sa fin (`rattraperSeul()`).
+     * refus compris — sauf celui de paramètres invalides —, et l'hôte le garde
+     * jusqu'à sa fin (`rattraperSeul()`).
      *
      * Le journal s'écrit hors de la base, avant elle : une validation qui
      * échoue après lui laisse une entrée sans effet, jamais une peine sans
@@ -849,6 +855,12 @@ class Moderate
 
     /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
     private static ?PDO $transactionOuverteSur = null;
+
+    /**
+     * L'exception après laquelle la base a défait la transaction qui contenait un
+     * point de reprise : rien ne s'écrit plus sous elle (`surAutrui()`).
+     */
+    private static ?\Throwable $transactionDefaitePar = null;
 
     /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
     private static function enTransaction(PDO $pdo): bool
@@ -914,6 +926,10 @@ class Moderate
                     self::ordonner($pdo, $ordre);
                 } catch (\Throwable) {
                     // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
+                    // Un point de reprise disparu dit que la transaction qui le contenait l'est aussi.
+                    if (!$propre) {
+                        self::$transactionDefaitePar = $e;
+                    }
                 }
             }
             throw $e;
@@ -1262,6 +1278,10 @@ class Moderate
      *
      * `$seulement` borne le passage à une cible : un vote ne peut faire naître
      * une meute ou une salve que sur la sienne. Sans lui, tout le site.
+     *
+     * `comptes_sautes` nomme les comptes qu'un refus a fait sauter, avec sa
+     * raison : `reprise_manquante`, `levee_refusee` (le compte porte alors
+     * `levee_en_attente`), ou `refus`. Le passage les retrouve au suivant.
      */
     public static function detectPackVoting(PDO $pdo, ?int $seulement = null): array
     {
@@ -1283,6 +1303,7 @@ class Moderate
         $salves = [];
         $cancelled = 0;
         $tronques = [];
+        $sautes = [];
 
         // ── Meute : fenêtre longue, critère relationnel ──────────────────────
         $sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 86400;
@@ -1319,7 +1340,7 @@ class Moderate
                     self::signaler($pdo, $author, 'votants_tronques');
 
                     return true;
-                });
+                }, $sautes);
                 if ($signale === null) {
                     continue;
                 }
@@ -1354,17 +1375,31 @@ class Moderate
                 // rattraperait — les votes annulés ne s'annulent plus. Les rangs
                 // passent avant la restitution, qui peut écrire au journal : un
                 // échec sur eux défait tout avant que rien ne soit inscrit.
-                $episode = self::surAutrui($author, $voteSur, static fn (): ?array => self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler): ?array {
-                    $voteIds = self::annulerVotes($pdo, $aAnnuler);
-                    if (!$voteIds) {
-                        return null;
-                    }
-                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);
-                    self::restoreAfterCancel($pdo, $author, $voteIds);
+                $leveeRefusee = false;
+                $episode = self::surAutrui($author, $voteSur, static function () use ($pdo, $author, $groupe, $aAnnuler, $voteSur, &$sautes, &$leveeRefusee): ?array {
+                    return self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler, $voteSur, &$sautes, &$leveeRefusee): ?array {
+                        $voteIds = self::annulerVotes($pdo, $aAnnuler);
+                        if (!$voteIds) {
+                            return null;
+                        }
+                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);
+                        self::restoreAfterCancel($pdo, $author, $voteIds, $leveeRefusee);
 
-                    return ['votes' => $voteIds, 'rangs' => $rangs];
-                }));
+                        return ['votes' => $voteIds, 'rangs' => $rangs];
+                    });
+                }, $sautes, static function () use (&$leveeRefusee): string {
+                    return $leveeRefusee ? 'levee_refusee' : 'refus';
+                });
                 if ($episode === null) {
+                    // La levée défaite reste due : l'arbitre le voit sur le compte, et le
+                    // balayage suivant la refait tant que la peine court.
+                    if ($leveeRefusee) {
+                        self::surAutrui($author, $voteSur, static function () use ($pdo, $author): bool {
+                            self::signaler($pdo, $author, 'levee_en_attente');
+
+                            return true;
+                        }, $sautes);
+                    }
                     continue;
                 }
                 $cancelled += count($episode['votes']);
@@ -1425,7 +1460,7 @@ class Moderate
                 self::signaler($pdo, $author, 'salve_rapide', $author === $voteSur);
 
                 return true;
-            });
+            }, $sautes);
             if ($signale === null) {
                 continue;
             }
@@ -1438,22 +1473,31 @@ class Moderate
             'packs'            => $packs,
             'salves'           => $salves,
             'voters_truncated' => $tronques,
+            'comptes_sautes'   => $sautes,
         ];
     }
 
     /**
-     * Ce qu'un balayage fait sur un compte que le vote qui le lance ne vise pas.
-     * Une reprise oubliée sur ce compte, ou un journal qui refuse l'acte d'une
-     * levée pour meute, ne défont pas le vote d'un tiers : le compte est sauté et
-     * consigné, son point de reprise défait, et la détection le retrouve au
-     * balayage suivant. La cible du vote n'y passe pas : ce que le vote cause
-     * s'inscrit, ou le vote tombe. Une `LectureDansUneEcriture` remonte toujours.
+     * Ce qu'un balayage fait sur un compte que le vote qui le lance ne vise pas :
+     * un compte balayé, ou un votant de la meute d'un autre. Un refus — une
+     * reprise oubliée sur ce compte, un journal qui refuse l'acte d'une levée pour
+     * meute, toute exception — ne défait pas le vote d'un tiers : le compte est
+     * sauté, son point de reprise défait, le saut rendu dans `$sautes` et écrit
+     * au journal d'erreurs, et la détection le retrouve au balayage suivant. La
+     * cible du vote n'y passe pas : ce que le vote cause s'inscrit, ou le vote
+     * tombe.
+     *
+     * Remontent toujours : une `LectureDansUneEcriture`, une `\Error` — un défaut
+     * de code n'est pas un refus —, et l'erreur après laquelle la base a défait la
+     * transaction du vote, sous laquelle plus rien ne s'écrit.
      *
      * @template T
-     * @param callable(): T $geste
+     * @param callable(): T            $geste
+     * @param list<array{compte: int, raison: string}> $sautes
+     * @param (callable(): string)|null $nommer la raison d'un saut qui n'est pas une reprise oubliée
      * @return T|null null quand le compte est sauté
      */
-    private static function surAutrui(int $compte, ?int $voteSur, callable $geste): mixed
+    private static function surAutrui(int $compte, ?int $voteSur, callable $geste, array &$sautes, ?callable $nommer = null): mixed
     {
         if ($compte === $voteSur) {
             return $geste();
@@ -1462,8 +1506,15 @@ class Moderate
             return $geste();
         } catch (LectureDansUneEcriture $e) {
             throw $e;
-        } catch (\Throwable $e) {
+        } catch (\Exception $e) {
+            if ($e === self::$transactionDefaitePar) {
+                throw $e;
+            }
             error_log(sprintf('SelfModerate : le balayage saute le compte %d, qu\'il retrouvera au balayage suivant — %s', $compte, $e->getMessage()));
+            $sautes[] = [
+                'compte' => $compte,
+                'raison' => $e instanceof RepriseManquante ? 'reprise_manquante' : ($nommer !== null ? $nommer() : 'refus'),
+            ];
 
             return null;
         }
@@ -1501,11 +1552,13 @@ class Moderate
      * Un ban automatique ne se lève que si la meute l'a CAUSÉ : des votes
      * annulés, posés avant son début, avaient un effet — sans eux, la
      * réputation ne serait pas tombée à zéro. La levée retire le strike de ce
-     * ban, et lui seul.
+     * ban, et lui seul, et lève une levée restée en attente (`levee_en_attente`).
+     * Un refus du journal sur son acte remonte, et `$leveeRefusee` le dit à
+     * qui la défait (`detecter()`).
      *
      * @param int[] $voteIds
      */
-    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds): void
+    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds, bool &$leveeRefusee = false): void
     {
         // Ce que le temps a fait au compte s'inscrit d'abord : une sortie de
         // convalescence efface les effets des votes reçus, et une restitution
@@ -1532,18 +1585,23 @@ class Moderate
             (int) $v['effet'] < 0 && (int) $v['created_at'] <= $rep['ban_debut']);
         if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []
             && $rep['reputation'] > self::config()->banA) {
-            self::inscrireAuJournal([
-                'acte'      => 'ban_leve',
-                'compte'    => $author,
-                'origine'   => 'auto',
-                'arbitre'   => null,
-                'motif'     => 'meute_detectee',
-                'cause'     => 'meute_detectee',
-                'anticipee' => false,
-                'reste'     => $rep['banned_until'] - time(),
-                'ouverts'   => self::causesEnTexte($rep['signaux']),
-                'ferme'     => self::fermesEnTexte(self::deCause($rep['signaux'], 'ban_auto')),
-            ]);
+            try {
+                self::inscrireAuJournal([
+                    'acte'      => 'ban_leve',
+                    'compte'    => $author,
+                    'origine'   => 'auto',
+                    'arbitre'   => null,
+                    'motif'     => 'meute_detectee',
+                    'cause'     => 'meute_detectee',
+                    'anticipee' => false,
+                    'reste'     => $rep['banned_until'] - time(),
+                    'ouverts'   => self::causesEnTexte($rep['signaux']),
+                    'ferme'     => self::fermesEnTexte(self::deCause($rep['signaux'], 'ban_auto', 'levee_en_attente')),
+                ]);
+            } catch (\Exception $e) {
+                $leveeRefusee = true;
+                throw $e;
+            }
             $pdo->prepare(
                 'UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
@@ -1551,7 +1609,7 @@ class Moderate
                         updated_at = ?
                   WHERE account_id = ?'
             )->execute([time(), $author]);
-            self::designaler($pdo, $author, 'ban_auto');
+            self::designaler($pdo, $author, 'ban_auto', 'levee_en_attente');
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -1600,11 +1658,15 @@ class Moderate
      * Le rang appartient au VOTANT. Compté sur la cible, un groupe qui change de
      * proie resterait au premier rang indéfiniment.
      *
+     * Le signal d'un votant que le vote ne vise pas passe par `surAutrui()` : sa
+     * reprise oubliée ne fait pas tomber le vote sur la cible.
+     *
      * @param  int[] $voters
      * @param  int[] $voteIds
+     * @param  list<array{compte: int, raison: string}> $sautes
      * @return array<int, array{voter: int, rang: int, action: string}>
      */
-    private static function consignerMeute(PDO $pdo, array $voters, int $author, array $voteIds): array
+    private static function consignerMeute(PDO $pdo, array $voters, int $author, array $voteIds, ?int $voteSur, array &$sautes): array
     {
         $maintenant = time();
         $rangs = [];
@@ -1647,7 +1709,11 @@ class Moderate
             )->execute([$voter, $author, $rang, $action, json_encode(array_values($voteIds)), $maintenant]);
 
             if (!$memeEpisode && $rang >= 2) {
-                self::signaler($pdo, $voter, 'meute_recidive');
+                self::surAutrui($voter, $voteSur, static function () use ($pdo, $voter): bool {
+                    self::signaler($pdo, $voter, 'meute_recidive');
+
+                    return true;
+                }, $sautes);
             }
             $rangs[] = ['voter' => $voter, 'rang' => $rang, 'action' => $action];
         }
@@ -1656,16 +1722,25 @@ class Moderate
     }
 
     /**
-     * Deux familles de signaux. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`,
-     * `journal_en_panne`) se déduit de la base et se lève seul quand l'état
-     * cesse. Un signal de COMPORTEMENT (une salve, une récidive de meute…) dit
-     * ce qui s'est passé, et seul un arbitre le ferme. Une cause que le moteur
+     * Deux familles de signaux. Un signal d'ÉTAT dit un état du compte, et se lève
+     * seul quand l'état cesse : `reputation_zero`, `ban_auto`, `journal_en_panne`
+     * se déduisent de la base ; `levee_en_attente`, une levée pour meute que le
+     * journal a refusée, cesse quand la levée est faite, par une grâce, ou quand
+     * un arbitre la classe — aucune colonne ne la porte, et la fin de la peine ne
+     * la lève pas. Un signal de COMPORTEMENT (une salve, une récidive de meute…)
+     * dit ce qui s'est passé, et seul un arbitre le ferme. Une cause que le moteur
      * ne connaît pas — reprise d'une base ancienne — est un comportement : ce
      * qu'il ne sait pas lever, un humain le ferme.
      */
     private static function famille(string $cause): string
     {
-        return in_array($cause, ['reputation_zero', 'ban_auto', 'journal_en_panne'], true) ? 'etat' : 'comportement';
+        return in_array($cause, self::causesEtat(), true) ? 'etat' : 'comportement';
+    }
+
+    /** Les causes d'état, que lisent `famille()` et la reprise (`migrerSignaux()`). */
+    private static function causesEtat(): array
+    {
+        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente'];
     }
 
     /**
@@ -1930,15 +2005,16 @@ class Moderate
                FROM member_moderation
               WHERE ban_origine = 'auto' AND banned_until > 0"
         );
-        $pdo->exec(
+        $etats = self::causesEtat();
+        $pdo->prepare(
             "UPDATE member_moderation
                 SET review_reason = COALESCE(
                         (SELECT cause FROM mod_signaux s WHERE s.account_id = member_moderation.account_id AND s.vu_le IS NULL
-                            AND s.cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne') ORDER BY s.id LIMIT 1),
+                            AND s.cause NOT IN (" . implode(', ', array_fill(0, count($etats), '?')) . ") ORDER BY s.id LIMIT 1),
                         (SELECT cause FROM mod_signaux s WHERE s.account_id = member_moderation.account_id AND s.vu_le IS NULL
                           ORDER BY s.id DESC LIMIT 1)),
                     needs_review = EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = member_moderation.account_id AND s.vu_le IS NULL)"
-        );
+        )->execute($etats);
 
         return (int) $pdo->query('SELECT COUNT(*) FROM mod_signaux')->fetchColumn() - $avant;
     }
@@ -2540,9 +2616,11 @@ class Moderate
      * comme pour un maintien.
      *
      * Un comportement classé se ferme. Une réputation à zéro classée reste en
-     * base, vue, tant que la réputation n'est pas remontée. Un ban automatique
-     * se maintient, il ne se classe pas, et une fin de peine qui attend le
-     * journal n'est pas au compte d'en répondre.
+     * base, vue, tant que la réputation n'est pas remontée. Une levée en attente
+     * classée se ferme : l'arbitre a jugé qu'il n'y a rien à rendre, et vue, elle
+     * ferait taire le refus suivant. Un ban automatique se maintient, il ne se
+     * classe pas, et une fin de peine qui attend le journal n'est pas au compte
+     * d'en répondre.
      *
      * `$vu` est ce que la console a affiché, `['signal' => id, 'detections' => n]` :
      * si le signal a été fermé ou redétecté depuis, le geste refuse — même
@@ -2598,7 +2676,11 @@ class Moderate
                 'ouverts' => self::causesEnTexte($etat['signaux']),
                 'ferme'   => self::fermesEnTexte([$vise]),
             ]);
-            self::retirerDeLaFile($pdo, $accountId, [$vise]);
+            if ($vise['cause'] === 'levee_en_attente') {
+                self::designaler($pdo, $accountId, 'levee_en_attente');
+            } else {
+                self::retirerDeLaFile($pdo, $accountId, [$vise]);
+            }
 
             return ['ok' => true, 'message' => static::t('Signalement classé.')];
         });

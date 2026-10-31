@@ -28,9 +28,10 @@ require_once __DIR__ . '/reponse.php';
 //
 // Une page HTML se rend dans un tampon : une exception levée après son en-tête la
 // remplace par cette réponse, en 500, au lieu d'arriver au milieu d'une page déjà
-// partie en 200 — et coupée là.
+// partie en 200 — et coupée là. Page ou route se décide sur le script servi : un
+// `PATH_INFO` met `/api/` dans l'URI d'une page.
 if (PHP_SAPI !== 'cli') {
-    if (!est_route_api($_SERVER['REQUEST_URI'] ?? '/')) {
+    if (!est_route_api($_SERVER['SCRIPT_NAME'] ?? '/')) {
         ob_start();
     }
     set_exception_handler(static function (\Throwable $e): void {
@@ -40,7 +41,7 @@ if (PHP_SAPI !== 'cli') {
         } catch (\Throwable) {
             $message = 'Service momentanément indisponible.';
         }
-        $api = est_route_api($_SERVER['REQUEST_URI'] ?? '/');
+        $api = est_route_api($_SERVER['SCRIPT_NAME'] ?? '/');
         while (ob_get_level() > 0) {
             ob_end_clean();
         }

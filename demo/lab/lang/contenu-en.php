@@ -259,6 +259,7 @@ return [
         => 'Vote recorded but neutralised: you have already voted against %d different members over the last %d days.',
     'Droit de vote suspendu jusqu\'au %s (participation à une meute).'
         => 'Voting rights suspended until %s (took part in a pack).',
+    'Ce motif n\'est pas du texte lisible : réécris-le.' => 'This reason is not readable text: write it again.',
     'Explique en %d caractères au moins : il en manque %d.' => 'Explain in at least %d characters: %d more needed.',
     'Un caractère est répété en rafale : écris une phrase.' => 'A character is repeated in a burst: write a sentence.',
     'Ce motif tourne sur trop peu de caractères différents.' => 'This reason uses too few different characters.',
