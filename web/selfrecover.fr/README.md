@@ -54,7 +54,7 @@ base la lirait.
 
 Chaque phrase sur le protocole s'appuie sur le README de SelfRecover, son modèle de menace et son code
 (`bi-self/selfrecover/`). Quand la bibliothèque change, c'est là que tu relis avant de toucher au texte d'ici.
-La conv qui porte le module a relu les affirmations le 4 octobre 2026.
+Les affirmations ont été relues contre le code de SelfRecover 0.13.1 le 31 octobre 2026.
 
 ## Les liens vers la bibliothèque
 

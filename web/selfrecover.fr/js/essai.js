@@ -4,7 +4,7 @@
   'use strict';
   var mot = document.getElementById('essai-mot');
   if (!mot || typeof window.srDerive !== 'function') return;
-  var PIEGE = 'selfrec0ver.fr';
+  var PIEGE = 'selfrec0ver.example';
   var hote = window.location.hostname.toLowerCase();
   var sortie = {
     ici: document.getElementById('essai-ici'),
