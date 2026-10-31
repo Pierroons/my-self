@@ -4742,6 +4742,13 @@ function courseApresUnRefus(PDO $pdo, Closure $faireProie, Closure $intermede, ?
     ];
 }
 
+/** Recule de $secondes les votes reçus par la proie et sa peine : son histoire reste la même, une seconde plus tôt. */
+function vieillirLaMeute(PDO $pdo, int $proie, int $secondes): void
+{
+    $pdo->prepare('UPDATE mod_votes SET created_at = created_at - ? WHERE target_author = ?')->execute([$secondes, $proie]);
+    vieillirBan($pdo, $proie, $secondes);
+}
+
 $erreurs117 = $dir . '/erreurs-117.log';
 $course117 = courseApresUnRefus($pdo,
     static function () use ($pdo): int {
@@ -4829,8 +4836,14 @@ $course121['final'] === ['intermede' => true, 'banni' => false, 'signal' => fals
 
 // ── 122. ⭐ Une levée suivie d'une seconde peine ne laisse pas de levée en attente ─
 // L'autre passage lève, puis un vote rebannit la proie : les strikes reviennent à
-// leur compte du refus. Les votes relus, tous annulés, disent que la levée est faite.
-$course122 = courseApresUnRefus($pdo, static fn (): int => proieDeMeute($pdo, '122'), static function (int $proie) use ($pdo): void {
+// leur compte du refus, et la peine neuve en demande un de plus. La première peine
+// est reculée de 30 s : la neuve commence à une autre seconde.
+$course122 = courseApresUnRefus($pdo, static function () use ($pdo): int {
+    $proie = proieDeMeute($pdo, '122');
+    vieillirLaMeute($pdo, $proie, 30);
+
+    return $proie;
+}, static function (int $proie) use ($pdo): void {
     Moderate::detectPackVoting($pdo);
     trancheBalayee($pdo);
     Moderate::applyVote($pdo, membre($pdo, 'tiers-122'), 'member', $proie, -1, motif(), 'agressif');
@@ -4838,6 +4851,75 @@ $course122 = courseApresUnRefus($pdo, static fn (): int => proieDeMeute($pdo, '1
 $course122['final'] === ['intermede' => true, 'banni' => true, 'signal' => false, 'strikes' => 1]
     ? ok('⭐ une levée suivie d\'une seconde peine entre le refus et la pose du signal ne laisse pas de levée en attente')
     : nok('⭐ une course pose une levée en attente sur la seconde peine d\'un compte levé : ' . json_encode($course122, JSON_UNESCAPED_UNICODE));
+
+// ── 123. ⭐ Une peine échue puis balayée entre le refus et la pose du signal garde sa levée en attente ─
+// La peine échoit, puis un autre passage redétecte la meute : il annule ses votes
+// sans rien lever, puisqu'il n'y a plus de peine. Ces votes annulés ne disent pas
+// que la levée est faite : le strike reste à rendre.
+$course123 = courseApresUnRefus($pdo, static fn (): int => proieDeMeute($pdo, '123'), static function (int $proie) use ($pdo): void {
+    vieillirBan($pdo, $proie, 400 * 86400);
+    Moderate::detectPackVoting($pdo);
+});
+$course123['final'] === ['intermede' => true, 'banni' => false, 'signal' => true, 'strikes' => 1]
+    && bloquesMeute($pdo, $course123['proie']) === 1
+    ? ok('⭐ une peine échue puis balayée entre le refus et la pose du signal garde sa levée en attente')
+    : nok('⭐ une peine échue puis balayée entre le refus et la pose du signal perd la levée en attente : ' . json_encode([
+        ...$course123, 'annules' => bloquesMeute($pdo, $course123['proie']),
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 124. ⭐ Une levée sur une meute rétrécie, suivie d'une seconde peine, ne laisse pas de levée en attente ─
+// Le 121, puis un vote rebannit la proie : un vote relu reste actif, et les strikes
+// reviennent à leur compte du refus. La peine neuve en demande un de plus.
+$premier124 = null;
+$course124 = courseApresUnRefus($pdo,
+    static function () use ($pdo, &$premier124): int {
+        $proie = membre($pdo, 'proie-124');
+        poserReputation($pdo, $proie, 3);
+        $lies = [membre($pdo, 'lie-1-124'), membre($pdo, 'lie-2-124'), membre($pdo, 'lie-3-124')];
+        $premier124 = $lies[0];
+        trancheBalayee($pdo);
+        foreach ($lies as $lie) {
+            Moderate::applyVote($pdo, $lie, 'member', $proie, -1, motif(), 'agressif');
+        }
+        echangePrive($pdo, $lies[0], $lies[1]);
+        echangePrive($pdo, $lies[0], $lies[2]);
+        echangePrive($pdo, $lies[1], $lies[2]);
+        $pdo->prepare('UPDATE member_moderation SET strikes = strikes + 1 WHERE account_id = ?')->execute([$proie]);
+        vieillirLaMeute($pdo, $proie, 30);
+
+        return $proie;
+    },
+    static function (int $proie) use ($pdo, &$premier124): void {
+        $pdo->prepare('UPDATE dm SET created_at = created_at - ? WHERE sender_id = ? OR recipient_id = ?')
+            ->execute([(Moderate::config()->fenetreMeuteJours + 10) * 86400, $premier124, $premier124]);
+        Moderate::detectPackVoting($pdo);
+        trancheBalayee($pdo);
+        Moderate::applyVote($pdo, membre($pdo, 'tiers-124'), 'member', $proie, -1, motif(), 'agressif');
+    });
+$course124['final'] === ['intermede' => true, 'banni' => true, 'signal' => false, 'strikes' => 2]
+    ? ok('⭐ une levée sur une meute rétrécie, suivie d\'une seconde peine, ne laisse pas de levée en attente')
+    : nok('⭐ une course pose une levée en attente sur la seconde peine d\'un compte levé par une meute rétrécie : ' . json_encode($course124, JSON_UNESCAPED_UNICODE));
+
+// ── 125. ⭐ Une grâce suivie d'un ban d'arbitre ne laisse pas de levée en attente ─
+// La grâce rend les strikes sans annuler les votes, puis l'arbitre bannit : les
+// strikes reviennent à leur compte du refus, et la peine neuve en demande un de plus.
+$grace125 = null;
+$ban125 = null;
+$course125 = courseApresUnRefus($pdo, static function () use ($pdo): int {
+    $proie = proieDeMeute($pdo, '125');
+    vieillirLaMeute($pdo, $proie, 30);
+
+    return $proie;
+}, static function (int $proie) use ($pdo, &$grace125, &$ban125): void {
+    $grace125 = Moderate::adminPardon($pdo, $proie, 'arbitre-125', motif())['ok'] ?? false;
+    $ban125 = Moderate::adminBan($pdo, $proie, 'arbitre-125', motif())['ok'] ?? false;
+});
+$grace125 === true && $ban125 === true
+    && $course125['final'] === ['intermede' => true, 'banni' => true, 'signal' => false, 'strikes' => 1]
+    ? ok('⭐ une grâce suivie d\'un ban d\'arbitre ne laisse pas de levée en attente sur la peine neuve')
+    : nok('⭐ une course pose une levée en attente sur un ban d\'arbitre qui suit une grâce : ' . json_encode([
+        'grace' => $grace125, 'ban' => $ban125, ...$course125,
+    ], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

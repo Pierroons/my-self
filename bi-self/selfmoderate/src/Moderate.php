@@ -1377,34 +1377,34 @@ class Moderate
                 // rattraperait — les votes annulés ne s'annulent plus. Les rangs
                 // passent avant la restitution, qui peut écrire au journal : un
                 // échec sur eux défait tout avant que rien ne soit inscrit.
-                $strikesAuRefus = null;
-                $episode = self::surAutrui($author, $voteSur, static function () use ($pdo, $author, $groupe, $aAnnuler, $voteSur, &$sautes, &$strikesAuRefus): ?array {
-                    return self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler, $voteSur, &$sautes, &$strikesAuRefus): ?array {
+                $etatAuRefus = null;
+                $episode = self::surAutrui($author, $voteSur, static function () use ($pdo, $author, $groupe, $aAnnuler, $voteSur, &$sautes, &$etatAuRefus): ?array {
+                    return self::transaction($pdo, static function () use ($pdo, $author, $groupe, $aAnnuler, $voteSur, &$sautes, &$etatAuRefus): ?array {
                         $voteIds = self::annulerVotes($pdo, $aAnnuler);
                         if (!$voteIds) {
                             return null;
                         }
                         $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);
-                        self::restoreAfterCancel($pdo, $author, $voteIds, $strikesAuRefus);
+                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);
 
                         return ['votes' => $voteIds, 'rangs' => $rangs];
                     });
-                }, $sautes, static function () use (&$strikesAuRefus): string {
-                    return $strikesAuRefus !== null ? 'levee_refusee' : 'refus';
+                }, $sautes, static function () use (&$etatAuRefus): string {
+                    return $etatAuRefus !== null ? 'levee_refusee' : 'refus';
                 });
                 if ($episode === null) {
                     // La levée défaite reste due : l'arbitre le voit sur le compte, et le
                     // balayage suivant la refait tant que la peine court. Relue sous le
-                    // verrou, par ses votes et par les strikes : entre-temps, un autre
-                    // passage a pu annuler ces votes, une levée retirer un strike, la grâce
-                    // les remettre à zéro. Une peine échue, ou suivie d'une autre, n'en
-                    // retire aucun : la levée reste due, et son strike à rendre.
-                    if ($strikesAuRefus !== null) {
-                        self::surAutrui($author, $voteSur, static fn (): bool => self::transaction($pdo, static function () use ($pdo, $author, $aAnnuler, $strikesAuRefus): bool {
-                            $ph = implode(',', array_fill(0, count($aAnnuler), '?'));
-                            $encore = $pdo->prepare("SELECT COUNT(*) FROM mod_votes WHERE id IN ($ph) AND blocked = 0");
-                            $encore->execute($aAnnuler);
-                            if ((int) $encore->fetchColumn() === 0 || self::etat($pdo, $author)['strikes'] < $strikesAuRefus) {
+                    // verrou, sur les strikes du refus : entre-temps, une levée a pu en
+                    // retirer un et la grâce les remettre à zéro ; la fin de la peine n'en
+                    // retire aucun, et une peine neuve, reconnue à son début à la seconde
+                    // près, en ajoute un. Ses votes ne disent rien : un passage les annule
+                    // aussi sans lever, quand la peine a échu.
+                    if ($etatAuRefus !== null) {
+                        self::surAutrui($author, $voteSur, static fn (): bool => self::transaction($pdo, static function () use ($pdo, $author, $etatAuRefus): bool {
+                            $etat = self::etat($pdo, $author);
+                            $peineNeuve = $etat['ban_debut'] !== 0 && $etat['ban_debut'] !== $etatAuRefus['ban_debut'];
+                            if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {
                                 return false;
                             }
                             self::signaler($pdo, $author, 'levee_en_attente');
@@ -1572,12 +1572,12 @@ class Moderate
      * ban, et lui seul, et lève la levée restée en attente pendant cette peine
      * (`levee_en_attente`) : celle d'une peine antérieure garde son strike à
      * rendre, et reste à l'arbitre. Un refus du journal sur son acte remonte, et
-     * `$strikesAuRefus` le dit à qui la défait (`detecter()`), avec les strikes
-     * que le compte portait alors.
+     * `$etatAuRefus` le dit à qui la défait (`detecter()`), avec les strikes et le
+     * début de la peine que le compte portait alors.
      *
      * @param int[] $voteIds
      */
-    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds, ?int &$strikesAuRefus = null): void
+    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds, ?array &$etatAuRefus = null): void
     {
         // Ce que le temps a fait au compte s'inscrit d'abord : une sortie de
         // convalescence efface les effets des votes reçus, et une restitution
@@ -1620,7 +1620,7 @@ class Moderate
                     'ferme'     => self::fermesEnTexte([...self::deCause($rep['signaux'], 'ban_auto'), ...$attente]),
                 ]);
             } catch (\Exception $e) {
-                $strikesAuRefus = $rep['strikes'];
+                $etatAuRefus = ['strikes' => $rep['strikes'], 'ban_debut' => $rep['ban_debut']];
                 throw $e;
             }
             $pdo->prepare(
