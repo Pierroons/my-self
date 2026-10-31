@@ -659,6 +659,28 @@ jobs:
           canari $R/src/Recovery/Recovery.php \
             "if (\$ancien !== null && \$ancien['ferme_le'] <= \$maintenant) {" 'if (false) {' \
             $R/tests/sanity_escalade.php "❌ un code d'avant d'une fenêtre échue est traité en code inconnu"
+
+      # Le retour lui-même (0.13.2), en étape à part : `check-canaris.sh` borne chaque étape
+      # à 900 s, et ces canaris rejouent `sanity_escalade.php` une quinzaine de fois — mesuré
+      # le 31/10/2026, l'étape unique dépassait le plafond sur une machine chargée.
+      - name: Canaris — le retour du titulaire garde ce qu'il devait reprendre
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          L=demo/lab
           # Le retour lui-même (0.13.2) : la passphrase apportée ne reprend ni celle
           # d'avant ni celle du demandeur, un second niveau 3 n'écrase pas une fenêtre
           # reprise, et le message ne promet un coffre gelé que s'il y en a un.
@@ -862,6 +884,10 @@ jobs:
             $B '❌ 🔑 et il ne charge pas le classement non plus'
           canari $R 'if ($ok && $apport !== null && self::memesMots($apport, $passphrase)) {' 'if (false) {' \
             $B '❌ apporter celle qui sert est refusé'
+          # La bibliothèque ne remet pas une passphrase qu'elle refuserait si on la lui
+          # apportait : le tirage se fait sans remise, puisqu'un mot répété est refusé.
+          canari bi-self/selfrecover/src/Diceware/Wordlist.php '            if (!in_array($mot, $picked, true)) {' \
+            '            if (true) {' bi-self/selfrecover/tests/sanity_socle.php '❌ ⭐ un tirage ne répète aucun mot'
           canari $E "if (\$jugee['canonique'] === strtolower(Recovery::normaliserPassphrase(\$motDePasse))) {" 'if (false) {' \
             $B '❌ une passphrase égale au mot de passe choisi est refusée'
           # Le refus d'ouverture du niveau 3 est unique : un dossier déjà ouvert qui

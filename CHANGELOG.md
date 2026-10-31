@@ -47,6 +47,10 @@ code ; l'audit du correctif à deux visions en a trouvé d'autres, corrigés ici
   - le pont `Pont\CoffreSuitLaReprise`, annoncé par `SuiteDeReprise`, n'existe pas : l'intégrateur l'écrit.
 - **« Litige » disait « fenêtre »** : ce que l'arbitre clôt après un retour est la fenêtre, pas un litige que le
   titulaire aurait ouvert — dans les messages, les docblocks, le modèle de menace, l'architecture et les whitepapers.
+- **La bibliothèque ne remet plus une passphrase qu'elle refuserait** — préexistant. Les mots étaient tirés avec
+  remise : environ une passphrase engendrée sur cinq cents répétait un mot, que `validerPassphraseApportee()` refuse
+  quand on l'apporte, et un banc qui apportait ces tirages rougissait au hasard. `Wordlist::generate()` tire désormais
+  sans remise, et l'entropie qu'il annonce est celle de ce tirage.
 - **Trois refus du niveau 3 ne parlaient que français** : `sesame_invalide`, `expire` et `accord_perime` passent
   désormais par `Messages`, comme les autres.
 - **Le modèle de menace dit une condition et deux prix** :
