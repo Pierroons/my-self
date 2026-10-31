@@ -4185,8 +4185,13 @@ $gestes106 === ['classer' => 'passé', 'bannir' => 'passé'] && count($fin106) =
  */
 function serveurLab(array $prises = []): array
 {
-    static $lances = 0;
-    $port = 9900 + ((getmypid() + $lances++) % 90);
+    // Un port que le système vient de rendre libre : deux bancs lancés ensemble ne
+    // se répondent pas l'un à l'autre.
+    $libre = stream_socket_server('tcp://127.0.0.1:0', $codeErreur, $erreur);
+    $port = $libre !== false ? (int) substr((string) strrchr((string) stream_socket_get_name($libre, false), ':'), 1) : 0;
+    if ($libre !== false) {
+        fclose($libre);
+    }
     $env = [];
     foreach (array_keys(instance_isolee()) as $prise) {
         $env[$prise] = (string) getenv($prise);
@@ -4199,14 +4204,16 @@ function serveurLab(array $prises = []): array
         array_merge($env, $prises)
     );
     $debout = false;
-    for ($i = 0; $i < 50 && !$debout; $i++) {
+    for ($i = 0; $i < 50 && !$debout && $port > 0; $i++) {
         $sonde = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
         if ($sonde) {
             fclose($sonde);
-            $debout = true;
-        } else {
-            usleep(100000);
+            // Le serveur qui répond est le nôtre seulement s'il tourne encore : pris
+            // entre-temps, le port l'aurait fait sortir.
+            $debout = proc_get_status($proc)['running'];
+            break;
         }
+        usleep(100000);
     }
 
     return ['proc' => $proc, 'port' => $port, 'debout' => $debout];
