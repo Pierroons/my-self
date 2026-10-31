@@ -1281,7 +1281,8 @@ class Moderate
      * `comptes_sautes` nomme les comptes qu'un refus a fait sauter, avec sa
      * raison : `reprise_manquante`, `levee_refusee` (le compte porte alors
      * `levee_en_attente`), ou `refus`. Le passage suivant retrouve un compte
-     * balayé ; un votant de la meute de la cible, voir `consignerMeute()`.
+     * balayé ; un votant de la meute de la cible, voir `consignerMeute()`. Un
+     * compte nommé a pu être levé entre-temps par un passage concurrent.
      */
     public static function detectPackVoting(PDO $pdo, ?int $seulement = null): array
     {
@@ -1393,13 +1394,15 @@ class Moderate
                 if ($episode === null) {
                     // La levée défaite reste due : l'arbitre le voit sur le compte, et le
                     // balayage suivant la refait tant que la peine court. Relue sous le
-                    // verrou : un autre passage a pu la faire entre-temps.
+                    // verrou : un autre passage a pu la faire entre-temps (ses votes sont
+                    // annulés), ou l'arbitre gracier le compte (ses strikes sont à zéro).
+                    // Une peine échue entre-temps la laisse due : son strike reste à rendre.
                     if ($leveeRefusee) {
                         self::surAutrui($author, $voteSur, static fn (): bool => self::transaction($pdo, static function () use ($pdo, $author, $aAnnuler): bool {
                             $ph = implode(',', array_fill(0, count($aAnnuler), '?'));
                             $encore = $pdo->prepare("SELECT COUNT(*) FROM mod_votes WHERE id IN ($ph) AND blocked = 0");
                             $encore->execute($aAnnuler);
-                            if ((int) $encore->fetchColumn() === 0 || !self::etat($pdo, $author)['banned']) {
+                            if ((int) $encore->fetchColumn() === 0 || self::etat($pdo, $author)['strikes'] === 0) {
                                 return false;
                             }
                             self::signaler($pdo, $author, 'levee_en_attente');
@@ -1519,7 +1522,8 @@ class Moderate
             if ($e === self::$transactionDefaitePar) {
                 throw $e;
             }
-            error_log(sprintf('SelfModerate : le balayage saute le compte %d, sans défaire le vote qui le lance — %s', $compte, $e->getMessage()));
+            $lance = $voteSur === null ? '' : ', sans défaire le vote qui le lance';
+            error_log(sprintf('SelfModerate : le balayage saute le compte %d%s — %s', $compte, $lance, $e->getMessage()));
             $saut = [
                 'compte' => $e instanceof RepriseManquante ? $e->compte : $compte,
                 'raison' => $e instanceof RepriseManquante ? 'reprise_manquante' : ($nommer !== null ? $nommer() : 'refus'),
@@ -1678,7 +1682,9 @@ class Moderate
      * et l'épisode se consigne sans son signal de récidive — la table des épisodes
      * le montre à son rang, rien ne le repose après la reprise. Sur un autre
      * compte, son échec défait l'épisode, que le balayage refait, et signale,
-     * après la reprise.
+     * après la reprise. La victime attend avec lui, sa levée comprise : si sa
+     * peine échoit avant la reprise, elle garde le strike de cette peine, sans
+     * signal sur son compte ; la grâce le rend.
      *
      * @param  int[] $voters
      * @param  int[] $voteIds

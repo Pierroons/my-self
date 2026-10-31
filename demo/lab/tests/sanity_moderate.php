@@ -4558,7 +4558,8 @@ $pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 's
 $pdo->prepare('DELETE FROM mod_signaux WHERE account_id = ?')->execute([$meute113[0]]);
 $planif113 = balayerLeSite($pdo);
 $attente113 = [
-    'nomme'   => in_array(['compte' => $meute113[0], 'raison' => 'reprise_manquante'], $planif113['comptes_sautes'] ?? [], true),
+    'nomme'   => array_values(array_filter($planif113['comptes_sautes'] ?? [], static fn (array $s): bool =>
+        in_array($s['compte'], [$autre113, ...$meute113], true))) === [['compte' => $meute113[0], 'raison' => 'reprise_manquante']],
     'annules' => bloquesMeute($pdo, $autre113),
 ];
 reprendreLeCompte($pdo, $meute113[0]);
@@ -4679,6 +4680,8 @@ $premiere116 === ['fins' => null, 'strikes' => 1, 'signal' => true] && $seconde1
 // Le signal se pose dans sa propre transaction, après l'épisode défait. Un autre
 // passage peut faire la levée entre les deux : le signal relit sous le verrou si
 // elle est encore due. Joué sans pause : l'autre passage passe dans l'intervalle.
+// La proie porte un strike d'avant : la levée en laisse un, et seuls les votes
+// annulés disent qu'elle est faite.
 final class PdoApresUnRefus extends PDO
 {
     public bool $refuse = false;
@@ -4695,35 +4698,93 @@ final class PdoApresUnRefus extends PDO
         return parent::exec($statement);
     }
 }
-$journalAvant117 = Moderate::journal();
-$journal117 = new JournalQuiRefuse();
-Moderate::setJournal($journal117);
-$proie117 = proieDeMeute($pdo, '117');
-$c117 = new PdoApresUnRefus('sqlite:' . getenv('LAB_DB_PATH'));
-$c117->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$c117->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-$journal117->refus = static function (array $acte) use ($proie117, $c117): void {
-    if ($acte['acte'] === 'ban_leve' && $acte['compte'] === $proie117) {
-        $c117->refuse = true;
-        throw new RuntimeException('levée refusée');
+
+/**
+ * Le planificateur balaie sous un journal qui refuse la levée de la proie ; avant
+ * la pose de son signal, `$intermede` agit sur la proie par une autre connexion,
+ * le journal rendu sain. Le journal d'erreurs du balayage va dans `$erreurs`.
+ */
+function courseApresUnRefus(PDO $pdo, string $nom, Closure $intermede, ?Closure $preparer = null, ?string $erreurs = null): array
+{
+    $journalAvant = Moderate::journal();
+    $journal = new JournalQuiRefuse();
+    Moderate::setJournal($journal);
+    $proie = proieDeMeute($pdo, $nom);
+    if ($preparer !== null) {
+        $preparer($proie);
     }
-};
-$c117->intermede = static function () use ($pdo, $journal117): void {
-    $journal117->refus = null;
-    Moderate::detectPackVoting($pdo);
-};
-$planif117 = balayerLeSite($c117);
-$final117 = [
-    'intermede' => $c117->intermede === null,
-    'banni'     => Moderate::estBanni($pdo, $proie117),
-    'signal'    => in_array('levee_en_attente', causes($pdo, $proie117), true),
-];
-Moderate::setJournal($journalAvant117);
-$final117 === ['intermede' => true, 'banni' => false, 'signal' => false]
+    $c = new PdoApresUnRefus('sqlite:' . getenv('LAB_DB_PATH'));
+    $c->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $c->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $journal->refus = static function (array $acte) use ($proie, $c): void {
+        if ($acte['acte'] === 'ban_leve' && $acte['compte'] === $proie) {
+            $c->refuse = true;
+            throw new RuntimeException('levée refusée');
+        }
+    };
+    $c->intermede = static function () use ($journal, $intermede, $proie): void {
+        $journal->refus = null;
+        $intermede($proie);
+    };
+    $erreursAvant = $erreurs !== null ? ini_set('error_log', $erreurs) : false;
+    $planif = balayerLeSite($c);
+    if ($erreurs !== null) {
+        ini_set('error_log', (string) $erreursAvant);
+    }
+    Moderate::setJournal($journalAvant);
+
+    return [
+        'proie'         => $proie,
+        'planificateur' => $planif['erreur'] ?? $planif['comptes_sautes'] ?? null,
+        'final'         => [
+            'intermede' => $c->intermede === null,
+            'banni'     => Moderate::estBanni($pdo, $proie),
+            'signal'    => in_array('levee_en_attente', causes($pdo, $proie), true),
+            'strikes'   => strikes($pdo, $proie),
+        ],
+    ];
+}
+
+$erreurs117 = $dir . '/erreurs-117.log';
+$course117 = courseApresUnRefus($pdo, '117',
+    static function () use ($pdo): void {
+        Moderate::detectPackVoting($pdo);
+    },
+    static function (int $proie) use ($pdo): void {
+        $pdo->prepare('UPDATE member_moderation SET strikes = strikes + 1 WHERE account_id = ?')->execute([$proie]);
+    },
+    $erreurs117);
+$course117['final'] === ['intermede' => true, 'banni' => false, 'signal' => false, 'strikes' => 1]
     ? ok('⭐ une levée faite par un autre passage entre le refus et la pose du signal ne laisse pas de levée en attente')
-    : nok('⭐ une course pose une levée en attente sur un compte déjà levé : ' . json_encode([
-        'final' => $final117, 'planificateur' => $planif117['erreur'] ?? $planif117['comptes_sautes'] ?? null,
-    ], JSON_UNESCAPED_UNICODE));
+    : nok('⭐ une course pose une levée en attente sur un compte déjà levé : ' . json_encode($course117, JSON_UNESCAPED_UNICODE));
+
+// ── 118. ⭐ Une grâce entre le refus et la pose du signal ne laisse pas de levée en attente ─
+// La grâce rend les strikes sans annuler les votes : seul le strike rendu dit que
+// la levée n'est plus due.
+$grace118 = null;
+$course118 = courseApresUnRefus($pdo, '118', static function (int $proie) use ($pdo, &$grace118): void {
+    $grace118 = Moderate::adminPardon($pdo, $proie, 'arbitre-118', motif())['ok'] ?? false;
+});
+$grace118 === true && $course118['final'] === ['intermede' => true, 'banni' => false, 'signal' => false, 'strikes' => 0]
+    ? ok('⭐ une grâce entre le refus et la pose du signal ne laisse pas de levée en attente sur le compte gracié')
+    : nok('⭐ une course pose une levée en attente sur un compte gracié : ' . json_encode(['grace' => $grace118, ...$course118], JSON_UNESCAPED_UNICODE));
+
+// ── 119. ⭐ Une peine échue entre le refus et la pose du signal garde sa levée en attente ─
+// La levée n'est plus faisable, son strike reste à rendre : le signal se pose, et
+// c'est la grâce qui le rendra.
+$course119 = courseApresUnRefus($pdo, '119', static function (int $proie) use ($pdo): void {
+    vieillirBan($pdo, $proie, 400 * 86400);
+});
+$course119['final'] === ['intermede' => true, 'banni' => false, 'signal' => true, 'strikes' => 1]
+    ? ok('⭐ une peine échue entre le refus et la pose du signal garde sa levée en attente, et son strike à rendre')
+    : nok('⭐ une peine échue entre le refus et la pose du signal perd la levée en attente : ' . json_encode($course119, JSON_UNESCAPED_UNICODE));
+
+// ── 120. ⭐ Sous le planificateur, le saut ne parle pas d'un vote ─────────────────
+// Le journal d'erreurs du 117 : aucun vote ne lance ce balayage.
+$saut120 = (string) @file_get_contents($erreurs117);
+str_contains($saut120, "le balayage saute le compte {$course117['proie']} — ") && !str_contains($saut120, 'le vote qui le lance')
+    ? ok('⭐ sous le planificateur, le journal d\'erreurs dit le saut sans parler d\'un vote')
+    : nok('⭐ le journal d\'erreurs parle d\'un vote sous le planificateur : ' . json_encode(trim($saut120), JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
