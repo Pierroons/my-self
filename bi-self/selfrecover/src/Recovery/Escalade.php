@@ -561,11 +561,12 @@ final class Escalade
         // procédure d'un autre. L'appel concurrent est enregistré — c'est un
         // fait que l'arbitre doit voir.
         $existant = $this->stockage->litigeActifDuCompte($compteId, $maintenant);
-        // Un accord que personne n'est venu reprendre a une fin : on le clôt
-        // ici, à la première demande qui bute dessus, et la place se libère.
-        // Le stockage ne sait pas le faire — il ignore `ttlAccepte` —, et lui
-        // apprendre demanderait d'élargir le contrat que tout intégrateur
-        // implémente. La date de décision qu'il rend déjà suffit.
+        // Un accord qui ne s'exécutera plus — personne n'est venu le reprendre,
+        // ou le titulaire est revenu avant la clôture de sa fenêtre — ne garde pas
+        // la place : on le clôt ici, à la première demande qui bute dessus. Le
+        // stockage ne sait pas le faire — il ignore `ttlAccepte` et ne relie pas
+        // un accord à la fenêtre —, et lui apprendre demanderait d'élargir le
+        // contrat que tout intégrateur implémente. Ce qu'il rend déjà suffit.
         if ($existant !== null && $this->accordPerime($existant, $maintenant) !== null) {
             try {
                 $this->stockage->cloreLitige($existant->id, $maintenant);
@@ -1133,9 +1134,12 @@ final class Escalade
      * - `l3.accord_echu` : personne ne l'a repris, et `ttlAccepte` est passé ;
      * - `l3.accord_avant_retour` : le titulaire est revenu avec un secret d'avant,
      *   et l'accord n'a pas été rendu après la clôture de sa fenêtre. Il jugeait un
-     *   compte que ce retour a changé. La date seule ne suffit pas : `trancher()`
+     *   compte que ce retour a changé. La date du retour ne suffit pas : `trancher()`
      *   lit la fenêtre hors de toute transaction, et un accord écrit pendant le
-     *   retour porte une date égale ou postérieure à `reprise_le`.
+     *   retour porte une date égale ou postérieure à `reprise_le`. Une fenêtre close
+     *   est jugée sur `close_le` seule : elle a été reprise, puisque `cloreFenetre()`
+     *   refuse les autres, et le contrat n'oblige pas un adaptateur à garder
+     *   `reprise_le` après la clôture.
      *
      * 🔑 Mort ici, l'accord libère aussi la place du niveau 3 : `ouvrir()` le clôt à
      * la première demande qui bute dessus, au lieu de le laisser tenir la place
@@ -1153,8 +1157,9 @@ final class Escalade
             return 'l3.accord_echu';
         }
         $fenetre = $this->stockage->fenetreDuCompte($litige->compteId);
-        if ($fenetre !== null && $fenetre['reprise_le'] !== null
-            && ($fenetre['close_le'] === null || $litige->trancheLe < $fenetre['close_le'])) {
+        if ($fenetre !== null && ($fenetre['close_le'] !== null
+                ? $litige->trancheLe < $fenetre['close_le']
+                : $fenetre['reprise_le'] !== null)) {
             return 'l3.accord_avant_retour';
         }
 
@@ -1216,12 +1221,12 @@ final class Escalade
      *   3 est clos depuis la reprise ; c'est la fenêtre qui attend `cloreFenetre()`,
      *   et le coffre reste en lecture seule jusque-là. Aucun second niveau 3 ne la
      *   remplace d'ici là (`reprise_en_cours`) ;
-     * - `close` : l'arbitre a clos le litige ;
+     * - `close` : l'arbitre a clos la fenêtre reprise ;
      * - `echue` : la fenêtre s'est fermée sans qu'aucun ancien secret serve.
      *
      * 🔑 `lecture_admin_permise` dit si l'arbitre peut lire le séquestre de
      * l'archive née du niveau 3 : pas tant que le titulaire peut encore revenir,
-     * ni tant que le litige qu'il a ouvert en revenant n'est pas clos.
+     * ni tant que l'arbitre n'a pas clos la fenêtre qu'il a reprise.
      *
      * @return array{etat: string, ferme_le: ?int, reprise_le: ?int, close_le: ?int, close_par: ?string,
      *               lecture_seule: bool, lecture_admin_permise: bool}
@@ -1250,8 +1255,8 @@ final class Escalade
     }
 
     /**
-     * L'arbitre clôt le litige qu'un titulaire a ouvert en revenant dans la
-     * fenêtre. C'est le seul geste qui lève la lecture seule du coffre : jamais
+     * L'arbitre clôt la fenêtre qu'un titulaire a reprise avec un secret
+     * d'avant. C'est le seul geste qui lève la lecture seule du coffre : jamais
      * l'horloge, qui la rendrait au demandeur sans que personne ait regardé.
      *
      * @return array{ok: bool, error?: string, message: string}

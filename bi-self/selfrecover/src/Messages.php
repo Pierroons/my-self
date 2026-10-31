@@ -363,22 +363,22 @@ final class Messages
             'en' => 'Your browser must first solve a computation challenge. It is attached: send your request again with its solution.',
         ],
         'l3.aucune_fenetre_reprise' => [
-            'fr' => "Ce compte n'a pas de litige ouvert par son titulaire à clore.",
-            'en' => 'This account has no dispute opened by its holder to close.',
+            'fr' => "Ce compte n'a pas de fenêtre reprise par son titulaire à clore.",
+            'en' => 'This account has no window taken back by its holder to close.',
         ],
         'l3.fenetre_close' => [
-            'fr' => 'Litige clos : le coffre du titulaire peut sortir de la lecture seule.',
-            'en' => "Dispute closed: the holder's vault can leave read-only mode.",
+            'fr' => 'Fenêtre close : le coffre du titulaire peut sortir de la lecture seule.',
+            'en' => "Window closed: the holder's vault can leave read-only mode.",
         ],
         'l3.titulaire_reprend' => [
             'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '
                   . 'tu le retrouves. Celui qui l\'avait repris en est sorti. Tu reçois des secrets neufs : note-les. Un arbitre va '
-                  . 'prendre contact, et ton coffre reste en lecture seule jusque-là. Change ton mot mémorisé une fois le litige '
-                  . 'clos, pas avant : d\'ici là, ton coffre d\'avant ne s\'ouvre qu\'avec lui.',
+                  . 'prendre contact et clore la procédure ; ton coffre reste en lecture seule jusque-là. Change ton mot mémorisé '
+                  . 'après cette clôture, pas avant : d\'ici là, ton coffre d\'avant ne s\'ouvre qu\'avec lui.',
             'en' => 'Your account was taken over through an arbitration procedure in the last few days, and your former '
                   . 'secret prevails: you get it back. Whoever had taken it is out. You receive new secrets: write them down. An arbitrator '
-                  . 'will get in touch, and your vault stays read-only until then. Change your memorized word once the dispute is '
-                  . 'closed, not before: until then, only that word opens your former vault.',
+                  . 'will get in touch and close the procedure; your vault stays read-only until then. Change your memorized word '
+                  . 'after that closure, not before: until then, only that word opens your former vault.',
         ],
         'l3.titulaire_reprend_sans_coffre' => [
             'fr' => 'Ton compte a été repris par une procédure d\'arbitrage ces derniers jours, et ton ancien secret l\'emporte : '

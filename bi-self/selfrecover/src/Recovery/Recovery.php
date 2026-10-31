@@ -647,13 +647,6 @@ final class Recovery
     }
 
     /**
-     * Le refus des freins par fenêtre. Un seul texte pour tous : le frein par
-     * compte du niveau 2 ne doit pas se distinguer du frein par origine. Le délai
-     * annoncé est celui de la fenêtre réglée, pas un nombre recopié.
-     *
-     * @return array{ok: false, message: string}
-     */
-    /**
      * Le titulaire revient dans la fenêtre d'après un niveau 3 avec un secret
      * d'avant, et l'emporte. Il reçoit un mot de passe, une passphrase et des
      * codes neufs, et retrouve son mot mémorisé d'avant avec son sel : le
@@ -756,6 +749,14 @@ final class Recovery
         }
     }
 
+    /**
+     * Le refus des freins par fenêtre. Un seul texte pour tous : le frein par
+     * compte du niveau 2 rend le libellé du frein par origine — le libellé, pas
+     * son temps. Le délai annoncé est celui de la fenêtre réglée, pas un nombre
+     * recopié.
+     *
+     * @return array{ok: false, message: string}
+     */
     private function refusFrein(): array
     {
         return ['ok' => false, 'message' => Messages::dire(

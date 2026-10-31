@@ -1590,6 +1590,34 @@ verifier('⭐ un retour validé juste avant la transaction de la reprise est vu 
     ($repriseR['error'] ?? '') === 'accord_perime' && $escR->fenetre('alice', $now + 70)['reprise_le'] === $now + 55,
     (string) ($repriseR['error'] ?? 'exécuté'));
 
+// Le contrat n'oblige pas un adaptateur à garder `reprise_le` après la clôture : un accord
+// rendu avant elle doit rester mort chez celui qui l'efface.
+final class StockageQuiOublieLeRetour extends StockageMemoire
+{
+    public function cloreFenetre(int $compteId, string $par, int $quand): bool
+    {
+        $close = parent::cloreFenetre($compteId, $par, $quand);
+        if ($close) {
+            $this->fenetres[$compteId]['reprise_le'] = null;
+        }
+
+        return $close;
+    }
+}
+$PHRASE_O = Recovery::engendrerPassphrase(Langue::FR);
+[, $escOubli, $recOubli] = $repris($now, 14 * 86400, $PHRASE_O, new StockageQuiOublieLeRetour());
+$sesameOubli  = bin2hex(random_bytes(32));
+$dossierOubli = $escOubli->ouvrir('alice', Escalade::empreinteSesame($sesameOubli), '10.0.0.38', $now + 40);
+$escOubli->trancher((string) ($dossierOubli['numero'] ?? ''), 'accepte', 'arbitre', $now + 50);
+$retourOubli = $recOubli->parPassphrase('alice', $PHRASE_O, '10.0.0.39', $now + 60);
+$escOubli->cloreFenetre('alice', 'arbitre', $now + 70);
+$repriseOubli = $escOubli->reEnroler((string) ($dossierOubli['numero'] ?? ''), $sesameOubli, 'le mot de passe du second demandeur',
+    str_repeat('e5', 32), str_repeat('f6', 16), $now + 80);
+verifier('⭐ un accord rendu avant la clôture reste mort chez un adaptateur qui efface la date du retour en clôturant',
+    ($retourOubli['titulaire_reprend'] ?? false) === true && $escOubli->fenetre('alice', $now + 75)['etat'] === 'close'
+    && ($repriseOubli['error'] ?? '') === 'accord_perime',
+    (string) ($repriseOubli['error'] ?? 'exécuté'));
+
 // Qui tient la feuille d'avant sans le mot suspend le retour par code ; le demandeur,
 // qui tient le compte pendant la fenêtre, ne doit pas pouvoir lever cette suspension
 // par ses propres gestes — sinon, la feuille en main, il essaierait le mot sans fin.

@@ -172,15 +172,14 @@ function render(disputes, fenetres){
     // nouveaux dossiers qui est suspendue, et le lever rouvre cette porte à
     // quelqu'un qui n'a plus aucun secret. Qui lève est pris dans la session,
     // côté endpoint, et rangé dans `degele_par`.
-    // Clore rend le coffre et rouvre le niveau 3 de ce compte : c'est l'arbitre qui
-    // décide que le retour du titulaire est acquis. Qui clôt est pris dans la session.
+    // Clore rouvre le niveau 3 de ce compte : c'est l'arbitre qui décide que le
+    // retour du titulaire est acquis. Qui clôt est pris dans la session.
     var cl=card.querySelector('.l3-clore');
     if(cl)cl.addEventListener('click',function(){
       var u=cl.getAttribute('data-user');
       if(confirm('Clore la fenêtre de « '+u+' » ?\n\n'
-                +'Le titulaire a repris son compte avec un secret d\'avant. Clore rend son coffre et '
-                +'permet à nouveau d\'accorder un niveau 3 sur ce compte. Ton nom sera inscrit comme '
-                +'auteur de la clôture.'))
+                +'Le titulaire a repris son compte avec un secret d\'avant. Clore permet à nouveau '
+                +'d\'accorder un niveau 3 sur ce compte. Ton nom sera inscrit comme auteur de la clôture.'))
         post('/api/admin_window_close.php',{username:u}).then(function(d){
           if(d && !d.ok) alert(d.message||'La fenêtre n\'a pas pu être close.');
           load();

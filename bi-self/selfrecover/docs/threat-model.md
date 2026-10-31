@@ -132,7 +132,7 @@ Since 0.13.0 a takeover opens a window of 14 days (7 to 30, `fenetreDuree`). The
 memorized word with its salt, and the unused paper codes from before stay valid in it for a single
 return — the first one served closes the window; the old password does not. A secret from before served at level 1 or 2 within the window gives the
 account back: new secrets, the old memorized word and salt restored, the requester's sessions and
-devices revoked. The application's vault then stays read-only until the arbitrator closes the dispute
+devices revoked. The application's vault then stays read-only until the arbitrator closes the window
 (`cloreFenetre()`), never on a timer. A window that expires with none of them served erases them
 (`purgerFenetres()`).
 

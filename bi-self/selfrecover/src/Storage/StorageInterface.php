@@ -213,8 +213,8 @@ interface StorageInterface
     public function reprendreFenetre(int $compteId, int $quand): bool;
 
     /**
-     * L'arbitre clôt le litige d'une fenêtre reprise. `false` si elle n'est pas
-     * reprise, ou déjà close.
+     * L'arbitre clôt une fenêtre reprise. `false` si elle n'est pas reprise, ou
+     * déjà close.
      */
     public function cloreFenetre(int $compteId, string $par, int $quand): bool;
 

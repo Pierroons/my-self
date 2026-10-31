@@ -201,7 +201,7 @@ What the library enforces, with the defaults it ships:
 - L3 — a takeover opens a window of 14 days (`fenetreDuree`, 7 to 30): the
   secrets from before stay valid in it for a single return, the old password apart, and
   one served at level 1 or 2 gives the account back to its holder. The vault
-  then stays read-only until the arbitrator closes the dispute
+  then stays read-only until the arbitrator closes the window
   (`cloreFenetre()`) — never the clock. `fenetre()` tells the application
   which state holds; with SelfDataGuard, `reinstateArchive()` and `freeze()`
   follow it. A window that expires unused erases those secrets

@@ -28,7 +28,8 @@ code ; l'audit du correctif à deux visions en a trouvé d'autres, corrigés ici
   n'est pas close (`reprise_en_cours`), et un accord qui n'a pas été rendu après sa clôture ne s'exécute pas, même
   la fenêtre close (`accord_perime`) : rendu avant le retour, il jugeait un compte que ce retour a changé ; écrit
   pendant lui, il porte une date postérieure au retour, car `trancher()` lit la fenêtre hors de toute transaction.
-  Un tel accord ne garde plus la place du niveau 3 ; `reEnroler()` le relit dans sa transaction.
+  Une fenêtre close est jugée sur sa date de clôture seule : le contrat n'oblige pas un adaptateur à garder la date
+  du retour. Un tel accord ne garde plus la place du niveau 3 ; `reEnroler()` le relit dans sa transaction.
 - **Cette relecture ne tient que sous un isolement que le stockage fournit, et le contrat le dit**
   (`StorageInterface::ouvrirFenetre()`, le modèle de menace) : SQLite le tient ; les niveaux par défaut de
   PostgreSQL (`READ COMMITTED`) et d'InnoDB (`REPEATABLE READ`) ne le tiennent pas. Il faut `SERIALIZABLE` ou le
@@ -44,6 +45,8 @@ code ; l'audit du correctif à deux visions en a trouvé d'autres, corrigés ici
   - le frein par compte du niveau 2 « indiscernable » : il rend le libellé du frein par adresse, pas son temps ;
   - « le litige reste ouvert » après le retour : c'est la fenêtre qui attend sa clôture ;
   - le pont `Pont\CoffreSuitLaReprise`, annoncé par `SuiteDeReprise`, n'existe pas : l'intégrateur l'écrit.
+- **« Litige » disait « fenêtre »** : ce que l'arbitre clôt après un retour est la fenêtre, pas un litige que le
+  titulaire aurait ouvert — dans les messages, les docblocks, le modèle de menace, l'architecture et les whitepapers.
 - **Trois refus du niveau 3 ne parlaient que français** : `sesame_invalide`, `expire` et `accord_perime` passent
   désormais par `Messages`, comme les autres.
 - **Le modèle de menace dit une condition et deux prix** :
