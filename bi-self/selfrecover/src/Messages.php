@@ -117,9 +117,9 @@ final class Messages
         ],
         'l2.suspendu' => [
             'fr' => "Trop d'essais manqués : la récupération par code est suspendue pour ce compte. "
-                  . 'Récupère ton accès par ta passphrase.',
+                  . "Récupère ton accès par ta passphrase, ou par une demande d'arbitrage si ce service en propose une.",
             'en' => 'Too many failed attempts: code recovery is suspended for this account. '
-                  . 'Recover your access with your passphrase.',
+                  . 'Recover your access with your passphrase, or through an arbitration request if this service offers one.',
         ],
         'acces.rendu' => [
             'fr' => 'Accès rendu. Ton mot de passe et ta passphrase ont été remplacés : note-les, '

@@ -647,6 +647,10 @@ jobs:
             '$rearmements = array_filter([' \
             $R/tests/sanity_escalade.php "❌ ⭐ une réussite du demandeur au niveau 1 ne réarme pas le compteur des codes d'avant"
           canari $R/src/Recovery/Recovery.php \
+            '$rearmements = $fenetreOuverteLe !== null ? [$fenetreOuverteLe] : array_filter([' \
+            '$rearmements = $fenetreOuverteLe !== null ? array_filter([$fenetreOuverteLe, $this->stockage->dateDernierCodeEmis($compteId)]) : array_filter([' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un lot émis par le demandeur ne réarme pas le compteur des codes d'avant"
+          canari $R/src/Recovery/Recovery.php \
             '$depuisFrein = max($depuisFrein, max($rearmements) - 1);' '$depuisFrein = $depuisFrein + 0;' \
             $R/tests/sanity_escalade.php "❌ ⭐ le lot neuf du titulaire revenu n'hérite pas du frein que le demandeur vient de remplir"
           canari $R/src/Recovery/Recovery.php \
@@ -1172,8 +1176,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 270 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 270 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 271 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 271 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

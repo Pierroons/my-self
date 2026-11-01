@@ -10,9 +10,10 @@ namespace Pierroons\SelfDataGuard\Escrow;
  *
  * SelfDataGuard ships none: an arbiter written for every deployment would answer
  * "yes" to all of them, and the one a deployment needs reads its own cases.
- * SelfRecover's arrives with the rule of its level-3 window. The ceremony writes
- * the arbiter's class and its verdict to the log, so that one that always says
- * Open shows there.
+ * SelfRecover ships none either: an arbiter can read whether its window after a
+ * level 3 lets the escrow be read (`Escalade::fenetre()`, `lecture_admin_permise`).
+ * The ceremony writes the arbiter's class and its verdict to the log, so that one
+ * that always says Open shows there.
  */
 interface EscrowArbiter
 {

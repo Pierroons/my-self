@@ -13,7 +13,7 @@ of the user's secrets, any one of which opens it. The module holds the envelope,
 encryption, a blind index for lookups, an administrative escrow compartment and its ceremony. It
 holds no HTTP route, no session and no client-side code: the application calls it.
 
-Untrusted input enters at six places:
+Untrusted input enters at seven places:
 
 1. **The user's secrets** — password, memorized word, passphrase. Arbitrary byte strings, no upper
    bound on length, supplied by the application's forms.
@@ -32,6 +32,9 @@ Untrusted input enters at six places:
    yes to every deployment.
 6. **The `userId`.** It comes from the application, never from the module, and it is the key under
    which everything else is found.
+7. **A recovery ticket**, and the kind that a `RecoveryTickets` source written by the integrator returns
+   for it. Given a source, the ticket is what lets the gestures that take no secret through —
+   `reEnroll()`, `reinstateArchive()`, `freeze()`, `unfreeze()`; without one, they take none.
 
 ## Components that matter most, and least
 
@@ -52,7 +55,7 @@ Untrusted input enters at six places:
 migrations from 0.4.x–0.6.x.
 
 **Out of scope, deliberately** — libsodium and OpenSSL; PDO and the database engine; the integrator's
-own code, including its session handling and its arbiter; `demo/selfdataguard/`, which is a reference
+own code, including its session handling, its arbiter and its ticket source; `demo/selfdataguard/`, which is a reference
 integration and not hardened for production; and `demo/lab/`, which uses only `Primitives` under a
 server key and promises nothing per user.
 

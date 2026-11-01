@@ -10,218 +10,31 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
+### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
-Correctif du retour du titulaire dans la fenêtre d'après un niveau 3. Aucune rupture de contrat : ni
-`StorageInterface` ni la forme des réponses ne changent ; un refus neuf, `reprise_en_cours`, s'ajoute, et
-`accord_perime` gagne une cause. Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur
-code ; l'audit du correctif à deux visions en a trouvé d'autres, corrigés ici avant l'envoi.
+Aucune version ne monte : rien ne change dans ce que le code décide.
 
-- **Au retour, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur.** La règle « celle que
-  tu apportes doit différer de l'ancienne » n'était jugée que sur une récupération ordinaire : au retour, le
-  titulaire pouvait reposer la passphrase d'avant — celle qu'il vient de servir, et peut-être celle qu'on lui a
-  volée —, ou celle du demandeur, que le demandeur connaît. Elle est désormais jugée contre les deux, aux deux
-  niveaux ; au niveau 1, celle d'avant dans n'importe quel ordre de ses mots.
-- **Un second niveau 3 n'écrase plus une fenêtre reprise.** Le titulaire revenu, la fenêtre attend que l'arbitre
-  la close ; un second niveau 3 accordé entre-temps la remplaçait, effaçait la trace du retour, et l'arbitre ne
-  pouvait plus clore — le coffre restait gelé sans issue. `Escalade::trancher()` refuse d'accorder tant qu'elle
-  n'est pas close (`reprise_en_cours`), et un accord qui n'a pas été rendu après sa clôture ne s'exécute pas, même
-  la fenêtre close (`accord_perime`) : rendu avant le retour, il jugeait un compte que ce retour a changé ; écrit
-  pendant lui, il porte une date postérieure au retour, car `trancher()` lit la fenêtre hors de toute transaction.
-  Une fenêtre close est jugée sur sa date de clôture seule : le contrat n'oblige pas un adaptateur à garder la date
-  du retour. Un tel accord ne garde plus la place du niveau 3 ; `reEnroler()` le relit dans sa transaction.
-- **Cette relecture ne tient que sous un isolement que le stockage fournit, et le contrat le dit**
-  (`StorageInterface::ouvrirFenetre()`, le modèle de menace) : SQLite le tient ; les niveaux par défaut de
-  PostgreSQL (`READ COMMITTED`) et d'InnoDB (`REPEATABLE READ`) ne le tiennent pas. Il faut `SERIALIZABLE` ou le
-  verrou de la ligne lue ; quand l'intégrateur enveloppe l'appel dans sa transaction, c'est la sienne qui décide.
-- **Le lab a une route de clôture.** Sa console d'arbitrage montre une fenêtre reprise et la clôt
-  (`/api/admin_window_close.php`) : sans elle, plus aucun niveau 3 ne s'accordait sur ce compte.
-- **Le message du retour dit quand changer le mot mémorisé** : après la clôture, pas avant, car d'ici là le coffre
-  d'avant ne s'ouvre qu'avec lui. Sans suite branchée, il n'annonce plus de coffre en lecture seule.
-- **Des textes qui disaient faux** :
-  - « les secrets d'avant valent une fois chacun » : ils valent pour un seul retour, le premier servi ferme la
-    fenêtre — dans les docblocks, les schémas, le modèle de menace, l'architecture, les whitepapers et les README.
-    L'entrée de la 0.13.0 ci-dessous le disait aussi ;
-  - le frein par compte du niveau 2 « indiscernable » : il rend le libellé du frein par adresse, pas son temps ;
-  - « le litige reste ouvert » après le retour : c'est la fenêtre qui attend sa clôture ;
-  - le pont `Pont\CoffreSuitLaReprise`, annoncé par `SuiteDeReprise`, n'existe pas : l'intégrateur l'écrit.
-- **« Litige » disait « fenêtre »** : ce que l'arbitre clôt après un retour est la fenêtre, pas un litige que le
-  titulaire aurait ouvert — dans les messages, les docblocks (et trois de SelfDataGuard qui décrivent cette clôture),
-  le modèle de menace, l'architecture et les whitepapers.
-- **La bibliothèque ne remet plus une passphrase qu'elle refuserait** — préexistant. Les mots étaient tirés avec
-  remise : environ une passphrase engendrée sur cinq cents répétait un mot, que `validerPassphraseApportee()` refuse
-  quand on l'apporte, et un banc qui apportait ces tirages rougissait au hasard. `Wordlist::generate()` tire désormais
-  sans remise, et l'entropie qu'il annonce est celle de ce tirage ; l'aperçu `tools/entropy-lab/` aussi.
-- **Trois refus du niveau 3 ne parlaient que français** : `sesame_invalide`, `expire` et `accord_perime` passent
-  désormais par `Messages`, comme les autres.
-- **Le modèle de menace dit une condition et deux prix** :
-  - au niveau 1, l'échéance commune des refus cache le second Argon2id d'une passphrase d'avant tant que deux
-    Argon2id tiennent dans `delaiRefusUs` sur l'hôte — à mesurer là ;
-  - les bornes du cas symétrique valent par fenêtre, pas par compte : chaque niveau 3 ouvre un retour à qui tenait
-    le compte juste avant — le voleur d'un papier, cycle après cycle, ou l'auteur d'un niveau 3 frauduleux remarqué
-    après l'échéance de sa fenêtre. Présent depuis la 0.13.0 ; aucune version n'y répond encore ;
-  - les mêmes mots dans un autre ordre passent là où la passphrase remplacée n'est connue que par son empreinte —
-    niveau 2, retour par code, niveau 3 : qui tient l'ancien papier est alors à 720 ordres au plus pour six mots,
-    au niveau 1.
-- Les deux whitepapers en DOCX sont régénérés depuis leur Markdown : ils dataient de la 0.12.5.
-
-### SelfRecover 0.13.1 — le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur, ni par son propre sel — 30 octobre 2026
-
-Correctif de la fenêtre de la 0.13.0. Aucune rupture de contrat : `StorageInterface` ne change pas, et
-`SelParCodeInterface` demande moins qu'avant.
-
-Après un niveau 3, le compte porte deux lots de codes : ceux d'avant, qui restent au titulaire pendant la
-fenêtre, et le lot neuf que `reEnroler()` remet au demandeur. Deux défauts fermaient le retour par code,
-mesurés sur la 0.13.0 en comparant la montée d'un intégrateur à la bibliothèque ; l'audit du correctif à deux
-visions en a trouvé trois de plus, corrigés ici avant l'envoi.
-
-- **Le demandeur remplissait, avec ses propres codes, le compteur qui juge ceux du titulaire.** Les deux lots
-  étaient comptés sous la même étiquette, celle du nom : vingt échecs étalés sur une heure suspendaient le
-  niveau 2 du compte, et le code d'avant était refusé jusqu'à l'échéance de la fenêtre, au profit du demandeur.
-  Un code d'avant est désormais compté sous `Etiquette::PREFIXE_L2_RETOUR` (`Recovery::etiquetteRetourL2()`),
-  que seul qui tient un code d'avant peut écrire.
-- **Le demandeur réarmait la suspension des codes d'avant par ses propres gestes** — préexistant. Le dernier
-  lot émis et la dernière réussite de niveau 1 sont, pendant la fenêtre, les siens : qui tenait aussi la feuille
-  d'avant essayait le mot d'avant 58 fois en trois heures au lieu de 20, et un mot trouvé lui donnait le retour
-  du titulaire. Le compteur des codes d'avant ne se réarme plus qu'à l'ouverture de la fenêtre. La règle : un
-  compteur ne se réarme que par les gestes de qui tient les secrets qu'il juge.
-- **Le lot neuf du titulaire revenu héritait du frein que le demandeur venait de remplir**, un quart d'heure. Le
-  frein par compte compte désormais depuis le dernier réarmement quand il est plus récent que le quart d'heure
-  glissant. Posé sans la correction précédente, ce remède aurait laissé le mot d'avant se chercher sans fin :
-  un cas du banc le garde.
-- **La route du sel rendait un faux sel pour un code d'avant**, dans le lab, et chez tout adaptateur qui ne
-  cherchait que le lot en place, sans erreur. `Recovery::selDeDerivation()` cherche désormais elle-même le sel
-  que la fenêtre garde (`trouverAncienCodeParIndex()`, `fenetreDuCompte()`), et `SelParCodeInterface` ne demande
-  plus que le lot en place. Elle fait ces lectures pour tout code, trouvé ou non : lire seulement quand
-  l'adaptateur ne trouvait rien rendait un code inconnu plus lent qu'un code en place, à l'encontre de ce que
-  la route promet. Le lab passe par la bibliothèque, et le repli de `StockagePdo`, devenu redondant, sort.
-- **`Recovery::estCodeDeRetour()`**, neuve : elle dit, avant le plafond de service d'un intégrateur, qu'un code
-  est un code d'avant d'une fenêtre encore ouverte. Un plafond compté avant de savoir quel compte est visé se
-  remplit avec des codes au hasard, et ferme le retour comme le compteur partagé le fermait. Un HMAC et deux
-  lectures indexées, sans Argon2id ; la réponse vraie suppose de détenir un code d'avant.
-- **La forme de la réponse d'un retour entre au contrat** : `titulaire_reprend`, un lot `codes` neuf et pas de
-  `codes_restants`, `mot_memorise_a_changer`, aux deux niveaux. Le README disait « `codes_restants` à chaque
-  usage » ; l'enveloppe du lab, qui l'avait suivi, perdait le lot neuf et levait un avertissement. Elle le
-  transmet, aux deux niveaux, et la page le montre.
-
-Le modèle de menace dit les deux lots, la règle du réarmement, le demandeur qui partage l'adresse du titulaire,
-le plafond de l'intégrateur et l'étiquette que doit lire son frein.
-
-Mesuré : `sanity_escalade` 257 cas (huit neufs), `sanity_sel_session` du lab 11 (six neufs, jusqu'au parcours du
-navigateur après un vrai niveau 3, aux deux niveaux), `sanity_sel_derivation` 12 (deux neufs : les mêmes lectures
-pour tout code), la console du lab 16 — le préfixe neuf y entre seul ; `sanity_recovery` 89, `banc_stockage_pdo`
-207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence du lab 128. Une étape de dix canaris, chacun
-vu rouge sur son cas.
-
-### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
-
-Rupture de contrat : `StorageInterface` gagne les méthodes des tickets, et SelfDataGuard 0.8.0 les exige.
-
-`reEnroler()` et la remise en service d'un coffre archivé sont des gestes que seule une récupération
-aboutie autorise. Jusqu'ici, rien ne le vérifiait côté coffre : un appelant qui tenait la façade de
-SelfDataGuard pouvait les demander sans qu'aucune récupération les ait décidés.
-
-- SelfRecover émet un ticket **dans sa transaction**, pour chaque niveau 3, chaque retour du titulaire
-  et chaque clôture de fenêtre. Une fenêtre garde celui de son premier niveau 3 : un dossier rejoué
-  n'en fabrique pas un second.
-- SelfDataGuard, muni d'une source `RecoveryTickets`, exige un ticket **du bon genre avant toute
-  dérivation** pour `reEnroll()`, `reinstateArchive()`, `freeze()` et `unfreeze()`, et le refuse par
-  `RecoveryTicketException` — donc sans payer l'Argon2id d'un geste qu'il va refuser.
-- Le ticket qu'une écriture applique est inscrit dans la transaction de cette écriture, **une fois par
-  opération** : un rejeu ne retrouve pas son ticket et s'arrête. `archiveOfTicket()` nomme l'archive
-  qu'un ticket de niveau 3 a rangée, pour un titulaire qui revient après deux niveaux 3.
-- Sans source de tickets, les quatre méthodes n'en demandent aucun : une installation qui n'a pas de
-  récupération derrière son coffre n'a rien à changer.
-
-Mesuré sur `716c484` : `sanity_escalade` 249 cas, `sanity_recovery` 89, `sanity_suite_reprise` 17,
-`banc_stockage_pdo` 207, le couplage des deux bibliothèques 13 et leur parcours 27 ; les treize suites
-SelfDataGuard 679 cas, dont le cas de conformité `tickets-applied-once`. Les 61 canaris de l'étape
-SelfDataGuard rejoués, chacun vu rouge sur son cas.
-
-### SelfRecover 0.13.0, lot C — deux récupérations de niveau 1 simultanées ne réussissent plus toutes les deux — 28 octobre 2026
-
-Rupture de contrat : `StorageInterface::remplacerEmpreintes()` prend un quatrième paramètre.
-
-`parPassphrase()` lit l'empreinte de la passphrase, joue son Argon2id, puis la remplace. Le remplacement
-était un `UPDATE` sans condition : deux requêtes portant la même passphrase recevaient toutes les deux un
-accès rendu, et le compte gardait le mot de passe de celle qui écrivait en second. Une passphrase servait
-deux fois, et l'un des deux mots de passe affichés n'ouvrait rien. Mesuré par la passe d'architecture du
-lot C, trois fois sur trois.
-
-- `remplacerEmpreintes($compteId, $motDePasse, $passphrase, ?string $passphraseLue)` n'écrit que sur un
-  compte dont la passphrase rangée est encore celle qui a été lue, et lève `PassphraseDejaConsommee`
-  sinon — le modèle de `consommerCode()` et de `CodeDejaConsomme`. `null` écrit sans condition :
-  `parCode()`, dont le code consommé a déjà tranché la course, et l'inscription par l'application.
-- La requête perdante reçoit le refus ordinaire, après l'échéance commune, sans qu'aucun secret neuf lui
-  soit montré.
-- Les adaptateurs du lab et de la démo duo suivent.
-
-`sanity_recovery` passe à 89 cas (85 sous `tor-onion`), `banc_stockage_pdo` à 204. Deux canaris, chacun vu
-rouge sur son cas.
-
-### SelfRecover 0.13.0, lot B — après un niveau 3, le titulaire qui revient avec un secret d'avant l'emporte — 28 octobre 2026
-
-Rupture de contrat : `StorageInterface` gagne sept méthodes, et deux tables s'ajoutent au schéma.
-SelfDataGuard passe à 0.8.0 pour suivre.
-
-Un niveau 3 rend le compte à qui convainc l'arbitre. Jusqu'ici c'était sans retour : `reEnroler()`
-remplaçait tous les secrets à l'instant, et un titulaire qui retrouvait son papier le lendemain n'avait
-plus qu'un nouveau dossier pour contester.
-
-- La reprise ouvre une fenêtre de 14 jours, réglable de 7 à 30 (`fenetreDuree`). La passphrase, le mot
-  mémorisé, son sel et les codes papier non consommés d'avant y restent valables, une fois chacun ;
-  l'ancien mot de passe n'y entre pas.
-- Un secret d'avant servi au niveau 1 ou 2 dans la fenêtre rend le compte au titulaire : mot de passe,
-  passphrase et codes neufs, son ancien mot mémorisé et son sel rendus, les sessions et les appareils du
-  demandeur révoqués. La réponse porte `titulaire_reprend` et `mot_memorise_a_changer`.
-- `Escalade::fenetre()` dit l'état de la fenêtre, avec `lecture_seule` pour le coffre et
-  `lecture_admin_permise` pour le séquestre de l'archive. `cloreFenetre()` lève la lecture seule : c'est
-  le geste de l'arbitre, jamais de l'horloge. `purgerFenetres()`, appelé par `bi-self/selfrecover/tools/purger.php`, efface
-  les secrets d'une fenêtre échue sans qu'aucun ait servi.
-- Au niveau 1, les refus tiennent une échéance commune : le second Argon2id que coûte une ancienne
-  passphrase ne dit pas, au chronomètre, qu'un compte sort d'un niveau 3.
-- SelfDataGuard 0.8.0 : `reinstateArchive()` remet en service le coffre archivé au niveau 3, index
-  compris, et range celui du demandeur en archive ; `freeze()` le tient en lecture seule jusqu'à la
-  clôture. Le parcours des deux bibliothèques joue la fenêtre de bout en bout (27 cas).
-- Le prix est déclaré au modèle de menace : la fenêtre fait primer un secret d'avant sur le jugement de
-  l'arbitre, donc un papier volé reprend un niveau 3 que son titulaire avait fait à cause du vol, tant
-  que la fenêtre dure.
-
-`sanity_escalade` passe à 247 cas, `banc_stockage_pdo` à 203, le contrat à 53 méthodes. Vingt et un
-canaris, chacun vu rouge sur son cas.
-
-### SelfRecover 0.13.0, lot A — sous un service caché, ouvrir un dossier de niveau 3 se paie — 27 octobre 2026
-
-Rupture de contrat : `StorageInterface` gagne une méthode, et une table s'ajoute au schéma.
-
-Derrière un service caché, l'adresse ne dit rien. Le seul frein du niveau 3 était donc un plafond sur
-tout le service, et vingt ouvertures anonymes par heure le fermaient à tous les comptes. Le frein
-devient un coût.
-
-- `Escalade::epreuve($nomCompte)` émet une épreuve de calcul : signée par le sel du déploiement, liée
-  au nom demandé, valable cinq minutes. Le navigateur la résout (`client/sr-epreuve.js`), et
-  `ouvrir($nom, $empreinteSesame, $ip, $maintenant, $epreuve, $solution)` la vérifie puis la consomme
-  une seule fois. Un refus de l'épreuve porte une épreuve neuve, et tombe avant la recherche du
-  compte : il ne dit rien de son existence.
-- L'épreuve n'est exigée que sous un profil où l'adresse ne discrimine rien. Sous `clearweb`, le frein
-  par adresse suffit, et rien ne change.
-- Sa difficulté part de 16 bits et monte d'un bit toutes les dix ouvertures du service dans l'heure,
-  et à chaque ouverture sur un même nom, jusqu'à 19 bits. Elle se relit à la remise : une épreuve tirée
-  au calme ne suffit plus si la charge a monté. Le nom fait payer, il ne refuse jamais : un tiers ne
-  ferme pas le niveau 3 d'autrui. Ce que ce prix trahit est déclaré : qu'un nom a été visé dans
-  l'heure, pas qu'il existe.
-- Le plafond de service passe de 20 à 500 ouvertures par heure : un dernier recours, que quelques
-  épreuves payées ne suffisent plus à tirer.
-- `StorageInterface::consommerEpreuve($empreinte, $expire, $maintenant): bool`, atomique par une clé
-  unique ; la table `l3_epreuves`. Un adaptateur existant ajoute les deux ; `schema.sql` crée la table
-  à son prochain chargement.
-- `tools/mesure-epreuve.html` mesure ce que l'épreuve coûte dans le navigateur qui l'ouvre.
-
-Mesures, sur vingt épreuves de 16 bits : 0,33 s en moyenne à `client/sr-epreuve.js` sous Node 20 sur un
-poste de bureau, et la vérification PHP accepte les vingt solutions ; 0,94 s en moyenne et 3,34 s au
-pire dans Firefox sur un téléphone Android 16. Le plafond de 19 bits coûte donc environ 7,5 s en
-moyenne sur ce téléphone, pendant une attaque. `sanity_escalade` passe
-à 225 cas, `banc_stockage_pdo` à 192. Neuf canaris, chacun vu rouge sur son cas.
+- **Le lecteur est tutoyé partout** : docblocks, commentaires, messages des outils et textes des
+  démos de SelfRecover, de SelfDataGuard et de SelfRecover-LUKS.
+- **SelfRecover** :
+  - les README disent que la passphrase tirée suit la langue du déploiement ; seule
+    `Recovery::engendrerPassphrase()`, appelée sans langue, tire dans la liste anglaise ;
+  - le message `l2.suspendu` nomme aussi la demande d'arbitrage, « si ce service en propose une » ;
+  - le docblock d'`estCodeDeRetour()` et le modèle de menace disent ce qu'apprend qui tient un code
+    d'avant quand un plafond saturé refuse les autres : que son code en est un, sous une fenêtre
+    ouverte. Il n'ouvre rien sans le mot mémorisé ;
+  - le docblock de `PREFIXE_L3_OUVRIR` dit ce que l'étiquette compte : tout le service, le nom tapé
+    et l'adresse, chacun sous HMAC ;
+  - `sanity_escalade` passe à 271 cas : un lot émis par le demandeur pendant la fenêtre ne réarme
+    pas le compteur des codes d'avant. Le contrôle jumeau de la réussite au niveau 1 manquait ; son
+    canari est vu rouge.
+- **SelfDataGuard** :
+  - `RecoveryTickets`, `EscrowArbiter`, les README et le journal de la 0.8.0 annonçaient un pont
+    et un arbitre livrés par SelfRecover : il n'y en a pas, et la doc dit ce que l'intégrateur écrit ;
+  - le whitepaper décrit la 0.8.0 — le ticket de la récupération (§3.5), la règle 15 (§7), la
+    roadmap — et le modèle de menace compte le ticket parmi les entrées non fiables ;
+  - le décompte du README est remesuré, suite par suite : 679 cas sur 13 suites.
+- Le journal range les 0.13.x de SelfRecover sous leurs titres de publication.
 
 ### Le squelette de MySelf-Live quitte le dépôt — 16 octobre 2026
 
@@ -752,6 +565,231 @@ La 0.7.1 corrige ce qu'un audit à deux visions de la 0.7.0 a relevé. Aucun cha
 `levee_en_attente` ; un planificateur lit `comptes_sautes` ; `balayerBansEchus()` s'appelle hors de la transaction de
 l'hôte. Le détail : la section « Statut » de
 [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+
+---
+
+## [SelfRecover v0.13.2] — 1er novembre 2026
+
+### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
+
+Correctif du retour du titulaire dans la fenêtre d'après un niveau 3. Aucune rupture de contrat : ni
+`StorageInterface` ni la forme des réponses ne changent ; un refus neuf, `reprise_en_cours`, s'ajoute, et
+`accord_perime` gagne une cause. Les constats viennent de deux intégrateurs qui ont relu la 0.13.1 contre leur
+code ; l'audit du correctif à deux visions en a trouvé d'autres, corrigés ici avant l'envoi.
+
+- **Au retour, la passphrase apportée ne peut être ni celle d'avant ni celle du demandeur.** La règle « celle que
+  tu apportes doit différer de l'ancienne » n'était jugée que sur une récupération ordinaire : au retour, le
+  titulaire pouvait reposer la passphrase d'avant — celle qu'il vient de servir, et peut-être celle qu'on lui a
+  volée —, ou celle du demandeur, que le demandeur connaît. Elle est désormais jugée contre les deux, aux deux
+  niveaux ; au niveau 1, celle d'avant dans n'importe quel ordre de ses mots.
+- **Un second niveau 3 n'écrase plus une fenêtre reprise.** Le titulaire revenu, la fenêtre attend que l'arbitre
+  la close ; un second niveau 3 accordé entre-temps la remplaçait, effaçait la trace du retour, et l'arbitre ne
+  pouvait plus clore — le coffre restait gelé sans issue. `Escalade::trancher()` refuse d'accorder tant qu'elle
+  n'est pas close (`reprise_en_cours`), et un accord qui n'a pas été rendu après sa clôture ne s'exécute pas, même
+  la fenêtre close (`accord_perime`) : rendu avant le retour, il jugeait un compte que ce retour a changé ; écrit
+  pendant lui, il porte une date postérieure au retour, car `trancher()` lit la fenêtre hors de toute transaction.
+  Une fenêtre close est jugée sur sa date de clôture seule : le contrat n'oblige pas un adaptateur à garder la date
+  du retour. Un tel accord ne garde plus la place du niveau 3 ; `reEnroler()` le relit dans sa transaction.
+- **Cette relecture ne tient que sous un isolement que le stockage fournit, et le contrat le dit**
+  (`StorageInterface::ouvrirFenetre()`, le modèle de menace) : SQLite le tient ; les niveaux par défaut de
+  PostgreSQL (`READ COMMITTED`) et d'InnoDB (`REPEATABLE READ`) ne le tiennent pas. Il faut `SERIALIZABLE` ou le
+  verrou de la ligne lue ; quand l'intégrateur enveloppe l'appel dans sa transaction, c'est la sienne qui décide.
+- **Le lab a une route de clôture.** Sa console d'arbitrage montre une fenêtre reprise et la clôt
+  (`/api/admin_window_close.php`) : sans elle, plus aucun niveau 3 ne s'accordait sur ce compte.
+- **Le message du retour dit quand changer le mot mémorisé** : après la clôture, pas avant, car d'ici là le coffre
+  d'avant ne s'ouvre qu'avec lui. Sans suite branchée, il n'annonce plus de coffre en lecture seule.
+- **Des textes qui disaient faux** :
+  - « les secrets d'avant valent une fois chacun » : ils valent pour un seul retour, le premier servi ferme la
+    fenêtre — dans les docblocks, les schémas, le modèle de menace, l'architecture, les whitepapers et les README.
+    L'entrée de la 0.13.0 ci-dessous le disait aussi ;
+  - le frein par compte du niveau 2 « indiscernable » : il rend le libellé du frein par adresse, pas son temps ;
+  - « le litige reste ouvert » après le retour : c'est la fenêtre qui attend sa clôture ;
+  - le pont `Pont\CoffreSuitLaReprise`, annoncé par `SuiteDeReprise`, n'existe pas : l'intégrateur l'écrit.
+- **« Litige » disait « fenêtre »** : ce que l'arbitre clôt après un retour est la fenêtre, pas un litige que le
+  titulaire aurait ouvert — dans les messages, les docblocks (et trois de SelfDataGuard qui décrivent cette clôture),
+  le modèle de menace, l'architecture et les whitepapers.
+- **La bibliothèque ne remet plus une passphrase qu'elle refuserait** — préexistant. Les mots étaient tirés avec
+  remise : environ une passphrase engendrée sur cinq cents répétait un mot, que `validerPassphraseApportee()` refuse
+  quand on l'apporte, et un banc qui apportait ces tirages rougissait au hasard. `Wordlist::generate()` tire désormais
+  sans remise, et l'entropie qu'il annonce est celle de ce tirage ; l'aperçu `tools/entropy-lab/` aussi.
+- **Trois refus du niveau 3 ne parlaient que français** : `sesame_invalide`, `expire` et `accord_perime` passent
+  désormais par `Messages`, comme les autres.
+- **Le modèle de menace dit une condition et deux prix** :
+  - au niveau 1, l'échéance commune des refus cache le second Argon2id d'une passphrase d'avant tant que deux
+    Argon2id tiennent dans `delaiRefusUs` sur l'hôte — à mesurer là ;
+  - les bornes du cas symétrique valent par fenêtre, pas par compte : chaque niveau 3 ouvre un retour à qui tenait
+    le compte juste avant — le voleur d'un papier, cycle après cycle, ou l'auteur d'un niveau 3 frauduleux remarqué
+    après l'échéance de sa fenêtre. Présent depuis la 0.13.0 ; aucune version n'y répond encore ;
+  - les mêmes mots dans un autre ordre passent là où la passphrase remplacée n'est connue que par son empreinte —
+    niveau 2, retour par code, niveau 3 : qui tient l'ancien papier est alors à 720 ordres au plus pour six mots,
+    au niveau 1.
+- Les deux whitepapers en DOCX sont régénérés depuis leur Markdown : ils dataient de la 0.12.5.
+
+---
+
+## [SelfRecover v0.13.1] — 31 octobre 2026
+
+### SelfRecover 0.13.1 — le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur, ni par son propre sel — 30 octobre 2026
+
+Correctif de la fenêtre de la 0.13.0. Aucune rupture de contrat : `StorageInterface` ne change pas, et
+`SelParCodeInterface` demande moins qu'avant.
+
+Après un niveau 3, le compte porte deux lots de codes : ceux d'avant, qui restent au titulaire pendant la
+fenêtre, et le lot neuf que `reEnroler()` remet au demandeur. Deux défauts fermaient le retour par code,
+mesurés sur la 0.13.0 en comparant la montée d'un intégrateur à la bibliothèque ; l'audit du correctif à deux
+visions en a trouvé trois de plus, corrigés ici avant l'envoi.
+
+- **Le demandeur remplissait, avec ses propres codes, le compteur qui juge ceux du titulaire.** Les deux lots
+  étaient comptés sous la même étiquette, celle du nom : vingt échecs étalés sur une heure suspendaient le
+  niveau 2 du compte, et le code d'avant était refusé jusqu'à l'échéance de la fenêtre, au profit du demandeur.
+  Un code d'avant est désormais compté sous `Etiquette::PREFIXE_L2_RETOUR` (`Recovery::etiquetteRetourL2()`),
+  que seul qui tient un code d'avant peut écrire.
+- **Le demandeur réarmait la suspension des codes d'avant par ses propres gestes** — préexistant. Le dernier
+  lot émis et la dernière réussite de niveau 1 sont, pendant la fenêtre, les siens : qui tenait aussi la feuille
+  d'avant essayait le mot d'avant 58 fois en trois heures au lieu de 20, et un mot trouvé lui donnait le retour
+  du titulaire. Le compteur des codes d'avant ne se réarme plus qu'à l'ouverture de la fenêtre. La règle : un
+  compteur ne se réarme que par les gestes de qui tient les secrets qu'il juge.
+- **Le lot neuf du titulaire revenu héritait du frein que le demandeur venait de remplir**, un quart d'heure. Le
+  frein par compte compte désormais depuis le dernier réarmement quand il est plus récent que le quart d'heure
+  glissant. Posé sans la correction précédente, ce remède aurait laissé le mot d'avant se chercher sans fin :
+  un cas du banc le garde.
+- **La route du sel rendait un faux sel pour un code d'avant**, dans le lab, et chez tout adaptateur qui ne
+  cherchait que le lot en place, sans erreur. `Recovery::selDeDerivation()` cherche désormais elle-même le sel
+  que la fenêtre garde (`trouverAncienCodeParIndex()`, `fenetreDuCompte()`), et `SelParCodeInterface` ne demande
+  plus que le lot en place. Elle fait ces lectures pour tout code, trouvé ou non : lire seulement quand
+  l'adaptateur ne trouvait rien rendait un code inconnu plus lent qu'un code en place, à l'encontre de ce que
+  la route promet. Le lab passe par la bibliothèque, et le repli de `StockagePdo`, devenu redondant, sort.
+- **`Recovery::estCodeDeRetour()`**, neuve : elle dit, avant le plafond de service d'un intégrateur, qu'un code
+  est un code d'avant d'une fenêtre encore ouverte. Un plafond compté avant de savoir quel compte est visé se
+  remplit avec des codes au hasard, et ferme le retour comme le compteur partagé le fermait. Un HMAC et deux
+  lectures indexées, sans Argon2id ; la réponse vraie suppose de détenir un code d'avant.
+- **La forme de la réponse d'un retour entre au contrat** : `titulaire_reprend`, un lot `codes` neuf et pas de
+  `codes_restants`, `mot_memorise_a_changer`, aux deux niveaux. Le README disait « `codes_restants` à chaque
+  usage » ; l'enveloppe du lab, qui l'avait suivi, perdait le lot neuf et levait un avertissement. Elle le
+  transmet, aux deux niveaux, et la page le montre.
+
+Le modèle de menace dit les deux lots, la règle du réarmement, le demandeur qui partage l'adresse du titulaire,
+le plafond de l'intégrateur et l'étiquette que doit lire son frein.
+
+Mesuré : `sanity_escalade` 257 cas (huit neufs), `sanity_sel_session` du lab 11 (six neufs, jusqu'au parcours du
+navigateur après un vrai niveau 3, aux deux niveaux), `sanity_sel_derivation` 12 (deux neufs : les mêmes lectures
+pour tout code), la console du lab 16 — le préfixe neuf y entre seul ; `sanity_recovery` 89, `banc_stockage_pdo`
+207, `sanity_suite_reprise` 17, `sanity_etiquettes` 12, l'équivalence du lab 128. Une étape de dix canaris, chacun
+vu rouge sur son cas.
+
+---
+
+## [SelfRecover v0.13.0] — 29 octobre 2026
+
+### SelfRecover 0.13.0, lot C — le ticket de reprise : le coffre n'accepte plus un geste que la récupération n'a pas décidé — 29 octobre 2026
+
+Rupture de contrat : `StorageInterface` gagne les méthodes des tickets, et SelfDataGuard 0.8.0 les exige.
+
+`reEnroler()` et la remise en service d'un coffre archivé sont des gestes que seule une récupération
+aboutie autorise. Jusqu'ici, rien ne le vérifiait côté coffre : un appelant qui tenait la façade de
+SelfDataGuard pouvait les demander sans qu'aucune récupération les ait décidés.
+
+- SelfRecover émet un ticket **dans sa transaction**, pour chaque niveau 3, chaque retour du titulaire
+  et chaque clôture de fenêtre. Une fenêtre garde celui de son premier niveau 3 : un dossier rejoué
+  n'en fabrique pas un second.
+- SelfDataGuard, muni d'une source `RecoveryTickets`, exige un ticket **du bon genre avant toute
+  dérivation** pour `reEnroll()`, `reinstateArchive()`, `freeze()` et `unfreeze()`, et le refuse par
+  `RecoveryTicketException` — donc sans payer l'Argon2id d'un geste qu'il va refuser.
+- Le ticket qu'une écriture applique est inscrit dans la transaction de cette écriture, **une fois par
+  opération** : un rejeu ne retrouve pas son ticket et s'arrête. `archiveOfTicket()` nomme l'archive
+  qu'un ticket de niveau 3 a rangée, pour un titulaire qui revient après deux niveaux 3.
+- Sans source de tickets, les quatre méthodes n'en demandent aucun : une installation qui n'a pas de
+  récupération derrière son coffre n'a rien à changer.
+
+Mesuré sur `716c484` : `sanity_escalade` 249 cas, `sanity_recovery` 89, `sanity_suite_reprise` 17,
+`banc_stockage_pdo` 207, le couplage des deux bibliothèques 13 et leur parcours 27 ; les treize suites
+SelfDataGuard 679 cas, dont le cas de conformité `tickets-applied-once`. Les 61 canaris de l'étape
+SelfDataGuard rejoués, chacun vu rouge sur son cas.
+
+### SelfRecover 0.13.0, lot C — deux récupérations de niveau 1 simultanées ne réussissent plus toutes les deux — 28 octobre 2026
+
+Rupture de contrat : `StorageInterface::remplacerEmpreintes()` prend un quatrième paramètre.
+
+`parPassphrase()` lit l'empreinte de la passphrase, joue son Argon2id, puis la remplace. Le remplacement
+était un `UPDATE` sans condition : deux requêtes portant la même passphrase recevaient toutes les deux un
+accès rendu, et le compte gardait le mot de passe de celle qui écrivait en second. Une passphrase servait
+deux fois, et l'un des deux mots de passe affichés n'ouvrait rien. Mesuré par la passe d'architecture du
+lot C, trois fois sur trois.
+
+- `remplacerEmpreintes($compteId, $motDePasse, $passphrase, ?string $passphraseLue)` n'écrit que sur un
+  compte dont la passphrase rangée est encore celle qui a été lue, et lève `PassphraseDejaConsommee`
+  sinon — le modèle de `consommerCode()` et de `CodeDejaConsomme`. `null` écrit sans condition :
+  `parCode()`, dont le code consommé a déjà tranché la course, et l'inscription par l'application.
+- La requête perdante reçoit le refus ordinaire, après l'échéance commune, sans qu'aucun secret neuf lui
+  soit montré.
+- Les adaptateurs du lab et de la démo duo suivent.
+
+`sanity_recovery` passe à 89 cas (85 sous `tor-onion`), `banc_stockage_pdo` à 204. Deux canaris, chacun vu
+rouge sur son cas.
+
+### SelfRecover 0.13.0, lot B — après un niveau 3, le titulaire qui revient avec un secret d'avant l'emporte — 28 octobre 2026
+
+Rupture de contrat : `StorageInterface` gagne sept méthodes, et deux tables s'ajoutent au schéma.
+SelfDataGuard passe à 0.8.0 pour suivre.
+
+Un niveau 3 rend le compte à qui convainc l'arbitre. Jusqu'ici c'était sans retour : `reEnroler()`
+remplaçait tous les secrets à l'instant, et un titulaire qui retrouvait son papier le lendemain n'avait
+plus qu'un nouveau dossier pour contester.
+
+- La reprise ouvre une fenêtre de 14 jours, réglable de 7 à 30 (`fenetreDuree`). La passphrase, le mot
+  mémorisé, son sel et les codes papier non consommés d'avant y restent valables, une fois chacun ;
+  l'ancien mot de passe n'y entre pas.
+- Un secret d'avant servi au niveau 1 ou 2 dans la fenêtre rend le compte au titulaire : mot de passe,
+  passphrase et codes neufs, son ancien mot mémorisé et son sel rendus, les sessions et les appareils du
+  demandeur révoqués. La réponse porte `titulaire_reprend` et `mot_memorise_a_changer`.
+- `Escalade::fenetre()` dit l'état de la fenêtre, avec `lecture_seule` pour le coffre et
+  `lecture_admin_permise` pour le séquestre de l'archive. `cloreFenetre()` lève la lecture seule : c'est
+  le geste de l'arbitre, jamais de l'horloge. `purgerFenetres()`, appelé par `bi-self/selfrecover/tools/purger.php`, efface
+  les secrets d'une fenêtre échue sans qu'aucun ait servi.
+- Au niveau 1, les refus tiennent une échéance commune : le second Argon2id que coûte une ancienne
+  passphrase ne dit pas, au chronomètre, qu'un compte sort d'un niveau 3.
+- SelfDataGuard 0.8.0 : `reinstateArchive()` remet en service le coffre archivé au niveau 3, index
+  compris, et range celui du demandeur en archive ; `freeze()` le tient en lecture seule jusqu'à la
+  clôture. Le parcours des deux bibliothèques joue la fenêtre de bout en bout (27 cas).
+- Le prix est déclaré au modèle de menace : la fenêtre fait primer un secret d'avant sur le jugement de
+  l'arbitre, donc un papier volé reprend un niveau 3 que son titulaire avait fait à cause du vol, tant
+  que la fenêtre dure.
+
+`sanity_escalade` passe à 247 cas, `banc_stockage_pdo` à 203, le contrat à 53 méthodes. Vingt et un
+canaris, chacun vu rouge sur son cas.
+
+### SelfRecover 0.13.0, lot A — sous un service caché, ouvrir un dossier de niveau 3 se paie — 27 octobre 2026
+
+Rupture de contrat : `StorageInterface` gagne une méthode, et une table s'ajoute au schéma.
+
+Derrière un service caché, l'adresse ne dit rien. Le seul frein du niveau 3 était donc un plafond sur
+tout le service, et vingt ouvertures anonymes par heure le fermaient à tous les comptes. Le frein
+devient un coût.
+
+- `Escalade::epreuve($nomCompte)` émet une épreuve de calcul : signée par le sel du déploiement, liée
+  au nom demandé, valable cinq minutes. Le navigateur la résout (`client/sr-epreuve.js`), et
+  `ouvrir($nom, $empreinteSesame, $ip, $maintenant, $epreuve, $solution)` la vérifie puis la consomme
+  une seule fois. Un refus de l'épreuve porte une épreuve neuve, et tombe avant la recherche du
+  compte : il ne dit rien de son existence.
+- L'épreuve n'est exigée que sous un profil où l'adresse ne discrimine rien. Sous `clearweb`, le frein
+  par adresse suffit, et rien ne change.
+- Sa difficulté part de 16 bits et monte d'un bit toutes les dix ouvertures du service dans l'heure,
+  et à chaque ouverture sur un même nom, jusqu'à 19 bits. Elle se relit à la remise : une épreuve tirée
+  au calme ne suffit plus si la charge a monté. Le nom fait payer, il ne refuse jamais : un tiers ne
+  ferme pas le niveau 3 d'autrui. Ce que ce prix trahit est déclaré : qu'un nom a été visé dans
+  l'heure, pas qu'il existe.
+- Le plafond de service passe de 20 à 500 ouvertures par heure : un dernier recours, que quelques
+  épreuves payées ne suffisent plus à tirer.
+- `StorageInterface::consommerEpreuve($empreinte, $expire, $maintenant): bool`, atomique par une clé
+  unique ; la table `l3_epreuves`. Un adaptateur existant ajoute les deux ; `schema.sql` crée la table
+  à son prochain chargement.
+- `tools/mesure-epreuve.html` mesure ce que l'épreuve coûte dans le navigateur qui l'ouvre.
+
+Mesures, sur vingt épreuves de 16 bits : 0,33 s en moyenne à `client/sr-epreuve.js` sous Node 20 sur un
+poste de bureau, et la vérification PHP accepte les vingt solutions ; 0,94 s en moyenne et 3,34 s au
+pire dans Firefox sur un téléphone Android 16. Le plafond de 19 bits coûte donc environ 7,5 s en
+moyenne sur ce téléphone, pendant une attaque. `sanity_escalade` passe
+à 225 cas, `banc_stockage_pdo` à 192. Neuf canaris, chacun vu rouge sur son cas.
 
 ---
 

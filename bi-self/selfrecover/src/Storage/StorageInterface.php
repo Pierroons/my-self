@@ -188,7 +188,7 @@ interface StorageInterface
 
     /**
      * Le ticket, s'il a été émis : son compte sous sa forme rangée, son genre,
-     * sa date. Ne écrit rien.
+     * sa date. N'écrit rien.
      *
      * @return array{compte_id: int, nom_compte: string, genre: string, emis_le: int}|null
      */

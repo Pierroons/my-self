@@ -1633,6 +1633,19 @@ verifier('⭐ une réussite du demandeur au niveau 1 ne réarme pas le compteur 
     ($niveau1Demandeur['ok'] ?? false) === true && ($apres['error'] ?? '') === 'l2_suspendu',
     resume_retour($apres));
 
+// Le jumeau, pour l'autre date que le demandeur tient : le lot qu'il émet.
+[$stB, , , $codesB] = $repris($now);
+$recB = new Recovery($stB, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0,
+    maxEchecsCompte: 2, maxEchecsL2AvantSuspension: 3);
+$recB->parCode($codesB[1], $MOT_FAUX, $parOrigine(25), $now + 30);
+$recB->parCode($codesB[1], $MOT_FAUX, $parOrigine(26), $now + 31);
+$recB->parCode($codesB[1], $MOT_FAUX, $parOrigine(27), $now + 1000);
+$lotDemandeur = $recB->emettreCodes(1, 2, $now + 1100);
+$apresLot     = $recB->parCode($codesB[0], $MOT_AVANT, $parOrigine(28), $now + 1200);
+verifier('⭐ un lot émis par le demandeur ne réarme pas le compteur des codes d\'avant',
+    count($lotDemandeur) === 2 && ($apresLot['error'] ?? '') === 'l2_suspendu',
+    resume_retour($apresLot));
+
 [$stE, $escE2, $recE, $codesE] = $repris($now);
 $tard = $now + 20 + 14 * 86400;
 verifier('une fenêtre échue ne reconnaît plus de retour',

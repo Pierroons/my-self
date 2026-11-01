@@ -35,7 +35,8 @@ frozen vault.
   `concurrent-archive-swaps`, each made to fail by a storage that breaks its clause. A freeze is checked
   in sequence only: no case races it against a write.
 - **Recovery tickets.** `new SelfDataGuard($storage, $blindKey, tickets: $source)`, where `$source`
-  implements `RecoveryTickets` (SelfRecover's bridge provides one): `reEnroll()`, `reinstateArchive()`,
+  implements `RecoveryTickets` (SelfRecover ships none: the integrator writes it over SelfRecover's
+  `StorageInterface::ticketEmis()`): `reEnroll()`, `reinstateArchive()`,
   `freeze()` and `unfreeze()` then refuse without a ticket of their kind, issued for that userId by the
   recovery that was accepted (`RecoveryTicketException`, before any Argon2id). Measured before: a
   `reEnroll()` on the generation `generationOf()` returns went through as often as it was called, with

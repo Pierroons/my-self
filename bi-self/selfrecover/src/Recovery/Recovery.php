@@ -842,10 +842,15 @@ final class Recovery
      * retour, qu'un plafond global n'a pas à refuser ; le frein par compte de
      * `parCode()` le juge ensuite, sous `etiquetteRetourL2()`.
      *
-     * Sans oracle : la réponse vraie suppose de détenir un code d'avant, et rien
-     * ne dit à qui n'en a pas qu'un compte sort d'un niveau 3. Un HMAC et deux
-     * lectures indexées, sans Argon2id : de quoi l'appeler sur chaque requête,
-     * avant le plafond.
+     * Sans oracle pour qui n'a pas de code d'avant : la réponse vraie suppose
+     * d'en détenir un, et rien ne dit à qui n'en a pas qu'un compte sort d'un
+     * niveau 3. ⚠️ Qui en tient un l'apprend : quand le plafond saturé refuse
+     * les autres codes, le sien atteint `parCode()` et reçoit sa réponse au lieu
+     * du refus du plafond. Il sait alors que c'est un code d'avant sous une
+     * fenêtre ouverte ; sans le mot mémorisé, il n'ouvre rien.
+     *
+     * Un HMAC et deux lectures indexées, sans Argon2id : de quoi l'appeler sur
+     * chaque requête, avant le plafond.
      *
      * Au niveau 1, le nom arrive avec la requête : `Escalade::fenetre()` répond
      * pour lui, au prix dit par le modèle de menace.
