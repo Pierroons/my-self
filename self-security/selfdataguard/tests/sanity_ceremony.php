@@ -84,6 +84,11 @@ file_put_contents($witnessFile, sprintf(
     "<?php\nrequire %s;\nreturn new Pierroons\\SelfDataGuard\\Escrow\\NoHeadWitness();\n",
     var_export(__DIR__ . '/../src/autoload.php', true)
 ));
+$keeperFile = "{$ws}/gardien.php";
+file_put_contents($keeperFile, sprintf(
+    "<?php\nrequire %s;\nreturn new Pierroons\\SelfDataGuard\\Escrow\\NoKeeper();\n",
+    var_export(__DIR__ . '/../src/autoload.php', true)
+));
 
 // ── Harnais subprocess ───────────────────────────────────────────────────────
 $env = [
@@ -94,6 +99,7 @@ $env = [
     'DATAGUARD_AUDIT_LOG'         => $auditLog,
     'DATAGUARD_ARBITER_FILE'      => $arbiterFile,
     'DATAGUARD_WITNESS_FILE'      => $witnessFile,
+    'DATAGUARD_KEEPER_FILE'       => $keeperFile,
     'DATAGUARD_AUDIT_SECRET'      => $auditSecret,
     'DATAGUARD_OPERATOR'          => 'operator@testhost',
 ];
@@ -183,7 +189,7 @@ section('Anti-curieux — unknown litige is refused');
 $r = run(['unlock', 'alice', 'L3-does-not-exist'], ADMIN_PASS . "\n", $env);
 $r['code'] === 2 ? ok('unknown litige → exit 2') : ko('should refuse unknown litige');
 
-foreach (['DATAGUARD_ARBITER_FILE' => "{$ws}/absent.php", 'DATAGUARD_WITNESS_FILE' => $arbiterFile] as $key => $wrong) {
+foreach (['DATAGUARD_ARBITER_FILE' => "{$ws}/absent.php", 'DATAGUARD_WITNESS_FILE' => $arbiterFile, 'DATAGUARD_KEEPER_FILE' => $witnessFile] as $key => $wrong) {
     $r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", [$key => $wrong] + $env);
     $r['code'] === 3 && str_contains($r['err'], $key)
         ? ok("{$key} that does not return its object → exit 3, nothing attempted")

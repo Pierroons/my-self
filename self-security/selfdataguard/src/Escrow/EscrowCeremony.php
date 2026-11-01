@@ -27,7 +27,11 @@ use Throwable;
  *      witness took: a log cut or rewritten since stops the ceremony here;
  *   2. the head of the log taken out of the machine by the witness, which
  *      stops the ceremony when it fails;
- *   3. a verdict of Open.
+ *   3. a verdict of Open;
+ *   4. for a compartment sealed to a keeper, the keeper's release, given the
+ *      intention's head: it records the read and hands back the inner box —
+ *      or holds it until a delay ends, or refuses it to an objection. Without
+ *      a keeper (NoKeeper), such a compartment does not open.
  *
  * Then the result, or the failure, goes to the log too. A refused intention is
  * in the log as much as a granted one.
@@ -44,6 +48,7 @@ final class EscrowCeremony
         private readonly AuditLog $log,
         private readonly EscrowArbiter $arbiter,
         private readonly HeadWitness $witness,
+        private readonly EscrowKeeper $keeper,
         private readonly string $operator
     ) {
     }
@@ -63,11 +68,15 @@ final class EscrowCeremony
         string $adminPublicKeyB64,
         array $fieldNames = []
     ): array {
-        return $this->perform('escrow-unlock', $userId, $caseRef, null, ['fields' => $fieldNames], function () use (
-            $userId, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
+        return $this->perform('escrow-unlock', $userId, $caseRef, null, ['fields' => $fieldNames], function (array $intent) use (
+            $userId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
         ): array {
-            $record = $this->storage->loadEscrow($userId)
-                ?? throw new RuntimeException("No escrow compartment for '{$userId}'");
+            $record = $this->throughKeeper(
+                $this->storage->loadEscrow($userId) ?? throw new RuntimeException("No escrow compartment for '{$userId}'"),
+                $caseRef,
+                false,
+                $intent
+            );
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
                 self::openWrapAdmin($record, $sk, $adminPublicKeyB64),
                 $this->storage->loadEscrowFields($userId, $fieldNames)
@@ -92,8 +101,8 @@ final class EscrowCeremony
         string $adminPublicKeyB64,
         array $fieldNames = []
     ): array {
-        return $this->perform('archive-escrow-unlock', $userId, $caseRef, $archiveId, ['fields' => $fieldNames], function () use (
-            $userId, $archiveId, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
+        return $this->perform('archive-escrow-unlock', $userId, $caseRef, $archiveId, ['fields' => $fieldNames], function (array $intent) use (
+            $userId, $archiveId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
         ): array {
             $archive = $this->storage->loadArchive($userId, $archiveId)
                 ?? throw new VaultNotFoundException("No archive '{$archiveId}' for '{$userId}'");
@@ -103,8 +112,9 @@ final class EscrowCeremony
             $ciphertexts = $fieldNames === []
                 ? $archive->escrowFields
                 : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
+            $escrow = $this->throughKeeper($archive->escrow, $caseRef, true, $intent);
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
-                self::openWrapAdmin($archive->escrow, $sk, $adminPublicKeyB64),
+                self::openWrapAdmin($escrow, $sk, $adminPublicKeyB64),
                 $ciphertexts
             ));
             return [$plain, ['returned' => array_keys($plain)]];
@@ -168,7 +178,8 @@ final class EscrowCeremony
 
     /**
      * @param array<string, mixed>                                  $detail
-     * @param callable(): array{0: mixed, 1: array<string, mixed>} $work   the result, and what the log says of it
+     * @param callable(array<string, mixed>): array{0: mixed, 1: array<string, mixed>} $work
+     *        given the intention as the log wrote it; returns the result, and what the log says of it
      */
     private function perform(string $act, string $userId, string $caseRef, ?string $archiveId, array $detail, callable $work): mixed
     {
@@ -197,7 +208,8 @@ final class EscrowCeremony
         }
         try {
             $intent = $this->log->append(['action' => "{$act}-intent", 'arbiter' => get_class($this->arbiter),
-                'verdict' => $verdict->value, 'witness' => get_class($this->witness)] + $failure + $context, $lastHead);
+                'verdict' => $verdict->value, 'witness' => get_class($this->witness), 'keeper' => get_class($this->keeper)]
+                + $failure + $context, $lastHead);
         } catch (AuditAnchorException $e) {
             $this->log->append(['action' => "{$act}-denied", 'reason' => 'log-behind-witness',
                 'found' => $e->found, 'witnessHead' => $lastHead] + $context);
@@ -221,9 +233,13 @@ final class EscrowCeremony
             throw new EscrowRefusedException($verdict, $userId, $caseRef);
         }
         try {
-            [$result, $said] = $work();
+            [$result, $said] = $work($intent);
+        } catch (EscrowAnnouncedException $e) {
+            $this->log->append(['action' => "{$act}-announced", 'due' => gmdate('c', $e->due)] + $context);
+            throw $e;
         } catch (Throwable $e) {
             $this->log->append(['action' => "{$act}-denied", 'reason' => match (true) {
+                $e instanceof EscrowKeeperException              => $e->reason,
                 $e instanceof WrongSecretException               => 'bad-passphrase',
                 $e instanceof LegacyCipherUnavailableException => 'legacy-cipher-unavailable',
                 $e instanceof InvalidArgumentException         => 'sealed-key-unreadable',
@@ -233,6 +249,45 @@ final class EscrowCeremony
         }
         $this->log->append(['action' => $act] + $context + $said);
         return $result;
+    }
+
+    /**
+     * $record with wrap_admin as the administrator opens it: for a compartment
+     * sealed to a keeper, the inner box the keeper hands back, once it has
+     * recorded the read at the head of this intention. Any other is returned as
+     * it is — readable by the administrator alone, as before 0.9.0.
+     *
+     * @param array<string, mixed> $intent
+     */
+    private function throughKeeper(EscrowRecord $record, string $caseRef, bool $archive, array $intent): EscrowRecord
+    {
+        if (!EscrowVault::isKeeperSealed($record)) {
+            return $record;
+        }
+        if ($this->keeper instanceof NoKeeper) {
+            throw new EscrowKeeperException(
+                'keeper-missing',
+                "The escrow of '{$record->userId}' is sealed to a keeper, and this ceremony was given NoKeeper: nothing is unsealed"
+            );
+        }
+        $escrowId = (string) KeeperSeal::escrowIdOf($record->wrapAdmin);
+        $outer    = KeeperSeal::outerOf($record->wrapAdmin);
+        $seq      = (int) $intent['seq'];
+        $hmac     = (string) $intent['hmac'];
+        try {
+            $due = $this->keeper->announce($escrowId, $outer, $record->userId, $caseRef, $archive, $seq, $hmac);
+        } catch (Throwable $e) {
+            throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the read: nothing is unsealed', $e);
+        }
+        if ($due > time()) {
+            throw new EscrowAnnouncedException($due, $record->userId, $caseRef);
+        }
+        try {
+            $inner = $this->keeper->release($escrowId, $outer, $caseRef, $seq, $hmac);
+        } catch (Throwable $e) {
+            throw new EscrowKeeperException('keeper-failed', 'The keeper did not hand back the box: nothing is unsealed', $e);
+        }
+        return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision);
     }
 
     /**

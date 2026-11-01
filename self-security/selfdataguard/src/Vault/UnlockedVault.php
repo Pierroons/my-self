@@ -11,6 +11,7 @@ use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use RuntimeException;
@@ -103,23 +104,57 @@ final class UnlockedVault
      * A new escrow compartment: its key drawn here, wrapped under the master key
      * for the user, sealed to the administrator's public key.
      *
+     * Given a keeper's public keys, wrap_user also carries the escrowId — the
+     * one given, so that a new key keeps its compartment's identity, or a new
+     * one —, those keys and a fresh objection seed, and wrap_admin is sealed
+     * again to the keeper (KeeperSeal). What the holder sealed under the master
+     * key, the administrator cannot rewrite: the keeper a session asks is the
+     * one named at the deposit, not the one the database names today.
+     *
+     * $createdAt and $revision carry over from the compartment a new key
+     * replaces; the storage compares the revision when it writes.
+     *
+     * @param array{sign: string, box: string}|null $keeperPublicKeys
      * @return array{record: EscrowRecord, unlocked: UnlockedEscrow}
      */
-    public function createEscrow(string $adminPublicKeyB64, DateTimeImmutable $now): array
-    {
+    public function createEscrow(
+        string $adminPublicKeyB64,
+        DateTimeImmutable $now,
+        ?array $keeperPublicKeys = null,
+        ?string $escrowId = null,
+        ?DateTimeImmutable $createdAt = null,
+        int $revision = 0
+    ): array {
         $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);
+        $seed      = null;
+        $plain     = $escrowKey;
         try {
-            $wrapUser = Primitives::encrypt($escrowKey, $this->key(), EscrowVault::wrapAad($this->userId));
-            $unlocked = new UnlockedEscrow(userId: $this->userId, escrowKey: $escrowKey);
+            if ($keeperPublicKeys !== null) {
+                $keeperPublicKeys = KeeperSeal::checkKeys($keeperPublicKeys);
+                $escrowId ??= KeeperSeal::newEscrowId();
+                $seed  = Primitives::randomBytes(SODIUM_CRYPTO_SIGN_SEEDBYTES);
+                $plain = $escrowKey . $escrowId . $keeperPublicKeys['sign'] . $keeperPublicKeys['box'] . $seed;
+            }
+            $wrapUser = Primitives::encrypt($plain, $this->key(), EscrowVault::wrapAad($this->userId));
+            $unlocked = $keeperPublicKeys === null
+                ? new UnlockedEscrow(userId: $this->userId, escrowKey: $escrowKey)
+                : new UnlockedEscrow($this->userId, $escrowKey, $escrowId, $keeperPublicKeys, $seed);
         } finally {
             Primitives::zeroize($escrowKey);
+            Primitives::zeroize($plain);
+            if ($seed !== null) {
+                Primitives::zeroize($seed);
+            }
         }
         $record = new EscrowRecord(
             userId:    $this->userId,
             wrapUser:  $wrapUser,
-            wrapAdmin: $unlocked->sealToAdmin($adminPublicKeyB64),
-            createdAt: $now,
-            updatedAt: $now
+            wrapAdmin: $keeperPublicKeys === null
+                ? $unlocked->sealToAdmin($adminPublicKeyB64)
+                : $unlocked->sealToKeeper($adminPublicKeyB64),
+            createdAt: $createdAt ?? $now,
+            updatedAt: $now,
+            revision:  $revision
         );
         return ['record' => $record, 'unlocked' => $unlocked];
     }
@@ -148,7 +183,7 @@ final class UnlockedVault
             throw new RuntimeException('Could not unwrap escrow with user master key', previous: $e);
         }
         try {
-            return new UnlockedEscrow(userId: $record->userId, escrowKey: $escrowKey);
+            return EscrowVault::unwrapUserPlain($record->userId, $escrowKey);
         } finally {
             Primitives::zeroize($escrowKey);
         }

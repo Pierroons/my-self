@@ -3669,8 +3669,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=84 [sanity_escrow]=64
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=34 [sanity_conformance]=84 [sanity_escrow]=65
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=31 [sanity_keys]=23 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4064,6 +4064,48 @@ jobs:
           canari $D/src/Storage/Conformance.php "            'concurrent-escrow-rotations'   => 'concurrentEscrowRotations'," '' \
             $D/tests/sanity_conformance.php 'RotateCheckThenWriteStorage passed a case it breaks'
           rm -r "$W"
+
+      # Le gardien du séquestre (0.9.0) : l'administrateur seul n'ouvre plus un compartiment
+      # scellé à un gardien, chaque dépôt tire une clé neuve, et le titulaire voit, signé, ce
+      # que le gardien a remis. Chaque canari retire une garde et exige le rouge sur son cas.
+      - name: Canaris — le gardien du séquestre de SelfDataGuard
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          K=$D/tests/sanity_keeper.php
+          canari $D/src/Escrow/KeeperSeal.php "return 'k1:' . bin2hex(\$escrowId) . ':' . sodium_crypto_box_seal(\$plain, \$keeperBoxPublic);" \
+            "return 'k1:' . bin2hex(\$escrowId) . ':' . \$inner;" $K 'the admin key opens the outer box: the keeper is not needed'
+          canari $D/src/SelfDataGuard.php "EscrowFieldCrypter::encryptBatch(\$new['unlocked'], array_replace(\$kept, \$fields))" \
+            "EscrowFieldCrypter::encryptBatch(\$new['unlocked'], \$fields)" $K 'a deposit lost or garbled a field'
+          canari $D/src/Escrow/KeeperSeal.php "        if (!hash_equals(bin2hex(\$nonce), (string) (\$body['nonce'] ?? ''))) {" '        if (false) {' \
+            $K 'a replayed attestation was taken'
+          canari $D/src/Escrow/KeeperSeal.php "        if (!sodium_crypto_sign_verify_detached(\$sig, self::ATTEST_TAG . \$json, \$signPublic)) {" '        if (false) {' \
+            $K 'an attestation under another key was taken'
+          canari $D/src/SelfDataGuard.php "            return ['reason' => 'keeper-unreachable'] + \$out;" "            return ['established' => true] + \$out;" \
+            $K 'a silent keeper read as no read'
+          canari $D/src/SelfDataGuard.php "            if (\$keeperHeld !== null) {" '            if (false) {' \
+            $K 'a façade with no keeper opened a database that recorded a keeper'
+          canari $D/src/SelfDataGuard.php "        \$this->assertEscrowAdmin(\$adminPublicKey);
+                  for (\$attempt = 1; ; \$attempt++) {" "        for (\$attempt = 1; ; \$attempt++) {" \
+            $D/tests/sanity_escrow.php 'a deposit given another administrator key than the database recorded went through'
+          canari $D/src/Escrow/EscrowCeremony.php "        if (\$this->keeper instanceof NoKeeper) {" '        if (false) {' \
+            $K 'refused, but not as keeper-missing'
+          canari $D/src/Escrow/EscrowCeremony.php "\$this->throughKeeper(\$archive->escrow, \$caseRef, true, \$intent);" \
+            "\$this->throughKeeper(\$archive->escrow, \$caseRef, false, \$intent);" $K 'EscrowAnnouncedException'
+          canari $D/src/Escrow/EscrowCeremony.php "        if (\$due > time()) {" '        if (false) {' $K 'This read is not due yet'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

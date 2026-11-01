@@ -40,6 +40,8 @@ declare(strict_types=1);
  *                               d'un fichier neuf, la réserve du témoin vidée
  *   DATAGUARD_ARBITER_FILE      fichier PHP qui renvoie l'EscrowArbiter
  *   DATAGUARD_WITNESS_FILE      fichier PHP qui renvoie le HeadWitness
+ *   DATAGUARD_KEEPER_FILE       fichier PHP qui renvoie l'EscrowKeeper (`return new NoKeeper();` sans gardien, choisi
+ *                               par son nom) : un séquestre scellé à un gardien ne s'ouvre que par lui
  *   DATAGUARD_OPERATOR          (optionnel) identité opérateur pour le forensic
  */
 
@@ -49,6 +51,7 @@ use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
 use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
+use Pierroons\SelfDataGuard\Escrow\EscrowKeeper;
 use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
 use Pierroons\SelfDataGuard\Escrow\HeadWitness;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
@@ -142,6 +145,7 @@ function ceremonie(AuditLog $auditLog, array $ctx): EscrowCeremony
         $auditLog,
         objectFrom('DATAGUARD_ARBITER_FILE', EscrowArbiter::class),
         objectFrom('DATAGUARD_WITNESS_FILE', HeadWitness::class),
+        objectFrom('DATAGUARD_KEEPER_FILE', EscrowKeeper::class),
         $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '')
     );
 }

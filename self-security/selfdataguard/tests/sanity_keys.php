@@ -116,7 +116,7 @@ section('The public methods of each key-holding class are a closed list');
 
 $closed = [
     UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'generation', 'isLocked', 'lock', 'openEscrow', 'sealLock'],
-    UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin'],
+    UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper', 'signObjection'],
     UnlockedArchive::class => ['decryptFields', 'lock', 'openEscrow', 'userId'],
 ];
 foreach ($closed as $class => $expected) {
@@ -126,7 +126,7 @@ foreach ($closed as $class => $expected) {
         : ko(substr($class, strrpos($class, '\\') + 1) . ' gained or lost a public method — read it, then update this list',
             'now: ' . implode(', ', $actual));
 }
-foreach ([UnlockedVault::class => 'masterKey', UnlockedEscrow::class => 'escrowKey'] as $class => $property) {
+foreach ([[UnlockedVault::class, 'masterKey'], [UnlockedEscrow::class, 'escrowKey'], [UnlockedEscrow::class, 'objectionSeed']] as [$class, $property]) {
     (new ReflectionProperty($class, $property))->isPrivate()
         ? ok(substr($class, strrpos($class, '\\') + 1) . "::\${$property} is private")
         : ko(substr($class, strrpos($class, '\\') + 1) . "::\${$property} is reachable");
@@ -173,6 +173,20 @@ foreach ([
     !carries($call(), $E)
         ? ok("{$name}: the escrow key is not in what it returns")
         : ko("{$name} returns the escrow key");
+}
+$keeperBox  = sodium_crypto_box_publickey(sodium_crypto_box_keypair());
+$keeperSign = sodium_crypto_sign_publickey(sodium_crypto_sign_keypair());
+$bound = $vault->createEscrow($admin['publicKey'], $now, ['sign' => $keeperSign, 'box' => $keeperBox])['unlocked'];
+$EB    = heldKey($bound);
+$seed  = (fn (): string => $this->objectionSeed)->call($bound);
+foreach ([
+    'UnlockedEscrow::sealToKeeper()'  => static fn () => $bound->sealToKeeper($admin['publicKey']),
+    'UnlockedEscrow::signObjection()' => static fn () => $bound->signObjection('LIT-1'),
+] as $name => $call) {
+    $out = $call();
+    !carries($out, $EB) && !carries($out, $seed)
+        ? ok("{$name}: neither the escrow key nor the objection seed is in what it returns")
+        : ko("{$name} returns the escrow key or the objection seed");
 }
 
 $dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32));

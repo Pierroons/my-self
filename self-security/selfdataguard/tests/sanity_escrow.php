@@ -278,7 +278,7 @@ $failing = new class implements EscrowArbiter {
     }
 };
 try {
-    (new EscrowCeremony($storage, new AuditLog($cLog, str_repeat('s', 32)), $failing, new NoHeadWitness(), 'bench'))
+    (new EscrowCeremony($storage, new AuditLog($cLog, str_repeat('s', 32)), $failing, new NoHeadWitness(), new Pierroons\SelfDataGuard\Escrow\NoKeeper(), 'bench'))
         ->readEscrow('alice', 'case-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
     ko('an arbiter that throws let the escrow be unsealed');
 } catch (EscrowRefusedException $e) {
@@ -631,20 +631,26 @@ heldKey(openWrapAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'
     : ko('a pre-0.6.0 wrap_admin opened to another key');
 
 $autreAdmin = SelfDataGuard::generateAdminRecoveryKey('une autre passphrase admin assez longue');
-$dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
-!EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
-    ? ok('an escrow write leaves an existing wrap_admin as it is, whatever public key it is given')
-    : ko('an escrow write re-sealed or lost the existing wrap_admin');
+$carolAvant = $storage->loadEscrow('carol')->wrapAdmin;
+try {
+    $dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+    ko('a deposit given another administrator key than the database recorded went through');
+} catch (InvalidArgumentException) {
+    $storage->loadEscrow('carol')->wrapAdmin === $carolAvant
+        ? ok('a deposit given another administrator key is refused, and the wrap_admin stays: each deposit re-seals, so another key would take the compartment')
+        : ko('a refused deposit still changed the wrap_admin');
+}
 $dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     && EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
-    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account, and the admin still reads it')
-    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens');
-!$dg->rebindEscrowAdmin($carol, $autreAdmin['publicKey'])
-    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account')
+    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin');
+!$dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
     : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
+$dg->setEscrowFields($carol, $admin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+$ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('a deposit with the recorded key re-seals the compartment, and the administrator still reads it')
+    : ko('after a deposit, the administrator no longer reads the escrow');
 
 // Two re-sealings from one read: the storage lets the other request's land first.
 $dave     = $dg->register('dave', 'motdepasse-dave-01', 'dave-memorized');

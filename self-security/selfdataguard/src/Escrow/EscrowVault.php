@@ -27,6 +27,10 @@ use Pierroons\SelfDataGuard\Crypto\Aad;
  * sealed before 0.6.0 holds the bare 32-byte key and names no account; it is
  * still opened, and SelfDataGuard::rebindEscrowAdmin() re-seals it in the new form.
  *
+ * Since 0.9.0 a deployment with a keeper seals that wrap_admin again, to the
+ * keeper (KeeperSeal), and wrap_user carries the escrowId, the keeper's public
+ * keys and an objection seed beside the key — 144 bytes instead of 32.
+ *
  * The user opens wrap_user with the master key they already hold. The admin
  * opens wrap_admin with the recovery secret key (itself passphrase-sealed, see
  * AdminKey), through EscrowCeremony alone — arbiter, audit log and head witness
@@ -67,11 +71,21 @@ final class EscrowVault
      * (to bind wrap_user to the master key) and the admin recovery public key
      * (to seal wrap_admin).
      *
+     * Given a keeper's public keys, the compartment is sealed to it; $escrowId,
+     * $createdAt and $revision carry over from a compartment a new key replaces.
+     *
+     * @param array{sign: string, box: string}|null $keeperPublicKeys
      * @return array{record: EscrowRecord, unlocked: UnlockedEscrow}
      */
-    public function create(UnlockedVault $session, string $adminPublicKeyB64): array
-    {
-        return $session->createEscrow($adminPublicKeyB64, $this->now());
+    public function create(
+        UnlockedVault $session,
+        string $adminPublicKeyB64,
+        ?array $keeperPublicKeys = null,
+        ?string $escrowId = null,
+        ?DateTimeImmutable $createdAt = null,
+        int $revision = 0
+    ): array {
+        return $session->createEscrow($adminPublicKeyB64, $this->now(), $keeperPublicKeys, $escrowId, $createdAt, $revision);
     }
 
     /**
@@ -86,12 +100,48 @@ final class EscrowVault
 
 
     /**
-     * Whether this wrap_admin names its account. Told by length alone, without
-     * the admin key: a pre-0.6.0 one seals the bare key.
+     * Whether this wrap_admin names its account, told without any key: one
+     * sealed to a keeper does, by its marker; of the two forms before it, the
+     * pre-0.6.0 one seals the bare key and is told by its length.
      */
     public static function isAccountBound(EscrowRecord $record): bool
     {
-        return strlen($record->wrapAdmin) !== Primitives::KEY_LEN + SODIUM_CRYPTO_BOX_SEALBYTES;
+        return KeeperSeal::isSealed($record->wrapAdmin)
+            || strlen($record->wrapAdmin) !== Primitives::KEY_LEN + SODIUM_CRYPTO_BOX_SEALBYTES;
+    }
+
+    /** Whether the administrator needs the keeper to open this wrap_admin. */
+    public static function isKeeperSealed(EscrowRecord $record): bool
+    {
+        return KeeperSeal::isSealed($record->wrapAdmin);
+    }
+
+    /**
+     * The escrow that wrap_user's plaintext opens: the bare key (32 bytes), or
+     * the key and its keeper binding (144). Any other length is refused.
+     */
+    public static function unwrapUserPlain(string $userId, #[\SensitiveParameter] string $plain): UnlockedEscrow
+    {
+        $bound = Primitives::KEY_LEN + KeeperSeal::ESCROW_ID_LEN + SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES
+            + SODIUM_CRYPTO_BOX_PUBLICKEYBYTES + SODIUM_CRYPTO_SIGN_SEEDBYTES;
+        if (strlen($plain) === Primitives::KEY_LEN) {
+            return new UnlockedEscrow(userId: $userId, escrowKey: $plain);
+        }
+        if (strlen($plain) !== $bound) {
+            throw new RuntimeException('Malformed escrow wrap: its plaintext is neither a key nor a key with its keeper binding');
+        }
+        $at   = 0;
+        $key  = substr($plain, $at, Primitives::KEY_LEN);
+        $id   = substr($plain, $at += Primitives::KEY_LEN, KeeperSeal::ESCROW_ID_LEN);
+        $sign = substr($plain, $at += KeeperSeal::ESCROW_ID_LEN, SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES);
+        $box  = substr($plain, $at += SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES, SODIUM_CRYPTO_BOX_PUBLICKEYBYTES);
+        $seed = substr($plain, $at + SODIUM_CRYPTO_BOX_PUBLICKEYBYTES, SODIUM_CRYPTO_SIGN_SEEDBYTES);
+        try {
+            return new UnlockedEscrow($userId, $key, $id, ['sign' => $sign, 'box' => $box], $seed);
+        } finally {
+            Primitives::zeroize($key);
+            Primitives::zeroize($seed);
+        }
     }
 
     /**
@@ -109,7 +159,8 @@ final class EscrowVault
             wrapUser:  $record->wrapUser,
             wrapAdmin: $unlocked->sealToAdmin($adminPublicKeyB64),
             createdAt: $record->createdAt,
-            updatedAt: $this->now()
+            updatedAt: $this->now(),
+            revision:  $record->revision
         );
     }
 
