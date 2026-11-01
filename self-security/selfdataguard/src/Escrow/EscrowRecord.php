@@ -20,6 +20,9 @@ use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
  *                  (libsodium anonymous sealed box) → the admin opens it during
  *                  a recovery ceremony, and ONLY the escrow_key — never the
  *                  data_master_key. Strict compartmentalisation.
+ *   - revision   : bumped by every stored replacement; a write applies only
+ *                  over the revision it was read at (0 for a record not yet
+ *                  stored, whatever is passed — the storage writes 0)
  *
  * Immutable value object.
  */
@@ -30,7 +33,8 @@ final class EscrowRecord
         public readonly EncryptedBlob $wrapUser,
         public readonly string $wrapAdmin,           // raw sealed-box bytes
         public readonly DateTimeImmutable $createdAt,
-        public readonly DateTimeImmutable $updatedAt
+        public readonly DateTimeImmutable $updatedAt,
+        public readonly int $revision = 0
     ) {
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');

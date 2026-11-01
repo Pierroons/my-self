@@ -836,6 +836,8 @@ final class SelfDataGuard
      * admin secret key, which key the old wrap was sealed to: pass the key the
      * escrow was created with, or the administrator who held the old one loses
      * access to this compartment.
+     *
+     * @throws \Pierroons\SelfDataGuard\Escrow\StaleEscrowException when another request re-sealed it after this one read it
      */
     public function rebindEscrowAdmin(UnlockedVault $session, string $adminPublicKey): bool
     {

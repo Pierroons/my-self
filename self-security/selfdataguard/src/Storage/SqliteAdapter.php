@@ -14,6 +14,7 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -64,6 +65,7 @@ use Throwable;
  *   selfdataguard_escrow          — one row per user
  *     wrap_user   escrow_key wrapped by the master key (base64 EncryptedBlob)
  *     wrap_admin  escrow_key sealed to the admin public key (base64 sealed box)
+ *     revision    bumped by every replacement (added in 0.9.0)
  *
  *   selfdataguard_escrow_fields   — escrow fields encrypted with escrow_key
  *
@@ -87,6 +89,9 @@ final class SqliteAdapter implements StorageInterface
     /** Version of the archive package; a reader refuses a newer one. */
     private const ARCHIVE_FORMAT = 1;
 
+    /** The journal modes that keep a rollback journal on disk: without one, a failed transaction is not undone. */
+    private const JOURNAL_MODES = ['delete', 'truncate', 'persist', 'wal'];
+
     private PDO $pdo;
 
     /** Savepoints this instance has open inside a transaction. */
@@ -99,8 +104,15 @@ final class SqliteAdapter implements StorageInterface
      * Opening a database created by an older version migrates it in place.
      * Constructed inside a transaction that the caller then rolls back, the
      * migration rolls back with it: build a new adapter after such a rollback.
+     *
+     * $timeout is how many seconds a write waits for another connection's
+     * lock before it fails; PDO waits 60, longer than most web servers let a
+     * request run. $journalMode is SQLite's journal: 'delete' (its default),
+     * 'truncate', 'persist' or 'wal'. Both apply to the connection, opened
+     * here or given; null leaves it as it is. A journal mode SQLite does not
+     * take — 'wal' on an in-memory database — throws.
      */
-    public function __construct(string|PDO $dsnOrPdo)
+    public function __construct(string|PDO $dsnOrPdo, ?int $timeout = null, ?string $journalMode = null)
     {
         if ($dsnOrPdo instanceof PDO) {
             $this->pdo = $dsnOrPdo;
@@ -109,6 +121,24 @@ final class SqliteAdapter implements StorageInterface
         }
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        if ($timeout !== null) {
+            if ($timeout < 0) {
+                throw new InvalidArgumentException("The lock timeout must be 0 seconds or more, not {$timeout}");
+            }
+            $this->pdo->setAttribute(PDO::ATTR_TIMEOUT, $timeout);
+        }
+        if ($journalMode !== null) {
+            $mode = strtolower($journalMode);
+            if (!in_array($mode, self::JOURNAL_MODES, true)) {
+                throw new InvalidArgumentException(
+                    "Unknown or unsafe journal mode '{$journalMode}': one of " . implode(', ', self::JOURNAL_MODES)
+                );
+            }
+            $kept = strtolower((string) $this->pdo->query("PRAGMA journal_mode = {$mode}")->fetchColumn());
+            if ($kept !== $mode) {
+                throw new RuntimeException("SQLite kept the journal mode '{$kept}', not '{$mode}'");
+            }
+        }
         $this->pdo->exec('PRAGMA foreign_keys = ON');
         $this->ensureSchema();
     }
@@ -325,19 +355,28 @@ final class SqliteAdapter implements StorageInterface
         if ($record->userId !== $generation->userId) {
             throw new InvalidArgumentException('The escrow record belongs to another userId than the generation');
         }
-        $stmt = $this->pdo->prepare(
-            'UPDATE selfdataguard_escrow SET wrap_user = :wu, wrap_admin = :wa, updated_at = :ua WHERE user_id = :uid'
-        );
-        $this->atomic(function () use ($stmt, $record, $generation): void {
+        $this->atomic(function () use ($record, $generation): void {
             $this->assertGeneration($generation);
-            $stmt->execute([
-                ':uid' => $record->userId,
-                ':wu'  => $record->wrapUser->toBase64(),
-                ':wa'  => base64_encode($record->wrapAdmin),
-                ':ua'  => $record->updatedAt->format('c'),
-            ]);
-            if ($stmt->rowCount() === 0 && $this->loadEscrow($record->userId) === null) {
-                throw new EscrowNotFoundException("No escrow to replace for userId '{$record->userId}'");
+            $this->writeEscrowOver($record);
+        });
+    }
+
+    public function rotateEscrow(VaultGeneration $generation, EscrowRecord $record, array $fields): void
+    {
+        if ($record->userId !== $generation->userId) {
+            throw new InvalidArgumentException('The escrow record belongs to another userId than the generation');
+        }
+        $now = (new DateTimeImmutable())->format('c');
+        $this->atomic(function () use ($record, $generation, $fields, $now): void {
+            $this->assertGeneration($generation);
+            $this->writeEscrowOver($record);
+            $this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = :uid')
+                ->execute([':uid' => $record->userId]);
+            $insert = $this->pdo->prepare(
+                'INSERT INTO selfdataguard_escrow_fields (user_id, field_name, ciphertext, updated_at) VALUES (:uid, :fn, :ct, :ua)'
+            );
+            foreach ($fields as $fieldName => $ciphertext) {
+                $insert->execute([':uid' => $record->userId, ':fn' => $fieldName, ':ct' => $ciphertext, ':ua' => $now]);
             }
         });
     }
@@ -345,7 +384,7 @@ final class SqliteAdapter implements StorageInterface
     public function loadEscrow(string $userId): ?EscrowRecord
     {
         $stmt = $this->pdo->prepare(
-            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at
+            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at, revision
              FROM selfdataguard_escrow WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);
@@ -438,6 +477,15 @@ final class SqliteAdapter implements StorageInterface
         });
     }
 
+    public function replaceSetting(string $name, string $expected, string $value): bool
+    {
+        $stmt = $this->pdo->prepare('UPDATE selfdataguard_settings SET value = :v WHERE name = :n AND value = :e');
+        return $this->atomic(function () use ($stmt, $name, $expected, $value): bool {
+            $stmt->execute([':v' => $value, ':n' => $name, ':e' => $expected]);
+            return $stmt->rowCount() === 1;
+        });
+    }
+
     public function loadSetting(string $name): ?string
     {
         $stmt = $this->pdo->prepare('SELECT value FROM selfdataguard_settings WHERE name = :n');
@@ -516,6 +564,48 @@ final class SqliteAdapter implements StorageInterface
             privateFields: $private,
             escrowFields:  array_map('strval', $package['fields']['escrow']),
         );
+    }
+
+    public function replaceArchiveEscrow(string $userId, string $archiveId, EscrowRecord $record): void
+    {
+        if ($record->userId !== $userId) {
+            throw new InvalidArgumentException('The escrow record belongs to another userId than the archive');
+        }
+        $this->atomic(function () use ($userId, $archiveId, $record): void {
+            $stmt = $this->pdo->prepare(
+                'SELECT archive_id, package FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
+            );
+            $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+            $row = $stmt->fetch();
+            $stmt->closeCursor();
+            if ($row === false) {
+                throw new VaultNotFoundException("No archive '{$archiveId}' for userId '{$userId}'");
+            }
+            $package = $this->readablePackage($row, $userId);
+            if (!is_array($package['escrow'] ?? null)) {
+                throw new EscrowNotFoundException("The archive '{$archiveId}' of '{$userId}' holds no escrow");
+            }
+            $held = (int) ($package['escrow']['revision'] ?? 0);
+            if ($held !== $record->revision) {
+                throw new StaleEscrowException(
+                    "The escrow of archive '{$archiveId}' was replaced since this record was read — reload it"
+                );
+            }
+            $package['escrow'] = [
+                'wrap_user'  => $record->wrapUser->toBase64(),
+                'wrap_admin' => base64_encode($record->wrapAdmin),
+                'updated_at' => $record->updatedAt->format('c'),
+                'revision'   => $held + 1,
+            ] + $package['escrow'];
+            // Decoded as arrays, the field maps are objects again before they are
+            // written: a field named "0" would otherwise come back as a JSON list.
+            $package['fields']['private'] = (object) $package['fields']['private'];
+            $package['fields']['escrow']  = (object) $package['fields']['escrow'];
+            $this->pdo->prepare('UPDATE selfdataguard_archives SET package = :pkg WHERE archive_id = :id')->execute([
+                ':pkg' => json_encode($package, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                ':id'  => $archiveId,
+            ]);
+        });
     }
 
     public function deleteArchive(VaultGeneration $generation, string $archiveId): bool
@@ -668,17 +758,22 @@ final class SqliteAdapter implements StorageInterface
      * and keep the value from its next holder. restorePackage() puts them back.
      * The keys are added to format 1, which 0.7.0 reads by ignoring them.
      *
+     * The escrow row goes whole, not as a list of columns: a column added
+     * since — the revision, in 0.9.0 — would otherwise be lost to the archive
+     * without an error.
+     *
      * @param array<string, mixed> $vault the live vault row
      */
     private function archivePackage(array $vault): string
     {
         $uid = [':uid' => $vault['user_id']];
 
-        $stmt = $this->pdo->prepare(
-            'SELECT wrap_user, wrap_admin, created_at, updated_at FROM selfdataguard_escrow WHERE user_id = :uid'
-        );
+        $stmt = $this->pdo->prepare('SELECT * FROM selfdataguard_escrow WHERE user_id = :uid');
         $stmt->execute($uid);
         $escrow = $stmt->fetch() ?: null;
+        if ($escrow !== null) {
+            unset($escrow['user_id']);
+        }
 
         $private = [];
         $stmt = $this->pdo->prepare(
@@ -874,14 +969,15 @@ final class SqliteAdapter implements StorageInterface
 
         if ($package['escrow'] !== null) {
             $this->pdo->prepare(
-                'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
-                 VALUES (:uid, :wu, :wa, :ca, :ua)'
+                'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at, revision)
+                 VALUES (:uid, :wu, :wa, :ca, :ua, :rev)'
             )->execute([
                 ':uid' => $userId,
                 ':wu'  => (string) $package['escrow']['wrap_user'],
                 ':wa'  => (string) $package['escrow']['wrap_admin'],
                 ':ca'  => (string) $package['escrow']['created_at'],
                 ':ua'  => (string) $package['escrow']['updated_at'],
+                ':rev' => (int) ($package['escrow']['revision'] ?? 0),
             ]);
         }
         $escrowField = $this->pdo->prepare(
@@ -1079,9 +1175,11 @@ final class SqliteAdapter implements StorageInterface
                 wrap_admin  TEXT NOT NULL,
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
+                revision    INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
             )'
         );
+        $this->addMissingColumn('selfdataguard_escrow', 'revision', 'INTEGER NOT NULL DEFAULT 0');
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_escrow_fields (
                 user_id     TEXT NOT NULL,
@@ -1258,7 +1356,36 @@ final class SqliteAdapter implements StorageInterface
             wrapAdmin: $wrapAdmin,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+            revision:  (int) ($row['revision'] ?? 0),
         );
+    }
+
+    /**
+     * $record written over the escrow row of its userId, only at the revision
+     * it was read at, which is bumped. Callers run it inside atomic().
+     */
+    private function writeEscrowOver(EscrowRecord $record): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE selfdataguard_escrow
+             SET wrap_user = :wu, wrap_admin = :wa, updated_at = :ua, revision = revision + 1
+             WHERE user_id = :uid AND revision = :rev'
+        );
+        $stmt->execute([
+            ':uid' => $record->userId,
+            ':wu'  => $record->wrapUser->toBase64(),
+            ':wa'  => base64_encode($record->wrapAdmin),
+            ':ua'  => $record->updatedAt->format('c'),
+            ':rev' => $record->revision,
+        ]);
+        if ($stmt->rowCount() === 0) {
+            if ($this->loadEscrow($record->userId) === null) {
+                throw new EscrowNotFoundException("No escrow to replace for userId '{$record->userId}'");
+            }
+            throw new StaleEscrowException(
+                "The escrow of '{$record->userId}' was replaced since this record was read — reload it"
+            );
+        }
     }
 
     /**

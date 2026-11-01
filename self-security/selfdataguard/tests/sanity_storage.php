@@ -521,6 +521,49 @@ $own->eraseAccount('user-reenrol') === 1 && $own->listArchives('user-reenrol') =
 
 // -----------------------------------------------------------------------------
 
+section('Lock timeout and journal mode — set when the adapter is built');
+
+$lockDb = sys_get_temp_dir() . '/sdg-lock-' . bin2hex(random_bytes(6)) . '.sqlite';
+$holder = new PDO("sqlite:{$lockDb}");
+$holder->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+new SqliteAdapter($holder);
+$quick = new SqliteAdapter("sqlite:{$lockDb}", timeout: 1, journalMode: 'wal');
+$reader = new PDO("sqlite:{$lockDb}");
+strtolower((string) $reader->query('PRAGMA journal_mode')->fetchColumn()) === 'wal'
+    ? ok("the journal mode asked for is the one the database keeps: 'wal'")
+    : ko('the journal mode asked for was not applied');
+$reader = null;
+$holder->exec('BEGIN IMMEDIATE');
+$started = microtime(true);
+try {
+    $quick->saveVault((new UserVault())->register('user-lock', 'lock-password-01')['record']);
+    ko('a write went through a write lock another connection holds');
+} catch (PDOException) {
+    $waited = microtime(true) - $started;
+    $waited >= 0.8 && $waited < 10
+        ? ok(sprintf('a write waits the timeout it was given, then fails: %.1f s, not PDO\'s 60', $waited))
+        : ko('the write did not wait the timeout it was given', sprintf('%.1f s', $waited));
+}
+$holder->exec('ROLLBACK');
+$holder = $quick = null;
+foreach (['', '-wal', '-shm'] as $suffix) {
+    @unlink($lockDb . $suffix);
+}
+try {
+    new SqliteAdapter('sqlite::memory:', journalMode: 'off');
+    ko("a journal mode without a rollback journal was accepted: 'off'");
+} catch (InvalidArgumentException) {
+    ok("a journal mode without a rollback journal is refused: 'off'");
+}
+try {
+    new SqliteAdapter('sqlite::memory:', journalMode: 'wal');
+    ko("'wal' on an in-memory database was accepted, and SQLite kept 'memory' in silence");
+} catch (RuntimeException) {
+    ok("'wal' on an in-memory database is refused, not kept in silence as 'memory'");
+}
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Phase 4 Sanity — {$passes} passed, {$failures} failed\n";

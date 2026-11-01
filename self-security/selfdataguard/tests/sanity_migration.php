@@ -569,6 +569,58 @@ $columns($held) === $columns($freshFields) && fieldIndexes($held) === fieldIndex
     ? ok('migrated fields table == freshly created one: same columns, same indexes')
     : ko('the migrated fields table differs from a fresh one');
 
+section('An escrow written before 0.9.0 gains its revision when the database is opened');
+
+$pdo080 = new PDO('sqlite::memory:');
+$pdo080->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo080->exec(
+    'CREATE TABLE selfdataguard_escrow (
+        user_id TEXT PRIMARY KEY, wrap_user TEXT NOT NULL, wrap_admin TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
+    )'
+);
+$vault080 = (new UserVault())->register('user-escrow-080', 'escrow-password-080')['record'];
+$pdo080->prepare('INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+    ->execute(['user-escrow-080', $vault080->wrapPwd->toBase64(), base64_encode(random_bytes(80)), '2026-10-29T21:00:00+00:00', '2026-10-29T21:00:00+00:00']);
+$store080 = new SqliteAdapter($pdo080);
+$store080->saveVault($vault080);
+$escrow080 = $store080->loadEscrow('user-escrow-080');
+$escrow080?->revision === 0
+    ? ok('an escrow written before 0.9.0 is read at revision 0')
+    : ko('an escrow written before 0.9.0 lost its row, or its revision is not 0');
+$store080->replaceEscrow($vault080->generation(), new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
+    'user-escrow-080', $escrow080->wrapUser, 'resealed-080', $escrow080->createdAt, new DateTimeImmutable(), $escrow080->revision
+));
+$store080->loadEscrow('user-escrow-080')?->revision === 1
+    ? ok('it is replaced at its revision, which then reads 1')
+    : ko('an escrow written before 0.9.0 could not be replaced at its revision');
+$freshEscrow = new PDO('sqlite::memory:');
+new SqliteAdapter($freshEscrow);
+$escrowColumns = static fn (PDO $pdo): array => array_map(
+    static fn (array $c): string => implode('|', [$c['name'], $c['type'], $c['notnull'], (string) $c['dflt_value'], $c['pk']]),
+    $pdo->query('PRAGMA table_info(selfdataguard_escrow)')->fetchAll(PDO::FETCH_ASSOC)
+);
+$escrowColumns($pdo080) === $escrowColumns($freshEscrow)
+    ? ok('migrated escrow table == freshly created one')
+    : ko('the migrated escrow table differs from a fresh one', json_encode($escrowColumns($pdo080)));
+
+$fresh080 = (new UserVault())->register('user-escrow-080', 'escrow-password-081')['record'];
+$archive080 = $store080->replaceWithArchive($vault080->generation(), $fresh080);
+// As 0.8.0 wrote it: the escrow of the package without a revision.
+$pdo080->prepare('UPDATE selfdataguard_archives SET package = json_remove(package, \'$.escrow.revision\') WHERE archive_id = ?')
+    ->execute([$archive080]);
+$archived080 = $store080->loadArchive('user-escrow-080', $archive080)?->escrow;
+$archived080?->revision === 0
+    ? ok('the escrow of an archive written before 0.9.0 is read at revision 0')
+    : ko('the escrow of an archive written before 0.9.0 is not read at revision 0');
+$store080->replaceArchiveEscrow('user-escrow-080', $archive080, new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
+    'user-escrow-080', $archived080->wrapUser, 'archive-resealed-080', $archived080->createdAt, new DateTimeImmutable(), 0
+));
+$store080->loadArchive('user-escrow-080', $archive080)?->escrow?->wrapAdmin === 'archive-resealed-080'
+    ? ok('and re-sealed at it')
+    : ko('the escrow of an archive written before 0.9.0 could not be re-sealed');
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Migration Sanity — {$passes} passed, {$failures} failed\n";

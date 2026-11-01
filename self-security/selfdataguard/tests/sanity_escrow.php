@@ -31,10 +31,12 @@ use Pierroons\SelfDataGuard\Escrow\NoHeadWitness;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 
 $failures = 0;
 $passes = 0;
@@ -643,6 +645,35 @@ $dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
     ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
     : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
+
+// Two re-sealings from one read: the storage lets the other request's land first.
+$dave     = $dg->register('dave', 'motdepasse-dave-01', 'dave-memorized');
+$neufDave = $ev->create($dave, $admin['publicKey']);
+$storage->createEscrow($dave->generation(), new EscrowRecord(
+    userId: 'dave', wrapUser: $neufDave['record']->wrapUser,
+    wrapAdmin: sodium_crypto_box_seal(heldKey($neufDave['unlocked']), base64_decode($admin['publicKey'])),
+    createdAt: $neufDave['record']->createdAt, updatedAt: $neufDave['record']->updatedAt
+));
+$interleaved = new class ($storage) extends DelegatingStorage {
+    public bool $other = true;
+
+    public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void
+    {
+        if ($this->other) {
+            $this->other = false;
+            $this->inner->replaceEscrow($g, $r);
+        }
+        $this->inner->replaceEscrow($g, $r);
+    }
+};
+try {
+    (new SelfDataGuard($interleaved, $blindKey))->rebindEscrowAdmin($dave, $admin['publicKey']);
+    ko('a re-sealing from a read another one already replaced succeeded: the first is lost without an error');
+} catch (StaleEscrowException) {
+    !$interleaved->other
+        ? ok('rebindEscrowAdmin() from a read another re-sealing already replaced throws StaleEscrowException')
+        : ko('precondition: the other re-sealing never ran — the check measures nothing');
+}
 sodium_memzero($skLien);
 
 section('Delete cascade removes escrow');

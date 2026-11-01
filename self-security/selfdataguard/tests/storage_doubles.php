@@ -36,12 +36,14 @@ abstract class DelegatingStorage implements StorageInterface
     public function findUserIdsByIndex(string $f, string $i): array { return $this->inner->findUserIdsByIndex($f, $i); }
     public function createEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->createEscrow($g, $r); }
     public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->replaceEscrow($g, $r); }
+    public function rotateEscrow(VaultGeneration $g, EscrowRecord $r, array $f): void { $this->inner->rotateEscrow($g, $r, $f); }
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
     public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($g, $f); }
     public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
     public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r, $t); }
     public function listArchives(string $u): array { return $this->inner->listArchives($u); }
     public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
+    public function replaceArchiveEscrow(string $u, string $id, EscrowRecord $r): void { $this->inner->replaceArchiveEscrow($u, $id, $r); }
     public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
     public function swapWithArchive(VaultGeneration $g, string $id, ?string $t = null): string { return $this->inner->swapWithArchive($g, $id, $t); }
     public function restoreArchive(string $u, string $id): void { $this->inner->restoreArchive($u, $id); }
@@ -51,6 +53,7 @@ abstract class DelegatingStorage implements StorageInterface
     public function frozenState(string $u): ?array { return $this->inner->frozenState($u); }
     public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
     public function claimSetting(string $n, string $v): string { return $this->inner->claimSetting($n, $v); }
+    public function replaceSetting(string $n, string $e, string $v): bool { return $this->inner->replaceSetting($n, $e, $v); }
     public function loadSetting(string $n): ?string { return $this->inner->loadSetting($n); }
     public function hasVaults(): bool { return $this->inner->hasVaults(); }
     public function indexedFields(): array { return $this->inner->indexedFields(); }
@@ -581,4 +584,133 @@ final class TicketDroppingStorage extends DelegatingStorage
 {
     public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r); }
     public function freezeVault(VaultGeneration $g, string $by, \DateTimeImmutable $at, ?string $t = null): bool { return $this->inner->freezeVault($g, $by, $at); }
+}
+
+/** $record again, at the revision $revision. */
+function escrowAt(EscrowRecord $record, int $revision): EscrowRecord
+{
+    return new EscrowRecord($record->userId, $record->wrapUser, $record->wrapAdmin, $record->createdAt, $record->updatedAt, $revision);
+}
+
+/** replaceEscrow() that writes over whatever revision is stored: the last writer wins. */
+final class EscrowLastWriterWinsStorage extends DelegatingStorage
+{
+    public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void
+    {
+        $held = $this->inner->loadEscrow($r->userId);
+        $this->inner->replaceEscrow($g, $held === null ? $r : escrowAt($r, $held->revision));
+    }
+}
+
+/**
+ * rotateEscrow() as two writes: the envelope, then the fields saved over the
+ * old ones. A field the rotation does not name stays, under the replaced key.
+ */
+final class RotateKeepingFieldsStorage extends DelegatingStorage
+{
+    public function rotateEscrow(VaultGeneration $g, EscrowRecord $r, array $f): void
+    {
+        $this->inner->replaceEscrow($g, $r);
+        $this->inner->saveEscrowFields($g, $f);
+    }
+}
+
+/**
+ * Compares the escrow revision, then rotates in a second statement. Alone, it
+ * refuses a stale record; under concurrency, every rotation passes the check.
+ */
+final class RotateCheckThenWriteStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function rotateEscrow(VaultGeneration $g, EscrowRecord $r, array $f): void
+    {
+        $held = $this->inner->loadEscrow($r->userId)
+            ?? throw new Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException('none');
+        if ($held->revision !== $r->revision) {
+            throw new Pierroons\SelfDataGuard\Escrow\StaleEscrowException('stale');
+        }
+        usleep(200_000);
+        $this->pdo->prepare('UPDATE selfdataguard_escrow SET wrap_user = ?, wrap_admin = ?, revision = ? WHERE user_id = ?')
+            ->execute([$r->wrapUser->toBase64(), base64_encode($r->wrapAdmin), $r->revision + 1, $r->userId]);
+        $this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = ?')->execute([$r->userId]);
+        $this->inner->saveEscrowFields($g, $f);
+    }
+}
+
+/** replaceArchiveEscrow() that writes over whatever revision the archive holds. */
+final class ArchiveEscrowRevisionBlindStorage extends DelegatingStorage
+{
+    public function replaceArchiveEscrow(string $u, string $id, EscrowRecord $r): void
+    {
+        $held = $this->inner->loadArchive($u, $id)?->escrow;
+        $this->inner->replaceArchiveEscrow($u, $id, $held === null ? $r : escrowAt($r, $held->revision));
+    }
+}
+
+/** An archive whose package keeps a list of escrow columns: the revision is lost on the way in. */
+final class EscrowColumnsNamedStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string
+    {
+        $id = $this->inner->replaceWithArchive($g, $r, $t);
+        $st = $this->pdo->prepare('SELECT package FROM selfdataguard_archives WHERE archive_id = ?');
+        $st->execute([$id]);
+        $package = json_decode((string) $st->fetchColumn(), true);
+        $st->closeCursor();
+        if (is_array($package['escrow'] ?? null)) {
+            unset($package['escrow']['revision']);
+            $package['fields']['private'] = (object) $package['fields']['private'];
+            $package['fields']['escrow']  = (object) $package['fields']['escrow'];
+            $this->pdo->prepare('UPDATE selfdataguard_archives SET package = ? WHERE archive_id = ?')
+                ->execute([json_encode($package, JSON_UNESCAPED_SLASHES), $id]);
+        }
+        return $id;
+    }
+}
+
+/** replaceSetting() that writes whatever the database holds under the name. */
+final class SettingReplacingBlindStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function replaceSetting(string $n, string $e, string $v): bool
+    {
+        $st = $this->pdo->prepare('UPDATE selfdataguard_settings SET value = ? WHERE name = ?');
+        $st->execute([$v, $n]);
+        return $st->rowCount() === 1;
+    }
+}
+
+/**
+ * Reads the setting, compares it, then writes in a second statement: right
+ * alone, wrong under concurrency, where every replacer finds the old value.
+ */
+final class CheckThenReplaceSettingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function replaceSetting(string $n, string $e, string $v): bool
+    {
+        if ($this->inner->loadSetting($n) !== $e) {
+            return false;
+        }
+        usleep(200_000);
+        $this->pdo->prepare('UPDATE selfdataguard_settings SET value = ? WHERE name = ?')->execute([$v, $n]);
+        return true;
+    }
 }

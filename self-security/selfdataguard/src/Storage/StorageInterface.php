@@ -140,14 +140,34 @@ interface StorageInterface
 
     /**
      * Replace the escrow envelope the userId holds with $record, which wraps
-     * the same escrow key again (wrap_admin re-sealed). Throws
-     * EscrowNotFoundException if the userId has none.
+     * the same escrow key again (wrap_admin re-sealed). Writes only over the
+     * revision $record was read at, and bumps it, compared inside the write's
+     * own transaction or in the same statement: throws StaleEscrowException
+     * when the envelope was replaced since — two re-sealings from one read
+     * would otherwise both succeed, and the first one be lost without an
+     * error. Throws EscrowNotFoundException if the userId has none.
      * $record->userId must be $generation's.
      */
     public function replaceEscrow(VaultGeneration $generation, EscrowRecord $record): void;
 
     /**
-     * Load the escrow envelope for a user, or null if none.
+     * Replace the escrow envelope AND every escrow field, in one transaction:
+     * the escrow key was changed, $record wraps the new one, and $fields are
+     * all the escrow fields encrypted under it. A field the userId holds and
+     * $fields does not name is deleted — it was encrypted under the replaced
+     * key, which nothing wraps any more. The revision is compared and bumped
+     * as replaceEscrow() does it, with the same exceptions.
+     *
+     * Two writes in sequence are not this: a failure between them leaves the
+     * fields under one key and the envelope wrapping another, and nobody opens
+     * the compartment again.
+     *
+     * @param array<string, string> $fields field_name => ciphertext (base64)
+     */
+    public function rotateEscrow(VaultGeneration $generation, EscrowRecord $record, array $fields): void;
+
+    /**
+     * Load the escrow envelope for a user, with its revision, or null if none.
      */
     public function loadEscrow(string $userId): ?EscrowRecord;
 
@@ -197,9 +217,23 @@ interface StorageInterface
     public function listArchives(string $userId): array;
 
     /**
-     * The archive, if it exists AND belongs to $userId; null otherwise.
+     * The archive, if it exists AND belongs to $userId; null otherwise. Its
+     * escrow carries the revision it was archived at, or was last replaced at.
      */
     public function loadArchive(string $userId, string $archiveId): ?ArchivedVault;
+
+    /**
+     * Replace the escrow envelope of archive $archiveId with $record, which
+     * wraps the same escrow key again: an archive has no session, so this is
+     * how its wrap_admin is re-sealed. Nothing else of the archive changes —
+     * its vault, its fields, its escrow fields. The revision is compared and
+     * bumped as replaceEscrow() does it.
+     *
+     * @throws VaultNotFoundException  if $userId has no such archive
+     * @throws EscrowNotFoundException if the archive holds no escrow
+     * @throws StaleEscrowException    if its escrow was replaced since $record was read
+     */
+    public function replaceArchiveEscrow(string $userId, string $archiveId, EscrowRecord $record): void;
 
     /**
      * Delete one archive, while the live vault is still the one $generation
@@ -284,9 +318,17 @@ interface StorageInterface
      * different values at once both get back the one stored first, which is
      * enforced by the storage itself (a unique name). A database that already
      * holds the value is read, not written to — a read-only copy answers. A
-     * setting is never replaced through this contract.
+     * setting is replaced only through replaceSetting().
      */
     public function claimSetting(string $name, string $value): string;
+
+    /**
+     * Write $value under $name only when the database holds $expected there,
+     * compared in the same statement or inside the write's transaction: true
+     * when it was replaced, false when the name holds another value or none.
+     * Two callers that replace the same value at once: one gets true.
+     */
+    public function replaceSetting(string $name, string $expected, string $value): bool;
 
     /** The value the database holds under $name, or null. Never writes. */
     public function loadSetting(string $name): ?string;

@@ -3669,9 +3669,9 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=69 [sanity_escrow]=63
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=38 [sanity_primitives]=56
-            [sanity_storage]=64 [sanity_vault]=64 [sanity_vecteurs]=9
+            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=33 [sanity_conformance]=84 [sanity_escrow]=64
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keys]=20 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -4017,6 +4017,53 @@ jobs:
             $D/tests/sanity_conformance.php 'CallerCommittingStorage passed a case it breaks'
           canari $D/src/Storage/Conformance.php "            'tickets-applied-once'          => 'ticketsAppliedOnce'," '' \
             $D/tests/sanity_conformance.php 'TicketDroppingStorage passed a case it breaks'
+
+      # Le séquestre tient sa révision, tourne d'un seul geste, se re-scelle dans une
+      # archive, et un réglage se remplace sur la valeur attendue (0.9.0). Chaque canari
+      # retire une garde de l'adaptateur livré : la commande de conformité, jouée sur lui
+      # seul, rougit sur le cas qui la vise. Le dernier retire un cas de la suite : le
+      # banc voit passer le stockage fautif que seule la course attrapait.
+      - name: Canaris — le séquestre de SelfDataGuard tient sa révision
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          A=$D/src/Storage/SqliteAdapter.php
+          W=$(mktemp -d)
+          printf '<?php\nrequire %s;\nreturn static function () { return new Pierroons\\SelfDataGuard\\Storage\\SqliteAdapter(new PDO(%s)); };\n' \
+            "'$PWD/$D/src/autoload.php'" "'sqlite:$W/base.sqlite'" > "$W/connexion.php"
+          printf '<?php\n$argv = [__FILE__, %s];\nrequire %s;\n' "'$W/connexion.php'" "'$PWD/$D/bin/storage-conformance.php'" > "$W/conformite.php"
+          canari $A "             WHERE user_id = :uid AND revision = :rev'" "             WHERE user_id = :uid AND :rev >= 0'" \
+            "$W/conformite.php" '❌ escrow-compare-and-swap'
+          canari $A "            \$this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = :uid')" \
+            "            \$this->pdo->prepare('SELECT 1 WHERE :uid IS NOT NULL')" "$W/conformite.php" '❌ rotate-escrow'
+          canari $A "            if (\$held !== \$record->revision) {" '            if (false) {' "$W/conformite.php" '❌ replace-archive-escrow'
+          canari $A "\$stmt = \$this->pdo->prepare('SELECT * FROM selfdataguard_escrow WHERE user_id = :uid');" \
+            "\$stmt = \$this->pdo->prepare('SELECT wrap_user, wrap_admin, created_at, updated_at FROM selfdataguard_escrow WHERE user_id = :uid');" \
+            "$W/conformite.php" 'the archive did not keep the revision of its escrow'
+          canari $A "'UPDATE selfdataguard_settings SET value = :v WHERE name = :n AND value = :e'" \
+            "'UPDATE selfdataguard_settings SET value = :v WHERE name = :n AND :e = :e'" "$W/conformite.php" '❌ setting-replaced-over-expected'
+          canari $A "        \$this->addMissingColumn('selfdataguard_escrow', 'revision', 'INTEGER NOT NULL DEFAULT 0');" '' \
+            $D/tests/sanity_migration.php 'no such column: revision'
+          canari $A "            if (\$kept !== \$mode) {" '            if (false) {' \
+            $D/tests/sanity_storage.php "'wal' on an in-memory database was accepted"
+          canari $A "            \$this->pdo->setAttribute(PDO::ATTR_TIMEOUT, \$timeout);" '' \
+            $D/tests/sanity_storage.php 'the write did not wait the timeout it was given'
+          canari $D/src/Storage/Conformance.php "            'concurrent-escrow-rotations'   => 'concurrentEscrowRotations'," '' \
+            $D/tests/sanity_conformance.php 'RotateCheckThenWriteStorage passed a case it breaks'
+          rm -r "$W"
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
