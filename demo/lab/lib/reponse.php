@@ -9,10 +9,11 @@ declare(strict_types=1);
 // refus clair.
 
 /**
- * Ce chemin de requête désigne-t-il une route d'API, qui répond en JSON ?
+ * Ce chemin désigne-t-il une route d'API, qui répond en JSON ?
  *
  * `/api/` n'importe où dans le chemin, et non en tête : le lab peut être servi sous
- * un préfixe. Le gestionnaire d'exception en décide la forme de sa réponse.
+ * un préfixe. Le gestionnaire d'exception en décide la forme de sa réponse, sur le
+ * chemin du script servi (`SCRIPT_NAME`), pas sur l'URI.
  */
 function est_route_api(string $uri): bool
 {

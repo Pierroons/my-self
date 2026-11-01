@@ -343,6 +343,8 @@ return [
     'mod.js.cancelled' => 'vote(s) annulé(s). Pack(s) :',
     'mod.js.target'    => 'cible',
     'mod.js.none'      => 'Aucun pack-voting détecté sur la période récente.',
+    'mod.js.sautes'    => 'Comptes sautés par la détection, à revoir dans la console :',
+    'mod.js.fins'      => 'Des fins de peine attendent le journal : voir la console.',
 
     // ── Page « Attack Simulator » ─────────────────────────────────────────
     // ⚠️ Les résultats de simulation (titres, étapes, verdicts) viennent de

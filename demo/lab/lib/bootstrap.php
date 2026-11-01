@@ -25,7 +25,15 @@ require_once __DIR__ . '/reponse.php';
 // fermée) devenait une fuite là où il devait être une réponse. La cause part au
 // journal du serveur, jamais au client. Les scripts en ligne de commande gardent le
 // comportement de PHP, qui écrit sur la sortie d'erreur et rend un code non nul.
+//
+// Une page HTML se rend dans un tampon : une exception levée après son en-tête la
+// remplace par cette réponse, en 500, au lieu d'arriver au milieu d'une page déjà
+// partie en 200 — et coupée là. Page ou route se décide sur le script servi : un
+// `PATH_INFO` met `/api/` dans l'URI d'une page.
 if (PHP_SAPI !== 'cli') {
+    if (!est_route_api($_SERVER['SCRIPT_NAME'] ?? '/')) {
+        ob_start();
+    }
     set_exception_handler(static function (\Throwable $e): void {
         error_log(sprintf('%s non rattrapée : %s (%s:%d)', $e::class, $e->getMessage(), $e->getFile(), $e->getLine()));
         try {
@@ -33,7 +41,10 @@ if (PHP_SAPI !== 'cli') {
         } catch (\Throwable) {
             $message = 'Service momentanément indisponible.';
         }
-        $api = est_route_api($_SERVER['REQUEST_URI'] ?? '/');
+        $api = est_route_api($_SERVER['SCRIPT_NAME'] ?? '/');
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         if (!headers_sent()) {
             http_response_code(500);
             header('Content-Type: ' . ($api ? 'application/json' : 'text/html') . '; charset=utf-8');
@@ -78,7 +89,7 @@ function json_out(array $data, int $code = 200): never
 {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
 

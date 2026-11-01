@@ -78,19 +78,28 @@ interface Journal
      * elle ne doit pas en retirer.
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
-     * qui échoue en silence vaut l'absence de journal. Une seule exception à la
-     * règle, et elle n'est pas muette : quand un vote, un geste ou le balayage
+     * qui échoue en silence vaut l'absence de journal. Deux exceptions à la
+     * règle, et aucune n'est muette. Quand un vote, un geste ou le balayage
      * constate une peine échue, le refus est consigné et signalé
      * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
      * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
      * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
-     * le fait remonter aussitôt. Un refus se lève par n'importe quelle exception.
+     * le fait remonter aussitôt. Et quand le balayage du site, celui d'un vote ou
+     * du planificateur, lève pour meute le ban d'un compte autre que la cible du
+     * vote, le refus ne défait pas le vote :
+     * la levée attend le balayage suivant, le compte est signalé
+     * (`levee_en_attente`), et `detectPackVoting()` le nomme. Un refus se lève par
+     * n'importe quelle exception ; sur ce second chemin, une `\Error` est un
+     * défaut, et remonte.
      *
      * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
-     * d'une de ses écritures, où une lecture par le moteur est refusée par une
+     * d'une de ses écritures, où la lecture d'un compte par le moteur
+     * (`getReputation()`, `canVote()`, `estBanni()`) est refusée par une
      * `LectureDansUneEcriture`, qui remonte telle quelle — une erreur
      * d'intégration ne se déguise pas en panne du journal —, sauf au filet du
-     * vote : le vote est déjà validé, et elle part au journal d'erreurs.
+     * vote : le vote est déjà validé, et elle part au journal d'erreurs. Les
+     * listes de l'arbitre n'y sont pas refusées, et y lisent l'état que
+     * l'écriture en cours n'a pas fini d'inscrire.
      */
     public function inscrire(array $acte): void;
 }

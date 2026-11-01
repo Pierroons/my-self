@@ -2391,8 +2391,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 157/157 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 157 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 186/186 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 186 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -3013,8 +3013,7 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           remplacements = {
-              'journal': [('        $sansTrace = self::refusSansJournal();\n', '        $sansTrace = null;\n', 4),
-                          ('self::$journal->inscrire(', 'self::$journal?->inscrire(', None)],
+              'journal': [('        $sansTrace = self::refusSansJournal();\n', '        $sansTrace = null;\n', 4)],
               'revue':   [("            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n",
                            "            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n", 1)],
               'balayage': [("$close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true, clore: $refuse === null));",
@@ -3024,8 +3023,8 @@ jobs:
                             ('$enAttente  = self::refusFinEnAttente($etat);', '$enAttente  = null;', 1)],
               'relecture': [('        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {\n            $etat = self::etat($pdo, $accountId);',
                              '        self::rattraperSeul($pdo, $accountId);\n        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $etatLu): array {\n            self::etat($pdo, $accountId);\n            $etat = $etatLu;', 1)],
-              'ordre':     [('                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);\n                    self::restoreAfterCancel($pdo, $author, $voteIds);\n',
-                             '                    self::restoreAfterCancel($pdo, $author, $voteIds);\n                    $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds);\n', 1)],
+              'ordre':     [('                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);\n                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);\n',
+                             '                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);\n                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);\n', 1)],
               'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 4)],
               'hote-vote':  [('if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {', 'if (self::$journal === null) {', 1)],
               'inconnu':    [("return $connu ? null : ['ok' => false, 'message' => static::t('Compte introuvable.')];", 'return null;', 1)],
@@ -3102,7 +3101,7 @@ jobs:
               'hote-lecture':  (1, 'if (!self::dansLaTransactionDeLHote($pdo)) {', 'if (true) {'),
               'arret':         (1, 'contenir: true, clore: $refuse === null));', 'contenir: false, clore: $refuse === null));'),
               'appels':        (1, 'contenir: true, clore: $refuse === null));', 'contenir: true, clore: true));'),
-              'file':          (1, "ORDER BY EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),\n                    banned_until = 0",
+              'file':          (1, "ORDER BY EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),\n                    (SELECT s.derniere_le FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),\n                    banned_until = 0",
                                    "ORDER BY banned_until = 0"),
               'logique':       (1, 'if (!$contenir || $e instanceof LectureDansUneEcriture) {', 'if (!$contenir) {'),
               'classe':        (1, '$e instanceof LectureDansUneEcriture', '$e instanceof \\LogicException'),
@@ -3258,8 +3257,8 @@ jobs:
               'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
                                "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),
               'borne':     (M, "AND cause = ? AND derniere_le <= ?'", "AND cause = ? AND derniere_le < ?'", 1),
-              'anterieur': (M, "['reputation_zero', 'ban_auto', 'journal_en_panne'], true) ? 'etat' : 'comportement';",
-                               "['reputation_zero', 'ban_auto', 'journal_en_panne', 'signal_anterieur'], true) ? 'etat' : 'comportement';", 1),
+              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente'];",
+                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'signal_anterieur'];", 1),
               'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
                                "                continue;\n", 1),
               'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
@@ -3310,6 +3309,147 @@ jobs:
               anterieur|machine) attendu='une cause inconnue reste en base une fois classée, ou la machine ferme un comportement' ;;
               fermedet)        attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
               chute|chute-hote) attendu="une chute pendant un ban d'arbitre passe inaperçue" ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate tait une reprise oubliée à l'arbitre, fait tomber le vote d'un tiers, perd en silence une levée refusée, ou laisse le journal fermer un geste
+        run: |
+          # @plante
+          # Les gardes de la 0.7.1, retirées tour à tour : la sonde des listes de
+          # l'arbitre ; la prise du balayage sur un compte que le vote ne vise pas,
+          # pour une reprise oubliée, pour un refus du journal, pour une exception
+          # ordinaire, et ce qu'elle laisse remonter — une erreur d'intégration, une
+          # Error, une transaction défaite, celle du vote ou du planificateur ; la levée
+          # refusée signalée pour toute classe de refus, nommée, relue sous le verrou
+          # avant d'être posée, sur les strikes et la peine du refus — faite par un
+          # autre passage, sur la même meute ou une meute rétrécie, graciée, suivie
+          # d'une peine neuve, ou due encore quand sa peine échoit entre-temps, que
+          # ses votes soient ensuite annulés ou non, qu'un ban d'arbitre la suive ou
+          # que sa fin attende le journal —, levée quand celle de sa peine est
+          # faite et seulement elle, fermée quand elle est classée ; le compte de la
+          # reprise oubliée nommé, lui seul ; le saut qui ne se dit pas d'un vote ; la
+          # récidive d'un votant attendue sur un autre compte ; le votant de la meute
+          # de la cible ; la reprise oubliée sautée par le balayage ; la file des
+          # signalés rangée par leur dernier refus, et la date de ce refus ; la
+          # valeur texte rendue lisible avant le journal ; le motif refusé s'il n'est
+          # pas du texte ; la ligne du votant que le rattrapage d'un hôte ne crée
+          # pas ; le balayage qui refuse la transaction d'un hôte ; la page
+          # tamponnée du lab, décidée sur le script servi ; la console qui ne dit
+          # pas ses listes vides ; le planificateur qui dit une panne de la base, et
+          # la page qui le lance, ce qu'il a sauté.
+          for cas in listes autrui levee logique exception classe-levee lecture perdue propre signal saute nomme consigne lance relue votes echue retrecie neuve borne meme-peine double faite peine classer cible recidive rayon tour date lisible utf8 ligne hote page script console base page-mod; do
+            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php demo/lab/public/moderation.php; do cp "$f" "/tmp/autrui.$(basename "$f").intact"; done
+            CAS="$cas" python3 - <<'PY'
+          import os
+          M, B = 'bi-self/selfmoderate/src/Moderate.php', 'demo/lab/lib/bootstrap.php'
+          A, D, P = 'demo/lab/public/admin.php', 'demo/lab/public/api/detect_abuse.php', 'demo/lab/public/moderation.php'
+          fichier, avant, apres, n = {
+              'listes':  (M, "        self::exigerRepriseFaite($pdo);\n        $maintenant = time();\n", "        $maintenant = time();\n", 1),
+              'autrui':  (M, "        if ($compte === $voteSur) {\n            return $geste();\n        }\n", "        if (true) {\n            return $geste();\n        }\n", 1),
+              'levee':   (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                             "        } catch (LectureDansUneEcriture | \\RuntimeException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'logique': (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                             "        } catch (LectureDansUneEcriture | \\LogicException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'exception': (M, "        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                               "        } catch (\\Throwable $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'lecture': (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+                             "        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
+              'perdue':  (M, "            if ($e === self::$transactionDefaitePar) {\n                throw $e;\n            }\n", "", 1),
+              'propre':  (M, "                    self::$transactionDefaitePar = $e;\n", "                    if (!$propre) {\n                        self::$transactionDefaitePar = $e;\n                    }\n", 1),
+              'signal':  (M, "                    if ($etatAuRefus !== null) {\n                        self::surAutrui(", "                    if (false) {\n                        self::surAutrui(", 1),
+              'saute':   (M, "            if (!in_array($saut, $sautes, true)) {\n                $sautes[] = $saut;\n            }\n", "", 1),
+              'consigne': (M, "            error_log(sprintf('SelfModerate : le balayage saute le compte %d — %s', $compte, $e->getMessage()));\n", "", 1),
+              'lance':   (M, "le balayage saute le compte %d — %s', $compte,", "le balayage saute le compte %d, sans défaire le vote qui le lance — %s', $compte,", 1),
+              'nomme':   (M, "                'compte' => $e instanceof RepriseManquante ? $e->compte : $compte,\n", "                'compte' => $compte,\n", 1),
+              'double':  (M, "                $sautes[] = $saut;\n", "                $sautes[] = $saut;\n                if ($e instanceof RepriseManquante) {\n                    $sautes[] = ['compte' => $compte, 'raison' => 'refus'];\n                }\n", 1),
+              'relue':   (M, "                            if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {\n                                return false;\n                            }\n", "", 1),
+              'votes':   (M, "static function () use ($pdo, $author, $etatAuRefus): bool {\n                            $etat = self::etat($pdo, $author);\n",
+                             "static function () use ($pdo, $author, $etatAuRefus, $aAnnuler): bool {\n                            $encore = $pdo->prepare('SELECT COUNT(*) FROM mod_votes WHERE id IN (' . implode(',', array_fill(0, count($aAnnuler), '?')) . ') AND blocked = 0');\n                            $encore->execute($aAnnuler);\n                            if ((int) $encore->fetchColumn() === 0) {\n                                return false;\n                            }\n                            $etat = self::etat($pdo, $author);\n", 1),
+              'echue':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if (!$etat['banned']) {", 1),
+              'retrecie': (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] === 0) {", 1),
+              'neuve':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] < $etatAuRefus['strikes']) {", 1),
+              'borne':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 2 : 0)) {", 1),
+              'meme-peine': (M, "$peineNeuve = $etat['ban_debut'] !== 0 && $etat['ban_debut'] !== $etatAuRefus['ban_debut'];", "$peineNeuve = $etat['ban_debut'] !== 0;", 1),
+              'classe-levee': (M, "            } catch (\\Exception $e) {\n                $etatAuRefus = ['strikes'", "            } catch (\\RuntimeException $e) {\n                $etatAuRefus = ['strikes'", 1),
+              'faite':   (M, "            self::designaler($pdo, $author, 'ban_auto', ...array_column($attente, 'cause'));\n", "            self::designaler($pdo, $author, 'ban_auto');\n", 1),
+              'peine':   (M, "                static fn (array $s): bool => $s['ouvert_le'] >= $rep['ban_debut']));\n", "                static fn (array $s): bool => true));\n", 1),
+              'classer': (M, "            if ($vise['cause'] === 'levee_en_attente') {\n                self::designaler(", "            if (false) {\n                self::designaler(", 1),
+              'cible':   (M, "                $author === $voteSur ? self::surAutrui($voter, $voteSur, $recidive, $sautes) : $recidive();\n", "                $recidive();\n", 1),
+              'recidive': (M, "                $author === $voteSur ? self::surAutrui($voter, $voteSur, $recidive, $sautes) : $recidive();\n", "                self::surAutrui($voter, $voteSur, $recidive, $sautes);\n", 1),
+              'rayon':   (M, "            } catch (RepriseManquante $e) {\n                $sansReprise ??= $e;\n", "            } catch (\\DomainException $e) {\n                $sansReprise ??= $e;\n", 1),
+              'tour':    (M, "                    (SELECT s.derniere_le FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),\n", "", 1),
+              'date':    (M, "                $pdo->prepare(\"UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ? AND cause = 'journal_en_panne'\")\n                    ->execute([$t, $accountId]);\n", "", 1),
+              'lisible': (M, "            if (is_string($valeur) && preg_match('//u', $valeur) !== 1) {\n", "            if (false) {\n", 1),
+              'utf8':    (M, "        if (preg_match('//u', $texte) !== 1) {\n", "        if (false) {\n", 1),
+              'ligne':   (M, "contenir: true, creer: false));", "contenir: true));", 1),
+              'hote':    (M, "        if (self::dansLaTransactionDeLHote($pdo)) {\n            throw new \\LogicException('SelfModerate : balayerBansEchus()",
+                             "        if (false) {\n            throw new \\LogicException('SelfModerate : balayerBansEchus()", 1),
+              'page':    (B, "    if (!est_route_api($_SERVER['SCRIPT_NAME'] ?? '/')) {\n        ob_start();\n    }\n", "", 1),
+              'script':  (B, "    if (!est_route_api($_SERVER['SCRIPT_NAME'] ?? '/')) {\n", "    if (!est_route_api($_SERVER['REQUEST_URI'] ?? '/')) {\n", 1),
+              'console': (A, "  <?php if ($repriseManquante !== null): ?><?php elseif (!$bans): ?>", "  <?php if (!$bans): ?>", 1),
+              'base':    (D, "} catch (\\PDOException $e) {\n    throw $e;\n} catch (\\RuntimeException $e) {\n", "} catch (\\RuntimeException $e) {\n", 1),
+              'page-mod': (P, "(d.comptes_sautes||[])", "([])", 1),
+          }[os.environ['CAS']]
+          s = open(fichier, encoding='utf-8').read()
+          assert s.count(avant) == n, 'plantation impossible'
+          open(fichier, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            plante=$?
+            restaurer() { for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php demo/lab/public/moderation.php; do cp "/tmp/autrui.$(basename "$f").intact" "$f"; done; }
+            [ $plante -eq 0 ] || { restaurer; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              restaurer; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            restaurer
+            for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php demo/lab/public/moderation.php; do
+              cmp -s "/tmp/autrui.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
+            done
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              listes)  attendu="une liste de l'arbitre tait une reprise oubliée" ;;
+              autrui)  attendu="la reprise oubliée d'un compte fait tomber le vote d'un tiers" ;;
+              levee)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers" ;;
+              logique) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
+              exception) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
+              classe-levee) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
+              lecture) attendu="le balayage saute une erreur d'intégration comme un refus" ;;
+              perdue)  attendu="le balayage avale une erreur qui a défait la transaction du vote" ;;
+              propre)  attendu="le balayage avale une erreur qui a défait la transaction du vote, ou celle du planificateur" ;;
+              signal)  attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              saute)   attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              consigne) attendu="un refus de levée pour meute fait tomber le vote d'un tiers, ou la levée se perd" ;;
+              nomme)   attendu="ou perd sa récidive sur un autre compte" ;;
+              lance)   attendu="le journal d'erreurs parle d'un vote sous le planificateur" ;;
+              relue)   attendu="une course pose une levée en attente sur un compte déjà levé" ;;
+              votes)   attendu="une peine échue puis balayée entre le refus et la pose du signal perd la levée en attente" ;;
+              echue)   attendu="une peine échue entre le refus et la pose du signal perd la levée en attente" ;;
+              retrecie) attendu="une course pose une levée en attente sur un compte levé par une meute rétrécie" ;;
+              neuve)   attendu="une course pose une levée en attente sur la seconde peine d'un compte levé" ;;
+              borne)   attendu="une peine échue suivie d'un ban d'arbitre perd la levée en attente" ;;
+              meme-peine) attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              double)  attendu="ou perd sa récidive sur un autre compte" ;;
+              faite)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers, ou la levée se perd" ;;
+              peine)   attendu="une levée suivante efface la levée en attente d'une peine antérieure" ;;
+              classer) attendu="une levée refusée se perd en silence quand la peine échoit" ;;
+              cible)   attendu="la reprise oubliée d'un votant fait tomber le vote sur la cible de sa meute" ;;
+              recidive) attendu="ou perd sa récidive sur un autre compte" ;;
+              rayon)   attendu="une reprise oubliée arrête le balayage" ;;
+              tour)    attendu="un compte refusé à chaque passe retient les signalés qui le suivent" ;;
+              date)    attendu="un compte refusé à chaque passe retient les signalés qui le suivent" ;;
+              lisible) attendu="une cause illisible ferme un geste de l'arbitre, ou fige une peine" ;;
+              utf8)    attendu="un motif illisible passe le validateur" ;;
+              ligne)   attendu="un vote refusé écrit la ligne de son votant" ;;
+              hote)    attendu="le balayage inscrit des fins dans la transaction d'un hôte" ;;
+              page)    attendu="une page qui lève après son en-tête part coupée" ;;
+              script)  attendu="une page qui lève après son en-tête part coupée" ;;
+              console) attendu="la console dit la reprise oubliée, puis « aucun ban »" ;;
+              base)    attendu="dit une panne de la base comme un refus du journal" ;;
+              page-mod) attendu="le planificateur tait un compte sauté" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

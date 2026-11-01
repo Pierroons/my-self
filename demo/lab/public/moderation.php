@@ -43,7 +43,7 @@ render_header(t('mod.title'), $account);
   <button class="btn" id="btn-detecter"><?= h(t('mod.detect.btn')) ?></button>
 </div>
 <script nonce="<?= nonce() ?>">
-const MOD_I18N = <?= json_encode(['cancelled'=>t('mod.js.cancelled'),'target'=>t('mod.js.target'),'none'=>t('mod.js.none'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
+const MOD_I18N = <?= json_encode(['cancelled'=>t('mod.js.cancelled'),'target'=>t('mod.js.target'),'none'=>t('mod.js.none'),'sautes'=>t('mod.js.sautes'),'fins'=>t('mod.js.fins'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
 function detecter(){
   labPost('/api/detect_abuse.php',{}).then(d=>{
     const m=document.getElementById('dmsg');
@@ -56,6 +56,11 @@ function detecter(){
         setTimeout(()=>location.reload(),2500);
       } else {
         m.innerHTML='<div class="toast ok">'+MOD_I18N.none+'</div>';
+      }
+      // Ce que la détection a sauté, et les fins qui attendent le journal : à voir dans la console.
+      const sautes=(d.comptes_sautes||[]).map(s=>'#'+Number(s.compte)+' ('+String(s.raison).replace(/[^a-z_]/g,'')+')');
+      if(sautes.length||d.fins_en_attente){
+        m.innerHTML+='<div class="toast err">'+(sautes.length?MOD_I18N.sautes+' '+sautes.join(', ')+'. ':'')+(d.fins_en_attente?MOD_I18N.fins:'')+'</div>';
       }
     } else { m.innerHTML='<div class="toast err">'+(d.message||MOD_I18N.err)+'</div>'; }
   });
