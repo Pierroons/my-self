@@ -3669,8 +3669,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=34 [sanity_conformance]=84 [sanity_escrow]=65
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=31 [sanity_keys]=23 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=63 [sanity_audit]=35 [sanity_ceremony]=39 [sanity_conformance]=84 [sanity_escrow]=65
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=42 [sanity_keys]=23 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4101,11 +4101,17 @@ jobs:
           canari $D/src/SelfDataGuard.php "        \$this->assertEscrowAdmin(\$adminPublicKey);
                   for (\$attempt = 1; ; \$attempt++) {" "        for (\$attempt = 1; ; \$attempt++) {" \
             $D/tests/sanity_escrow.php 'a deposit given another administrator key than the database recorded went through'
-          canari $D/src/Escrow/EscrowCeremony.php "        if (\$this->keeper instanceof NoKeeper) {" '        if (false) {' \
-            $K 'refused, but not as keeper-missing'
+          canari $D/src/Escrow/EscrowCeremony.php "        if (\$this->keeper instanceof NoKeeper) {
+                      throw new EscrowKeeperException(" "        if (false) {
+                      throw new EscrowKeeperException(" $K 'refused, but not as keeper-missing'
           canari $D/src/Escrow/EscrowCeremony.php "\$this->throughKeeper(\$archive->escrow, \$caseRef, true, \$intent);" \
             "\$this->throughKeeper(\$archive->escrow, \$caseRef, false, \$intent);" $K 'EscrowAnnouncedException'
           canari $D/src/Escrow/EscrowCeremony.php "        if (\$due > time()) {" '        if (false) {' $K 'This read is not due yet'
+          canari $D/src/Escrow/KeeperConformance.php "            'release-seq-grows'               => 'releaseSeqGrows'," '' \
+            $K 'SeqBlindKeeper passed a case it breaks'
+          canari $D/bin/escrow-ceremony.php '    exit(4);' '    exit(2);' $D/tests/sanity_ceremony.php 'a read under a delay did not exit 4'
+          canari $D/src/Escrow/EscrowCeremony.php "        if (\$live !== null && !EscrowVault::isKeeperSealed(\$live)) {" '        if (false) {' \
+            $D/tests/sanity_ceremony.php 'seal-to-keeper did not seal the escrow sealed before the keeper'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

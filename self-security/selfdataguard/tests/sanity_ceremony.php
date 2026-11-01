@@ -279,6 +279,59 @@ $r['code'] === 0 && str_contains($r['out'], CONTACT)
 
 // -----------------------------------------------------------------------------
 
+section('Under a keeper — a read announced, read once due, and the operator\'s pass');
+
+require_once __DIR__ . '/keeper_fixture.php';
+$keeperState = "{$ws}/gardien-etat.json";
+$fileKeeper  = new FileBenchKeeper($keeperState, 3600);
+$keeperBench = "{$ws}/gardien-banc.php";
+file_put_contents($keeperBench, sprintf(
+    "<?php\nrequire %s;\nrequire_once %s;\nreturn new FileBenchKeeper(%s, 3600);\n",
+    var_export(__DIR__ . '/../src/autoload.php', true),
+    var_export(__DIR__ . '/keeper_fixture.php', true),
+    var_export($keeperState, true)
+));
+$kdb    = "{$ws}/escrow-keeper.sqlite";
+$kstore = new SqliteAdapter("sqlite:{$kdb}");
+$kblind = random_bytes(32);
+$kplain = new SelfDataGuard($kstore, $kblind);
+$frank  = $kplain->register('frank', 'motdepasse-frank-fort');
+$kplain->setEscrowFields($frank, $admin['publicKey'], ['contact_secours' => 'frank-secours@example.org']);
+$kdg  = new SelfDataGuard($kstore, $kblind, keeper: $fileKeeper);
+$erin = $kdg->register('erin', 'motdepasse-erin-fort');
+$kdg->setEscrowFields($erin, $admin['publicKey'], ['contact_secours' => 'erin-secours@example.org']);
+$pdo->exec("INSERT INTO litiges VALUES ('K-erin','erin','open')");
+$kenv = ['DATAGUARD_DB' => $kdb, 'DATAGUARD_KEEPER_FILE' => $keeperBench, 'DATAGUARD_AUDIT_LOG' => "{$ws}/audit-k.log"] + $env;
+
+$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", $kenv);
+$r['code'] === 4 && str_contains($r['err'], 'Lecture annoncée') && !str_contains($r['out'], 'erin-secours@example.org')
+    ? ok('a read under a delay exits 4: nothing unsealed, and the command says when to run it again')
+    : ko('a read under a delay did not exit 4 as announced', $r['code'] . ' ' . trim($r['err']));
+$state = json_decode((string) file_get_contents($keeperState), true);
+foreach ($state['pending'] as $k => $held) {
+    $state['pending'][$k]['due'] = time() - 1;
+}
+file_put_contents($keeperState, json_encode($state));
+$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", $kenv);
+$r['code'] === 0 && str_contains($r['out'], 'erin-secours@example.org')
+    ? ok('the same command, run again once due, reads: the keeper released the box')
+    : ko('a due read did not go through the command', $r['code'] . ' ' . trim($r['err']));
+
+$r = run(['seal-to-keeper'], '', $kenv);
+$r['code'] === 0 && str_contains($r['out'], 'frank : coffre vivant scellé au gardien')
+    && Pierroons\SelfDataGuard\Escrow\EscrowVault::isKeeperSealed($kstore->loadEscrow('frank'))
+    ? ok("seal-to-keeper: the escrow the administrator alone still opened is sealed to the keeper, without any secret in hand")
+    : ko('seal-to-keeper did not seal the escrow sealed before the keeper', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['seal-to-keeper'], '', $kenv);
+$r['code'] === 0 && str_contains($r['out'], 'frank : coffre vivant sans changement')
+    ? ok('a second pass changes nothing')
+    : ko('a second pass sealed again', trim($r['out']));
+$kdg->getEscrowFieldsAsUser($frank) === ['contact_secours' => 'frank-secours@example.org']
+    ? ok('its holder still reads it')
+    : ko('the operator\'s pass took the escrow from its holder');
+
+// -----------------------------------------------------------------------------
+
 section('Tampered audit log is caught by verify-log');
 
 $lines = file($auditLog, FILE_IGNORE_NEW_LINES);

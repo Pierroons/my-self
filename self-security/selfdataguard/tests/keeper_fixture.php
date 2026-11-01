@@ -131,3 +131,81 @@ class BenchKeeper implements EscrowKeeper
         }
     }
 }
+
+/**
+ * BenchKeeper whose keys and records live in a JSON file, so that the
+ * ceremony's processes share one keeper, as a store off the machine would be.
+ */
+final class FileBenchKeeper extends BenchKeeper
+{
+    public function __construct(private readonly string $file, int $delay = 0)
+    {
+        parent::__construct($delay);
+        is_file($file) ? $this->load() : $this->save();
+    }
+
+    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, bool $archive, int $seq, string $hmac): int
+    {
+        $this->load();
+        try {
+            return parent::announce($escrowId, $outerBox, $userId, $caseRef, $archive, $seq, $hmac);
+        } finally {
+            $this->save();
+        }
+    }
+
+    public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string
+    {
+        $this->load();
+        try {
+            return parent::release($escrowId, $outerBox, $caseRef, $seq, $hmac);
+        } finally {
+            $this->save();
+        }
+    }
+
+    public function attest(string $escrowId, string $nonce): string
+    {
+        $this->load();
+        return parent::attest($escrowId, $nonce);
+    }
+
+    public function object(string $escrowId, string $caseRef, string $signature): void
+    {
+        $this->load();
+        try {
+            parent::object($escrowId, $caseRef, $signature);
+        } finally {
+            $this->save();
+        }
+    }
+
+    private function load(): void
+    {
+        $d = json_decode((string) file_get_contents($this->file), true, flags: JSON_THROW_ON_ERROR);
+        [$this->boxPublic, $this->boxSecret, $this->signPublic, $this->signSecret] = array_map(
+            static fn (string $k): string => (string) base64_decode($k, true),
+            [$d['boxPublic'], $d['boxSecret'], $d['signPublic'], $d['signSecret']]
+        );
+        $this->pending = array_map(static fn (array $p): array => ['objection' => $p['objection'] === null ? null
+            : (string) base64_decode($p['objection'], true)] + $p, $d['pending']);
+        $this->releases = $d['releases'];
+        $this->lastSeq  = $d['lastSeq'];
+        $this->delay    = $d['delay'];
+    }
+
+    private function save(): void
+    {
+        file_put_contents($this->file, json_encode([
+            'boxPublic'  => base64_encode($this->boxPublic),
+            'boxSecret'  => base64_encode($this->boxSecret),
+            'signPublic' => base64_encode($this->signPublic),
+            'signSecret' => base64_encode($this->signSecret),
+            'pending'    => array_map(static fn (array $p): array => ['objection' => $p['objection'] === null ? null
+                : base64_encode($p['objection'])] + $p, $this->pending),
+            'releases'   => $this->releases,
+            'lastSeq'    => $this->lastSeq,
+            'delay'      => $this->delay,
+        ], JSON_THROW_ON_ERROR), LOCK_EX);
+    }
+}

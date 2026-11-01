@@ -19,11 +19,13 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/keeper_fixture.php';
+require __DIR__ . '/keeper_doubles.php';
 
 use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Escrow\KeeperConformance;
 use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 use Pierroons\SelfDataGuard\Escrow\NoKeeper;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
@@ -333,6 +335,61 @@ $withKeeper->sealEscrowToKeeper($dave, $admin['publicKey']) && EscrowVault::isKe
 $withKeeper->getEscrowFieldsAsUser($dave) === ['contact' => 'dave-secours@example.org']
     ? ok('its fields come through')
     : ko('sealing to the keeper lost the escrow fields');
+
+// -----------------------------------------------------------------------------
+
+section('The keeper conformance suite — the bench keeper passes, each broken one fails on its clause');
+
+$failedCases = static fn (array $results): array => array_column(
+    array_filter($results, static fn (array $r): bool => $r['outcome'] === 'fail'), 'detail', 'case'
+);
+$failedOfBench = $failedCases(KeeperConformance::run(new BenchKeeper(delay: 3600)));
+$failedOfBench === []
+    ? ok('BenchKeeper, under a delay: every case passes')
+    : ko('the bench keeper fails the suite', json_encode($failedOfBench));
+foreach ([
+    OpensAnyBoxKeeper::class        => 'announce-reads-the-box',
+    UnrecordedReleaseKeeper::class  => 'release-is-recorded',
+    UnannouncedReleaseKeeper::class => 'release-only-announced',
+    SeqBlindKeeper::class           => 'release-seq-grows',
+    StaleAttestationKeeper::class   => 'attestation-fresh-and-scoped',
+    ObjectionBlindKeeper::class     => 'objection-under-the-box-key',
+    DelayedArchiveKeeper::class     => 'archive-read-due-at-once',
+] as $class => $case) {
+    $failed = $failedCases(KeeperConformance::run(new $class()));
+    isset($failed[$case])
+        ? ok("{$class} fails {$case}")
+        : ko("{$class} passed a case it breaks", $case);
+}
+$keeperWork = sys_get_temp_dir() . '/sdg-keeper-conf-' . bin2hex(random_bytes(4));
+mkdir($keeperWork);
+$keeperFileOf = static function (string $class) use ($keeperWork): string {
+    $file = "{$keeperWork}/{$class}.php";
+    file_put_contents($file, sprintf(
+        "<?php\nrequire %s;\nrequire_once %s;\nreturn new %s();\n",
+        var_export(__DIR__ . '/../src/autoload.php', true),
+        var_export(__DIR__ . '/keeper_doubles.php', true),
+        $class
+    ));
+    return $file;
+};
+$runBin = static function (string $file): array {
+    $process = proc_open([PHP_BINARY, __DIR__ . '/../bin/keeper-conformance.php', $file], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    return [proc_close($process), $out];
+};
+[$rc, $out] = $runBin($keeperFileOf(BenchKeeper::class));
+$rc === 0 && str_contains($out, 'Conforme.')
+    ? ok('bin/keeper-conformance.php: 0 on the bench keeper')
+    : ko('the bench keeper was not reported conformant', "rc={$rc} {$out}");
+[$rc, $out] = $runBin($keeperFileOf(SeqBlindKeeper::class));
+$rc === 1 && str_contains($out, '❌ release-seq-grows')
+    ? ok('1 on a broken keeper, naming the case it fails')
+    : ko('a broken keeper was not reported', "rc={$rc} {$out}");
+[$rc] = $runBin("{$keeperWork}/absent.php");
+$rc === 3 ? ok('3 on a file that does not return a keeper') : ko('a missing keeper file did not exit 3', "rc={$rc}");
+array_map('unlink', glob("{$keeperWork}/*") ?: []);
+rmdir($keeperWork);
 
 sodium_memzero($adminSk);
 @unlink($noKeeperLog);

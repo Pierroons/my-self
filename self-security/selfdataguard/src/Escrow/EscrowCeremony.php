@@ -137,6 +137,56 @@ final class EscrowCeremony
     }
 
     /**
+     * The operator's pass: every escrow of $userId — live, and in each archive —
+     * that the administrator alone still opens, sealed again to this
+     * ceremony's keeper. No secret is in hand: the keeper's public key is all
+     * it takes, and the box inside is the wrap_admin as it was. Logged once per
+     * account, with what it sealed. A frozen live vault refuses the write, and
+     * is reported, not sealed.
+     *
+     * The escrow sealed here carries no objection key — only the holder's
+     * session holds wrap_user —, and its wrap_user names no keeper until its
+     * next deposit, or SelfDataGuard::sealEscrowToKeeper().
+     *
+     * @return array{live: bool, archives: list<string>, frozen: bool} what was sealed
+     */
+    public function sealToKeeper(string $userId): array
+    {
+        if ($this->keeper instanceof NoKeeper) {
+            throw new RuntimeException('NoKeeper: there is no keeper to seal to');
+        }
+        $box  = KeeperSeal::checkKeys($this->keeper->publicKeys())['box'];
+        $wrap = static fn (EscrowRecord $r): EscrowRecord => new EscrowRecord(
+            $r->userId,
+            $r->wrapUser,
+            KeeperSeal::wrap(KeeperSeal::newEscrowId(), $r->userId, null, $r->wrapAdmin, $box),
+            $r->createdAt,
+            new \DateTimeImmutable(),
+            $r->revision
+        );
+        $done = ['live' => false, 'archives' => [], 'frozen' => false];
+        $live = $this->storage->loadEscrow($userId);
+        if ($live !== null && !EscrowVault::isKeeperSealed($live)) {
+            try {
+                $this->storage->replaceEscrow($this->storage->loadVault($userId)->generation(), $wrap($live));
+                $done['live'] = true;
+            } catch (\Pierroons\SelfDataGuard\Vault\VaultFrozenException) {
+                $done['frozen'] = true;
+            }
+        }
+        foreach ($this->storage->listArchives($userId) as $listed) {
+            $escrow = $this->storage->loadArchive($userId, $listed['id'])?->escrow;
+            if ($escrow !== null && !EscrowVault::isKeeperSealed($escrow)) {
+                $this->storage->replaceArchiveEscrow($userId, $listed['id'], $wrap($escrow));
+                $done['archives'][] = $listed['id'];
+            }
+        }
+        $this->log->append(['action' => 'seal-to-keeper', 'target' => $userId, 'keeper' => get_class($this->keeper),
+            'live' => $done['live'], 'archives' => $done['archives'], 'frozen' => $done['frozen'], 'operator' => $this->operator]);
+        return $done;
+    }
+
+    /**
      * Hands the witness the log's head, once the log is found to hold $anchor —
      * the head noted outside this machine at the last verification. The
      * operator's act for a witness that holds no head on a log a witness

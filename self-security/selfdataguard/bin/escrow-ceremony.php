@@ -28,6 +28,17 @@ declare(strict_types=1);
  *   php bin/escrow-ceremony.php archives <user> <dossier>
  *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
  *   php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>
+ *   php bin/escrow-ceremony.php seal-to-keeper [user...]
+ *
+ * Sous un gardien, une lecture peut être annoncée plutôt que faite : le gardien
+ * l'inscrit et la tient jusqu'à une échéance, que le titulaire voit et à laquelle il
+ * peut s'opposer. La commande sort alors en 4 ; la même commande, relancée après
+ * l'échéance, lit. `seal-to-keeper` est la passe de l'exploitant : chaque séquestre
+ * — vivant, dormant, archivé — que l'administrateur seul ouvre encore est scellé au
+ * gardien, sans aucun secret en main ; sans compte nommé, tous ceux de la base.
+ *
+ * Sorties : 0 fait · 1 journal rompu · 2 refusé · 3 configuration · 4 lecture
+ * annoncée, à relancer après l'échéance.
  *
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (coffres + escrow)
@@ -50,8 +61,10 @@ require __DIR__ . '/../src/autoload.php';
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
+use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
 use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeper;
+use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
 use Pierroons\SelfDataGuard\Escrow\HeadWitness;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
@@ -210,6 +223,31 @@ if ($cmd === 'verify-log') {
     exit(1);
 }
 
+if ($cmd === 'seal-to-keeper') {
+    $comptes = array_slice($argv, 2);
+    if ($comptes === []) {
+        $pdo = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $comptes = $pdo->query('SELECT user_id FROM selfdataguard_escrow UNION SELECT user_id FROM selfdataguard_archives ORDER BY 1')
+            ->fetchAll(PDO::FETCH_COLUMN);
+    }
+    $ceremony = ceremonie($auditLog, operatorContext());
+    $gele = 0;
+    foreach ($comptes as $compte) {
+        try {
+            $fait = $ceremony->sealToKeeper((string) $compte);
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "⛔ {$compte} — {$e->getMessage()}\n");
+            exit(2);
+        }
+        $gele += $fait['frozen'] ? 1 : 0;
+        echo "🔐 {$compte} : " . ($fait['live'] ? 'coffre vivant scellé au gardien' : 'coffre vivant sans changement')
+            . ($fait['archives'] === [] ? '' : ', ' . count($fait['archives']) . ' archive(s) scellée(s)')
+            . ($fait['frozen'] ? ' — ⚠️ coffre gelé, non scellé : à reprendre après la clôture' : '') . "\n";
+    }
+    exit($gele === 0 ? 0 : 2);
+}
+
 $arites = ['unlock' => 2, 'unlock-archive' => 3, 'archives' => 2];
 if (!isset($arites[$cmd]) || count($argv) < 2 + $arites[$cmd]) {
     fwrite(STDERR, "Usage:\n"
@@ -217,7 +255,8 @@ if (!isset($arites[$cmd]) || count($argv) < 2 + $arites[$cmd]) {
         . "  php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]\n"
         . "  php bin/escrow-ceremony.php archives <user> <dossier>\n"
         . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n"
-        . "  php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>\n");
+        . "  php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>\n"
+        . "  php bin/escrow-ceremony.php seal-to-keeper [user...]\n");
     exit(3);
 }
 
@@ -244,6 +283,13 @@ try {
     $plain = $archive === null
         ? $ceremony->readEscrow($user, $dossier, $sealed, $passphrase, $adminPub, $fields)
         : $ceremony->readArchiveEscrow($user, $archive, $dossier, $sealed, $passphrase, $adminPub, $fields);
+} catch (EscrowAnnouncedException $e) {
+    fwrite(STDERR, "⏳ Lecture annoncée chez le gardien : rien n'est descellé avant " . gmdate('Y-m-d H:i', $e->due)
+        . " UTC. Le titulaire la voit et peut s'y opposer d'ici là ; relance la même commande ensuite.\n");
+    exit(4);
+} catch (EscrowKeeperException $e) {
+    fwrite(STDERR, "⛔ Refusé — gardien ({$e->reason}) : {$e->getMessage()}\n");
+    exit(2);
 } catch (EscrowRefusedException $e) {
     fwrite(STDERR, "⛔ Refusé — le dossier « {$dossier} » n'autorise pas la lecture pour « {$user} » ({$e->verdict->value}).\n");
     exit(2);
