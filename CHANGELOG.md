@@ -10,37 +10,6 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfModerate 0.7.1 : une reprise oubliée se dit à l'arbitre, et le vote d'un tiers ne tombe plus pour un autre compte — 30 octobre 2026
-
-La 0.7.1 corrige ce qu'un audit à deux visions de la 0.7.0 a relevé. Aucun changement de schéma.
-
-- **Une reprise oubliée se dit à l'arbitre** : `bansEnCours()`, `flaggedForReview()` et `signauxOuverts()` lèvent
-  `RepriseManquante`, une `LogicException` nommée, au lieu d'afficher « rien à revoir ». Le balayage saute ce compte au
-  lieu de s'y arrêter.
-- **Le vote d'un tiers ne tombe plus pour un autre compte** : le premier vote négatif d'une tranche balaie le site, et
-  une reprise oubliée, ou une levée pour meute que le journal refuse, sur un compte qu'il ne vise pas — votants de la
-  meute de sa cible compris, consignés alors sans leur signal de récidive —, ne le défont plus. Sur un autre compte, la
-  reprise oubliée d'un votant fait attendre l'épisode, levée de la victime comprise : si sa peine échoit avant la
-  reprise, la victime garde son strike, que la grâce rend. Une levée refusée se signale sur la victime (`levee_en_attente`)
-  jusqu'à ce qu'elle soit faite, graciée ou classée : une peine qui échoit avant le balayage suivant ne la laisse plus
-  se perdre en silence. `detectPackVoting()` nomme les comptes sautés (`comptes_sautes`). Une erreur après laquelle la
-  base a défait une transaction du moteur, celle du vote ou celle du planificateur, et une `\Error`, remontent.
-- **Un motif qui n'est pas de l'UTF-8 valide est refusé** par `validateReason()`.
-- **Toute valeur texte d'un acte arrive au journal en UTF-8 valide** : une cause lue en base n'empêche plus de classer,
-  de bannir, ni de refermer une peine.
-- **Un compte que le journal refuse à chaque passe ne retient plus les comptes signalés qui le suivent.**
-- **`balayerBansEchus()` refuse la transaction d'un hôte**, et un vote refusé dans celle-ci n'écrit plus la ligne de son
-  votant.
-- Le lab : une page qui lève après son en-tête rend un 500 et non une page coupée, `/api/` glissé dans son chemin
-  compris ; la console dit la reprise oubliée sans dire ses listes vides, et nomme la levée en attente ; le planificateur
-  referme aussi les peines échues, nomme les comptes sautés, et rend un 500 sur une panne de la base au lieu de la ranger
-  parmi les refus du journal.
-
-**Pour un intégrateur** : une console d'arbitre entoure ses listes comme son balayage et nomme la cause
-`levee_en_attente` ; un planificateur lit `comptes_sautes` ; `balayerBansEchus()` s'appelle hors de la transaction de
-l'hôte. Le détail : la section « Statut » de
-[`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
-
 ### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
 
 Correctif du retour du titulaire dans la fenêtre d'après un niveau 3. Aucune rupture de contrat : ni
@@ -220,23 +189,6 @@ plus qu'un nouveau dossier pour contester.
 
 `sanity_escalade` passe à 247 cas, `banc_stockage_pdo` à 203, le contrat à 53 méthodes. Vingt et un
 canaris, chacun vu rouge sur son cas.
-
-### SelfModerate 0.7.0 : une lecture n'écrit plus rien, et aucune sanction ne passe sans trace — 28 octobre 2026
-
-La 0.7.0 ferme ce que deux audits de la 0.6 ont relevé.
-
-- **Une lecture n'écrit plus rien** : `getReputation()` et `canVote()` calculent l'état de l'instant ; un vote,
-  un geste d'arbitre ou le balayage l'inscrivent. Une page servie sans session ne fait plus écrire le serveur.
-- **Pas de sanction sans trace** : sans journal, aucun geste d'arbitre ; dans la transaction d'un hôte, ni geste
-  ni ban automatique.
-- **Un signalement par cause** (`mod_signaux`), et un geste qui refuse de fermer ce que l'arbitre n'a pas vu.
-- **Les bans d'arbitre se comptent à part**, et leur répétition se signale.
-- Le lab : la page de convalescence dit le rythme de la config, les durées se lisent dans l'unité de leur
-  grandeur, et la démonstration de meute exerce la défense qu'elle annonce.
-
-**Rupture pour un intégrateur** : la colonne `strikes_admin` et la table `mod_signaux` entrent au schéma attendu,
-et une base de la 0.6 appelle `migrerSignaux()` une fois. Le détail, et la marche à suivre : la section
-« Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
 
 ### SelfRecover 0.13.0, lot A — sous un service caché, ouvrir un dossier de niveau 3 se paie — 27 octobre 2026
 
@@ -765,6 +717,62 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfModerate v0.7.1] — 1er novembre 2026
+
+### SelfModerate 0.7.1 : une reprise oubliée se dit à l'arbitre, et le vote d'un tiers ne tombe plus pour un autre compte — 30 octobre 2026
+
+La 0.7.1 corrige ce qu'un audit à deux visions de la 0.7.0 a relevé. Aucun changement de schéma.
+
+- **Une reprise oubliée se dit à l'arbitre** : `bansEnCours()`, `flaggedForReview()` et `signauxOuverts()` lèvent
+  `RepriseManquante`, une `LogicException` nommée, au lieu d'afficher « rien à revoir ». Le balayage saute ce compte au
+  lieu de s'y arrêter.
+- **Le vote d'un tiers ne tombe plus pour un autre compte** : le premier vote négatif d'une tranche balaie le site, et
+  une reprise oubliée, ou une levée pour meute que le journal refuse, sur un compte qu'il ne vise pas — votants de la
+  meute de sa cible compris, consignés alors sans leur signal de récidive —, ne le défont plus. Sur un autre compte, la
+  reprise oubliée d'un votant fait attendre l'épisode, levée de la victime comprise : si sa peine échoit avant la
+  reprise, la victime garde son strike, que la grâce rend. Une levée refusée se signale sur la victime (`levee_en_attente`)
+  jusqu'à ce qu'elle soit faite, graciée ou classée : une peine qui échoit avant le balayage suivant ne la laisse plus
+  se perdre en silence. `detectPackVoting()` nomme les comptes sautés (`comptes_sautes`). Une erreur après laquelle la
+  base a défait une transaction du moteur, celle du vote ou celle du planificateur, et une `\Error`, remontent.
+- **Un motif qui n'est pas de l'UTF-8 valide est refusé** par `validateReason()`.
+- **Toute valeur texte d'un acte arrive au journal en UTF-8 valide** : une cause lue en base n'empêche plus de classer,
+  de bannir, ni de refermer une peine.
+- **Un compte que le journal refuse à chaque passe ne retient plus les comptes signalés qui le suivent.**
+- **`balayerBansEchus()` refuse la transaction d'un hôte**, et un vote refusé dans celle-ci n'écrit plus la ligne de son
+  votant.
+- Le lab : une page qui lève après son en-tête rend un 500 et non une page coupée, `/api/` glissé dans son chemin
+  compris ; la console dit la reprise oubliée sans dire ses listes vides, et nomme la levée en attente ; le planificateur
+  referme aussi les peines échues, nomme les comptes sautés, et rend un 500 sur une panne de la base au lieu de la ranger
+  parmi les refus du journal.
+
+**Pour un intégrateur** : une console d'arbitre entoure ses listes comme son balayage et nomme la cause
+`levee_en_attente` ; un planificateur lit `comptes_sautes` ; `balayerBansEchus()` s'appelle hors de la transaction de
+l'hôte. Le détail : la section « Statut » de
+[`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+
+---
+
+## [SelfModerate v0.7.0] — 29 octobre 2026
+
+### SelfModerate 0.7.0 : une lecture n'écrit plus rien, et aucune sanction ne passe sans trace — 28 octobre 2026
+
+La 0.7.0 ferme ce que deux audits de la 0.6 ont relevé.
+
+- **Une lecture n'écrit plus rien** : `getReputation()` et `canVote()` calculent l'état de l'instant ; un vote,
+  un geste d'arbitre ou le balayage l'inscrivent. Une page servie sans session ne fait plus écrire le serveur.
+- **Pas de sanction sans trace** : sans journal, aucun geste d'arbitre ; dans la transaction d'un hôte, ni geste
+  ni ban automatique.
+- **Un signalement par cause** (`mod_signaux`), et un geste qui refuse de fermer ce que l'arbitre n'a pas vu.
+- **Les bans d'arbitre se comptent à part**, et leur répétition se signale.
+- Le lab : la page de convalescence dit le rythme de la config, les durées se lisent dans l'unité de leur
+  grandeur, et la démonstration de meute exerce la défense qu'elle annonce.
+
+**Rupture pour un intégrateur** : la colonne `strikes_admin` et la table `mod_signaux` entrent au schéma attendu,
+et une base de la 0.6 appelle `migrerSignaux()` une fois. Le détail, et la marche à suivre : la section
+« Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
 
 ---
 
