@@ -72,7 +72,7 @@ if __name__ == "__main__":
         word = sys.stdin.readline().rstrip("\n")
     elif a.word is not None:
         print("selfrecover_derive: AVERTISSEMENT — --word expose la passphrase dans "
-              "/proc/<pid>/cmdline. Préférez --stdin.", file=sys.stderr)
+              "/proc/<pid>/cmdline. Préfère --stdin.", file=sys.stderr)
         word = a.word
     else:
         ap.error("il faut --stdin (recommandé) ou --word")

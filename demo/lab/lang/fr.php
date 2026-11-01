@@ -258,7 +258,7 @@ return [
 
     // ── Accueil du forum ──────────────────────────────────────────────────
     'idx.title'     => 'Forum',
-    'idx.pitch'     => 'Forum de démonstration : <strong>attaquez-le, vos données survivent.</strong><br>Auth sans email · mémo chiffré de bout en bout, messages chiffrés au repos · modération anti-manipulation.',
+    'idx.pitch'     => 'Forum de démonstration : <strong>attaque-le, tes données survivent.</strong><br>Auth sans email · mémo chiffré de bout en bout, messages chiffrés au repos · modération anti-manipulation.',
     'idx.cta.test'  => '🛡️ Tester la sécurité',
     'idx.cta.archi' => 'Voir l\'architecture',
     'idx.credit'    => 'Un cowork <strong>Pierroons × Claude</strong> — sécurité open source, à l\'épreuve.',

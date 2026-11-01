@@ -263,7 +263,7 @@ Pour l'<strong>immunité totale</strong> de la confidentialité, il faut <strong
   « smash &amp; grab » / rançongiciel, qui est le plus fréquent et le plus médiatisé.</li>
 </ul>
 <div class="box warn"><span class="bt">Le bon « claim », honnête et défendable</span>
-« Vos données sensibles sont chiffrées de bout en bout : un vol ou un dump de la base ne livre que
+« Tes données sensibles sont chiffrées de bout en bout : un vol ou un dump de la base ne livre que
 des blobs. La persistance d'un attaquant est traitée par l'isolation, le durcissement et
 l'éphémérité de l'instance. L'immunité totale, y compris contre l'altération du code servi, relèverait
 d'un client natif signé — hors périmètre de cette vitrine. » <span class="small">Dire cela, c'est

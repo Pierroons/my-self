@@ -3,7 +3,7 @@
  * Bi-Self Demo — Rate limiter & bans.
  *
  * Règles :
- *  - LAN (votre plage LAN privée) bypass systématique
+ *  - LAN (ta plage LAN privée) bypass systématique
  *  - Cookie sj_bypass avec token valide bypass systématique
  *  - Max 10 sessions concurrentes totales
  *  - Max 3 sessions par IP / heure = OK

@@ -77,7 +77,7 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
                 'Les clés étrangères n\'ont pas pu être activées sur cette connexion. '
                 . 'Cause la plus probable : une transaction était déjà ouverte au moment '
                 . 'de construire l\'adaptateur — SQLite ignore alors ce PRAGMA. '
-                . 'Construisez-le avant d\'ouvrir une transaction.'
+                . 'Construis-le avant d\'ouvrir une transaction.'
             );
         }
     }
@@ -891,7 +891,7 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
             throw new RuntimeException(
                 'StockagePdo a été construit sans hôte de dérivation : reposerSecrets() '
                 . 'écrirait un derivation_host vide sur un compte qui vient d\'en '
-                . 'utiliser un réel. Passez-le au constructeur.'
+                . 'utiliser un réel. Passe-le au constructeur.'
             );
         }
 

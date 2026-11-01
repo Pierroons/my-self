@@ -42,7 +42,7 @@ declare(strict_types=1);
 $autoload = __DIR__ . '/../src/autoload.php';
 if (!is_file($autoload)) {
     fwrite(STDERR, "purger.php : bibliothèque introuvable à $autoload.\n"
-        . "Posez le MODULE (bi-self/selfrecover/, avec src/ et tools/), pas ce seul fichier.\n");
+        . "Pose le MODULE (bi-self/selfrecover/, avec src/ et tools/), pas ce seul fichier.\n");
     exit(2);
 }
 require $autoload;

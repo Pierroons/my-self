@@ -276,7 +276,7 @@ echo json_encode(['ok' => true]);
 
 Deux mécanismes indépendants :
 
-- **LAN** : IP dans `votre plage LAN privée`, `10.x`, `127.x`, `::1`, `fe80::…` → bypass automatique.
+- **LAN** : IP dans `ta plage LAN privée`, `10.x`, `127.x`, `::1`, `fe80::…` → bypass automatique.
 - **Cookie `sj_bypass`** : contient un token comparé avec hash_equals
   au contenu de `bypass_token.txt`. Obtenu via `/bypass/<token>/`.
 

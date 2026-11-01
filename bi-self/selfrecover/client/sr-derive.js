@@ -45,10 +45,10 @@
  *                 change que si l'on regénère la clé. Le prix n'est donc pas le
  *                 même selon où l'on sert.
  *
- *   'label'     une étiquette stable que vous fournissez.
+ *   'label'     une étiquette stable que tu fournis.
  *               ✓ survit à un changement d'adresse.
  *               ✗ AUCUN anti-hameçonnage : une copie servie ailleurs, avec le
- *                 même label, produit exactement l'empreinte que votre serveur a
+ *                 même label, produit exactement l'empreinte que ton serveur a
  *                 enregistrée. À ne choisir qu'en le sachant, et à ne pas
  *                 décrire comme protecteur du hameçonnage.
  *
@@ -82,7 +82,7 @@
    * 🔑 En mode `hostname`, la valeur est lue dans `location`, JAMAIS reçue du
    * réseau. C'est toute la différence : un matériel que le serveur fournit est
    * un matériel que n'importe quel serveur peut fournir, y compris celui d'une
-   * page qui vous imite. Une implémentation qui allait chercher son domaine par
+   * page qui t'imite. Une implémentation qui allait chercher son domaine par
    * `fetch` a existé dans ce dépôt, et affichait à ses utilisateurs qu'elle les
    * protégeait du hameçonnage.
    */
@@ -111,8 +111,8 @@
 
     throw new Error(
       "srDerive : mode obligatoire — 'hostname' (anti-hameçonnage) ou 'label' " +
-      "(stable, sans anti-hameçonnage). Pas de défaut : ce choix dépend de votre " +
-      'transport et de ce que vous acceptez de perdre.',
+      "(stable, sans anti-hameçonnage). Pas de défaut : ce choix dépend de ton " +
+      'transport et de ce que tu acceptes de perdre.',
     );
   }
 
