@@ -3670,7 +3670,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=84 [sanity_escrow]=65
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=90 [sanity_keys]=24 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=92 [sanity_keys]=24 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4161,6 +4161,12 @@ jobs:
             "" $K 'a former keeper the database never recorded answered for the holder'
           canari $D/bin/escrow-ceremony.php "        if (!\$gardien instanceof EscrowKeeper) {" \
             "        if (false) {" $D/tests/sanity_ceremony.php 'a former keeper file that returns no keeper did not exit 3'
+          canari $D/src/Escrow/EscrowCeremony.php "            \$this->checkPassphrase(\$sealedSecret, \$passphrase);
+                      \$record = \$this->throughKeeper(\$snapshot, \$caseRef, \$intent);" \
+            "            \$record = \$this->throughKeeper(\$snapshot, \$caseRef, \$intent);" $K 'a wrong passphrase reached the keeper before it was refused'
+          canari $D/src/Escrow/EscrowCeremony.php "            \$this->checkPassphrase(\$sealedSecret, \$passphrase);
+                      \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" \
+            "            \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" $K 'a wrong passphrase announced the read of an archive before it was refused'
           canari $D/src/Vault/UnlockedVault.php "                \$seed     = hash_hmac('sha256', self::OBJECTION_SEED_TAG . \$this->userId, \$this->key(), true);" \
             "                \$seed     = random_bytes(32);" $K 'a deposit changed the escrowId'
           canari $D/src/Escrow/UnlockedEscrow.php "        if (\$keeper !== null && !hash_equals(KeeperSeal::escrowIdFor(\$this->objectionPublic()), (string) \$escrowId)) {" \

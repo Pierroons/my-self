@@ -29,11 +29,15 @@ use Throwable;
  *   2. the head of the log taken out of the machine by the witness, which
  *      stops the ceremony when it fails;
  *   3. a verdict of Open;
- *   4. for a compartment sealed to a keeper, the keeper's release, given the
+ *   4. the passphrase checked: the admin key unsealed, then erased — a typo
+ *      reaches no keeper;
+ *   5. for a compartment sealed to a keeper, the keeper's release, given the
  *      intention's head: it records the read and hands back the inner box —
  *      or holds it until a delay ends, or refuses it to an objection. Without
  *      a keeper (NoKeeper), such a compartment does not open; with another
- *      than the one the database recorded, it does not either.
+ *      than the one the database recorded, it does not either. The admin key
+ *      is unsealed again to open it, and never held across the call to the
+ *      keeper.
  *
  * Then the result, or the failure, goes to the log too. A refused intention is
  * in the log as much as a granted one.
@@ -83,6 +87,7 @@ final class EscrowCeremony
         ): array {
             [$snapshot, $ciphertexts] = EscrowSnapshot::read($this->storage, $userId, $fieldNames)
                 ?? throw new RuntimeException("No escrow compartment for '{$userId}'");
+            $this->checkPassphrase($sealedSecret, $passphrase);
             $record = $this->throughKeeper($snapshot, $caseRef, $intent);
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
                 self::openWrapAdmin($record, $sk, $adminPublicKeyB64),
@@ -119,6 +124,7 @@ final class EscrowCeremony
             $ciphertexts = $fieldNames === []
                 ? $archive->escrowFields
                 : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
+            $this->checkPassphrase($sealedSecret, $passphrase);
             $escrow = $this->throughKeeper($archive->escrow, $caseRef, $intent);
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
                 self::openWrapAdmin($escrow, $sk, $adminPublicKeyB64),
@@ -353,12 +359,12 @@ final class EscrowCeremony
             try {
                 $print = KeeperSeal::fingerprint(KeeperSeal::checkKeys($former->publicKeys()));
             } catch (Throwable $e) {
-                throw new EscrowKeeperException('keeper-failed', 'A former keeper gave no public keys: nothing is unsealed', $e);
+                throw new EscrowKeeperException('keeper-failed', 'A former keeper gave no public keys: the escrow stays sealed', $e);
             }
             if (!in_array($print, $prints, true)) {
                 throw new EscrowKeeperException(
                     'keeper-mismatch',
-                    "This ceremony was given {$print} as a former keeper, and the database recorded no such one: nothing is unsealed"
+                    "This ceremony was given {$print} as a former keeper, and the database recorded no such one: the escrow stays sealed"
                 );
             }
         }
@@ -394,19 +400,19 @@ final class EscrowCeremony
         if ($this->keeper instanceof NoKeeper) {
             throw new EscrowKeeperException(
                 'keeper-missing',
-                "The escrow of '{$record->userId}' is sealed to a keeper, and this ceremony was given NoKeeper: nothing is unsealed"
+                "The escrow of '{$record->userId}' is sealed to a keeper, and this ceremony was given NoKeeper: the escrow stays sealed"
             );
         }
         try {
             $print = KeeperSeal::fingerprint(KeeperSeal::checkKeys($this->keeper->publicKeys()));
         } catch (Throwable $e) {
-            throw new EscrowKeeperException('keeper-failed', 'The keeper gave no public keys: nothing is unsealed', $e);
+            throw new EscrowKeeperException('keeper-failed', 'The keeper gave no public keys: the escrow stays sealed', $e);
         }
         $held = $this->storage->loadSetting(SelfDataGuard::SETTING_KEEPER);
         if ($held !== null && !hash_equals($held, $print)) {
             throw new EscrowKeeperException(
                 'keeper-mismatch',
-                "This database recorded the escrow keeper {$held}, and this ceremony was given {$print}: nothing is unsealed"
+                "This database recorded the escrow keeper {$held}, and this ceremony was given {$print}: the escrow stays sealed"
             );
         }
         $escrowId = (string) KeeperSeal::escrowIdOf($record->wrapAdmin);
@@ -428,11 +434,11 @@ final class EscrowCeremony
             try {
                 $inner = $keeper->release($escrowId, $outer, $caseRef, $seq, $hmac);
             } catch (Throwable $e) {
-                throw new EscrowKeeperException('keeper-failed', 'The keeper did not hand back the box: nothing is unsealed', $e);
+                throw new EscrowKeeperException('keeper-failed', 'The keeper did not hand back the box: the escrow stays sealed', $e);
             }
             return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision);
         }
-        throw new EscrowKeeperException('keeper-failed', 'No keeper given recorded the read: nothing is unsealed', $failure);
+        throw new EscrowKeeperException('keeper-failed', 'No keeper given recorded the read: the escrow stays sealed', $failure);
     }
 
     /**
@@ -460,6 +466,12 @@ final class EscrowCeremony
      * @param callable(string): T $use
      * @return T
      */
+    /** The admin key unsealed and erased at once: WrongSecretException on a wrong passphrase, before any keeper is asked. */
+    private function checkPassphrase(string $sealedSecret, #[\SensitiveParameter] string $passphrase): void
+    {
+        $this->withAdminKey($sealedSecret, $passphrase, static fn (string $sk): bool => true);
+    }
+
     private function withAdminKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase, callable $use): mixed
     {
         $sk = self::unsealAdminKey($sealedSecret, $passphrase);

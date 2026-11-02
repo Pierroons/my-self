@@ -196,6 +196,21 @@ $reads = $replayDg->escrowReads($alice);
     ? ok('an old attestation replayed for a new request is refused: "nonce"')
     : ko('a replayed attestation was taken', json_encode($reads));
 
+$typoLog = sys_get_temp_dir() . '/sdg-keeper-typo-' . bin2hex(random_bytes(4)) . '.log';
+$releasesBefore = count($keeper->releases[bin2hex((string) $escrowId)] ?? []);
+try {
+    benchCeremony($storage, logPath: $typoLog, keeper: $keeper)->readEscrow('alice', 'LIT-TYPO', $admin['sealedSecret'], 'une passphrase mal tapée', $admin['publicKey']);
+    ko('a wrong passphrase read the escrow');
+} catch (Pierroons\SelfDataGuard\Vault\WrongSecretException) {
+    $last = logEntries($typoLog);
+    !isset($keeper->pending[bin2hex((string) $escrowId) . '|LIT-TYPO'])
+        && count($keeper->releases[bin2hex((string) $escrowId)] ?? []) === $releasesBefore
+        && (end($last)['event']['reason'] ?? null) === 'bad-passphrase'
+        ? ok('a wrong passphrase is refused before the keeper is asked: no announcement, no release, bad-passphrase in the log')
+        : ko('a wrong passphrase reached the keeper before it was refused');
+}
+@unlink($typoLog);
+
 // -----------------------------------------------------------------------------
 
 section('Without its keeper, a compartment sealed to one does not open');
@@ -388,6 +403,16 @@ $archiveReads['established'] && in_array('LIT-7', array_column($archiveReads['re
 try {
     $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
 } catch (EscrowAnnouncedException) {
+}
+try {
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-TYPO-A', $admin['sealedSecret'], 'une passphrase mal tapée', $admin['publicKey']);
+    ko('a wrong passphrase read an archive escrow');
+} catch (Pierroons\SelfDataGuard\Vault\WrongSecretException) {
+    !isset($slow->pending[bin2hex($carolEscrowId) . '|LIT-TYPO-A'])
+        ? ok('the read of an archive under a wrong passphrase stops before the keeper: nothing announced')
+        : ko('a wrong passphrase announced the read of an archive before it was refused');
+} catch (EscrowAnnouncedException) {
+    ko('a wrong passphrase announced the read of an archive before it was refused');
 }
 $slowDg->objectToArchiveEscrowRead($archive, 'LIT-12');
 $slow->pending[bin2hex($carolEscrowId) . '|LIT-12']['due'] = time() - 1;
