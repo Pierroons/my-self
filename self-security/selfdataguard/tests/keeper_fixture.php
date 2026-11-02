@@ -13,19 +13,19 @@ use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 
 class BenchKeeper implements EscrowKeeper
 {
-    /** @var array<string, array{case: string, due: int, objection: ?string, objected: bool}> by escrowId hex and case */
+    /**
+     * @var array<string, array{case: string, due: int, objection: ?string, objected: bool, box: string}>
+     *      by escrowId hex and case; `box` is the hash of the outer box announced
+     */
     public array $pending = [];
 
     /** @var array<string, list<array{case: string, seq: int, at: int}>> by escrowId hex */
     public array $releases = [];
 
-    /** Below the first head a log writes, which is 0. */
-    public int $lastSeq = -1;
-
     /** Throws on every call while true: a keeper that does not answer. */
     public bool $down = false;
 
-    /** The time the keeper reads; a bench moves it. */
+    /** The time the keeper reads, when a bench sets it; before the clock it was given. */
     public ?int $now = null;
 
     protected string $boxPublic;
@@ -33,8 +33,13 @@ class BenchKeeper implements EscrowKeeper
     protected string $signPublic;
     protected string $signSecret;
 
-    public function __construct(public int $delay = 0)
+    /** @var (callable(): int)|null */
+    private $clock;
+
+    /** @param (callable(): int)|null $clock */
+    public function __construct(public int $delay = 0, ?callable $clock = null)
     {
+        $this->clock = $clock;
         $box = sodium_crypto_box_keypair();
         $this->boxPublic = sodium_crypto_box_publickey($box);
         $this->boxSecret = sodium_crypto_box_secretkey($box);
@@ -48,19 +53,24 @@ class BenchKeeper implements EscrowKeeper
         return ['sign' => $this->signPublic, 'box' => $this->boxPublic];
     }
 
-    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, bool $archive, int $seq, string $hmac): int
+    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
         $this->answer();
         $box = KeeperSeal::open($outerBox, $this->boxSecret, $this->boxPublic);
         if (!hash_equals($box['escrowId'], $escrowId) || $box['userId'] !== $userId) {
             throw new RuntimeException('The box names another escrow, or another account, than the read announced');
         }
-        $key = bin2hex($escrowId) . '|' . $caseRef;
-        $this->pending[$key] ??= [
+        $key  = bin2hex($escrowId) . '|' . $caseRef;
+        $held = $this->pending[$key] ?? null;
+        if ($held !== null && ($held['objected'] || (hash_equals($held['box'], hash('sha256', $outerBox)) && !$this->lapsed($held)))) {
+            return $held['due'];
+        }
+        $this->pending[$key] = [
             'case'      => $caseRef,
-            'due'       => $this->time() + ($archive ? 0 : $this->delay),
+            'due'       => $this->time() + $this->delay,
             'objection' => $box['objection'],
             'objected'  => false,
+            'box'       => hash('sha256', $outerBox),
         ];
         return $this->pending[$key]['due'];
     }
@@ -73,17 +83,19 @@ class BenchKeeper implements EscrowKeeper
         if ($held['objected']) {
             throw new RuntimeException('The holder objected to this read');
         }
+        if (!hash_equals($held['box'], hash('sha256', $outerBox))) {
+            throw new RuntimeException('This read was announced with another box: a deposit drew a new key since — announce it again');
+        }
         if ($this->time() < $held['due']) {
             throw new RuntimeException('This read is not due yet');
         }
-        if ($seq <= $this->lastSeq) {
-            throw new RuntimeException("The log head {$seq} is not above the last one this keeper took ({$this->lastSeq})");
+        if ($this->lapsed($held)) {
+            throw new RuntimeException('This announcement has lapsed: announce it again');
         }
         $box = KeeperSeal::open($outerBox, $this->boxSecret, $this->boxPublic);
         if (!hash_equals($box['escrowId'], $escrowId)) {
             throw new RuntimeException('The box names another escrow than the read announced');
         }
-        $this->lastSeq = $seq;
         $this->releases[bin2hex($escrowId)][] = ['case' => $caseRef, 'seq' => $seq, 'at' => $this->time()];
         unset($this->pending[$key]);
         return $box['inner'];
@@ -95,7 +107,7 @@ class BenchKeeper implements EscrowKeeper
         $hex = bin2hex($escrowId);
         $pending = [];
         foreach ($this->pending as $key => $held) {
-            if (str_starts_with($key, $hex . '|')) {
+            if (str_starts_with($key, $hex . '|') && ($held['objected'] || !$this->lapsed($held))) {
                 $pending[] = ['case' => $held['case'], 'due' => $held['due'], 'objected' => $held['objected']];
             }
         }
@@ -119,9 +131,15 @@ class BenchKeeper implements EscrowKeeper
         return KeeperSeal::open($outerBox, $this->boxSecret, $this->boxPublic);
     }
 
+    /** @param array{due: int} $held */
+    protected function lapsed(array $held): bool
+    {
+        return $this->time() > $held['due'] + self::LAPSE;
+    }
+
     protected function time(): int
     {
-        return $this->now ?? time();
+        return $this->now ?? ($this->clock !== null ? ($this->clock)() : time());
     }
 
     private function answer(): void
@@ -144,11 +162,11 @@ final class FileBenchKeeper extends BenchKeeper
         is_file($file) ? $this->load() : $this->save();
     }
 
-    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, bool $archive, int $seq, string $hmac): int
+    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
         $this->load();
         try {
-            return parent::announce($escrowId, $outerBox, $userId, $caseRef, $archive, $seq, $hmac);
+            return parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac);
         } finally {
             $this->save();
         }
@@ -190,7 +208,6 @@ final class FileBenchKeeper extends BenchKeeper
         $this->pending = array_map(static fn (array $p): array => ['objection' => $p['objection'] === null ? null
             : (string) base64_decode($p['objection'], true)] + $p, $d['pending']);
         $this->releases = $d['releases'];
-        $this->lastSeq  = $d['lastSeq'];
         $this->delay    = $d['delay'];
     }
 
@@ -204,7 +221,6 @@ final class FileBenchKeeper extends BenchKeeper
             'pending'    => array_map(static fn (array $p): array => ['objection' => $p['objection'] === null ? null
                 : base64_encode($p['objection'])] + $p, $this->pending),
             'releases'   => $this->releases,
-            'lastSeq'    => $this->lastSeq,
             'delay'      => $this->delay,
         ], JSON_THROW_ON_ERROR), LOCK_EX);
     }

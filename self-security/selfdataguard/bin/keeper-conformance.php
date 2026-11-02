@@ -7,27 +7,30 @@ declare(strict_types=1);
  *
  * Usage : php bin/keeper-conformance.php <gardien.php>
  *
- * <gardien.php> charge son autoloader et RENVOIE l'EscrowKeeper à éprouver. La suite
- * écrit dans sa réserve — annonces, remises, objections, têtes de journal à partir de
- * 0 : à lancer sur un gardien dont la réserve se jette, avant qu'il serve. Une réserve
- * qui a pris ces têtes refuse celles d'un vrai journal.
+ * <gardien.php> charge son autoloader et RENVOIE une fabrique :
  *
- * Sorties : 0 conforme · 1 au moins un cas en échec · 3 fichier qui ne rend pas un gardien.
+ *   return fn (int $delay, callable $clock): EscrowKeeper => new MonGardien(…);
+ *
+ * Chaque appel rend un gardien sur une réserve à lui, que la suite remplit puis jette :
+ * il attend $delay secondes avant une remise et lit l'heure dans $clock, pour que la suite
+ * joue le délai et l'expiration d'une annonce sans les attendre. À lancer avant que le
+ * gardien serve, jamais sur sa réserve de service.
+ *
+ * Sorties : 0 conforme · 1 au moins un cas en échec · 3 fichier qui ne rend pas une fabrique.
  */
 
 require __DIR__ . '/../src/autoload.php';
 
-use Pierroons\SelfDataGuard\Escrow\EscrowKeeper;
 use Pierroons\SelfDataGuard\Escrow\KeeperConformance;
 
 $file = $argv[1] ?? '';
-$keeper = $file !== '' && is_file($file) ? require $file : null;
-if (!$keeper instanceof EscrowKeeper) {
-    fwrite(STDERR, "Usage : php bin/keeper-conformance.php <gardien.php> — le fichier doit renvoyer un EscrowKeeper\n");
+$make = $file !== '' && is_file($file) ? require $file : null;
+if (!is_callable($make)) {
+    fwrite(STDERR, "Usage : php bin/keeper-conformance.php <gardien.php> — le fichier doit renvoyer une fabrique fn (int \$delay, callable \$clock): EscrowKeeper\n");
     exit(3);
 }
 $failed = 0;
-foreach (KeeperConformance::run($keeper) as $result) {
+foreach (KeeperConformance::run($make) as $result) {
     echo $result['outcome'] === 'pass' ? '✅' : '❌', " {$result['case']}", $result['detail'] === '' ? '' : " — {$result['detail']}", "\n";
     $failed += $result['outcome'] === 'pass' ? 0 : 1;
 }

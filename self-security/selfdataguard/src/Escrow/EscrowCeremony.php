@@ -74,7 +74,6 @@ final class EscrowCeremony
             $record = $this->throughKeeper(
                 $this->storage->loadEscrow($userId) ?? throw new RuntimeException("No escrow compartment for '{$userId}'"),
                 $caseRef,
-                false,
                 $intent
             );
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
@@ -112,7 +111,7 @@ final class EscrowCeremony
             $ciphertexts = $fieldNames === []
                 ? $archive->escrowFields
                 : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
-            $escrow = $this->throughKeeper($archive->escrow, $caseRef, true, $intent);
+            $escrow = $this->throughKeeper($archive->escrow, $caseRef, $intent);
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
                 self::openWrapAdmin($escrow, $sk, $adminPublicKeyB64),
                 $ciphertexts
@@ -309,7 +308,7 @@ final class EscrowCeremony
      *
      * @param array<string, mixed> $intent
      */
-    private function throughKeeper(EscrowRecord $record, string $caseRef, bool $archive, array $intent): EscrowRecord
+    private function throughKeeper(EscrowRecord $record, string $caseRef, array $intent): EscrowRecord
     {
         if (!EscrowVault::isKeeperSealed($record)) {
             return $record;
@@ -325,7 +324,7 @@ final class EscrowCeremony
         $seq      = (int) $intent['seq'];
         $hmac     = (string) $intent['hmac'];
         try {
-            $due = $this->keeper->announce($escrowId, $outer, $record->userId, $caseRef, $archive, $seq, $hmac);
+            $due = $this->keeper->announce($escrowId, $outer, $record->userId, $caseRef, $seq, $hmac);
         } catch (Throwable $e) {
             throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the read: nothing is unsealed', $e);
         }

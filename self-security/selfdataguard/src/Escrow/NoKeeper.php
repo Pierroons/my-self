@@ -18,7 +18,7 @@ final class NoKeeper implements EscrowKeeper
         throw new RuntimeException('NoKeeper holds no key: there is no keeper to seal to');
     }
 
-    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, bool $archive, int $seq, string $hmac): int
+    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
         throw new RuntimeException('NoKeeper opens no box');
     }

@@ -229,6 +229,31 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('The keeper records the log head it is given, and does not judge it');
+
+$aliceRecord = $storage->loadEscrow('alice');
+$aliceOuter  = KeeperSeal::outerOf($aliceRecord->wrapAdmin);
+$keeper->announce((string) $escrowId, $aliceOuter, 'alice', 'LIT-MAX', PHP_INT_MAX, 'h');
+$keeper->release((string) $escrowId, $aliceOuter, 'LIT-MAX', PHP_INT_MAX, 'h');
+try {
+    $ceremony->readEscrow('alice', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === $fields
+        ? ok('a release at the highest head, by whoever reaches the keeper with what the database holds, does not close it to the next ceremony')
+        : ko('the ceremony after a release at the highest head did not read');
+} catch (Throwable $e) {
+    ko('a release at the highest head closed the keeper to every ceremony after it', $e->getMessage());
+}
+$freshLog = sys_get_temp_dir() . '/sdg-keeper-fresh-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($storage, logPath: $freshLog, keeper: $keeper)->readEscrow('alice', 'LIT-11', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === $fields
+        ? ok('a new audit log, whose heads start again from 0, reads through the keeper')
+        : ko('the ceremony on a new audit log did not read');
+} catch (Throwable $e) {
+    ko('a new audit log is refused by the keeper', $e->getMessage());
+}
+@unlink($freshLog);
+
+// -----------------------------------------------------------------------------
+
 section('A delay: the read is announced, the holder sees it and may object');
 
 $slow   = new BenchKeeper(delay: 3600);
@@ -284,15 +309,46 @@ $slow->pending[(string) array_key_last($slow->pending)]['due'] = time() - 1;
 $slowCeremony->readEscrow('carol', 'LIT-6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact' => 'carol-secours@example.org']
     ? ok('without an objection, the same ceremony run again once due reads')
     : ko('a due read without objection did not go through');
+try {
+    $slowCeremony->readEscrow('carol', 'LIT-9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$slowDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'carol-secours@example.org']);
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-9']['due'] = time() - 1;
+try {
+    $slowCeremony->readEscrow('carol', 'LIT-9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('a read announced before a deposit went through once due, on the box the deposit sealed');
+} catch (EscrowAnnouncedException $e) {
+    $e->due > time()
+        ? ok('a deposit during an announcement starts the delay again: the read is announced anew, on the new box')
+        : ko('announced again, but already due');
+} catch (Throwable $e) {
+    ko('a read announced before a deposit was not announced anew on the new box', $e->getMessage());
+}
+try {
+    $slowDg->objectToEscrowRead($carol, 'LIT-9');
+    $slow->pending[bin2hex($carolEscrowId) . '|LIT-9']['objected']
+        ? ok('the holder objects to it under the key the new box carries')
+        : ko('the objection to the read announced anew is not recorded');
+} catch (Throwable $e) {
+    ko('the holder cannot object to a read announced anew', $e->getMessage());
+}
 
 // -----------------------------------------------------------------------------
 
-section('An archive keeps its keeper, and its reads skip the delay');
+section('An archive keeps its keeper, and its reads wait the delay like any other');
 
 $l3 = $slowDg->reEnroll($slowDg->generationOf('carol'), 'motdepasse-carol-02');
+try {
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('the read of an archive skipped the delay');
+} catch (EscrowAnnouncedException) {
+    ok('the read of an archive is announced like any other: a live read cannot pass for one to skip the delay');
+}
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-7']['due'] = time() - 1;
 $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])
     === ['contact' => 'carol-secours@example.org']
-    ? ok('the escrow of an archive is read through the keeper, with no delay: after a fraudulent level 3, the impostor holds the live vault')
+    ? ok('once due, the escrow of the archive is read through the keeper')
     : ko('the archive escrow did not read through the keeper');
 $archive = $slowDg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, 'motdepasse-carol-01');
 $archiveReads = $slowDg->archiveEscrowReads($archive);
@@ -343,20 +399,25 @@ section('The keeper conformance suite — the bench keeper passes, each broken o
 $failedCases = static fn (array $results): array => array_column(
     array_filter($results, static fn (array $r): bool => $r['outcome'] === 'fail'), 'detail', 'case'
 );
-$failedOfBench = $failedCases(KeeperConformance::run(new BenchKeeper(delay: 3600)));
+$factoryOf = static fn (string $class): callable => static fn (int $delay, callable $clock): BenchKeeper => new $class($delay, $clock);
+$failedOfBench = $failedCases(KeeperConformance::run($factoryOf(BenchKeeper::class)));
 $failedOfBench === []
-    ? ok('BenchKeeper, under a delay: every case passes')
+    ? ok('BenchKeeper: every case passes')
     : ko('the bench keeper fails the suite', json_encode($failedOfBench));
 foreach ([
     OpensAnyBoxKeeper::class        => 'announce-reads-the-box',
     UnrecordedReleaseKeeper::class  => 'release-is-recorded',
     UnannouncedReleaseKeeper::class => 'release-only-announced',
-    SeqBlindKeeper::class           => 'release-seq-grows',
+    HeadJudgeKeeper::class          => 'release-takes-any-head',
+    EarlyReleaseKeeper::class       => 'release-only-when-due',
+    AnyBoxReleaseKeeper::class      => 'release-needs-the-announced-box',
+    FirstBoxKeeper::class           => 'new-box-restarts-the-delay',
+    NeverLapsesKeeper::class        => 'announcement-lapses',
     StaleAttestationKeeper::class   => 'attestation-fresh-and-scoped',
     ObjectionBlindKeeper::class     => 'objection-under-the-box-key',
-    DelayedArchiveKeeper::class     => 'archive-read-due-at-once',
+    ForgetsObjectionKeeper::class   => 'objection-survives-re-announce',
 ] as $class => $case) {
-    $failed = $failedCases(KeeperConformance::run(new $class()));
+    $failed = $failedCases(KeeperConformance::run($factoryOf($class)));
     isset($failed[$case])
         ? ok("{$class} fails {$case}")
         : ko("{$class} passed a case it breaks", $case);
@@ -366,7 +427,7 @@ mkdir($keeperWork);
 $keeperFileOf = static function (string $class) use ($keeperWork): string {
     $file = "{$keeperWork}/{$class}.php";
     file_put_contents($file, sprintf(
-        "<?php\nrequire %s;\nrequire_once %s;\nreturn new %s();\n",
+        "<?php\nrequire %s;\nrequire_once %s;\nreturn fn (int \$delay, callable \$clock) => new %s(\$delay, \$clock);\n",
         var_export(__DIR__ . '/../src/autoload.php', true),
         var_export(__DIR__ . '/keeper_doubles.php', true),
         $class
@@ -382,12 +443,19 @@ $runBin = static function (string $file): array {
 $rc === 0 && str_contains($out, 'Conforme.')
     ? ok('bin/keeper-conformance.php: 0 on the bench keeper')
     : ko('the bench keeper was not reported conformant', "rc={$rc} {$out}");
-[$rc, $out] = $runBin($keeperFileOf(SeqBlindKeeper::class));
-$rc === 1 && str_contains($out, '❌ release-seq-grows')
+[$rc, $out] = $runBin($keeperFileOf(EarlyReleaseKeeper::class));
+$rc === 1 && str_contains($out, '❌ release-only-when-due')
     ? ok('1 on a broken keeper, naming the case it fails')
     : ko('a broken keeper was not reported', "rc={$rc} {$out}");
 [$rc] = $runBin("{$keeperWork}/absent.php");
-$rc === 3 ? ok('3 on a file that does not return a keeper') : ko('a missing keeper file did not exit 3', "rc={$rc}");
+$rc === 3 ? ok('3 on a file that does not return a factory') : ko('a missing keeper file did not exit 3', "rc={$rc}");
+file_put_contents("{$keeperWork}/instance.php", sprintf(
+    "<?php\nrequire %s;\nrequire_once %s;\nreturn new BenchKeeper();\n",
+    var_export(__DIR__ . '/../src/autoload.php', true),
+    var_export(__DIR__ . '/keeper_fixture.php', true)
+));
+[$rc] = $runBin("{$keeperWork}/instance.php");
+$rc === 3 ? ok('3 on a file that returns a keeper instead of a factory') : ko('a keeper instance was taken for a factory', "rc={$rc}");
 array_map('unlink', glob("{$keeperWork}/*") ?: []);
 rmdir($keeperWork);
 
