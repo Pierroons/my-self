@@ -957,8 +957,11 @@ final class SelfDataGuard
      *     deposit from the holder's session named it since — the escrowId would
      *     come from the clear prefix of wrap_admin, which whoever writes the
      *     database rewrites;
-     *   - `keeper-changed`: the deposit named another keeper than the façade's
-     *     — what it released stays with that one;
+     *   - `keeper-changed`: the deposit named another keeper than the façade's,
+     *     and no former keeper answers for it — the façade was not given it,
+     *     the database did not record it as one (a keeper changed by hand, not
+     *     by changeKeeper()), or it gives no public keys; what it holds stays
+     *     with it, out of view;
      *   - `keeper-mismatch`: the façade's keeper, whose keys came after it was
      *     built, is not the one the database recorded;
      *   - `no-keeper`, `keeper-unreachable`, and `unreadable`, `signature`,
@@ -1187,7 +1190,7 @@ final class SelfDataGuard
         if (!hash_equals($held, $print)) {
             throw new InvalidArgumentException(
                 "This database recorded the escrow keeper {$held}, and this façade was given {$print}: "
-                . 'the keeper changes by StorageInterface::replaceSetting(), the operator\'s act, and each '
+                . 'the keeper changes by SelfDataGuard::changeKeeper(), the operator\'s act, and each '
                 . 'escrow follows at its next deposit or rotateEscrow()'
             );
         }

@@ -784,7 +784,7 @@ try {
 } catch (StaleEscrowException) {
     $last = logEntries($stormLog);
     (end($last)['event']['reason'] ?? null) === 'stale-escrow'
-        ? ok('deposits that keep landing: the ceremony gives up after three reads, and the log says stale-escrow — not open-failed')
+        ? ok('deposits that keep landing: the ceremony gives up after its attempts, and the log says stale-escrow — not open-failed')
         : ko('the log does not name the race', json_encode(end($last)));
 }
 $stormy->between = null;

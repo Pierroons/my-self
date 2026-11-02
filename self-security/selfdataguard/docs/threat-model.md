@@ -40,7 +40,10 @@ Untrusted input enters at eight places:
    own deposit named, for the escrow and the nonce of the request; the inner box is opened as any `wrap_admin` is,
    and must name its account. A keeper that hands back another box opens nothing; one that does not answer leaves
    the releases "not established", and one whose public keys do not come leaves the vaults open and takes no deposit.
-   The ceremony and every façade refuse a keeper other than the one the database recorded.
+   The ceremony and every façade refuse a keeper other than the one the database recorded, or than a former one it
+   recorded. A box is input too — anyone can seal one to the keeper's public key: the keeper refuses one whose
+   objection key is not the one the escrowId is the fingerprint of, and checks an objection or a retirement against
+   the escrowId alone.
 
 ## Components that matter most, and least
 

@@ -101,8 +101,10 @@ interface EscrowKeeper
      * Retire $escrowId from this keeper, when $token verifies under the key
      * $escrowId is the fingerprint of (KeeperSeal::verifyRetirement()): every
      * later announce() and release() of it is refused, and its attestation
-     * stays. What a holder sends a keeper the deployment replaced, once the
-     * escrow is sealed to the new one. Throws when the token does not verify.
+     * stays. What a holder's façade sends a keeper the deployment replaced,
+     * before it re-seals the escrow to the new one: if the re-sealing then
+     * fails, the escrow stays sealed to a keeper that no longer serves it until
+     * the holder's next deposit. Throws when the token does not verify.
      */
     public function retire(string $escrowId, string $token): void;
 }

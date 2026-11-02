@@ -461,17 +461,17 @@ final class EscrowCeremony
         return false;
     }
 
-    /**
-     * @template T
-     * @param callable(string): T $use
-     * @return T
-     */
     /** The admin key unsealed and erased at once: WrongSecretException on a wrong passphrase, before any keeper is asked. */
     private function checkPassphrase(string $sealedSecret, #[\SensitiveParameter] string $passphrase): void
     {
         $this->withAdminKey($sealedSecret, $passphrase, static fn (string $sk): bool => true);
     }
 
+    /**
+     * @template T
+     * @param callable(string): T $use
+     * @return T
+     */
     private function withAdminKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase, callable $use): mixed
     {
         $sk = self::unsealAdminKey($sealedSecret, $passphrase);
