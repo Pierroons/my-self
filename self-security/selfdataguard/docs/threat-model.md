@@ -13,7 +13,7 @@ of the user's secrets, any one of which opens it. The module holds the envelope,
 encryption, a blind index for lookups, an administrative escrow compartment and its ceremony. It
 holds no HTTP route, no session and no client-side code: the application calls it.
 
-Untrusted input enters at seven places:
+Untrusted input enters at eight places:
 
 1. **The user's secrets** — password, memorized word, passphrase. Arbitrary byte strings, no upper
    bound on length, supplied by the application's forms.
@@ -35,6 +35,11 @@ Untrusted input enters at seven places:
 7. **A recovery ticket**, and the kind that a `RecoveryTickets` source written by the integrator returns
    for it. Given a source, the ticket is what lets the gestures that take no secret through —
    `reEnroll()`, `reinstateArchive()`, `freeze()`, `unfreeze()`; without one, they take none.
+8. **What a keeper answers** (`EscrowKeeper`, written by the integrator): the inner box it hands back, the deadline it
+   announces, and the attestation a holder's session verifies. The attestation is checked under the key the holder's
+   own deposit named, for the escrow and the nonce of the request; the inner box is opened as any `wrap_admin` is,
+   and must name its account. A keeper that hands back another box opens nothing; one that does not answer leaves
+   the reads "not established".
 
 ## Components that matter most, and least
 
@@ -49,13 +54,15 @@ Untrusted input enters at seven places:
 - `src/Fields/BlindIndex.php` — derived under a **server-side secret shared by every account**. That
   key is the one piece whose loss locks everything and whose leak makes enumerable indexed values
   findable by dictionary across all accounts.
-- `src/Escrow/` — the compartment with its own permanent key, the ceremony, and the signed log.
+- `src/Escrow/` — the compartment with its own permanent key, the ceremony, and the signed log; and, since 0.9.0,
+  `KeeperSeal` — the outer box, the `k1:` marker, the attestation and the objection — and the ceremony's path
+  through the keeper. A defect there gives the administrator alone back what the keeper was for.
 
 **Secondary** — `src/SelfDataGuard.php` (orchestration), the exception hierarchy, the in-place
 migrations from 0.4.x–0.6.x.
 
 **Out of scope, deliberately** — libsodium and OpenSSL; PDO and the database engine; the integrator's
-own code, including its session handling, its arbiter and its ticket source; `demo/selfdataguard/`, which is a reference
+own code, including its session handling, its arbiter, its ticket source and its keeper; `demo/selfdataguard/`, which is a reference
 integration and not hardened for production; and `demo/lab/`, which uses only `Primitives` under a
 server key and promises nothing per user.
 

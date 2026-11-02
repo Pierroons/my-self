@@ -10,6 +10,25 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfDataGuard 0.9.0 — un séquestre que l'administrateur seul n'ouvre plus — 2 novembre 2026
+
+Sous un **gardien** — un second détenteur que l'intégrateur fait tourner hors de la machine qui sert —, le séquestre
+est scellé deux fois : l'administrateur n'ouvre la boîte intérieure qu'une fois le gardien la lui a rendue, après avoir
+inscrit la remise, et le gardien signe pour le titulaire ce qu'il a remis (`escrowReads()` : établi, ou « non établi »
+avec son motif, jamais « aucune lecture »). Chaque dépôt tire une clé de séquestre neuve. Un délai, réglé par le
+gardien, change une lecture en annonce à laquelle le titulaire peut s'opposer ; les lectures d'archive y échappent. La
+base inscrit le gardien et la clé d'administration. La passe de l'exploitant (`seal-to-keeper`) scelle au gardien les
+séquestres d'avant, sans aucun secret en main ; `bin/keeper-conformance.php` éprouve un gardien.
+
+Rupture pour un stockage à soi (une colonne de révision, trois méthodes) et pour la cérémonie (un gardien, nommé ;
+`DATAGUARD_KEEPER_FILE`). Corrige cinq défauts du code publié, dont deux re-scellements d'une même lecture qui
+réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire un séquestre déposé sous gardien. Le
+détail, la migration et les limites déclarées :
+[`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
+
+Mesuré : 756 cas sur 14 suites (le gardien 42, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
+13), chacune vue rouge sur son cas.
+
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
 Aucune version ne monte : rien ne change dans ce que le code décide.
