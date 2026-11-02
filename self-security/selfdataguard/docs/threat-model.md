@@ -27,7 +27,7 @@ Untrusted input enters at eight places:
 4. **The audit log on disk**, and the anchor (`seq:hmac`) an operator types back in. A crash, a cut
    write, an altered line and a truncated tail are four different inputs here, and the log
    distinguishes them.
-5. **The ceremony's operator files** (`DATAGUARD_ARBITER_FILE`, `DATAGUARD_WITNESS_FILE`) and the
+5. **The ceremony's operator files** (`DATAGUARD_ARBITER_FILE`, `DATAGUARD_WITNESS_FILE`, `DATAGUARD_KEEPER_FILE`) and the
    `Verdict` returned by an arbiter the integrator writes. No arbiter ships: one that did would say
    yes to every deployment.
 6. **The `userId`.** It comes from the application, never from the module, and it is the key under
@@ -39,7 +39,8 @@ Untrusted input enters at eight places:
    announces, and the attestation a holder's session verifies. The attestation is checked under the key the holder's
    own deposit named, for the escrow and the nonce of the request; the inner box is opened as any `wrap_admin` is,
    and must name its account. A keeper that hands back another box opens nothing; one that does not answer leaves
-   the reads "not established".
+   the releases "not established", and one whose public keys do not come leaves the vaults open and takes no deposit.
+   The ceremony and every façade refuse a keeper other than the one the database recorded.
 
 ## Components that matter most, and least
 
@@ -126,8 +127,10 @@ promise instead.
   decrypt" is the mode, not a defect.
 - **The escrow key is permanent, by design.** Whoever coerces the holder of its passphrase obtains,
   ceremony after ceremony, the escrow compartment of every account that has one — never the private
-  vault. Against the administrator holding the sealed key file and its passphrase, the ceremony holds
-  nothing: they open the escrow outside the library.
+  vault. Without a keeper, against the administrator holding the sealed key file and its passphrase,
+  the ceremony holds nothing: they open the escrow outside the library. Under one, whoever reaches the
+  keeper is handed, once due, a box the admin key opens outside the ceremony: the delay, the objection
+  and the record the holder sees are what holds.
 - **The admin seal does not authenticate the escrow's content.** Whoever writes to the database can,
   with the public key alone, seal and fill a new compartment. The seal names its account and is
   refused in another's row; that is all it claims.

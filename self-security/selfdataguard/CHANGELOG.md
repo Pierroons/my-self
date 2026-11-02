@@ -23,25 +23,33 @@ and its command a keeper file.
   `wrap_user` carries, under the master key, the escrowId, the keeper's public keys and an objection seed (144 bytes
   instead of 32). The keeper a session asks is the one the holder's own deposit named.
 - **`SelfDataGuard::escrowReads($session)`** and **`archiveEscrowReads($opened)`**: what the keeper released and holds
-  announced, verified under its key, with a nonce. `established` false always carries its reason (`not-keeper-sealed`,
-  `no-keeper`, `keeper-unreachable`, `unreadable`, `signature`, `escrow`, `nonce`) — never an empty list for an
-  attestation that did not arrive.
-- **A delay with objection**, set by the keeper: a read becomes an announcement the holder sees, and
-  `objectToEscrowRead($session, $caseRef)` cancels it, signed under a key only `wrap_user` holds. Archive reads skip
-  the delay: after a fraudulent level 3, the impostor holds the live vault.
+  announced, verified under the key the holder's deposit named, with a nonce. `established` false always carries its
+  reason (`not-keeper-sealed`, `not-pinned`, `keeper-changed`, `no-keeper`, `keeper-unreachable`, `unreadable`,
+  `signature`, `escrow`, `nonce`) — never an empty list for an attestation that did not arrive. A release is the
+  keeper handing the box back: the read that follows may still fail, and it is listed all the same.
+- **A delay with objection**, set by the keeper, for every read: it becomes an announcement the holder sees, and
+  `objectToEscrowRead($session, $caseRef)` — `objectToArchiveEscrowRead($opened, $caseRef)` for an archive's — cancels
+  it, signed under the key the box read carries, whose secret only its `wrap_user` holds. An announcement is bound
+  to the box it names: a deposit since starts the delay again. One not released within `EscrowKeeper::LAPSE` (a week) of falling due
+  lapses; an objection holds for its case with no time limit.
 - **`rotateEscrow($session, $adminPublicKey)`** and **`sealEscrowToKeeper($session, $adminPublicKey)`**, from the
   holder's session.
 - **`new SelfDataGuard(..., keeper: $keeper)`**: the database records the keeper's fingerprint; a façade given
-  another, or none, is then refused.
+  another, or none, is then refused. A keeper whose public keys do not come is checked at the first act that needs
+  it: the vault opens, a deposit does not go through (`EscrowKeeperException`, `keeper-unreachable`).
 - **The ceremony goes through the keeper**, after the intention and the witness's head, before anything is unsealed;
-  the intention names the keeper. Without it, an escrow sealed to one does not open (`EscrowKeeperException`,
-  `keeper-missing`). An announced read throws `EscrowAnnouncedException` and is logged `…-announced`.
+  the intention names the keeper by its fingerprint. Without it, an escrow sealed to one does not open
+  (`EscrowKeeperException`, `keeper-missing`), nor with another than the database recorded (`keeper-mismatch`). An
+  announced read throws `EscrowAnnouncedException` and is logged `…-announced`.
 - **`EscrowCeremony::sealToKeeper($userId)`** and **`bin/escrow-ceremony.php seal-to-keeper`**: the operator's pass,
   which seals to the keeper every escrow the administrator alone still opens — live, dormant, archived — without
-  any secret in hand, logged account by account. A frozen vault is reported, not sealed.
+  any secret in hand, logged account by account. It seals to the keeper the database recorded, and records it when
+  none is; given another, it seals nothing. A frozen vault is reported, not sealed; an account that fails is logged
+  and named, and the pass goes on to the next one.
 - **`KeeperConformance`** and **`bin/keeper-conformance.php <keeper.php>`**: the keeper contract played against an
-  implementation, ten cases, each made to fail by a keeper that breaks its clause. Run it against a keeper whose
-  store you throw away.
+  implementation, thirteen cases, each made to fail by a keeper that breaks its clause. The file returns a factory,
+  `fn (int $delay, callable $clock): EscrowKeeper`, each call a keeper on a store of its own: the suite plays the
+  delay and the lapse without waiting for them.
 - **`StorageInterface::rotateEscrow()`**: the envelope and every escrow field replaced in one transaction; a field
   the call does not name is deleted. **`replaceArchiveEscrow()`**: the escrow of an archive re-sealed.
   **`replaceSetting()`**: a setting replaced over the value expected.
@@ -60,7 +68,10 @@ and its command a keeper file.
 - **`setEscrowFields()` draws a new escrow key at each deposit** and re-encrypts the fields already there, in one
   write. It re-seals `wrap_admin` to the admin public key it is given, so the database records that key at the
   first deposit, and a deposit or a `rebindEscrowAdmin()` given another is refused. Before, a deposit left an
-  existing `wrap_admin` as it was, whatever key it was given.
+  existing `wrap_admin` as it was, whatever key it was given. A deposit, a holder's read and the ceremony take the
+  envelope and the fields under one revision: a deposit landing between the two reads makes them read again.
+- **`rebindEscrowAdmin()` under a keeper** seals the compartment to the keeper, under a new key — never to the
+  administrator alone.
 
 ### Fixed
 
@@ -68,8 +79,7 @@ and its command a keeper file.
   without an error (`rebindEscrowAdmin()` was the public path).
 - An archive's escrow could not be re-sealed: an archive has no session.
 - The archive package listed the escrow columns it kept: a column added since would have been lost to it in silence.
-  It now keeps the row whole.
-- `isAccountBound()` judged by length alone; a keeper-sealed `wrap_admin` is told by its marker.
+  It now keeps the row whole, and puts it back whole.
 - A setting could not be replaced, so a keeper could not be changed.
 
 ### Migration
@@ -78,10 +88,11 @@ and its command a keeper file.
   revision 0.
 - To bring a keeper in: give it to every façade and to the ceremony, then run `seal-to-keeper` once. Each holder's
   next deposit, or `sealEscrowToKeeper()`, names the keeper in `wrap_user` and adds the objection key; until then,
-  `escrowReads()` reports the escrow as not pinned, and an objection is not possible.
+  `escrowReads()` says `not-pinned`, and an objection is not possible.
 - ⚠️ **Rolling back to 0.8.0**, measured: the vault opens, but an escrow deposited under a keeper no longer opens for
-  its holder (`escrowKey must be exactly 32 bytes`), and none sealed to a keeper opens for the administrator
-  (`wrong admin key`).
+  its holder (`escrowKey must be exactly 32 bytes`) — nor takes a deposit —, and none sealed to a keeper opens for the
+  administrator (`wrong admin key`). An escrow created during the rollback comes back `not-keeper-sealed`: run the
+  pass again.
 
 ### Limits, declared
 
@@ -90,8 +101,19 @@ and its command a keeper file.
 - He can still have a read made under a case he opens himself: the keeper records it, and the holder sees it.
 - Until the operator's pass, an escrow sealed before stays readable by the administrator alone; a copy of the database
   taken before stays so until its holder's next deposit.
-- An administrator who writes the database can make a live read pass for an archive's and skip the delay; the read
-  is still recorded by the keeper, and shown to the holder.
+- Whoever reaches the keeper with what the database holds can announce a read and, once due, be handed the inner
+  box, which the admin key opens outside the ceremony and its log. The delay and the objection hold, and the holder
+  sees the release.
+- Whoever writes the database can delete an escrow row or put an older one back: the holder sees the escrow vanish
+  or change, not the reads made before. Between the operator's pass and the holder's next deposit, the escrowId in
+  clear can be rewritten; the reads of that window stay with the keeper.
+- An archive's escrow is never re-sealed from its holder's side: a copy of the database taken before the pass opens
+  it while it stays an archive, and the keeper it was sealed to must live as long as it does. When the deployment
+  changes keeper, what the old one released stays with it (`keeper-changed`).
+- `attest()` asks nothing of its caller: whoever holds an escrowId and reaches the keeper learns the cases of its
+  reads. A case reference must therefore carry nothing secret. Announcements are not bounded in number; an objection is per case. A
+  keeper that does not answer an objection until the read falls due loses the holder that window.
+- Deposits on one account at the same time: each is redone up to three times, then raises `StaleEscrowException`.
 - A key obtained by a release keeps opening what it was released for: the rotation protects what is deposited after.
 
 ## [v0.8.0] — 2026-10-29
