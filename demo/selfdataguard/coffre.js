@@ -82,10 +82,31 @@ function renderEscrow(escrow, hasEscrow) {
   $('#escrow-form').indice_recup.value = (escrow && escrow.indice_recup) || '';
 }
 
+// « Non établi » n'est jamais « aucune lecture » : une attestation absente ou fausse
+// se dit comme telle.
+const MOTIFS = {
+  'not-keeper-sealed': "pas de gardien : l'administrateur peut lire ce séquestre seul, et aucune lecture ne t'est attestée",
+  'no-keeper': 'aucun gardien joignable par ce service',
+  'keeper-unreachable': 'le gardien ne répond pas',
+};
+
+function renderReads(reads) {
+  const p = $('#escrow-reads');
+  if (!reads) { p.textContent = ''; return; }
+  if (!reads.established) {
+    p.textContent = '🔎 Lectures non établies — ' + (MOTIFS[reads.reason] || `attestation refusée (${reads.reason})`) + '.';
+    return;
+  }
+  const lues = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
+  const annoncees = reads.pending.map((r) => `${r.case} annoncée pour le ${new Date(r.due * 1000).toLocaleString()}`);
+  p.textContent = '🔎 Lectures attestées par le gardien : ' + ([...lues, ...annoncees].join(' · ') || 'aucune') + '.';
+}
+
 function renderCoffre(data) {
   $('#who').textContent = data.userId;
   renderPrivate(data.private);
   renderEscrow(data.escrow, data.hasEscrow);
+  renderReads(data.escrowReads);
   $('#profile-section').classList.remove('hidden');
 }
 

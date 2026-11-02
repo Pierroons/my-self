@@ -112,6 +112,13 @@ $r = appel($port, $NOM, 'register.php', $INSCRIPTION, $cookieA);
 $r['code'] === 200 && nbBases() === 1
     ? ok('l\'inscription crée la base du premier visiteur')
     : ko('inscription du premier visiteur', $r['code'] . ' ' . json_encode($r['json']));
+$depot = appel($port, $NOM, 'escrow_set.php', ['userId' => 'alice', 'secret' => 'mot-de-passe-alice', 'mode' => 'password',
+    'fields' => ['contact_secours' => 'alice-secours@example.org']], $cookieA);
+$coffre = appel($port, $NOM, 'coffre_open.php', ['userId' => 'alice', 'secret' => 'mot-de-passe-alice', 'mode' => 'password'], $cookieA);
+$lectures = $coffre['json']['escrowReads'] ?? null;
+$depot['code'] === 200 && is_array($lectures) && $lectures['established'] === false && $lectures['reason'] === 'not-keeper-sealed'
+    ? ok('le coffre ouvert dit ses lectures « non établies — pas de gardien », jamais « aucune »')
+    : ko('l\'ouverture du coffre ne dit pas l\'état des lectures', $depot['code'] . ' ' . json_encode($lectures));
 
 $b = appel($port, $NOM, 'inspect_db.php', null, null);
 $cookieB = $b['valeur'];

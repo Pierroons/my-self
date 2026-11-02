@@ -31,6 +31,9 @@ try {
         'private'   => $dataGuard->getFields($session),
         'escrow'    => $dataGuard->getEscrowFieldsAsUser($session),
         'hasEscrow' => $dataGuard->hasEscrow($session),
+        // Ce que le gardien atteste des lectures du séquestre. Cette démo n'a pas de
+        // gardien : la réponse le dit (« non établi »), elle ne dit pas « aucune lecture ».
+        'escrowReads' => $dataGuard->escrowReads($session),
     ]);
 } catch (RuntimeException $e) {
     fail_vault($e);
