@@ -92,6 +92,7 @@ final class SelfDataGuard
     public const SETTING_BLIND_KEY      = 'selfdataguard.blind-key-check';
     public const SETTING_SHARED_INDEXES = 'selfdataguard.shared-indexes';
     public const SETTING_KEEPER         = 'selfdataguard.escrow-keeper';
+    public const SETTING_FORMER_KEEPERS = 'selfdataguard.escrow-keeper-former';
     public const SETTING_ESCROW_ADMIN   = 'selfdataguard.escrow-admin';
 
     /**
@@ -120,6 +121,11 @@ final class SelfDataGuard
      *        while the keeper is down, a deposit does not go through. null or
      *        NoKeeper: no keeper, as before 0.9.0, on a database that recorded
      *        none.
+     * @param list<EscrowKeeper> $formerKeepers keepers the deployment replaced
+     *        (changeKeeper()), the database's record of them checked at use: a
+     *        holder sees and objects to what one of them still holds announced,
+     *        and the re-sealing of an escrow sealed to one retires it there
+     *        first. A former keeper the database did not record is ignored.
      *
      * @throws InvalidArgumentException when the key, or the shared fields, are
      *         not the ones the database recorded, or when it recorded none and
@@ -131,6 +137,7 @@ final class SelfDataGuard
         array $sharedIndexes = [],
         private readonly ?RecoveryTickets $tickets = null,
         private readonly ?EscrowKeeper $keeper = null,
+        private readonly array $formerKeepers = [],
     ) {
         if (strlen($blindKey) < 32) {
             throw new InvalidArgumentException(
@@ -271,6 +278,41 @@ final class SelfDataGuard
             throw new InvalidArgumentException('Another blind-index key was recorded meanwhile');
         }
         $storage->claimSetting(self::SETTING_SHARED_INDEXES, self::sharedList($sharedIndexes));
+    }
+
+    /**
+     * Replace the keeper the database recorded — the operator's act. $from
+     * joins the former keepers the database keeps a record of, so that a
+     * façade and the ceremony given it still reach what is sealed to it: the
+     * archives, and every escrow until its holder's next deposit re-seals it
+     * to $to.
+     *
+     * @throws InvalidArgumentException when $from is not the keeper the database
+     *         recorded, or another operator changed the record meanwhile
+     */
+    public static function changeKeeper(StorageInterface $storage, EscrowKeeper $from, EscrowKeeper $to): void
+    {
+        $fromPrint = KeeperSeal::fingerprint(KeeperSeal::checkKeys($from->publicKeys()));
+        $toPrint   = KeeperSeal::fingerprint(KeeperSeal::checkKeys($to->publicKeys()));
+        $held = $storage->loadSetting(self::SETTING_KEEPER);
+        if ($held === null || !hash_equals($held, $fromPrint)) {
+            throw new InvalidArgumentException("This database recorded the escrow keeper {$held}, not {$fromPrint}");
+        }
+        $formerHeld = $storage->loadSetting(self::SETTING_FORMER_KEEPERS);
+        $former     = $formerHeld === null ? [] : json_decode($formerHeld, true, flags: JSON_THROW_ON_ERROR);
+        if (!in_array($fromPrint, $former, true)) {
+            $former[] = $fromPrint;
+            $written  = json_encode($former, JSON_THROW_ON_ERROR);
+            $recorded = $formerHeld === null
+                ? hash_equals($storage->claimSetting(self::SETTING_FORMER_KEEPERS, $written), $written)
+                : $storage->replaceSetting(self::SETTING_FORMER_KEEPERS, $formerHeld, $written);
+            if (!$recorded) {
+                throw new InvalidArgumentException('The record of former keepers changed meanwhile: nothing was changed');
+            }
+        }
+        if (!$storage->replaceSetting(self::SETTING_KEEPER, $fromPrint, $toPrint)) {
+            throw new InvalidArgumentException('The recorded keeper changed meanwhile: it is no longer ' . $fromPrint);
+        }
     }
 
     /**
@@ -1061,10 +1103,24 @@ final class SelfDataGuard
             }
             [$record, $ciphertexts] = $read;
             $old = $this->escrow->unlockAsUser($record, $session);
+            $retireAt = null;
             try {
                 $kept = EscrowFieldCrypter::decryptBatch($old, $ciphertexts);
+                $formerKeeper = $old->keeper !== null && $keys !== null && !$this->samePrint($old->keeper, $keys)
+                    ? $this->formerKeeperFor($old->keeper) : null;
+                if ($formerKeeper !== null) {
+                    $retireAt = [$formerKeeper, (string) $old->escrowId, $old->signRetirement()];
+                }
             } finally {
                 $old->lock();
+            }
+            if ($retireAt !== null) {
+                [$formerKeeper, $escrowId, $token] = $retireAt;
+                try {
+                    $formerKeeper->retire($escrowId, $token);
+                } catch (Throwable $e) {
+                    throw new EscrowKeeperException('keeper-failed', 'The former keeper did not take the retirement: nothing is re-sealed', $e);
+                }
             }
             $new = $this->escrow->create($session, $adminPublicKey, $keys, $record->createdAt, $record->revision);
             try {
@@ -1142,8 +1198,41 @@ final class SelfDataGuard
     private function boundToOurKeeper(UnlockedEscrow $escrow): bool
     {
         $ours = $this->keeperKeys();
-        return $escrow->keeper !== null && $ours !== null
-            && hash_equals(KeeperSeal::fingerprint($escrow->keeper), KeeperSeal::fingerprint($ours));
+        return $escrow->keeper !== null && $ours !== null && $this->samePrint($escrow->keeper, $ours);
+    }
+
+    /**
+     * @param array{sign: string, box: string} $a
+     * @param array{sign: string, box: string} $b
+     */
+    private function samePrint(array $a, array $b): bool
+    {
+        return hash_equals(KeeperSeal::fingerprint($a), KeeperSeal::fingerprint($b));
+    }
+
+    /**
+     * The former keeper this façade was given whose keys are $keys, when the
+     * database recorded it as one; null otherwise, or when it gives no keys.
+     *
+     * @param array{sign: string, box: string} $keys
+     */
+    private function formerKeeperFor(array $keys): ?EscrowKeeper
+    {
+        $print = KeeperSeal::fingerprint($keys);
+        $recorded = $this->storage->loadSetting(self::SETTING_FORMER_KEEPERS);
+        if ($recorded === null || !in_array($print, json_decode($recorded, true, flags: JSON_THROW_ON_ERROR), true)) {
+            return null;
+        }
+        foreach ($this->formerKeepers as $former) {
+            try {
+                if (hash_equals(KeeperSeal::fingerprint(KeeperSeal::checkKeys($former->publicKeys())), $print)) {
+                    return $former;
+                }
+            } catch (Throwable) {
+                continue;
+            }
+        }
+        return null;
     }
 
     /** The objection to case $caseRef, signed under $unlocked's objection key, handed to the keeper. Locks $unlocked. */
@@ -1156,12 +1245,13 @@ final class SelfDataGuard
                     . 'holder\'s session adds one — sealEscrowToKeeper(); an archive takes none'
                 );
             }
-            if (!$this->hasKeeper() || !$this->boundToOurKeeper($unlocked)) {
-                throw new RuntimeException("The keeper this escrow names is not the façade's: the objection would go to the wrong keeper");
+            $target = $this->hasKeeper() && $this->boundToOurKeeper($unlocked) ? $this->keeper : $this->formerKeeperFor($unlocked->keeper);
+            if ($target === null) {
+                throw new RuntimeException("The keeper this escrow names is not the façade's, nor a former one it was given: the objection would go to the wrong keeper");
             }
             $token = $unlocked->signObjection($caseRef);
             try {
-                $this->keeper->object((string) $unlocked->escrowId, $caseRef, $token);
+                $target->object((string) $unlocked->escrowId, $caseRef, $token);
             } catch (Throwable $e) {
                 throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the objection: the read it names may go through once due', $e);
             }
@@ -1206,12 +1296,17 @@ final class SelfDataGuard
         } catch (InvalidArgumentException) {
             return ['reason' => 'keeper-mismatch'] + $out;
         }
-        if (!hash_equals(KeeperSeal::fingerprint($keys), KeeperSeal::fingerprint($ours))) {
-            return ['reason' => 'keeper-changed', 'reseal' => $reseal] + $out;
+        $asked = $this->keeper;
+        if (!$this->samePrint($keys, $ours)) {
+            $asked = $this->formerKeeperFor($keys);
+            if ($asked === null) {
+                return ['reason' => 'keeper-changed', 'reseal' => $reseal] + $out;
+            }
+            $out = ['reseal' => $reseal] + $out;
         }
         $nonce = random_bytes(16);
         try {
-            $attestation = $this->keeper->attest($escrowId, $nonce);
+            $attestation = $asked->attest($escrowId, $nonce);
         } catch (Throwable) {
             return ['reason' => 'keeper-unreachable'] + $out;
         }

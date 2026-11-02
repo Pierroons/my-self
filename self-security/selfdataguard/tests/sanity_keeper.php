@@ -586,7 +586,110 @@ $reads = (new SelfDataGuard($changeDb, $blindKey, keeper: $keeperB))->escrowRead
     && $reads['keeper'] === KeeperSeal::fingerprint($keeperA->publicKeys())
     ? ok('the deposit named another keeper than the façade\'s: "keeper-changed", the pinned keeper named, reseal asked')
     : ko('a keeper other than the one the deposit pinned answered for it', json_encode($reads));
+$reads = (new SelfDataGuard($changeDb, $blindKey, keeper: $keeperB, formerKeepers: [$keeperA]))->escrowReads($ivan);
+!$reads['established'] && $reads['reason'] === 'keeper-changed'
+    ? ok('a former keeper the database did not record — changed by hand, not by changeKeeper() — is not asked')
+    : ko('a former keeper the database never recorded answered for the holder', json_encode($reads));
 @unlink($changeLog);
+
+// -----------------------------------------------------------------------------
+
+section('A keeper the deployment replaced: the holder sees and objects to what it holds, retires the escrow there, and the ceremony reads its archives');
+
+$oldKeeper = new BenchKeeper(delay: 3600);
+$newKeeper = new BenchKeeper(delay: 3600);
+$swapDb = new SqliteAdapter('sqlite::memory:');
+$dgOld  = new SelfDataGuard($swapDb, $blindKey, keeper: $oldKeeper);
+$kim = $dgOld->register('kim', 'motdepasse-kim-01');
+$dgOld->setEscrowFields($kim, $admin['publicKey'], ['contact' => 'kim@example.org']);
+$max = $dgOld->register('max', 'motdepasse-max-01');
+$dgOld->setEscrowFields($max, $admin['publicKey'], ['contact' => 'max@example.org']);
+$lea = $dgOld->register('lea', 'motdepasse-lea-01');
+$dgOld->setEscrowFields($lea, $admin['publicKey'], ['contact' => 'lea@example.org']);
+$leaL3 = $dgOld->reEnroll($dgOld->generationOf('lea'), 'motdepasse-lea-02');
+try {
+    SelfDataGuard::changeKeeper($swapDb, $newKeeper, $oldKeeper);
+    ko('changeKeeper() took a keeper the database did not record as the one it replaces');
+} catch (InvalidArgumentException) {
+    $swapDb->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS) === null
+        ? ok('changeKeeper() refuses to replace a keeper the database did not record, and records nothing')
+        : ko('changeKeeper() took a keeper the database did not record: it wrote the record of former keepers');
+}
+SelfDataGuard::changeKeeper($swapDb, $oldKeeper, $newKeeper);
+$swapLog = sys_get_temp_dir() . '/sdg-keeper-swap-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper)->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('an archive sealed to the replaced keeper read through the new one');
+} catch (EscrowKeeperException) {
+    ok('without the replaced keeper, an archive sealed to it does not read');
+}
+$bothCeremony = benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper, formerKeepers: [$oldKeeper]);
+$leaEscrowId = (string) KeeperSeal::escrowIdOf($swapDb->loadArchive('lea', $leaL3['archiveId'])->escrow->wrapAdmin);
+try {
+    $bothCeremony->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+    $oldKeeper->pending[bin2hex($leaEscrowId) . '|LIT-A1']['due'] = time() - 1;
+} catch (Throwable) {
+}
+try {
+    ($bothCeremony->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])['contact'] ?? null) === 'lea@example.org'
+        ? ok('given the replaced keeper the database recorded, the ceremony reads an archive sealed to it — the façades stay up')
+        : ko('the archive did not read through the replaced keeper');
+} catch (Throwable $e) {
+    ko('the ceremony given the replaced keeper did not read its archive', $e->getMessage());
+}
+try {
+    benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper, formerKeepers: [new BenchKeeper()])
+        ->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('a former keeper the database never recorded was taken');
+} catch (EscrowKeeperException $e) {
+    $e->reason === 'keeper-mismatch'
+        ? ok('a former keeper the database never recorded: refused, keeper-mismatch')
+        : ko('a former keeper the database never recorded was refused, but not as keeper-mismatch', $e->reason);
+}
+$kimEscrowId = (string) KeeperSeal::escrowIdOf($swapDb->loadEscrow('kim')->wrapAdmin);
+$kimOldBox   = KeeperSeal::outerOf($swapDb->loadEscrow('kim')->wrapAdmin);
+try {
+    $bothCeremony->readEscrow('kim', 'LIT-K', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$dgNew = new SelfDataGuard($swapDb, $blindKey, keeper: $newKeeper, formerKeepers: [$oldKeeper]);
+$reads = $dgNew->escrowReads($kim);
+$reads['established'] && $reads['reseal'] && $reads['keeper'] === KeeperSeal::fingerprint($oldKeeper->publicKeys())
+    && in_array('LIT-K', array_column($reads['pending'], 'case'), true)
+    ? ok('before the re-sealing, the holder sees what the replaced keeper holds announced, named by its fingerprint')
+    : ko('the read announced at the replaced keeper is not shown to the holder', json_encode($reads));
+try {
+    $dgNew->objectToEscrowRead($kim, 'LIT-K');
+    $oldKeeper->pending[bin2hex($kimEscrowId) . '|LIT-K']['objected']
+        ? ok('the holder objects at the replaced keeper, which holds the announcement')
+        : ko('the objection did not reach the replaced keeper');
+} catch (Throwable $e) {
+    ko('the holder cannot object at the replaced keeper', $e->getMessage());
+}
+$dgNew->sealEscrowToKeeper($kim, $admin['publicKey']);
+$kimNow = $swapDb->loadEscrow('kim');
+isset($oldKeeper->retired[bin2hex($kimEscrowId)]) && hash_equals((string) KeeperSeal::escrowIdOf($kimNow->wrapAdmin), $kimEscrowId)
+    ? ok('the re-sealing retires the escrow at the replaced keeper first, and keeps its escrowId')
+    : ko('the re-sealing did not retire the escrow at the replaced keeper');
+try {
+    $oldKeeper->announce($kimEscrowId, $kimOldBox, 'kim', 'LIT-K2', 0, 'h');
+    ko('the replaced keeper still announces a read of an escrow retired there');
+} catch (RuntimeException) {
+    ok('the replaced keeper refuses any read of an escrow retired there, from the box of before');
+}
+$oldKeeper->down = true;
+try {
+    $dgNew->sealEscrowToKeeper($max, $admin['publicKey']);
+    ko('an escrow was re-sealed while the replaced keeper did not take its retirement');
+} catch (EscrowKeeperException $e) {
+    $e->reason === 'keeper-failed' && EscrowVault::isKeeperSealed($swapDb->loadEscrow('max'))
+        && $dgNew->escrowReads($max)['keeper'] !== KeeperSeal::fingerprint($newKeeper->publicKeys())
+        ? ok('a replaced keeper that does not take the retirement: nothing is re-sealed, keeper-failed')
+        : ko('refused, but not as expected', $e->reason);
+}
+$oldKeeper->down = false;
+@unlink($swapLog);
 
 // -----------------------------------------------------------------------------
 

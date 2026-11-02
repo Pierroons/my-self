@@ -332,6 +332,10 @@ $kdg->getEscrowFieldsAsUser($frank) === ['contact_secours' => 'frank-secours@exa
 foreach (['gus', 'hugo'] as $name) {
     $kplain->setEscrowFields($kplain->register($name, "motdepasse-{$name}-fort"), $admin['publicKey'], ['contact_secours' => "{$name}@example.org"]);
 }
+$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", ['DATAGUARD_FORMER_KEEPER_FILES' => "{$ws}/absent-gardien.php"] + $kenv);
+$r['code'] === 3 && str_contains($r['err'], 'DATAGUARD_FORMER_KEEPER_FILES')
+    ? ok('a former keeper file that returns no keeper exits 3, naming the variable')
+    : ko('a former keeper file that returns no keeper did not exit 3', $r['code'] . ' ' . trim($r['err']));
 (new PDO("sqlite:{$kdb}"))->exec("UPDATE selfdataguard_escrow SET wrap_admin = '%%%' WHERE user_id = 'gus'");
 $r = run(['seal-to-keeper', 'gus', 'hugo'], '', $kenv);
 $failed = array_values(array_filter(

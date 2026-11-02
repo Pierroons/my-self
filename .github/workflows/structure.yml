@@ -3669,8 +3669,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=40 [sanity_conformance]=84 [sanity_escrow]=65
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=80 [sanity_keys]=24 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=84 [sanity_escrow]=65
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=90 [sanity_keys]=24 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4137,6 +4137,30 @@ jobs:
                   }" "        }" $K 'escrowReads() threw on a keeper the database did not record'
           canari $D/src/Escrow/EscrowCeremony.php "                \$e instanceof StaleEscrowException               => 'stale-escrow'," '' \
             $K 'the log does not name the race'
+          canari $D/src/SelfDataGuard.php "                if (\$formerKeeper !== null) {
+                              \$retireAt = [\$formerKeeper, (string) \$old->escrowId, \$old->signRetirement()];
+                          }" \
+            "" $K 'the re-sealing did not retire the escrow at the replaced keeper'
+          canari $D/src/SelfDataGuard.php "                    throw new EscrowKeeperException('keeper-failed', 'The former keeper did not take the retirement: nothing is re-sealed', \$e);" \
+            "" $K 'an escrow was re-sealed while the replaced keeper did not take its retirement'
+          canari $D/src/Escrow/EscrowCeremony.php "        foreach ([\$this->keeper, ...\$this->recordedFormerKeepers()] as \$keeper) {" \
+            "        foreach ([\$this->keeper] as \$keeper) {" $K 'the ceremony given the replaced keeper did not read its archive'
+          canari $D/src/Escrow/EscrowCeremony.php "            if (!in_array(\$print, \$prints, true)) {
+                          throw new EscrowKeeperException(" \
+            "            if (false) {
+                          throw new EscrowKeeperException(" $K 'a former keeper the database never recorded was refused, but not as keeper-mismatch'
+          canari $D/src/SelfDataGuard.php "            \$asked = \$this->formerKeeperFor(\$keys);" \
+            "            \$asked = null;" $K 'the read announced at the replaced keeper is not shown to the holder'
+          canari $D/src/SelfDataGuard.php "            \$target = \$this->hasKeeper() && \$this->boundToOurKeeper(\$unlocked) ? \$this->keeper : \$this->formerKeeperFor(\$unlocked->keeper);" \
+            "            \$target = \$this->hasKeeper() && \$this->boundToOurKeeper(\$unlocked) ? \$this->keeper : null;" $K 'the holder cannot object at the replaced keeper'
+          canari $D/src/SelfDataGuard.php "        if (\$held === null || !hash_equals(\$held, \$fromPrint)) {" \
+            "        if (false) {" $K 'changeKeeper() took a keeper the database did not record'
+          canari $D/src/SelfDataGuard.php "        if (\$recorded === null || !in_array(\$print, json_decode(\$recorded, true, flags: JSON_THROW_ON_ERROR), true)) {
+                      return null;
+                  }" \
+            "" $K 'a former keeper the database never recorded answered for the holder'
+          canari $D/bin/escrow-ceremony.php "        if (!\$gardien instanceof EscrowKeeper) {" \
+            "        if (false) {" $D/tests/sanity_ceremony.php 'a former keeper file that returns no keeper did not exit 3'
           canari $D/src/Vault/UnlockedVault.php "                \$seed     = hash_hmac('sha256', self::OBJECTION_SEED_TAG . \$this->userId, \$this->key(), true);" \
             "                \$seed     = random_bytes(32);" $K 'a deposit changed the escrowId'
           canari $D/src/Escrow/UnlockedEscrow.php "        if (\$keeper !== null && !hash_equals(KeeperSeal::escrowIdFor(\$this->objectionPublic()), (string) \$escrowId)) {" \

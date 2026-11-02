@@ -33,7 +33,8 @@ function benchCeremony(
     Verdict $verdict = Verdict::Open,
     ?HeadWitness $witness = null,
     ?string $logPath = null,
-    ?EscrowKeeper $keeper = null
+    ?EscrowKeeper $keeper = null,
+    array $formerKeepers = []
 ): EscrowCeremony {
     $logPath ??= sys_get_temp_dir() . '/sdg-ceremony-' . bin2hex(random_bytes(4)) . '.log';
     register_shutdown_function(static fn () => @unlink($logPath));
@@ -43,7 +44,8 @@ function benchCeremony(
         new FixedArbiter($verdict),
         $witness ?? new NoHeadWitness(),
         $keeper ?? new NoKeeper(),
-        'bench'
+        'bench',
+        $formerKeepers
     );
 }
 

@@ -57,6 +57,9 @@ declare(strict_types=1);
  *   DATAGUARD_KEEPER_FILE       fichier PHP qui renvoie l'EscrowKeeper (`return new NoKeeper();` sans gardien, choisi
  *                               par son nom) : un séquestre scellé à un gardien ne s'ouvre que par lui, et
  *                               seulement par celui que la base a inscrit
+ *   DATAGUARD_FORMER_KEEPER_FILES (optionnel) les gardiens que le déploiement a remplacés, séparés par « : » :
+ *                               ce qui leur reste scellé — les archives, un séquestre pas encore re-scellé —
+ *                               se lit par eux ; chacun doit figurer parmi les anciens que la base a inscrits
  *   DATAGUARD_OPERATOR          (optionnel) identité opérateur pour le forensic
  */
 
@@ -134,6 +137,26 @@ function objectFrom(string $key, string $interface): object
 }
 
 /**
+ * Les anciens gardiens que nomme DATAGUARD_FORMER_KEEPER_FILES — des chemins séparés
+ * par « : », chacun un fichier qui renvoie un EscrowKeeper ; aucun sans la variable.
+ *
+ * @return list<EscrowKeeper>
+ */
+function anciensGardiens(): array
+{
+    $gardiens = [];
+    foreach (array_filter(explode(':', (string) getenv('DATAGUARD_FORMER_KEEPER_FILES'))) as $path) {
+        $gardien = is_file($path) ? require $path : null;
+        if (!$gardien instanceof EscrowKeeper) {
+            fwrite(STDERR, "DATAGUARD_FORMER_KEEPER_FILES doit nommer des fichiers PHP qui renvoient chacun un EscrowKeeper : {$path}\n");
+            exit(3);
+        }
+        $gardiens[] = $gardien;
+    }
+    return $gardiens;
+}
+
+/**
  * L'ancre que portent les options, ou null sans option. Une option mal écrite
  * sort en 2 : elle ne doit pas rendre « intègre » sans ancre.
  */
@@ -163,7 +186,8 @@ function ceremonie(AuditLog $auditLog, array $ctx): EscrowCeremony
         objectFrom('DATAGUARD_ARBITER_FILE', EscrowArbiter::class),
         objectFrom('DATAGUARD_WITNESS_FILE', HeadWitness::class),
         objectFrom('DATAGUARD_KEEPER_FILE', EscrowKeeper::class),
-        $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '')
+        $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : ''),
+        anciensGardiens()
     );
 }
 

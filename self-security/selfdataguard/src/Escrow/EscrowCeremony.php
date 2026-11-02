@@ -46,13 +46,20 @@ use Throwable;
  */
 final class EscrowCeremony
 {
+    /**
+     * @param list<EscrowKeeper> $formerKeepers keepers the deployment replaced
+     *        (SelfDataGuard::changeKeeper()): a compartment still sealed to one
+     *        — an archive, or an escrow its holder has not re-sealed — is read
+     *        through it. One the database did not record as former is refused.
+     */
     public function __construct(
         private readonly StorageInterface $storage,
         private readonly AuditLog $log,
         private readonly EscrowArbiter $arbiter,
         private readonly HeadWitness $witness,
         private readonly EscrowKeeper $keeper,
-        private readonly string $operator
+        private readonly string $operator,
+        private readonly array $formerKeepers = []
     ) {
     }
 
@@ -329,6 +336,35 @@ final class EscrowCeremony
         return $result;
     }
 
+    /**
+     * The former keepers this ceremony was given, each checked against the
+     * database's record of former keepers.
+     *
+     * @return list<EscrowKeeper>
+     */
+    private function recordedFormerKeepers(): array
+    {
+        if ($this->formerKeepers === []) {
+            return [];
+        }
+        $recorded = $this->storage->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS);
+        $prints   = $recorded === null ? [] : json_decode($recorded, true, flags: JSON_THROW_ON_ERROR);
+        foreach ($this->formerKeepers as $former) {
+            try {
+                $print = KeeperSeal::fingerprint(KeeperSeal::checkKeys($former->publicKeys()));
+            } catch (Throwable $e) {
+                throw new EscrowKeeperException('keeper-failed', 'A former keeper gave no public keys: nothing is unsealed', $e);
+            }
+            if (!in_array($print, $prints, true)) {
+                throw new EscrowKeeperException(
+                    'keeper-mismatch',
+                    "This ceremony was given {$print} as a former keeper, and the database recorded no such one: nothing is unsealed"
+                );
+            }
+        }
+        return $this->formerKeepers;
+    }
+
     /** The keeper as the log names it: its fingerprint, which tells two keepers of one class apart. */
     private function keeperName(): string
     {
@@ -377,20 +413,26 @@ final class EscrowCeremony
         $outer    = KeeperSeal::outerOf($record->wrapAdmin);
         $seq      = (int) $intent['seq'];
         $hmac     = (string) $intent['hmac'];
-        try {
-            $due = $this->keeper->announce($escrowId, $outer, $record->userId, $caseRef, $seq, $hmac);
-        } catch (Throwable $e) {
-            throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the read: nothing is unsealed', $e);
+        $failure  = null;
+        foreach ([$this->keeper, ...$this->recordedFormerKeepers()] as $keeper) {
+            try {
+                $due = $keeper->announce($escrowId, $outer, $record->userId, $caseRef, $seq, $hmac);
+            } catch (Throwable $e) {
+                // A box sealed to another keeper does not open here: the next one may hold it.
+                $failure = $e;
+                continue;
+            }
+            if ($due > time()) {
+                throw new EscrowAnnouncedException($due, $record->userId, $caseRef);
+            }
+            try {
+                $inner = $keeper->release($escrowId, $outer, $caseRef, $seq, $hmac);
+            } catch (Throwable $e) {
+                throw new EscrowKeeperException('keeper-failed', 'The keeper did not hand back the box: nothing is unsealed', $e);
+            }
+            return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision);
         }
-        if ($due > time()) {
-            throw new EscrowAnnouncedException($due, $record->userId, $caseRef);
-        }
-        try {
-            $inner = $this->keeper->release($escrowId, $outer, $caseRef, $seq, $hmac);
-        } catch (Throwable $e) {
-            throw new EscrowKeeperException('keeper-failed', 'The keeper did not hand back the box: nothing is unsealed', $e);
-        }
-        return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision);
+        throw new EscrowKeeperException('keeper-failed', 'No keeper given recorded the read: nothing is unsealed', $failure);
     }
 
     /**
