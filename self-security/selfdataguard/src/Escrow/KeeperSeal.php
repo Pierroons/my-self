@@ -26,8 +26,14 @@ use RuntimeException;
  *
  * An attestation is base64(json) . "." . base64(Ed25519 signature over the tag
  * and the json): what the keeper released for one escrow, and what it holds
- * announced, for one nonce. An objection is an Ed25519 signature, under the
- * key whose secret lives in wrap_user, over the escrowId and a case.
+ * announced, for one nonce.
+ *
+ * The objection key belongs to the escrow, not to a box: its secret seed is
+ * derived from the holder's master key, and the escrowId of an escrow a holder
+ * sealed is the fingerprint of its public half (escrowIdFor()). A keeper refuses
+ * a box that carries another key than its escrowId names. An objection, and a
+ * retirement, is a token — the public key, then an Ed25519 signature under it —
+ * that the keeper checks against the escrowId alone, whatever box it holds.
  */
 final class KeeperSeal
 {
@@ -37,6 +43,9 @@ final class KeeperSeal
     private const ATTEST_TAG = "selfdataguard/keeper-attestation/v1\0";
     private const OBJECT_TAG = "selfdataguard/keeper-objection/v1\0";
     private const PRINT_TAG  = "selfdataguard/keeper/v1\0";
+    private const ID_TAG     = "selfdataguard/escrow-id/v1\0";
+    private const RETIRE_TAG = "selfdataguard/keeper-retirement/v1\0";
+    private const TOKEN_LEN  = SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES + SODIUM_CRYPTO_SIGN_BYTES;
     private const FORM       = '/\Ak1:([0-9a-f]{32}):/';
     private const PREFIX_LEN = 3 + 2 * self::ESCROW_ID_LEN + 1;
 
@@ -70,9 +79,32 @@ final class KeeperSeal
         return substr(hash('sha256', self::PRINT_TAG . $keys['sign'] . $keys['box']), 0, 32);
     }
 
+    /** An escrowId the operator's pass draws: its box carries no objection key, and the escrowId names none. */
     public static function newEscrowId(): string
     {
         return Primitives::randomBytes(self::ESCROW_ID_LEN);
+    }
+
+    /** The escrowId of an escrow whose objection key is $objectionPublic: its fingerprint. */
+    public static function escrowIdFor(string $objectionPublic): string
+    {
+        if (strlen($objectionPublic) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
+            throw new InvalidArgumentException('An objection key is a raw Ed25519 public key of 32 bytes');
+        }
+        return substr(hash('sha256', self::ID_TAG . $objectionPublic, true), 0, self::ESCROW_ID_LEN);
+    }
+
+    /**
+     * The keeper's side: whether a box opened by open() may stand for
+     * $escrowId — it names it, and an objection key it carries is the one
+     * $escrowId is the fingerprint of.
+     *
+     * @param array{escrowId: string, objection: ?string} $box
+     */
+    public static function boxFits(array $box, string $escrowId): bool
+    {
+        return hash_equals($box['escrowId'], $escrowId)
+            && ($box['objection'] === null || hash_equals(self::escrowIdFor($box['objection']), $escrowId));
     }
 
     /** wrap_admin under the keeper: $inner sealed again, to the keeper's box key. */
@@ -209,10 +241,37 @@ final class KeeperSeal
         return self::OBJECT_TAG . $escrowId . pack('N', strlen($caseRef)) . $caseRef;
     }
 
-    /** The keeper's side: whether $signature objects to case $caseRef of $escrowId, under the objection key its box carried. */
-    public static function verifyObjection(string $signature, string $objectionPublic, string $escrowId, string $caseRef): bool
+    /** What a retirement signs: the escrow leaves the keeper that receives it. */
+    public static function retirementMessage(string $escrowId): string
     {
-        return strlen($signature) === SODIUM_CRYPTO_SIGN_BYTES
-            && sodium_crypto_sign_verify_detached($signature, self::objectionMessage($escrowId, $caseRef), $objectionPublic);
+        return self::RETIRE_TAG . $escrowId;
+    }
+
+    /** A token: the public key, then the signature of $message under its secret. */
+    public static function token(string $message, #[\SensitiveParameter] string $signSecret): string
+    {
+        return sodium_crypto_sign_publickey_from_secretkey($signSecret) . sodium_crypto_sign_detached($message, $signSecret);
+    }
+
+    /** The keeper's side: whether $token objects to case $caseRef of $escrowId, under the key $escrowId is the fingerprint of. */
+    public static function verifyObjection(string $token, string $escrowId, string $caseRef): bool
+    {
+        return self::verifyToken($token, $escrowId, self::objectionMessage($escrowId, $caseRef));
+    }
+
+    /** The keeper's side: whether $token retires $escrowId, under the key $escrowId is the fingerprint of. */
+    public static function verifyRetirement(string $token, string $escrowId): bool
+    {
+        return self::verifyToken($token, $escrowId, self::retirementMessage($escrowId));
+    }
+
+    private static function verifyToken(string $token, string $escrowId, string $message): bool
+    {
+        if (strlen($token) !== self::TOKEN_LEN) {
+            return false;
+        }
+        $public = substr($token, 0, SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES);
+        return hash_equals(self::escrowIdFor($public), $escrowId)
+            && sodium_crypto_sign_verify_detached(substr($token, SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES), $message, $public);
     }
 }

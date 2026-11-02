@@ -95,6 +95,12 @@ $opened->keeper !== null && hash_equals($opened->escrowId ?? '', (string) $escro
     ? ok("wrap_user names the escrowId and the keeper, under the holder's master key")
     : ko('wrap_user does not carry the keeper binding');
 $opened->lock();
+try {
+    $mismatched = new UnlockedEscrow('alice', random_bytes(32), KeeperSeal::newEscrowId(), $keeper->publicKeys(), random_bytes(32));
+    ko('an escrow whose escrowId is not the fingerprint of its objection key was taken');
+} catch (RuntimeException) {
+    ok('an escrowId that is not the fingerprint of the objection key is refused');
+}
 sodium_crypto_box_seal_open(KeeperSeal::outerOf($record->wrapAdmin), sodium_crypto_box_keypair_from_secretkey_and_publickey(
     $adminSk, base64_decode($admin['publicKey'])
 )) === false
@@ -303,12 +309,12 @@ try {
     $slowCeremony->readEscrow('carol', 'LIT-8', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
 } catch (EscrowAnnouncedException) {
 }
-$forged = sodium_crypto_sign_detached(KeeperSeal::objectionMessage($carolEscrowId, 'LIT-8'), sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair()));
+$forged = KeeperSeal::token(KeeperSeal::objectionMessage($carolEscrowId, 'LIT-8'), sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair()));
 try {
     $slow->object($carolEscrowId, 'LIT-8', $forged);
     ko('the keeper took an objection signed by a key the escrow does not carry');
 } catch (RuntimeException $e) {
-    str_contains($e->getMessage(), 'not signed by the key the escrow carries')
+    str_contains($e->getMessage(), 'not signed by the key this escrow is named after')
         && $slow->pending[bin2hex($carolEscrowId) . '|LIT-8']['objected'] === false
         ? ok('an objection under another key is refused: the administrator cannot object in the holder\'s place')
         : ko('refused for another reason', $e->getMessage());
@@ -322,29 +328,40 @@ $slow->pending[(string) array_key_last($slow->pending)]['due'] = time() - 1;
 $slowCeremony->readEscrow('carol', 'LIT-6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact' => 'carol-secours@example.org']
     ? ok('without an objection, the same ceremony run again once due reads')
     : ko('a due read without objection did not go through');
+$boxBefore = KeeperSeal::outerOf($slowDb->loadEscrow('carol')->wrapAdmin);
 try {
     $slowCeremony->readEscrow('carol', 'LIT-9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
 } catch (EscrowAnnouncedException) {
 }
 $slowDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'carol-secours@example.org']);
-$slow->pending[bin2hex($carolEscrowId) . '|LIT-9']['due'] = time() - 1;
-try {
-    $slowCeremony->readEscrow('carol', 'LIT-9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
-    ko('a read announced before a deposit went through once due, on the box the deposit sealed');
-} catch (EscrowAnnouncedException $e) {
-    $e->due > time()
-        ? ok('a deposit during an announcement starts the delay again: the read is announced anew, on the new box')
-        : ko('announced again, but already due');
-} catch (Throwable $e) {
-    ko('a read announced before a deposit was not announced anew on the new box', $e->getMessage());
-}
+$carolEscrowId === (string) KeeperSeal::escrowIdOf($slowDb->loadEscrow('carol')->wrapAdmin)
+    ? ok('a deposit keeps the escrowId: it is the fingerprint of an objection key derived from the master key')
+    : ko('a deposit changed the escrowId');
 try {
     $slowDg->objectToEscrowRead($carol, 'LIT-9');
-    $slow->pending[bin2hex($carolEscrowId) . '|LIT-9']['objected']
-        ? ok('the holder objects to it under the key the new box carries')
-        : ko('the objection to the read announced anew is not recorded');
+    ok('after a deposit, the holder still objects to a read announced before it');
 } catch (Throwable $e) {
-    ko('the holder cannot object to a read announced anew', $e->getMessage());
+    ko('the holder cannot object to a read announced before a deposit', $e->getMessage());
+}
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-9']['due'] = time() - 1;
+try {
+    $slow->release($carolEscrowId, $boxBefore, 'LIT-9', 900, 'h');
+    ko('the box of before the deposit was released, over the holder\'s objection');
+} catch (RuntimeException) {
+    ok('the box of before the deposit, kept from a copy, is not released over the holder\'s objection');
+}
+try {
+    $slowCeremony->readEscrow('carol', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$slowDg->setEscrowFields($carol, $admin['publicKey'], ['indice' => 'deposé pendant l\'annonce']);
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-10']['due'] = time() - 1;
+try {
+    ($slowCeremony->readEscrow('carol', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])['indice'] ?? null) === 'deposé pendant l\'annonce'
+        ? ok('the announcement holds the case: a deposit during it is read at its due, without a new delay')
+        : ko('the read at the due did not open the escrow as it stands');
+} catch (Throwable $e) {
+    ko('a deposit during an announcement put the read off', get_class($e) . ': ' . $e->getMessage());
 }
 
 // -----------------------------------------------------------------------------
@@ -359,8 +376,8 @@ try {
     ok('the read of an archive is announced like any other: a live read cannot pass for one to skip the delay');
 }
 $slow->pending[bin2hex($carolEscrowId) . '|LIT-7']['due'] = time() - 1;
-$slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])
-    === ['contact' => 'carol-secours@example.org']
+($slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])['contact'] ?? null)
+    === 'carol-secours@example.org'
     ? ok('once due, the escrow of the archive is read through the keeper')
     : ko('the archive escrow did not read through the keeper');
 $archive = $slowDg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, 'motdepasse-carol-01');
@@ -438,10 +455,23 @@ try {
 } catch (InvalidArgumentException) {
     ok('the pass records its keeper on a database that recorded none: a façade without it is refused after');
 }
-$withKeeper->sealEscrowToKeeper($dave, $admin['publicKey']) && EscrowVault::isKeeperSealed($plainDb->loadEscrow('dave'))
+$wrapped = $plainDb->loadEscrow('dave');
+$foreignId = KeeperSeal::newEscrowId();
+$plainDb->replaceEscrow($before0->generationOf('dave'), new EscrowRecord(
+    'dave', $wrapped->wrapUser, 'k1:' . bin2hex($foreignId) . ':' . KeeperSeal::outerOf($wrapped->wrapAdmin),
+    $wrapped->createdAt, new DateTimeImmutable(), $wrapped->revision
+));
+$withKeeper->sealEscrowToKeeper($dave, $admin['publicKey'])
+    && EscrowVault::isKeeperSealed($plainDb->loadEscrow('dave'))
     && !$withKeeper->sealEscrowToKeeper($dave, $admin['publicKey'])
     ? ok('sealEscrowToKeeper() seals it once, then has nothing to do')
     : ko('sealEscrowToKeeper() did not seal the escrow to the keeper, or sealed it twice');
+$pinned = $dave->openEscrow($plainDb->loadEscrow('dave'));
+$pinnedId = (string) $pinned->escrowId;
+$pinned->lock();
+!hash_equals($pinnedId, $foreignId) && hash_equals($pinnedId, (string) KeeperSeal::escrowIdOf($plainDb->loadEscrow('dave')->wrapAdmin))
+    ? ok('the escrowId of the pinned escrow is computed from its objection key: the prefix rewritten before the pinning is not taken')
+    : ko('the pinning took the escrowId from the prefix in clear');
 $withKeeper->getEscrowFieldsAsUser($dave) === ['contact' => 'dave-secours@example.org']
     ? ok('its fields come through')
     : ko('sealing to the keeper lost the escrow fields');
@@ -646,20 +676,24 @@ $failedOfBench === []
     : ko('the bench keeper fails the suite', json_encode($failedOfBench));
 foreach ([
     BadKeysKeeper::class            => 'public-keys',
-    OpensAnyBoxKeeper::class        => 'announce-reads-the-box',
-    MovingDeadlineKeeper::class     => 'announce-is-idempotent',
-    WrongInnerKeeper::class         => 'release-hands-back-the-inner-box',
-    UnrecordedReleaseKeeper::class  => 'release-is-recorded',
-    UnannouncedReleaseKeeper::class => 'release-only-announced',
-    HeadJudgeKeeper::class          => 'release-takes-any-head',
-    EarlyReleaseKeeper::class       => 'release-only-when-due',
-    AnyBoxReleaseKeeper::class      => 'release-needs-the-announced-box',
-    FirstBoxKeeper::class           => 'new-box-restarts-the-delay',
-    LapsesAtOnceKeeper::class       => 'release-within-the-lapse',
-    NeverLapsesKeeper::class        => 'announcement-lapses',
-    StaleAttestationKeeper::class   => 'attestation-fresh-and-scoped',
-    ObjectionBlindKeeper::class     => 'objection-under-the-box-key',
-    ForgetsObjectionKeeper::class   => 'objection-survives-re-announce',
+    OpensAnyBoxKeeper::class                  => 'announce-reads-the-box',
+    MovingDeadlineKeeper::class               => 'announce-is-idempotent',
+    RestartingKeeper::class                   => 'announcement-holds-the-case',
+    ForeignKeyKeeper::class                   => 'announce-checks-the-objection-key',
+    KeylessAfterKeyedKeeper::class            => 'keyless-box-refused-once-keyed',
+    WrongInnerKeeper::class                   => 'release-hands-back-the-inner-box',
+    UnrecordedReleaseKeeper::class            => 'release-is-recorded',
+    UnannouncedReleaseKeeper::class           => 'release-only-announced',
+    HeadJudgeKeeper::class                    => 'release-takes-any-head',
+    EarlyReleaseKeeper::class                 => 'release-only-when-due',
+    LapsesAtOnceKeeper::class                 => 'release-within-the-lapse',
+    ConsumingReleaseKeeper::class             => 'release-repeatable-within-the-window',
+    NeverLapsesKeeper::class                  => 'announcement-lapses',
+    StaleAttestationKeeper::class             => 'attestation-fresh-and-scoped',
+    ObjectionBlindKeeper::class               => 'objection-under-the-escrow-key',
+    ObjectionWithoutAnnouncementKeeper::class => 'objection-needs-an-announcement',
+    ForgetsObjectionKeeper::class             => 'objection-survives-re-announce',
+    ForgetsRetirementKeeper::class            => 'retire-is-final',
 ] as $class => $case) {
     $failed = $failedCases(KeeperConformance::run($factoryOf($class)));
     isset($failed[$case])

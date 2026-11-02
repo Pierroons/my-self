@@ -116,7 +116,7 @@ section('The public methods of each key-holding class are a closed list');
 
 $closed = [
     UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'generation', 'isLocked', 'lock', 'openEscrow', 'sealLock'],
-    UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper', 'signObjection'],
+    UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper', 'signObjection', 'signRetirement'],
     UnlockedArchive::class => ['decryptFields', 'lock', 'openEscrow', 'userId'],
 ];
 foreach ($closed as $class => $expected) {
@@ -182,6 +182,7 @@ $seed  = (fn (): string => $this->objectionSeed)->call($bound);
 foreach ([
     'UnlockedEscrow::sealToKeeper()'  => static fn () => $bound->sealToKeeper($admin['publicKey']),
     'UnlockedEscrow::signObjection()' => static fn () => $bound->signObjection('LIT-1'),
+    'UnlockedEscrow::signRetirement()' => static fn () => $bound->signRetirement(),
 ] as $name => $call) {
     $out = $call();
     !carries($out, $EB) && !carries($out, $seed)

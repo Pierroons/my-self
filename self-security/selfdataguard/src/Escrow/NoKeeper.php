@@ -33,8 +33,13 @@ final class NoKeeper implements EscrowKeeper
         throw new RuntimeException('NoKeeper attests nothing');
     }
 
-    public function object(string $escrowId, string $caseRef, string $signature): void
+    public function object(string $escrowId, string $caseRef, string $token): void
     {
         throw new RuntimeException('NoKeeper takes no objection');
+    }
+
+    public function retire(string $escrowId, string $token): void
+    {
+        throw new RuntimeException('NoKeeper holds no escrow to retire');
     }
 }

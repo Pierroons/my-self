@@ -22,13 +22,19 @@ namespace Pierroons\SelfDataGuard\Escrow;
  * what the keeper releases, the holder sees; the administrator's key still
  * opens the inner box it was handed.
  *
+ * Anyone can seal a box to the keeper's public key. What a box cannot fake is
+ * the escrow's objection key: the escrowId of an escrow its holder sealed is the
+ * fingerprint of that key (KeeperSeal::escrowIdFor()), and only the holder signs
+ * under it. A read is therefore held by its case, never by a box, and an
+ * objection is checked against the escrowId alone.
+ *
  * $caseRef is shown to the holder, and the keeper attests it to whoever names
  * the escrowId, which stands in clear in the database: a case reference is
  * never a secret, never the capability that opens a case.
  *
  * A keeper counts no failure and shuts nothing out after one: a counter here
- * would close the holder's last door to whoever runs the ceremony. The one
- * refusal that lasts is the holder's own objection.
+ * would close the holder's last door to whoever runs the ceremony. The
+ * refusals that last are the holder's own: an objection, a retirement.
  */
 interface EscrowKeeper
 {
@@ -47,30 +53,31 @@ interface EscrowKeeper
 
     /**
      * Record a request to read escrow $escrowId for case $caseRef, made at the
-     * audit log's head $seq:$hmac. It opens $outerBox to read what it holds,
-     * and refuses (throws) when the box names another escrowId or another
-     * account than $userId. Returns the time (Unix) from which release() hands
-     * the inner box: now plus the keeper's delay, for every read alike — an
-     * archive's box and a live one look the same to the keeper.
+     * audit log's head $seq:$hmac. It opens $outerBox and refuses (throws) a box
+     * that names another escrowId or another account than $userId, one whose
+     * objection key is not the one $escrowId is the fingerprint of
+     * (KeeperSeal::boxFits()), one without an objection key for an escrowId it
+     * already saw a box with one for, and any box of an escrow retired here.
      *
-     * The announcement is of this box. A second announce of the same escrow
-     * and case with the same box returns the same time; with another — a
-     * deposit since, which drew a new key — it starts the delay again and takes
-     * the objection key the new box carries. It stays releasable for LAPSE
-     * from its time, and no less; one not released by then has lapsed: the
-     * next announce starts the delay again. An
-     * objection holds for its case with no time limit: no announcement clears it.
+     * Returns the time (Unix) from which release() hands the inner box: now
+     * plus the keeper's delay, for every read alike — an archive's box and a
+     * live one look the same to the keeper. The announcement holds the case:
+     * announced again, with this box or another of the escrow, it returns the
+     * same time, until it has lapsed — LAPSE after that time —; the next
+     * announce then starts the delay again.
      */
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int;
 
     /**
-     * The inner box of $outerBox, once the announcement of $escrowId and
-     * $caseRef made with this same box is due, has not lapsed, and nobody
-     * objected to; the release is recorded, with the log head $seq:$hmac, before
-     * the box is handed back. The head is recorded, not judged: the head
-     * witness keeps the log, and a number the caller states would only let
+     * The inner box of $outerBox — any box of the escrow that announce() would
+     * take — once the announcement of $escrowId and $caseRef is due, has not
+     * lapsed, nobody objected to it, and the escrow is not retired here. Each
+     * release is recorded, with the log head $seq:$hmac, before the box is handed
+     * back, and does not end the announcement: until it lapses, the read can be
+     * released again, each time recorded. The head is recorded, not judged: the
+     * head witness keeps the log, and a number the caller states would only let
      * whoever reaches the keeper close it. Throws on a release never announced,
-     * announced with another box, objected to, early, or lapsed.
+     * objected to, early, lapsed, or of a box announce() refuses.
      */
     public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string;
 
@@ -82,10 +89,20 @@ interface EscrowKeeper
     public function attest(string $escrowId, string $nonce): string;
 
     /**
-     * Cancel the announcement of $escrowId for $caseRef, when $signature
-     * verifies under the objection key of the box it was last announced with
-     * (KeeperSeal::verifyObjection()). Throws when it does not, or when nothing
-     * is announced for that case.
+     * Cancel the announcement of $escrowId for $caseRef, for good, when $token
+     * verifies under the key $escrowId is the fingerprint of
+     * (KeeperSeal::verifyObjection()) — whatever box was announced or comes
+     * after. Throws when it does not, or when nothing is announced for that
+     * case.
      */
-    public function object(string $escrowId, string $caseRef, string $signature): void;
+    public function object(string $escrowId, string $caseRef, string $token): void;
+
+    /**
+     * Retire $escrowId from this keeper, when $token verifies under the key
+     * $escrowId is the fingerprint of (KeeperSeal::verifyRetirement()): every
+     * later announce() and release() of it is refused, and its attestation
+     * stays. What a holder sends a keeper the deployment replaced, once the
+     * escrow is sealed to the new one. Throws when the token does not verify.
+     */
+    public function retire(string $escrowId, string $token): void;
 }

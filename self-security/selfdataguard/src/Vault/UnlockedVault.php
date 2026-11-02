@@ -43,6 +43,8 @@ use RuntimeException;
  */
 final class UnlockedVault
 {
+    private const OBJECTION_SEED_TAG = "selfdataguard/objection-seed/v1\0";
+
     private string $masterKey;
     private bool $locked = false;
 
@@ -104,12 +106,13 @@ final class UnlockedVault
      * A new escrow compartment: its key drawn here, wrapped under the master key
      * for the user, sealed to the administrator's public key.
      *
-     * Given a keeper's public keys, wrap_user also carries the escrowId — the
-     * one given, so that a new key keeps its compartment's identity, or a new
-     * one —, those keys and a fresh objection seed, and wrap_admin is sealed
-     * again to the keeper (KeeperSeal). What the holder sealed under the master
-     * key, the administrator cannot rewrite: the keeper a session asks is the
-     * one named at the deposit, not the one the database names today.
+     * Given a keeper's public keys, wrap_user also carries the objection seed,
+     * derived from the master key — the same at every deposit of this vault —,
+     * the escrowId, which is the fingerprint of its public key, and those keys;
+     * wrap_admin is sealed again to the keeper (KeeperSeal). What the holder
+     * sealed under the master key, the administrator cannot rewrite: the keeper
+     * a session asks is the one named at the deposit, not the one the database
+     * names today, and the escrowId is computed, not read from the database.
      *
      * $createdAt and $revision carry over from the compartment a new key
      * replaces; the storage compares the revision when it writes.
@@ -121,18 +124,21 @@ final class UnlockedVault
         string $adminPublicKeyB64,
         DateTimeImmutable $now,
         ?array $keeperPublicKeys = null,
-        ?string $escrowId = null,
         ?DateTimeImmutable $createdAt = null,
         int $revision = 0
     ): array {
         $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);
         $seed      = null;
+        $escrowId  = null;
         $plain     = $escrowKey;
         try {
             if ($keeperPublicKeys !== null) {
                 $keeperPublicKeys = KeeperSeal::checkKeys($keeperPublicKeys);
-                $escrowId ??= KeeperSeal::newEscrowId();
-                $seed  = Primitives::randomBytes(SODIUM_CRYPTO_SIGN_SEEDBYTES);
+                // The same seed, deposit after deposit and keeper after keeper: the holder objects to any box of the escrow.
+                $seed     = hash_hmac('sha256', self::OBJECTION_SEED_TAG . $this->userId, $this->key(), true);
+                $pair     = sodium_crypto_sign_seed_keypair($seed);
+                $escrowId = KeeperSeal::escrowIdFor(sodium_crypto_sign_publickey($pair));
+                Primitives::zeroize($pair);
                 $plain = $escrowKey . $escrowId . $keeperPublicKeys['sign'] . $keeperPublicKeys['box'] . $seed;
             }
             $wrapUser = Primitives::encrypt($plain, $this->key(), EscrowVault::wrapAad($this->userId));

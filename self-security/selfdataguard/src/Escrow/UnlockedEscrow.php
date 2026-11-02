@@ -57,6 +57,10 @@ final class UnlockedEscrow
         }
         $this->escrowKey     = $escrowKey;
         $this->objectionSeed = $objectionSeed;
+        if ($keeper !== null && !hash_equals(KeeperSeal::escrowIdFor($this->objectionPublic()), (string) $escrowId)) {
+            $this->lock();
+            throw new RuntimeException('This escrowId is not the fingerprint of the objection key wrap_user carries');
+        }
     }
 
     /** An escrow field, bound to this account and to its name. */
@@ -103,16 +107,27 @@ final class UnlockedEscrow
         return KeeperSeal::wrap((string) $this->escrowId, $this->userId, $this->objectionPublic(), $inner, $this->keeper['box']);
     }
 
-    /** The holder's objection to the read of this escrow for $caseRef, for the keeper to verify. */
+    /** The holder's objection to the read of this escrow for $caseRef: a token the keeper verifies (KeeperSeal::verifyObjection()). */
     public function signObjection(string $caseRef): string
     {
+        return $this->signToken(KeeperSeal::objectionMessage((string) $this->escrowId, $caseRef));
+    }
+
+    /** The holder's retirement of this escrow from a keeper the deployment replaced (KeeperSeal::verifyRetirement()). */
+    public function signRetirement(): string
+    {
+        return $this->signToken(KeeperSeal::retirementMessage((string) $this->escrowId));
+    }
+
+    private function signToken(string $message): string
+    {
         if ($this->keeper === null) {
-            throw new RuntimeException('This escrow is not bound to a keeper: there is no read to object to');
+            throw new RuntimeException('This escrow is not bound to a keeper: it holds no objection key');
         }
         $pair   = sodium_crypto_sign_seed_keypair($this->seed());
         $secret = sodium_crypto_sign_secretkey($pair);
         try {
-            return sodium_crypto_sign_detached(KeeperSeal::objectionMessage((string) $this->escrowId, $caseRef), $secret);
+            return KeeperSeal::token($message, $secret);
         } finally {
             Primitives::zeroize($secret);
             Primitives::zeroize($pair);

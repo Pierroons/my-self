@@ -81,11 +81,10 @@ final class EscrowVault
         UnlockedVault $session,
         string $adminPublicKeyB64,
         ?array $keeperPublicKeys = null,
-        ?string $escrowId = null,
         ?DateTimeImmutable $createdAt = null,
         int $revision = 0
     ): array {
-        return $session->createEscrow($adminPublicKeyB64, $this->now(), $keeperPublicKeys, $escrowId, $createdAt, $revision);
+        return $session->createEscrow($adminPublicKeyB64, $this->now(), $keeperPublicKeys, $createdAt, $revision);
     }
 
     /**

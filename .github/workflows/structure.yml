@@ -3670,7 +3670,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=40 [sanity_conformance]=84 [sanity_escrow]=65
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=72 [sanity_keys]=23 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=80 [sanity_keys]=24 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4113,21 +4113,38 @@ jobs:
                       throw new EscrowKeeperException(" $K 'refused, but not as keeper-missing'
           canari $D/src/Escrow/EscrowCeremony.php "        if (\$due > time()) {" '        if (false) {' $K 'This read is not due yet'
           KC=$D/src/Escrow/KeeperConformance.php
-          canari $KC "            'release-takes-any-head'           => ['releaseTakesAnyHead', 0]," '' $K 'HeadJudgeKeeper passed a case it breaks'
-          canari $KC "            'release-only-when-due'            => ['releaseOnlyWhenDue', self::DELAY]," '' $K 'EarlyReleaseKeeper passed a case it breaks'
-          canari $KC "            'release-needs-the-announced-box'  => ['releaseNeedsTheAnnouncedBox', 0]," '' $K 'AnyBoxReleaseKeeper passed a case it breaks'
-          canari $KC "            'new-box-restarts-the-delay'       => ['newBoxRestartsTheDelay', self::DELAY]," '' $K 'FirstBoxKeeper passed a case it breaks'
-          canari $KC "            'announcement-lapses'              => ['announcementLapses', self::DELAY]," '' $K 'NeverLapsesKeeper passed a case it breaks'
-          canari $KC "            'objection-survives-re-announce'   => ['objectionSurvivesReAnnounce', self::DELAY]," '' $K 'ForgetsObjectionKeeper passed a case it breaks'
-          canari $KC "            'release-within-the-lapse'         => ['releaseWithinTheLapse', self::DELAY]," '' $K 'LapsesAtOnceKeeper passed a case it breaks'
-          canari $KC "            'public-keys'                      => ['publicKeys', 0]," '' $K 'BadKeysKeeper passed a case it breaks'
-          canari $KC "            'announce-is-idempotent'           => ['announceIdempotent', self::DELAY]," '' $K 'MovingDeadlineKeeper passed a case it breaks'
-          canari $KC "            'release-hands-back-the-inner-box' => ['releaseHandsBack', 0]," '' $K 'WrongInnerKeeper passed a case it breaks'
+          canari $KC "            'public-keys'                         => ['publicKeys', 0]," '' $K 'BadKeysKeeper passed a case it breaks'
+          canari $KC "            'announce-reads-the-box'              => ['announceReadsTheBox', 0]," '' $K 'OpensAnyBoxKeeper passed a case it breaks'
+          canari $KC "            'announce-is-idempotent'              => ['announceIdempotent', self::DELAY]," '' $K 'MovingDeadlineKeeper passed a case it breaks'
+          canari $KC "            'announcement-holds-the-case'         => ['announcementHoldsTheCase', self::DELAY]," '' $K 'RestartingKeeper passed a case it breaks'
+          canari $KC "            'announce-checks-the-objection-key'   => ['announceChecksTheObjectionKey', 0]," '' $K 'ForeignKeyKeeper passed a case it breaks'
+          canari $KC "            'keyless-box-refused-once-keyed'      => ['keylessBoxRefusedOnceKeyed', 0]," '' $K 'KeylessAfterKeyedKeeper passed a case it breaks'
+          canari $KC "            'release-hands-back-the-inner-box'    => ['releaseHandsBack', 0]," '' $K 'WrongInnerKeeper passed a case it breaks'
+          canari $KC "            'release-is-recorded'                 => ['releaseRecorded', 0]," '' $K 'UnrecordedReleaseKeeper passed a case it breaks'
+          canari $KC "            'release-only-announced'              => ['releaseOnlyAnnounced', 0]," '' $K 'UnannouncedReleaseKeeper passed a case it breaks'
+          canari $KC "            'release-takes-any-head'              => ['releaseTakesAnyHead', 0]," '' $K 'HeadJudgeKeeper passed a case it breaks'
+          canari $KC "            'release-only-when-due'               => ['releaseOnlyWhenDue', self::DELAY]," '' $K 'EarlyReleaseKeeper passed a case it breaks'
+          canari $KC "            'release-within-the-lapse'            => ['releaseWithinTheLapse', self::DELAY]," '' $K 'LapsesAtOnceKeeper passed a case it breaks'
+          canari $KC "            'release-repeatable-within-the-window' => ['releaseRepeatable', 0]," '' $K 'ConsumingReleaseKeeper passed a case it breaks'
+          canari $KC "            'announcement-lapses'                 => ['announcementLapses', self::DELAY]," '' $K 'NeverLapsesKeeper passed a case it breaks'
+          canari $KC "            'attestation-fresh-and-scoped'        => ['attestationFreshAndScoped', 0]," '' $K 'StaleAttestationKeeper passed a case it breaks'
+          canari $KC "            'objection-under-the-escrow-key'      => ['objectionUnderTheEscrowKey', self::DELAY]," '' $K 'ObjectionBlindKeeper passed a case it breaks'
+          canari $KC "            'objection-needs-an-announcement'     => ['objectionNeedsAnAnnouncement', self::DELAY]," '' $K 'ObjectionWithoutAnnouncementKeeper passed a case it breaks'
+          canari $KC "            'objection-survives-re-announce'      => ['objectionSurvivesReAnnounce', self::DELAY]," '' $K 'ForgetsObjectionKeeper passed a case it breaks'
+          canari $KC "            'retire-is-final'                     => ['retireIsFinal', 0]," '' $K 'ForgetsRetirementKeeper passed a case it breaks'
           canari $D/src/SelfDataGuard.php "        } catch (InvalidArgumentException) {
                       return ['reason' => 'keeper-mismatch'] + \$out;
                   }" "        }" $K 'escrowReads() threw on a keeper the database did not record'
           canari $D/src/Escrow/EscrowCeremony.php "                \$e instanceof StaleEscrowException               => 'stale-escrow'," '' \
             $K 'the log does not name the race'
+          canari $D/src/Vault/UnlockedVault.php "                \$seed     = hash_hmac('sha256', self::OBJECTION_SEED_TAG . \$this->userId, \$this->key(), true);" \
+            "                \$seed     = random_bytes(32);" $K 'a deposit changed the escrowId'
+          canari $D/src/Escrow/UnlockedEscrow.php "        if (\$keeper !== null && !hash_equals(KeeperSeal::escrowIdFor(\$this->objectionPublic()), (string) \$escrowId)) {" \
+            "        if (false) {" $K 'an escrow whose escrowId is not the fingerprint of its objection key was taken'
+          canari $D/src/Escrow/KeeperSeal.php "        return hash_equals(self::escrowIdFor(\$public), \$escrowId)
+                      && sodium_crypto_sign_verify_detached(" "        return sodium_crypto_sign_verify_detached(" $K 'the bench keeper fails the suite'
+          canari $D/src/Escrow/KeeperSeal.php "            && (\$box['objection'] === null || hash_equals(self::escrowIdFor(\$box['objection']), \$escrowId));" ";" \
+            $K 'the bench keeper fails the suite'
           canari $D/bin/escrow-ceremony.php '    exit(4);' '    exit(2);' $D/tests/sanity_ceremony.php 'a read under a delay did not exit 4'
           canari $D/src/Escrow/EscrowCeremony.php "        if (\$live !== null && !EscrowVault::isKeeperSealed(\$live)) {" '        if (false) {' \
             $D/tests/sanity_ceremony.php 'seal-to-keeper did not seal the escrow sealed before the keeper'

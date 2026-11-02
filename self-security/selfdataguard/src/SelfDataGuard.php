@@ -1062,12 +1062,11 @@ final class SelfDataGuard
             [$record, $ciphertexts] = $read;
             $old = $this->escrow->unlockAsUser($record, $session);
             try {
-                $kept     = EscrowFieldCrypter::decryptBatch($old, $ciphertexts);
-                $escrowId = $old->escrowId ?? KeeperSeal::escrowIdOf($record->wrapAdmin);
+                $kept = EscrowFieldCrypter::decryptBatch($old, $ciphertexts);
             } finally {
                 $old->lock();
             }
-            $new = $this->escrow->create($session, $adminPublicKey, $keys, $escrowId, $record->createdAt, $record->revision);
+            $new = $this->escrow->create($session, $adminPublicKey, $keys, $record->createdAt, $record->revision);
             try {
                 $this->storage->rotateEscrow(
                     $session->generation(),
@@ -1160,9 +1159,9 @@ final class SelfDataGuard
             if (!$this->hasKeeper() || !$this->boundToOurKeeper($unlocked)) {
                 throw new RuntimeException("The keeper this escrow names is not the façade's: the objection would go to the wrong keeper");
             }
-            $signature = $unlocked->signObjection($caseRef);
+            $token = $unlocked->signObjection($caseRef);
             try {
-                $this->keeper->object((string) $unlocked->escrowId, $caseRef, $signature);
+                $this->keeper->object((string) $unlocked->escrowId, $caseRef, $token);
             } catch (Throwable $e) {
                 throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the objection: the read it names may go through once due', $e);
             }
