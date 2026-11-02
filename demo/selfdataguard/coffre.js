@@ -82,10 +82,13 @@ function renderEscrow(escrow, hasEscrow) {
   $('#escrow-form').indice_recup.value = (escrow && escrow.indice_recup) || '';
 }
 
-// « Non établi » n'est jamais « aucune lecture » : une attestation absente ou fausse
-// se dit comme telle.
+// « Non établi » n'est jamais « aucune remise » : une attestation absente ou fausse
+// se dit comme telle. Une remise est la boîte rendue par le gardien : la lecture qui
+// suit peut encore échouer, elle compte quand même.
 const MOTIFS = {
-  'not-keeper-sealed': "pas de gardien : l'administrateur peut lire ce séquestre seul, et aucune lecture ne t'est attestée",
+  'not-keeper-sealed': "pas de gardien : l'administrateur peut lire ce séquestre seul, et aucune remise ne t'est attestée",
+  'not-pinned': "scellé au gardien par l'exploitant, pas encore par toi : ton prochain dépôt le lie à ton gardien",
+  'keeper-changed': "le service a changé de gardien : ce que l'ancien a remis reste chez lui",
   'no-keeper': 'aucun gardien joignable par ce service',
   'keeper-unreachable': 'le gardien ne répond pas',
 };
@@ -94,12 +97,16 @@ function renderReads(reads) {
   const p = $('#escrow-reads');
   if (!reads) { p.textContent = ''; return; }
   if (!reads.established) {
-    p.textContent = '🔎 Lectures non établies — ' + (MOTIFS[reads.reason] || `attestation refusée (${reads.reason})`) + '.';
+    p.textContent = '🔎 Remises non établies — ' + (MOTIFS[reads.reason] || `attestation refusée (${reads.reason})`) + '.';
     return;
   }
-  const lues = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
-  const annoncees = reads.pending.map((r) => `${r.case} annoncée pour le ${new Date(r.due * 1000).toLocaleString()}`);
-  p.textContent = '🔎 Lectures attestées par le gardien : ' + ([...lues, ...annoncees].join(' · ') || 'aucune') + '.';
+  if (reads.keeper === null) {
+    p.textContent = '🔎 Aucun séquestre déposé : rien à remettre.';
+    return;
+  }
+  const remises = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
+  const annoncees = reads.pending.map((r) => `${r.case} ${r.objected ? 'refusée par toi' : 'annoncée pour le ' + new Date(r.due * 1000).toLocaleString()}`);
+  p.textContent = '🔎 Remises attestées par le gardien : ' + ([...remises, ...annoncees].join(' · ') || 'aucune') + '.';
 }
 
 function renderCoffre(data) {

@@ -968,17 +968,22 @@ final class SqliteAdapter implements StorageInterface
         }
 
         if ($package['escrow'] !== null) {
+            $row     = ['user_id' => $userId] + (array) $package['escrow'];
+            $columns = $this->columnsOf('selfdataguard_escrow');
+            $unknown = array_diff(array_keys($row), $columns);
+            if ($unknown !== []) {
+                throw new RuntimeException(
+                    "The archive of '{$userId}' carries escrow columns this database does not have ("
+                    . implode(', ', $unknown) . '): it was written by a newer SelfDataGuard — upgrade to bring it back'
+                );
+            }
+            $kept = array_values(array_intersect($columns, array_keys($row)));
             $this->pdo->prepare(
-                'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at, revision)
-                 VALUES (:uid, :wu, :wa, :ca, :ua, :rev)'
-            )->execute([
-                ':uid' => $userId,
-                ':wu'  => (string) $package['escrow']['wrap_user'],
-                ':wa'  => (string) $package['escrow']['wrap_admin'],
-                ':ca'  => (string) $package['escrow']['created_at'],
-                ':ua'  => (string) $package['escrow']['updated_at'],
-                ':rev' => (int) ($package['escrow']['revision'] ?? 0),
-            ]);
+                'INSERT INTO selfdataguard_escrow (' . implode(', ', $kept) . ') VALUES (:' . implode(', :', $kept) . ')'
+            )->execute(array_combine(
+                array_map(static fn (string $c): string => ":{$c}", $kept),
+                array_map(static fn (string $c): mixed => $row[$c], $kept)
+            ));
         }
         $escrowField = $this->pdo->prepare(
             'INSERT INTO selfdataguard_escrow_fields (user_id, field_name, ciphertext, updated_at) VALUES (:uid, :fn, :ct, :ua)'
@@ -1217,12 +1222,13 @@ final class SqliteAdapter implements StorageInterface
 
     private function hasColumn(string $table, string $column): bool
     {
-        foreach ($this->pdo->query("PRAGMA table_info({$table})") as $info) {
-            if ($info['name'] === $column) {
-                return true;
-            }
-        }
-        return false;
+        return in_array($column, $this->columnsOf($table), true);
+    }
+
+    /** @return list<string> the columns of $table, as the database has them */
+    private function columnsOf(string $table): array
+    {
+        return array_map(static fn (array $info): string => (string) $info['name'], $this->pdo->query("PRAGMA table_info({$table})")->fetchAll());
     }
 
     /**

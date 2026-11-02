@@ -329,6 +329,19 @@ $r['code'] === 0 && str_contains($r['out'], 'frank : coffre vivant sans changeme
 $kdg->getEscrowFieldsAsUser($frank) === ['contact_secours' => 'frank-secours@example.org']
     ? ok('its holder still reads it')
     : ko('the operator\'s pass took the escrow from its holder');
+foreach (['gus', 'hugo'] as $name) {
+    $kplain->setEscrowFields($kplain->register($name, "motdepasse-{$name}-fort"), $admin['publicKey'], ['contact_secours' => "{$name}@example.org"]);
+}
+(new PDO("sqlite:{$kdb}"))->exec("UPDATE selfdataguard_escrow SET wrap_admin = '%%%' WHERE user_id = 'gus'");
+$r = run(['seal-to-keeper', 'gus', 'hugo'], '', $kenv);
+$failed = array_values(array_filter(
+    array_map(static fn (string $l): array => json_decode($l, true), array_filter(explode("\n", (string) file_get_contents("{$ws}/audit-k.log")))),
+    static fn (array $e): bool => ($e['event']['action'] ?? '') === 'seal-to-keeper-failed'
+));
+$r['code'] === 2 && str_contains($r['out'], 'hugo : coffre vivant scellé au gardien') && str_contains($r['err'], 'à relancer : gus')
+    && ($failed[0]['event']['target'] ?? null) === 'gus'
+    ? ok('an account that fails is named and logged, the pass goes on to the next, and exits 2')
+    : ko('the pass stopped at the account that failed, or did not name it', $r['code'] . ' ' . trim($r['out'] . $r['err']));
 
 // -----------------------------------------------------------------------------
 

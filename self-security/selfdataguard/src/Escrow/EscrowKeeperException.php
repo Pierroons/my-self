@@ -9,8 +9,11 @@ use Throwable;
 
 /**
  * The compartment is sealed to a keeper, and the ceremony could not go
- * through it: none was given (reason keeper-missing), or it refused or did not
- * answer (keeper-failed). Nothing was unsealed.
+ * through it: none was given (reason keeper-missing), another than the one the
+ * database recorded was (keeper-mismatch), or it refused or did not answer
+ * (keeper-failed). Nothing was unsealed. The façade raises it too: a keeper
+ * whose public keys do not come (keeper-unreachable), or that did not record
+ * an objection (keeper-failed).
  */
 final class EscrowKeeperException extends RuntimeException
 {

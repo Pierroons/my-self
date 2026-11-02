@@ -20,6 +20,7 @@ require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/keeper_fixture.php';
 require __DIR__ . '/keeper_doubles.php';
+require __DIR__ . '/storage_doubles.php';
 
 use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
@@ -145,8 +146,8 @@ count($released) === 1 && $released[0]['case'] === 'LIT-1'
     ? ok('the keeper recorded the release, with its case')
     : ko('the keeper did not record the release');
 $intent = array_values(array_filter(logEntries($logPath), static fn (array $e): bool => ($e['event']['action'] ?? '') === 'escrow-unlock-intent'));
-($intent[0]['event']['keeper'] ?? null) === BenchKeeper::class && ($intent[0]['seq'] ?? null) === $released[0]['seq']
-    ? ok('the intention names the keeper, and the keeper holds the head of that intention')
+($intent[0]['event']['keeper'] ?? null) === KeeperSeal::fingerprint($keeper->publicKeys()) && ($intent[0]['seq'] ?? null) === $released[0]['seq']
+    ? ok('the intention names the keeper by its fingerprint, and the keeper holds the head of that intention')
     : ko('the intention does not name the keeper, or the keeper holds another head', json_encode($intent[0] ?? null));
 
 // -----------------------------------------------------------------------------
@@ -226,6 +227,17 @@ try {
         ? ok("alice's keeper box moved into bob's record: the keeper refuses, the box names another account")
         : ko('refused for another reason', $e->reason);
 }
+$otherLog = sys_get_temp_dir() . '/sdg-keeper-other-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($storage, logPath: $otherLog, keeper: new BenchKeeper())->readEscrow('alice', 'LIT-OTHER', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('a ceremony given another keeper than the database recorded read the escrow');
+} catch (EscrowKeeperException $e) {
+    $last = logEntries($otherLog);
+    $e->reason === 'keeper-mismatch' && (end($last)['event']['reason'] ?? null) === 'keeper-mismatch'
+        ? ok('a ceremony given another keeper than the database recorded: refused, keeper-mismatch, in the log')
+        : ko('refused, but not as keeper-mismatch', $e->reason);
+}
+@unlink($otherLog);
 
 // -----------------------------------------------------------------------------
 
@@ -352,9 +364,21 @@ $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sea
     : ko('the archive escrow did not read through the keeper');
 $archive = $slowDg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, 'motdepasse-carol-01');
 $archiveReads = $slowDg->archiveEscrowReads($archive);
-$archiveReads['established'] && in_array('LIT-7', array_column($archiveReads['reads'], 'case'), true)
-    ? ok('the holder who reopens the archive sees its reads, LIT-7 among them')
+$archiveReads['established'] && in_array('LIT-7', array_column($archiveReads['reads'], 'case'), true) && !$archiveReads['reseal']
+    ? ok('the holder who reopens the archive sees its reads, LIT-7 among them — and no reseal is asked of an archive')
     : ko('archiveEscrowReads() did not show the archive read', json_encode($archiveReads));
+try {
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$slowDg->objectToArchiveEscrowRead($archive, 'LIT-12');
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-12']['due'] = time() - 1;
+try {
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('a read of an archive its holder objected to went through once due');
+} catch (EscrowKeeperException) {
+    ok('the holder objects to a read of an archive under the archive\'s own key, and it does not go through');
+}
 
 // -----------------------------------------------------------------------------
 
@@ -384,6 +408,35 @@ $reads = $withKeeper->escrowReads($dave);
 !$reads['established'] && $reads['reason'] === 'not-keeper-sealed' && $reads['reseal']
     ? ok('before: "not established — not-keeper-sealed", and reseal asked')
     : ko('an escrow sealed to the administrator alone was not reported as such', json_encode($reads));
+$emma = $before0->register('emma', 'motdepasse-emma-01');
+$before0->setEscrowFields($emma, $admin['publicKey'], ['contact' => 'emma-secours@example.org']);
+$passLog = sys_get_temp_dir() . '/sdg-keeper-pass-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($plainDb, logPath: $passLog, keeper: new BenchKeeper())->sealToKeeper('emma');
+    ko('a ceremony given another keeper than the database recorded sealed to it');
+} catch (InvalidArgumentException $e) {
+    $last = logEntries($passLog);
+    !EscrowVault::isKeeperSealed($plainDb->loadEscrow('emma')) && (end($last)['event']['action'] ?? null) === 'seal-to-keeper-failed'
+        ? ok('the pass with another keeper than the database recorded: refused before any write, and logged')
+        : ko('the pass was refused, but sealed something or logged nothing');
+}
+benchCeremony($plainDb, logPath: $passLog, keeper: $keeper)->sealToKeeper('dave');
+$reads = $withKeeper->escrowReads($dave);
+!$reads['established'] && $reads['reason'] === 'not-pinned' && $reads['reseal'] && !$reads['pinned']
+    ? ok('wrapped by the operator\'s pass: "not established — not-pinned", reseal asked — the escrowId in clear is not trusted')
+    : ko('an escrow the pass wrapped reads as established', json_encode($reads));
+@unlink($passLog);
+$freshDb = new SqliteAdapter('sqlite::memory:');
+$noKeeperYet = new SelfDataGuard($freshDb, $blindKey);
+$finn = $noKeeperYet->register('finn', 'motdepasse-finn-01');
+$noKeeperYet->setEscrowFields($finn, $admin['publicKey'], ['contact' => 'finn-secours@example.org']);
+benchCeremony($freshDb, keeper: $keeper)->sealToKeeper('finn');
+try {
+    new SelfDataGuard($freshDb, $blindKey);
+    ko('the pass did not record its keeper: a façade without it opened the database, and its next deposit would undo the pass');
+} catch (InvalidArgumentException) {
+    ok('the pass records its keeper on a database that recorded none: a façade without it is refused after');
+}
 $withKeeper->sealEscrowToKeeper($dave, $admin['publicKey']) && EscrowVault::isKeeperSealed($plainDb->loadEscrow('dave'))
     && !$withKeeper->sealEscrowToKeeper($dave, $admin['publicKey'])
     ? ok('sealEscrowToKeeper() seals it once, then has nothing to do')
@@ -391,6 +444,144 @@ $withKeeper->sealEscrowToKeeper($dave, $admin['publicKey']) && EscrowVault::isKe
 $withKeeper->getEscrowFieldsAsUser($dave) === ['contact' => 'dave-secours@example.org']
     ? ok('its fields come through')
     : ko('sealing to the keeper lost the escrow fields');
+
+// -----------------------------------------------------------------------------
+
+section('rebindEscrowAdmin() under a keeper seals to the keeper, never to the administrator alone');
+
+$gina = $dg->register('gina', 'motdepasse-gina-01');
+$dg->setEscrowFields($gina, $admin['publicKey'], ['contact' => 'gina-secours@example.org']);
+$ginaRecord = $storage->loadEscrow('gina');
+$storage->replaceEscrow($dg->generationOf('gina'), new EscrowRecord(
+    'gina', $ginaRecord->wrapUser, random_bytes(80), $ginaRecord->createdAt, new DateTimeImmutable(), $ginaRecord->revision
+));
+$dg->rebindEscrowAdmin($gina, $admin['publicKey']);
+$rebound = $storage->loadEscrow('gina');
+EscrowVault::isKeeperSealed($rebound) && $dg->getEscrowFieldsAsUser($gina) === ['contact' => 'gina-secours@example.org']
+    ? ok('a wrap_admin written over the keeper\'s box is re-sealed to the keeper, not to the administrator alone')
+    : ko('rebindEscrowAdmin() sealed the escrow to the administrator alone under a keeper');
+
+// -----------------------------------------------------------------------------
+
+section('A keeper that does not answer leaves the vaults open, and takes no deposit');
+
+$remote = new class extends BenchKeeper {
+    public bool $keysDown = false;
+    public function publicKeys(): array
+    {
+        if ($this->keysDown) {
+            throw new RuntimeException('The keeper service does not answer');
+        }
+        return parent::publicKeys();
+    }
+};
+$remoteDb = new SqliteAdapter('sqlite::memory:');
+$hana = (new SelfDataGuard($remoteDb, $blindKey, keeper: $remote))->register('hana', 'motdepasse-hana-01');
+(new SelfDataGuard($remoteDb, $blindKey, keeper: $remote))->setEscrowFields($hana, $admin['publicKey'], ['contact' => 'hana-secours@example.org']);
+$remote->keysDown = true;
+try {
+    $downDg = new SelfDataGuard($remoteDb, $blindKey, keeper: $remote);
+    $hanaAgain = $downDg->loginWithPassword('hana', 'motdepasse-hana-01');
+    ok('the façade opens, and the holder logs in, while the keeper does not answer');
+    $reads = $downDg->escrowReads($hanaAgain);
+    !$reads['established'] && $reads['reason'] === 'keeper-unreachable'
+        ? ok('escrowReads(): not established — keeper-unreachable')
+        : ko('a silent keeper read as no read', json_encode($reads));
+    $before = $remoteDb->loadEscrow('hana');
+    try {
+        $downDg->setEscrowFields($hanaAgain, $admin['publicKey'], ['contact' => 'autre@example.org']);
+        ko('a deposit went through while the keeper gave no public keys');
+    } catch (EscrowKeeperException $e) {
+        $e->reason === 'keeper-unreachable' && $remoteDb->loadEscrow('hana')->revision === $before->revision
+            ? ok('a deposit is refused, keeper-unreachable — never sealed to the administrator alone')
+            : ko('refused, but not as keeper-unreachable, or the escrow moved', $e->reason);
+    }
+} catch (Throwable $e) {
+    ko('a façade did not open while the keeper was down', $e->getMessage());
+}
+$remote->keysDown = false;
+
+// -----------------------------------------------------------------------------
+
+section('What the holder sees under a keeper that changed, and an objection to a keeper that does not answer');
+
+$keeperA = new BenchKeeper(delay: 3600);
+$keeperB = new BenchKeeper(delay: 3600);
+$changeDb = new SqliteAdapter('sqlite::memory:');
+$dgA  = new SelfDataGuard($changeDb, $blindKey, keeper: $keeperA);
+$ivan = $dgA->register('ivan', 'motdepasse-ivan-01');
+$dgA->setEscrowFields($ivan, $admin['publicKey'], ['contact' => 'ivan-secours@example.org']);
+$changeLog = sys_get_temp_dir() . '/sdg-keeper-change-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($changeDb, logPath: $changeLog, keeper: $keeperA)->readEscrow('ivan', 'LIT-I1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$keeperA->down = true;
+try {
+    $dgA->objectToEscrowRead($ivan, 'LIT-I1');
+    ko('an objection to a keeper that does not answer went through');
+} catch (EscrowKeeperException $e) {
+    $e->reason === 'keeper-failed'
+        ? ok('an objection the keeper does not record: EscrowKeeperException, keeper-failed — not a bare error')
+        : ko('refused, but not as keeper-failed', $e->reason);
+} catch (Throwable $e) {
+    ko('an objection to a silent keeper raised a bare error', get_class($e));
+}
+$keeperA->down = false;
+$changeDb->replaceSetting(SelfDataGuard::SETTING_KEEPER, KeeperSeal::fingerprint($keeperA->publicKeys()), KeeperSeal::fingerprint($keeperB->publicKeys()));
+$reads = (new SelfDataGuard($changeDb, $blindKey, keeper: $keeperB))->escrowReads($ivan);
+!$reads['established'] && $reads['reason'] === 'keeper-changed' && $reads['reseal']
+    && $reads['keeper'] === KeeperSeal::fingerprint($keeperA->publicKeys())
+    ? ok('the deposit named another keeper than the façade\'s: "keeper-changed", the pinned keeper named, reseal asked')
+    : ko('a keeper other than the one the deposit pinned answered for it', json_encode($reads));
+@unlink($changeLog);
+
+// -----------------------------------------------------------------------------
+
+section('A deposit landing between the reads of the envelope and of the fields');
+
+final class DepositBetweenReads extends DelegatingStorage
+{
+    /** @var (callable(): void)|null */
+    public $between = null;
+
+    public function loadEscrowFields(string $u, array $n = []): array
+    {
+        if ($this->between !== null) {
+            $act = $this->between;
+            $this->between = null;
+            $act();
+        }
+        return $this->inner->loadEscrowFields($u, $n);
+    }
+}
+$jules = $dg->register('jules', 'motdepasse-jules-01');
+$dg->setEscrowFields($jules, $admin['publicKey'], ['contact' => 'jules-secours@example.org']);
+$racing = new DepositBetweenReads($storage);
+$racingDg = new SelfDataGuard($racing, $blindKey, keeper: $keeper);
+$depositMeanwhile = static fn (array $f) => static fn () => $dg->setEscrowFields($jules, $admin['publicKey'], $f);
+try {
+    $racing->between = $depositMeanwhile(['indice' => 'jules-1']);
+    $got = $racingDg->getEscrowFieldsAsUser($jules);
+    ksort($got);
+    $got === ['contact' => 'jules-secours@example.org', 'indice' => 'jules-1']
+        ? ok('getEscrowFieldsAsUser(): read again under one revision — the fields of after the deposit')
+        : ko('getEscrowFieldsAsUser() returned fields of two revisions', json_encode($got));
+    $racing->between = $depositMeanwhile(['indice' => 'jules-2']);
+    $racingDg->setEscrowFields($jules, $admin['publicKey'], ['autre' => 'jules-3']);
+    $got = $dg->getEscrowFieldsAsUser($jules);
+    ksort($got);
+    $got === ['autre' => 'jules-3', 'contact' => 'jules-secours@example.org', 'indice' => 'jules-2']
+        ? ok('a deposit read again under one revision keeps the field the other deposit wrote')
+        : ko('a deposit lost a field written meanwhile', json_encode($got));
+    $racing->between = $depositMeanwhile(['indice' => 'jules-4']);
+    $read = benchCeremony($racing, keeper: $keeper)->readEscrow('jules', 'LIT-J1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ($read['indice'] ?? null) === 'jules-4'
+        ? ok('the ceremony reads the envelope and the fields under one revision before the keeper')
+        : ko('the ceremony read fields of another revision', json_encode($read));
+} catch (Throwable $e) {
+    ko('a deposit landing between the reads of the envelope and of the fields broke the read', $e->getMessage());
+}
 
 // -----------------------------------------------------------------------------
 

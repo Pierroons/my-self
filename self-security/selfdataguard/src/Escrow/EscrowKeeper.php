@@ -26,8 +26,9 @@ namespace Pierroons\SelfDataGuard\Escrow;
  * the escrowId, which stands in clear in the database: a case reference is
  * never a secret, never the capability that opens a case.
  *
- * A keeper never refuses for good, and counts no failure: a counter here would
- * close the holder's last door to whoever runs the ceremony.
+ * A keeper counts no failure and shuts nothing out after one: a counter here
+ * would close the holder's last door to whoever runs the ceremony. The one
+ * refusal that lasts is the holder's own objection.
  */
 interface EscrowKeeper
 {
@@ -57,7 +58,7 @@ interface EscrowKeeper
      * deposit since, which drew a new key — it starts the delay again and takes
      * the objection key the new box carries. One not released within LAPSE of
      * its time has lapsed: the next announce starts the delay again. An
-     * objection holds for its case for good: no announcement clears it.
+     * objection holds for its case with no time limit: no announcement clears it.
      */
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int;
 

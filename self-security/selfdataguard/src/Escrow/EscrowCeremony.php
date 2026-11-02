@@ -9,6 +9,7 @@ use Pierroons\SelfDataGuard\Crypto\Aad;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
@@ -31,15 +32,17 @@ use Throwable;
  *   4. for a compartment sealed to a keeper, the keeper's release, given the
  *      intention's head: it records the read and hands back the inner box —
  *      or holds it until a delay ends, or refuses it to an objection. Without
- *      a keeper (NoKeeper), such a compartment does not open.
+ *      a keeper (NoKeeper), such a compartment does not open; with another
+ *      than the one the database recorded, it does not either.
  *
  * Then the result, or the failure, goes to the log too. A refused intention is
  * in the log as much as a granted one.
  *
- * ⚠️ Against the administrator alone this holds nothing: whoever has the sealed
- * key file and its passphrase opens wrap_admin outside the library, with no log.
- * The ceremony keeps everyone else out, and keeps a trace for an administrator
- * who wants one. A second secret is a later lot.
+ * ⚠️ Without a keeper, this holds nothing against the administrator alone:
+ * whoever has the sealed key file and its passphrase opens wrap_admin outside
+ * the library, with no log. Under one, a compartment sealed to it opens only
+ * once the keeper hands its inner box back — recorded, and shown to the
+ * holder, whether the ceremony asked or not.
  */
 final class EscrowCeremony
 {
@@ -71,14 +74,12 @@ final class EscrowCeremony
         return $this->perform('escrow-unlock', $userId, $caseRef, null, ['fields' => $fieldNames], function (array $intent) use (
             $userId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
         ): array {
-            $record = $this->throughKeeper(
-                $this->storage->loadEscrow($userId) ?? throw new RuntimeException("No escrow compartment for '{$userId}'"),
-                $caseRef,
-                $intent
-            );
+            [$snapshot, $ciphertexts] = EscrowSnapshot::read($this->storage, $userId, $fieldNames)
+                ?? throw new RuntimeException("No escrow compartment for '{$userId}'");
+            $record = $this->throughKeeper($snapshot, $caseRef, $intent);
             $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
                 self::openWrapAdmin($record, $sk, $adminPublicKeyB64),
-                $this->storage->loadEscrowFields($userId, $fieldNames)
+                $ciphertexts
             ));
             return [$plain, ['returned' => array_keys($plain)]];
         });
@@ -147,6 +148,11 @@ final class EscrowCeremony
      * session holds wrap_user —, and its wrap_user names no keeper until its
      * next deposit, or SelfDataGuard::sealEscrowToKeeper().
      *
+     * The keeper is the one the database recorded, or recorded here when none
+     * is: given another, nothing is sealed — a box sealed to a keeper the
+     * deployment does not run opens for no one, and an archive's would stay so.
+     * A failure is logged, with the account.
+     *
      * @return array{live: bool, archives: list<string>, frozen: bool} what was sealed
      */
     public function sealToKeeper(string $userId): array
@@ -154,7 +160,29 @@ final class EscrowCeremony
         if ($this->keeper instanceof NoKeeper) {
             throw new RuntimeException('NoKeeper: there is no keeper to seal to');
         }
-        $box  = KeeperSeal::checkKeys($this->keeper->publicKeys())['box'];
+        try {
+            return $this->sealAccountToKeeper($userId);
+        } catch (Throwable $e) {
+            $this->log->append(['action' => 'seal-to-keeper-failed', 'target' => $userId, 'keeper' => $this->keeperName(),
+                'reason' => get_class($e), 'operator' => $this->operator]);
+            throw $e;
+        }
+    }
+
+    /** @return array{live: bool, archives: list<string>, frozen: bool} */
+    private function sealAccountToKeeper(string $userId): array
+    {
+        $keys  = KeeperSeal::checkKeys($this->keeper->publicKeys());
+        $print = KeeperSeal::fingerprint($keys);
+        $held  = $this->storage->loadSetting(SelfDataGuard::SETTING_KEEPER)
+            ?? $this->storage->claimSetting(SelfDataGuard::SETTING_KEEPER, $print);
+        if (!hash_equals($held, $print)) {
+            throw new InvalidArgumentException(
+                "This database recorded the escrow keeper {$held}, and this ceremony was given {$print}: nothing is "
+                . 'sealed — the ceremony and every façade are given the keeper the database recorded'
+            );
+        }
+        $box  = $keys['box'];
         $wrap = static fn (EscrowRecord $r): EscrowRecord => new EscrowRecord(
             $r->userId,
             $r->wrapUser,
@@ -180,7 +208,7 @@ final class EscrowCeremony
                 $done['archives'][] = $listed['id'];
             }
         }
-        $this->log->append(['action' => 'seal-to-keeper', 'target' => $userId, 'keeper' => get_class($this->keeper),
+        $this->log->append(['action' => 'seal-to-keeper', 'target' => $userId, 'keeper' => $print,
             'live' => $done['live'], 'archives' => $done['archives'], 'frozen' => $done['frozen'], 'operator' => $this->operator]);
         return $done;
     }
@@ -257,7 +285,7 @@ final class EscrowCeremony
         }
         try {
             $intent = $this->log->append(['action' => "{$act}-intent", 'arbiter' => get_class($this->arbiter),
-                'verdict' => $verdict->value, 'witness' => get_class($this->witness), 'keeper' => get_class($this->keeper)]
+                'verdict' => $verdict->value, 'witness' => get_class($this->witness), 'keeper' => $this->keeperName()]
                 + $failure + $context, $lastHead);
         } catch (AuditAnchorException $e) {
             $this->log->append(['action' => "{$act}-denied", 'reason' => 'log-behind-witness',
@@ -300,6 +328,19 @@ final class EscrowCeremony
         return $result;
     }
 
+    /** The keeper as the log names it: its fingerprint, which tells two keepers of one class apart. */
+    private function keeperName(): string
+    {
+        if ($this->keeper instanceof NoKeeper) {
+            return 'NoKeeper';
+        }
+        try {
+            return KeeperSeal::fingerprint(KeeperSeal::checkKeys($this->keeper->publicKeys()));
+        } catch (Throwable) {
+            return get_class($this->keeper) . ', without public keys';
+        }
+    }
+
     /**
      * $record with wrap_admin as the administrator opens it: for a compartment
      * sealed to a keeper, the inner box the keeper hands back, once it has
@@ -317,6 +358,18 @@ final class EscrowCeremony
             throw new EscrowKeeperException(
                 'keeper-missing',
                 "The escrow of '{$record->userId}' is sealed to a keeper, and this ceremony was given NoKeeper: nothing is unsealed"
+            );
+        }
+        try {
+            $print = KeeperSeal::fingerprint(KeeperSeal::checkKeys($this->keeper->publicKeys()));
+        } catch (Throwable $e) {
+            throw new EscrowKeeperException('keeper-failed', 'The keeper gave no public keys: nothing is unsealed', $e);
+        }
+        $held = $this->storage->loadSetting(SelfDataGuard::SETTING_KEEPER);
+        if ($held !== null && !hash_equals($held, $print)) {
+            throw new EscrowKeeperException(
+                'keeper-mismatch',
+                "This database recorded the escrow keeper {$held}, and this ceremony was given {$print}: nothing is unsealed"
             );
         }
         $escrowId = (string) KeeperSeal::escrowIdOf($record->wrapAdmin);

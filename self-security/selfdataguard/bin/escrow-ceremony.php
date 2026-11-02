@@ -35,7 +35,10 @@ declare(strict_types=1);
  * peut s'opposer. La commande sort alors en 4 ; la même commande, relancée après
  * l'échéance, lit. `seal-to-keeper` est la passe de l'exploitant : chaque séquestre
  * — vivant, dormant, archivé — que l'administrateur seul ouvre encore est scellé au
- * gardien, sans aucun secret en main ; sans compte nommé, tous ceux de la base.
+ * gardien, sans aucun secret en main ; sans compte nommé, tous ceux de la base. La passe
+ * scelle au gardien que la base a inscrit, et l'inscrit quand elle n'en a aucun ; donnée
+ * un autre, elle ne scelle rien. Un compte en échec est nommé et journalisé, et la passe
+ * continue : elle sort en 2 à la fin, avec la liste des comptes à relancer.
  *
  * Sorties : 0 fait · 1 journal rompu · 2 refusé · 3 configuration · 4 lecture
  * annoncée, à relancer après l'échéance.
@@ -52,7 +55,8 @@ declare(strict_types=1);
  *   DATAGUARD_ARBITER_FILE      fichier PHP qui renvoie l'EscrowArbiter
  *   DATAGUARD_WITNESS_FILE      fichier PHP qui renvoie le HeadWitness
  *   DATAGUARD_KEEPER_FILE       fichier PHP qui renvoie l'EscrowKeeper (`return new NoKeeper();` sans gardien, choisi
- *                               par son nom) : un séquestre scellé à un gardien ne s'ouvre que par lui
+ *                               par son nom) : un séquestre scellé à un gardien ne s'ouvre que par lui, et
+ *                               seulement par celui que la base a inscrit
  *   DATAGUARD_OPERATOR          (optionnel) identité opérateur pour le forensic
  */
 
@@ -233,19 +237,24 @@ if ($cmd === 'seal-to-keeper') {
     }
     $ceremony = ceremonie($auditLog, operatorContext());
     $gele = 0;
+    $echecs = [];
     foreach ($comptes as $compte) {
         try {
             $fait = $ceremony->sealToKeeper((string) $compte);
         } catch (\Throwable $e) {
             fwrite(STDERR, "⛔ {$compte} — {$e->getMessage()}\n");
-            exit(2);
+            $echecs[] = (string) $compte;
+            continue;
         }
         $gele += $fait['frozen'] ? 1 : 0;
         echo "🔐 {$compte} : " . ($fait['live'] ? 'coffre vivant scellé au gardien' : 'coffre vivant sans changement')
             . ($fait['archives'] === [] ? '' : ', ' . count($fait['archives']) . ' archive(s) scellée(s)')
             . ($fait['frozen'] ? ' — ⚠️ coffre gelé, non scellé : à reprendre après la clôture' : '') . "\n";
     }
-    exit($gele === 0 ? 0 : 2);
+    if ($echecs !== []) {
+        fwrite(STDERR, '⛔ ' . count($echecs) . ' compte(s) non scellé(s), à relancer : ' . implode(', ', $echecs) . "\n");
+    }
+    exit($gele === 0 && $echecs === [] ? 0 : 2);
 }
 
 $arites = ['unlock' => 2, 'unlock-archive' => 3, 'archives' => 2];

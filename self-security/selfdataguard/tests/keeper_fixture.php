@@ -25,7 +25,7 @@ class BenchKeeper implements EscrowKeeper
     /** Throws on every call while true: a keeper that does not answer. */
     public bool $down = false;
 
-    /** The time the keeper reads, when a bench sets it; before the clock it was given. */
+    /** The time the keeper reads, when a bench sets it — it takes precedence over the clock the keeper was given. */
     public ?int $now = null;
 
     protected string $boxPublic;

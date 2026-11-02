@@ -16,9 +16,9 @@ use Throwable;
  * holder blind. These cases are what tells it apart.
  *
  * It takes a factory, `$make(int $delay, callable $clock): EscrowKeeper`: each
- * call returns a keeper on a store of its own, which the suite fills and which
- * is thrown away after, waiting $delay seconds before a release and reading
- * the time from $clock, so that the suite plays the delay and the lapse
+ * call returns a keeper on a store of its own, which the suite fills and
+ * throws away after. That keeper waits $delay seconds before a release and
+ * reads the time from $clock, so that the suite plays the delay and the lapse
  * without waiting for them.
  *
  * It cannot see where the keeper's store lives. That it lives off the machine
