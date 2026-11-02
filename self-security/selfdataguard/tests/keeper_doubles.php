@@ -104,6 +104,45 @@ final class NeverLapsesKeeper extends BenchKeeper
     }
 }
 
+/** Lets an announcement lapse as soon as it falls due: a ceremony run again a minute late never reads. */
+final class LapsesAtOnceKeeper extends BenchKeeper
+{
+    protected function lapsed(array $held): bool
+    {
+        return $this->time() > $held['due'];
+    }
+}
+
+/** Gives public keys that are not keys. */
+final class BadKeysKeeper extends BenchKeeper
+{
+    public function publicKeys(): array
+    {
+        return ['sign' => 'not a key', 'box' => 'not a key'];
+    }
+}
+
+/** Moves the deadline of a read announced again with the same box. */
+final class MovingDeadlineKeeper extends BenchKeeper
+{
+    public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
+    {
+        $due = parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac);
+        $key = bin2hex($escrowId) . '|' . $caseRef;
+        $this->pending[$key]['due'] = $due + 1;
+        return $due + 1;
+    }
+}
+
+/** Hands back another inner box than the one the outer box holds. */
+final class WrongInnerKeeper extends BenchKeeper
+{
+    public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string
+    {
+        return strrev(parent::release($escrowId, $outerBox, $caseRef, $seq, $hmac));
+    }
+}
+
 /** Signs once per escrow, and hands that attestation back for every later request. */
 final class StaleAttestationKeeper extends BenchKeeper
 {

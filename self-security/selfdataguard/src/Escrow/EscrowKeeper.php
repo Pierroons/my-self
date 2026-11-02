@@ -56,8 +56,9 @@ interface EscrowKeeper
      * The announcement is of this box. A second announce of the same escrow
      * and case with the same box returns the same time; with another — a
      * deposit since, which drew a new key — it starts the delay again and takes
-     * the objection key the new box carries. One not released within LAPSE of
-     * its time has lapsed: the next announce starts the delay again. An
+     * the objection key the new box carries. It stays releasable for LAPSE
+     * from its time, and no less; one not released by then has lapsed: the
+     * next announce starts the delay again. An
      * objection holds for its case with no time limit: no announcement clears it.
      */
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int;

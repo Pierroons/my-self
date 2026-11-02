@@ -917,6 +917,8 @@ final class SelfDataGuard
      *     database rewrites;
      *   - `keeper-changed`: the deposit named another keeper than the façade's
      *     — what it released stays with that one;
+     *   - `keeper-mismatch`: the façade's keeper, whose keys came after it was
+     *     built, is not the one the database recorded;
      *   - `no-keeper`, `keeper-unreachable`, and `unreadable`, `signature`,
      *     `escrow`, `nonce` (KeeperAttestationException);
      *   - `pinned`: the keeper was named by the holder's own deposit;
@@ -1202,6 +1204,8 @@ final class SelfDataGuard
             $ours = (array) $this->keeperKeys();
         } catch (EscrowKeeperException) {
             return ['reason' => 'keeper-unreachable'] + $out;
+        } catch (InvalidArgumentException) {
+            return ['reason' => 'keeper-mismatch'] + $out;
         }
         if (!hash_equals(KeeperSeal::fingerprint($keys), KeeperSeal::fingerprint($ours))) {
             return ['reason' => 'keeper-changed', 'reseal' => $reseal] + $out;

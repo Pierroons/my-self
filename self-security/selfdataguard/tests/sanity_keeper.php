@@ -29,6 +29,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Escrow\KeeperConformance;
 use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 use Pierroons\SelfDataGuard\Escrow\NoKeeper;
+use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
@@ -500,6 +501,27 @@ try {
     ko('a façade did not open while the keeper was down', $e->getMessage());
 }
 $remote->keysDown = false;
+$otherRemote = new class extends BenchKeeper {
+    public bool $keysDown = true;
+    public function publicKeys(): array
+    {
+        if ($this->keysDown) {
+            throw new RuntimeException('The keeper service does not answer');
+        }
+        return parent::publicKeys();
+    }
+};
+$lateDg = new SelfDataGuard($remoteDb, $blindKey, keeper: $otherRemote);
+$hanaLate = $lateDg->loginWithPassword('hana', 'motdepasse-hana-01');
+$otherRemote->keysDown = false;
+try {
+    $reads = $lateDg->escrowReads($hanaLate);
+    !$reads['established'] && $reads['reason'] === 'keeper-mismatch'
+        ? ok('a keeper whose keys came after the façade, not the one the database recorded: "keeper-mismatch", a reason — not an exception')
+        : ko('another keeper than the database recorded answered for the holder', json_encode($reads));
+} catch (Throwable $e) {
+    ko('escrowReads() threw on a keeper the database did not record', get_class($e));
+}
 
 // -----------------------------------------------------------------------------
 
@@ -582,6 +604,33 @@ try {
 } catch (Throwable $e) {
     ko('a deposit landing between the reads of the envelope and of the fields broke the read', $e->getMessage());
 }
+final class DepositAtEveryRead extends DelegatingStorage
+{
+    /** @var (callable(): void)|null */
+    public $between = null;
+
+    public function loadEscrowFields(string $u, array $n = []): array
+    {
+        if ($this->between !== null) {
+            ($this->between)();
+        }
+        return $this->inner->loadEscrowFields($u, $n);
+    }
+}
+$stormy = new DepositAtEveryRead($storage);
+$stormy->between = $depositMeanwhile(['indice' => 'jules-orage']);
+$stormLog = sys_get_temp_dir() . '/sdg-keeper-storm-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($stormy, logPath: $stormLog, keeper: $keeper)->readEscrow('jules', 'LIT-J2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ko('a ceremony under deposits that never stop read anyway');
+} catch (StaleEscrowException) {
+    $last = logEntries($stormLog);
+    (end($last)['event']['reason'] ?? null) === 'stale-escrow'
+        ? ok('deposits that keep landing: the ceremony gives up after three reads, and the log says stale-escrow — not open-failed')
+        : ko('the log does not name the race', json_encode(end($last)));
+}
+$stormy->between = null;
+@unlink($stormLog);
 
 // -----------------------------------------------------------------------------
 
@@ -596,13 +645,17 @@ $failedOfBench === []
     ? ok('BenchKeeper: every case passes')
     : ko('the bench keeper fails the suite', json_encode($failedOfBench));
 foreach ([
+    BadKeysKeeper::class            => 'public-keys',
     OpensAnyBoxKeeper::class        => 'announce-reads-the-box',
+    MovingDeadlineKeeper::class     => 'announce-is-idempotent',
+    WrongInnerKeeper::class         => 'release-hands-back-the-inner-box',
     UnrecordedReleaseKeeper::class  => 'release-is-recorded',
     UnannouncedReleaseKeeper::class => 'release-only-announced',
     HeadJudgeKeeper::class          => 'release-takes-any-head',
     EarlyReleaseKeeper::class       => 'release-only-when-due',
     AnyBoxReleaseKeeper::class      => 'release-needs-the-announced-box',
     FirstBoxKeeper::class           => 'new-box-restarts-the-delay',
+    LapsesAtOnceKeeper::class       => 'release-within-the-lapse',
     NeverLapsesKeeper::class        => 'announcement-lapses',
     StaleAttestationKeeper::class   => 'attestation-fresh-and-scoped',
     ObjectionBlindKeeper::class     => 'objection-under-the-box-key',

@@ -89,6 +89,7 @@ const MOTIFS = {
   'not-keeper-sealed': "pas de gardien : l'administrateur peut lire ce séquestre seul, et aucune remise ne t'est attestée",
   'not-pinned': "scellé au gardien par l'exploitant, pas encore par toi : ton prochain dépôt le lie à ton gardien",
   'keeper-changed': "le service a changé de gardien : ce que l'ancien a remis reste chez lui",
+  'keeper-mismatch': "le gardien donné à ce service n'est pas celui que sa base a inscrit",
   'no-keeper': 'aucun gardien joignable par ce service',
   'keeper-unreachable': 'le gardien ne répond pas',
 };

@@ -317,6 +317,7 @@ final class EscrowCeremony
         } catch (Throwable $e) {
             $this->log->append(['action' => "{$act}-denied", 'reason' => match (true) {
                 $e instanceof EscrowKeeperException              => $e->reason,
+                $e instanceof StaleEscrowException               => 'stale-escrow',
                 $e instanceof WrongSecretException               => 'bad-passphrase',
                 $e instanceof LegacyCipherUnavailableException => 'legacy-cipher-unavailable',
                 $e instanceof InvalidArgumentException         => 'sealed-key-unreadable',

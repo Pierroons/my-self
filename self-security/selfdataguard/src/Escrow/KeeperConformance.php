@@ -84,6 +84,7 @@ final class KeeperConformance
             'release-only-when-due'            => ['releaseOnlyWhenDue', self::DELAY],
             'release-needs-the-announced-box'  => ['releaseNeedsTheAnnouncedBox', 0],
             'new-box-restarts-the-delay'       => ['newBoxRestartsTheDelay', self::DELAY],
+            'release-within-the-lapse'         => ['releaseWithinTheLapse', self::DELAY],
             'announcement-lapses'              => ['announcementLapses', self::DELAY],
             'attestation-fresh-and-scoped'     => ['attestationFreshAndScoped', 0],
             'objection-under-the-box-key'      => ['objectionUnderTheBoxKey', self::DELAY],
@@ -215,6 +216,19 @@ final class KeeperConformance
         );
         $this->keeper->object($box['escrowId'], 'K-new-box', $this->objection($after, 'K-new-box'));
         $this->assert($this->pendingOf($box['escrowId'], 'K-new-box')['objected'] ?? false, 'the objection under the new box\'s key is not shown');
+    }
+
+    private function releaseWithinTheLapse(): void
+    {
+        $box = $this->box();
+        $due = $this->announce($box, 'K-window-end');
+        $this->now = $due + EscrowKeeper::LAPSE - 1;
+        $this->keeper->release($box['escrowId'], $box['outer'], 'K-window-end', ++$this->seq, 'h');
+        $other = $this->box();
+        $this->now = time();
+        $due = $this->announce($other, 'K-window-start');
+        $this->now = $due + 60;
+        $this->keeper->release($other['escrowId'], $other['outer'], 'K-window-start', ++$this->seq, 'h');
     }
 
     private function announcementLapses(): void
