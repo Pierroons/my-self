@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/keeper_fixture.php';
 
+use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
+
 /** Gives public keys that are not keys. */
 final class BadKeysKeeper extends BenchKeeper
 {
@@ -215,5 +217,65 @@ final class ForgetsRetirementKeeper extends BenchKeeper
     {
         parent::retire($escrowId, $token);
         unset($this->retired[bin2hex($escrowId)]);
+    }
+}
+
+/** Hands back any box it opens once a read is announced: a box of another escrow reads under this one's announcement. */
+final class AnyEscrowReleaseKeeper extends BenchKeeper
+{
+    protected function releasedBox(string $escrowId, string $outerBox): array
+    {
+        return $this->openForBench($outerBox);
+    }
+}
+
+/** Checks which key a retirement token carries, not its signature nor the keeper it names: a former keeper replays it here. */
+final class UnboundRetirementKeeper extends BenchKeeper
+{
+    public function retire(string $escrowId, string $token): void
+    {
+        if (!hash_equals(KeeperSeal::escrowIdFor(substr($token, 0, SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES)), $escrowId)) {
+            throw new RuntimeException('This retirement is not signed by the key this escrow is named after');
+        }
+        $this->retired[bin2hex($escrowId)] = true;
+    }
+}
+
+/** Refuses a retirement it already took: the next deposit cannot go through. */
+final class RetiresOnceKeeper extends BenchKeeper
+{
+    public function retire(string $escrowId, string $token): void
+    {
+        if (isset($this->retired[bin2hex($escrowId)])) {
+            throw new RuntimeException('This escrow is already retired here');
+        }
+        parent::retire($escrowId, $token);
+    }
+}
+
+/** Takes no objection to a read once released: the holder who sees the release cannot stop the next one. */
+final class NoObjectionAfterReleaseKeeper extends BenchKeeper
+{
+    public function object(string $escrowId, string $caseRef, string $token): void
+    {
+        if (in_array($caseRef, array_column($this->releases[bin2hex($escrowId)] ?? [], 'case'), true)) {
+            throw new RuntimeException('This read was released already');
+        }
+        parent::object($escrowId, $caseRef, $token);
+    }
+}
+
+/** Takes a retirement and never says so: the holder whose re-sealing did not land sees an escrow that reads. */
+final class UnsaidRetirementKeeper extends BenchKeeper
+{
+    public function attest(string $escrowId, string $nonce): string
+    {
+        $retired = $this->retired;
+        $this->retired = [];
+        try {
+            return parent::attest($escrowId, $nonce);
+        } finally {
+            $this->retired = $retired;
+        }
     }
 }

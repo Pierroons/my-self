@@ -8,12 +8,14 @@ use RuntimeException;
 use Throwable;
 
 /**
- * The compartment is sealed to a keeper, and the ceremony could not go
- * through it: none was given (reason keeper-missing), another than the one the
- * database recorded was (keeper-mismatch), or it refused or did not answer
- * (keeper-failed). Nothing was unsealed. The façade raises it too: a keeper
- * whose public keys do not come (keeper-unreachable), or that did not record
- * an objection (keeper-failed).
+ * An act could not go through the keeper, and nothing was unsealed. The
+ * reason says why: keeper-missing (none given), keeper-mismatch (another
+ * keeper than the database recorded, or a record of former keepers that is
+ * unreadable, lacks one, or lists the façade's own keeper), keeper-changed (a
+ * keeper to ask was not given), keeper-unreachable (its public keys or its
+ * attestation do not come), keeper-failed (it refused or did not answer), or
+ * the reason of a KeeperAttestationException. Where each comes from: the
+ * docblocks of the methods that raise it.
  */
 final class EscrowKeeperException extends RuntimeException
 {

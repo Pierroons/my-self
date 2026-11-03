@@ -3670,7 +3670,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=84 [sanity_escrow]=65
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=92 [sanity_keys]=24 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=123 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4095,14 +4095,6 @@ jobs:
             $K 'a replayed attestation was taken'
           canari $D/src/Escrow/KeeperSeal.php "        if (!sodium_crypto_sign_verify_detached(\$sig, self::ATTEST_TAG . \$json, \$signPublic)) {" '        if (false) {' \
             $K 'an attestation under another key was taken'
-          canari $D/src/SelfDataGuard.php "        } catch (Throwable) {
-                      return ['reason' => 'keeper-unreachable'] + \$out;" "        } catch (Throwable) {
-                      return ['established' => true] + \$out;" \
-            $K 'a silent keeper read as no read'
-          canari $D/src/SelfDataGuard.php "        } catch (EscrowKeeperException) {
-                      return ['reason' => 'keeper-unreachable'] + \$out;" "        } catch (EscrowKeeperException) {
-                      return ['established' => true] + \$out;" \
-            $K 'a silent keeper read as no read'
           canari $D/src/SelfDataGuard.php "            if (\$keeperHeld !== null) {" '            if (false) {' \
             $K 'a façade with no keeper opened a database that recorded a keeper'
           canari $D/src/SelfDataGuard.php "        \$this->assertEscrowAdmin(\$adminPublicKey);
@@ -4132,33 +4124,14 @@ jobs:
           canari $KC "            'objection-needs-an-announcement'     => ['objectionNeedsAnAnnouncement', self::DELAY]," '' $K 'ObjectionWithoutAnnouncementKeeper passed a case it breaks'
           canari $KC "            'objection-survives-re-announce'      => ['objectionSurvivesReAnnounce', self::DELAY]," '' $K 'ForgetsObjectionKeeper passed a case it breaks'
           canari $KC "            'retire-is-final'                     => ['retireIsFinal', 0]," '' $K 'ForgetsRetirementKeeper passed a case it breaks'
-          canari $D/src/SelfDataGuard.php "        } catch (InvalidArgumentException) {
-                      return ['reason' => 'keeper-mismatch'] + \$out;
-                  }" "        }" $K 'escrowReads() threw on a keeper the database did not record'
           canari $D/src/Escrow/EscrowCeremony.php "                \$e instanceof StaleEscrowException               => 'stale-escrow'," '' \
             $K 'the log does not name the race'
-          canari $D/src/SelfDataGuard.php "                if (\$formerKeeper !== null) {
-                              \$retireAt = [\$formerKeeper, (string) \$old->escrowId, \$old->signRetirement()];
-                          }" \
-            "" $K 'the re-sealing did not retire the escrow at the replaced keeper'
-          canari $D/src/SelfDataGuard.php "                    throw new EscrowKeeperException('keeper-failed', 'The former keeper did not take the retirement: nothing is re-sealed', \$e);" \
-            "" $K 'an escrow was re-sealed while the replaced keeper did not take its retirement'
-          canari $D/src/Escrow/EscrowCeremony.php "        foreach ([\$this->keeper, ...\$this->recordedFormerKeepers()] as \$keeper) {" \
-            "        foreach ([\$this->keeper] as \$keeper) {" $K 'the ceremony given the replaced keeper did not read its archive'
           canari $D/src/Escrow/EscrowCeremony.php "            if (!in_array(\$print, \$prints, true)) {
                           throw new EscrowKeeperException(" \
             "            if (false) {
                           throw new EscrowKeeperException(" $K 'a former keeper the database never recorded was refused, but not as keeper-mismatch'
-          canari $D/src/SelfDataGuard.php "            \$asked = \$this->formerKeeperFor(\$keys);" \
-            "            \$asked = null;" $K 'the read announced at the replaced keeper is not shown to the holder'
-          canari $D/src/SelfDataGuard.php "            \$target = \$this->hasKeeper() && \$this->boundToOurKeeper(\$unlocked) ? \$this->keeper : \$this->formerKeeperFor(\$unlocked->keeper);" \
-            "            \$target = \$this->hasKeeper() && \$this->boundToOurKeeper(\$unlocked) ? \$this->keeper : null;" $K 'the holder cannot object at the replaced keeper'
           canari $D/src/SelfDataGuard.php "        if (\$held === null || !hash_equals(\$held, \$fromPrint)) {" \
             "        if (false) {" $K 'changeKeeper() took a keeper the database did not record'
-          canari $D/src/SelfDataGuard.php "        if (\$recorded === null || !in_array(\$print, json_decode(\$recorded, true, flags: JSON_THROW_ON_ERROR), true)) {
-                      return null;
-                  }" \
-            "" $K 'a former keeper the database never recorded answered for the holder'
           canari $D/bin/escrow-ceremony.php "        if (!\$gardien instanceof EscrowKeeper) {" \
             "        if (false) {" $D/tests/sanity_ceremony.php 'a former keeper file that returns no keeper did not exit 3'
           canari $D/src/Escrow/EscrowCeremony.php "            \$this->checkPassphrase(\$sealedSecret, \$passphrase);
@@ -4167,8 +4140,6 @@ jobs:
           canari $D/src/Escrow/EscrowCeremony.php "            \$this->checkPassphrase(\$sealedSecret, \$passphrase);
                       \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" \
             "            \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" $K 'a wrong passphrase announced the read of an archive before it was refused'
-          canari $D/src/Vault/UnlockedVault.php "                \$seed     = hash_hmac('sha256', self::OBJECTION_SEED_TAG . \$this->userId, \$this->key(), true);" \
-            "                \$seed     = random_bytes(32);" $K 'a deposit changed the escrowId'
           canari $D/src/Escrow/UnlockedEscrow.php "        if (\$keeper !== null && !hash_equals(KeeperSeal::escrowIdFor(\$this->objectionPublic()), (string) \$escrowId)) {" \
             "        if (false) {" $K 'an escrow whose escrowId is not the fingerprint of its objection key was taken'
           canari $D/src/Escrow/KeeperSeal.php "        return hash_equals(self::escrowIdFor(\$public), \$escrowId)
@@ -4190,20 +4161,6 @@ jobs:
                           // Checked again at the first act that needs the keeper.
                       }" \
             "            \$this->keeperKeys();" $K 'a façade did not open while the keeper was down'
-          canari $SDG "        \$keys = \$this->keeperKeys();
-                  for (\$attempt = 1; ; \$attempt++) {" \
-            "        try { \$keys = \$this->keeperKeys(); } catch (EscrowKeeperException) { \$keys = null; }
-                  for (\$attempt = 1; ; \$attempt++) {" $K 'a deposit went through while the keeper gave no public keys'
-          canari $SDG "            \$escrowId = (string) \$unlocked->escrowId;
-                      \$keys     = \$unlocked->keeper;" \
-            "            \$escrowId = \$unlocked->escrowId ?? (string) KeeperSeal::escrowIdOf(\$record->wrapAdmin);
-                      \$keys     = \$unlocked->keeper ?? \$this->keeperKeys();" $K 'an escrow the pass wrapped reads as established'
-          canari $SDG "            return ['reason' => 'keeper-changed', 'reseal' => \$reseal] + \$out;" \
-            "            \$reseal = \$reseal;" $K 'a keeper other than the one the deposit pinned answered for it'
-          canari $SDG "                throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the objection: the read it names may go through once due', \$e);" \
-            "                throw \$e;" $K 'an objection to a silent keeper raised a bare error'
-          canari $SDG "        \$this->objectThrough(\$opened->openEscrow(\$record), \$caseRef);" \
-            "        \$opened->openEscrow(\$record)->lock();" $K 'a read of an archive its holder objected to went through once due'
           canari $D/src/Storage/SqliteAdapter.php "            \$kept = array_values(array_intersect(\$columns, array_keys(\$row)));" \
             "            \$kept = ['user_id', 'wrap_user', 'wrap_admin', 'created_at', 'updated_at', 'revision'];" \
             $D/tests/sanity_archive.php 'a column of the escrow row was lost on its way back'
@@ -4227,6 +4184,123 @@ jobs:
           canari $CER "            \$this->log->append(['action' => 'seal-to-keeper-failed', 'target' => \$userId, 'keeper' => \$this->keeperName(),
                           'reason' => get_class(\$e), 'operator' => \$this->operator]);" \
             "" $K 'the pass was refused, but sealed something or logged nothing'
+          canari $SDG "            throw new EscrowKeeperException('keeper-unreachable', 'The keeper gave no attestation', \$e);" \
+            "            return ['releases' => [], 'pending' => [], 'retired' => false];" $K 'a silent keeper read as no read'
+          canari $SDG "        } catch (EscrowKeeperException \$e) {
+                      return ['reason' => \$e->reason, 'reseal' => \$e->reason === 'keeper-changed' && \$reseal] + \$out;" "        } catch (EscrowKeeperException \$e) {
+                      return ['established' => true] + \$out;" \
+            $K 'a silent keeper read as no read'
+          canari $SDG "        } catch (InvalidArgumentException \$e) {
+                      throw new EscrowKeeperException('keeper-mismatch', \$e->getMessage(), \$e);" "        } catch (InvalidArgumentException \$e) {
+                      throw \$e;" $K 'escrowReads() threw on a keeper the database did not record'
+          canari $SDG "            \$this->retireFromFormerKeepers(\$session, \$keys);" "" \
+            $K 'the re-sealing did not retire the escrow at the replaced keeper'
+          canari $SDG "                throw new EscrowKeeperException('keeper-failed', \"The former keeper {\$print} did not take the retirement: nothing is re-sealed\", \$e);" \
+            "" $K 'an escrow was re-sealed while the replaced keeper did not take its retirement'
+          canari $CER "        foreach ([\$this->keeper, ...\$this->recordedFormerKeepers()] as \$i => \$keeper) {" \
+            "        foreach ([\$this->keeper] as \$i => \$keeper) {" $K 'the ceremony given the replaced keeper did not read its archive'
+          canari $SDG "                \$keepers[] = \$this->formerKeeperFor(\$first) ?? throw new EscrowKeeperException(" \
+            "                \$keepers[] = null ?? throw new EscrowKeeperException(" $K 'the read announced at the replaced keeper is not shown to the holder'
+          canari $SDG "        foreach (\$this->keepersOf(\$pinned) as [\$keeper, \$keys]) {" \
+            "        foreach ([[\$this->keeper, (array) \$this->keeperKeys()]] as [\$keeper, \$keys]) {" $K 'the holder cannot object at the replaced keeper'
+          canari $SDG "        if (!in_array(\$print, KeeperSeal::formerPrints(\$this->storage->loadSetting(self::SETTING_FORMER_KEEPERS)), true)) {
+                      return null;
+                  }" \
+            "" $K 'a former keeper the database never recorded answered for the holder'
+          canari $D/src/Vault/UnlockedVault.php "                \$seed     = \$this->objectionSeed();
+                          \$escrowId = \$this->escrowId();" \
+            "                \$seed     = random_bytes(32);
+                          \$escrowId = KeeperSeal::escrowIdFor(sodium_crypto_sign_publickey(sodium_crypto_sign_seed_keypair(\$seed)));" $K 'a deposit changed the escrowId'
+          canari $SDG "        \$keys = \$this->keeperKeys();
+                  if (\$keys !== null) {" \
+            "        try { \$keys = \$this->keeperKeys(); } catch (EscrowKeeperException) { \$keys = null; }
+                  if (\$keys !== null) {" $K 'a deposit went through while the keeper gave no public keys'
+          canari $SDG "            \$rowId = (string) \$unlocked->escrowId;
+                      \$keys  = \$unlocked->keeper;" \
+            "            \$rowId = \$unlocked->escrowId ?? \$escrowId;
+                      \$keys  = \$unlocked->keeper ?? \$this->keeperKeys();" $K 'an escrow the pass wrapped reads as established'
+          canari $SDG "'reseal' => \$e->reason === 'keeper-changed' && \$reseal]" "'reseal' => false]" \
+            $K 'a keeper other than the one the deposit pinned answered for it'
+          canari $SDG "                throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the objection: the read it names may go through once due', \$e);" \
+            "                throw \$e;" $K 'a keeper that holds the read announced and does not record the objection: a bare error'
+          canari $SDG "        \$this->objectAt(\$pinned, \$escrowId, \$caseRef, \$opened->signEscrowObjection(\$caseRef));" \
+            "" $K 'a read of an archive its holder objected to went through once due'
+          canari $D/src/Escrow/KeeperSeal.php "        return self::RETIRE_TAG . \$escrowId . \$keeperPrint;" "        return self::RETIRE_TAG . \$escrowId;" \
+            $K 'a retirement signed for the former keeper, replayed at the new one, retired the escrow there'
+          canari $SDG "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$former, true)) {" \
+            "        if (in_array(\$toPrint, \$former, true)) {" $K 'changeKeeper() replaced a keeper by itself'
+          canari $SDG "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$former, true)) {" \
+            "        if (hash_equals(\$fromPrint, \$toPrint)) {" $K 'changeKeeper() took back a keeper the database recorded as former'
+          canari $SDG "        foreach (\$prints as \$print) {
+                      \$formers[\$print] =" "        foreach (array_filter(\$prints, fn (string \$p): bool => \$this->formerKeeperFor(\$p) !== null) as \$print) {
+                      \$formers[\$print] =" $K 'a deposit went through without the former keeper the database recorded'
+          canari $SDG "            ))[0];
+                  }
+                  foreach (\$formers as \$print => \$former) {
+                      try {
+                          \$former->retire(" "            ))[0];
+                      try {
+                          \$formers[\$print]->retire(" \
+            $K 'one of two former keepers missing: the deposit was refused after retiring the escrow from the other'
+          canari $SDG "        if (\$this->storage->frozenState(\$session->userId) !== null) {
+                      throw new VaultFrozenException(\"The vault of '{\$session->userId}' is frozen: nothing is retired, nothing re-sealed\");" \
+            "        if (false) {
+                      throw new VaultFrozenException(\"The vault of '{\$session->userId}' is frozen: nothing is retired, nothing re-sealed\");" \
+            $K 'a frozen vault: the deposit was refused after the escrow was retired from the former keeper'
+          canari $SDG "        if (in_array(KeeperSeal::fingerprint(\$keys), \$prints, true)) {" "        if (false) {" \
+            $K "a deposit went through with the façade's own keeper listed as former"
+          canari $SDG "        if (\$views[0]['retired']) {" "        if (false) {" $K 'an escrow retired at the keeper its row pins shows as readable'
+          canari $D/src/Escrow/KeeperSeal.php "'retired' => (\$body['retired'] ?? false) === true]" "'retired' => false]" \
+            $K 'an escrow retired at the keeper its row pins shows as readable'
+          canari $SDG "            foreach (KeeperSeal::formerPrints(\$this->storage->loadSetting(self::SETTING_FORMER_KEEPERS)) as \$print) {
+                          if (\$print !== \$first" "            foreach ([] as \$print) {
+                          if (\$print !== \$first" \
+            $K 'the row deleted after a keeper change hides what the former keeper holds announced'
+          canari $SDG "        if (\$reads !== [] || \$pending !== [] || \$row === 'escrow-replaced') {" "        if (\$row === 'escrow-replaced') {" \
+            $K 'wrap_user restored alone hides what the keeper holds announced'
+          canari $SDG "        if (\$pinned !== null) {
+                      \$out = ['pinned' => true" "        if (\$row === 'absent') {
+                      return ['established' => true] + \$out;
+                  }
+                  if (\$pinned !== null) {
+                      \$out = ['pinned' => true" $K 'the row deleted hides what the keeper holds'
+          canari $SDG "        \$this->objectAt(\$pinned, \$escrowId, \$caseRef, \$session->signEscrowObjection(\$caseRef));" \
+            "        \$this->objectAt(\$pinned ?? throw new RuntimeException('This escrow carries no objection key'), \$escrowId, \$caseRef, \$session->signEscrowObjection(\$caseRef));" \
+            $K 'wrap_user restored alone: the holder cannot object'
+          canari $SDG "        if (\$recorded === 0) {" "        if (false) {" $K 'an objection to a case no keeper holds announced: the objection went through'
+          canari $D/src/Escrow/KeeperSeal.php "        if (!is_array(\$prints) || !array_is_list(\$prints) || array_filter(\$prints, 'is_string') !== \$prints) {" \
+            "        if (false) {" $K 'escrowReads() threw on an unreadable record of former keepers'
+          canari $CER "            throw new EscrowKeeperException('keeper-mismatch', \$unreadable->getMessage() . ' — the escrow stays sealed', \$unreadable);" \
+            "            throw \$unreadable;" $K 'the ceremony raised a bare error on an unreadable record of former keepers'
+          canari $SDG "            throw new EscrowKeeperException('keeper-mismatch', \$e->getMessage() . ' — nothing is retired, nothing re-sealed', \$e);" \
+            "            throw \$e;" $K 'a deposit under an unreadable record of former keepers raised a bare error'
+          canari $SDG "                );
+                      }
+                      \$keepers[] = [\$this->keeper, \$ours];" "                );
+                          return \$keepers;
+                      }
+                      \$keepers[] = [\$this->keeper, \$ours];" $K 'a backup row pinning the former keeper hides what the current keeper holds announced'
+          canari $SDG "            return ['reason' => 'retired', 'reseal' => \$reseal && \$row !== 'absent'] + \$seen + \$out;" \
+            "            return ['reason' => 'retired', 'reseal' => \$reseal && \$row !== 'absent'] + \$out;" \
+            $K 'a backup row pinning the former keeper hides what the current keeper holds announced'
+          canari $SDG "            return ['reason' => 'escrow-replaced', 'reseal' => \$reseal && \$row !== 'absent'] + \$seen + \$out;" \
+            "            return ['reason' => 'escrow-replaced', 'reseal' => \$reseal] + \$seen + \$out;" \
+            $K 'the row deleted asks a re-sealing that sealEscrowToKeeper() cannot do'
+          canari $CER "            . implode('; ', array_map(static fn (array \$f): string => \"{\$f[0]}: {\$f[1]->getMessage()}\", \$failures))," \
+            "            . ''," $K 'the ceremony hides the failure of the current keeper'
+          canari $D/tests/keeper_fixture.php "            if (is_file(\$this->file)) {" \
+            "            if (is_file(\$this->file) && !isset(\$GLOBALS['loaded'][spl_object_id(\$this)]) && (\$GLOBALS['loaded'][spl_object_id(\$this)] = true)) {" \
+            $K 'the file keeper lost announcements made at once'
+          canari $KC "            'release-refuses-another-escrow'      => ['releaseRefusesAnotherEscrow', 0]," '' $K 'AnyEscrowReleaseKeeper passed a case it breaks'
+          canari $KC "            'objection-after-a-release'           => ['objectionAfterARelease', 0]," '' $K 'NoObjectionAfterReleaseKeeper passed a case it breaks'
+          canari $KC "            'retire-names-the-keeper'             => ['retireNamesTheKeeper', 0]," '' $K 'UnboundRetirementKeeper passed a case it breaks'
+          canari $KC "            'retire-is-idempotent'                => ['retireIsIdempotent', 0]," '' $K 'RetiresOnceKeeper passed a case it breaks'
+          canari $KC "        \$this->assert(\$this->attested(\$box['escrowId'])['retired'], 'the attestation does not say the escrow is retired here');
+              }
+
+              private function retireNamesTheKeeper(): void" "    }
+
+              private function retireNamesTheKeeper(): void" $K 'UnsaidRetirementKeeper passed a case it breaks'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

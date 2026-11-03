@@ -107,33 +107,6 @@ final class UnlockedEscrow
         return KeeperSeal::wrap((string) $this->escrowId, $this->userId, $this->objectionPublic(), $inner, $this->keeper['box']);
     }
 
-    /** The holder's objection to the read of this escrow for $caseRef: a token the keeper verifies (KeeperSeal::verifyObjection()). */
-    public function signObjection(string $caseRef): string
-    {
-        return $this->signToken(KeeperSeal::objectionMessage((string) $this->escrowId, $caseRef));
-    }
-
-    /** The holder's retirement of this escrow from a keeper the deployment replaced (KeeperSeal::verifyRetirement()). */
-    public function signRetirement(): string
-    {
-        return $this->signToken(KeeperSeal::retirementMessage((string) $this->escrowId));
-    }
-
-    private function signToken(string $message): string
-    {
-        if ($this->keeper === null) {
-            throw new RuntimeException('This escrow is not bound to a keeper: it holds no objection key');
-        }
-        $pair   = sodium_crypto_sign_seed_keypair($this->seed());
-        $secret = sodium_crypto_sign_secretkey($pair);
-        try {
-            return KeeperSeal::token($message, $secret);
-        } finally {
-            Primitives::zeroize($secret);
-            Primitives::zeroize($pair);
-        }
-    }
-
     private function objectionPublic(): string
     {
         $pair = sodium_crypto_sign_seed_keypair($this->seed());

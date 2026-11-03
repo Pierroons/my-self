@@ -134,11 +134,8 @@ final class UnlockedVault
         try {
             if ($keeperPublicKeys !== null) {
                 $keeperPublicKeys = KeeperSeal::checkKeys($keeperPublicKeys);
-                // The same seed, deposit after deposit and keeper after keeper: the holder objects to any box of the escrow.
-                $seed     = hash_hmac('sha256', self::OBJECTION_SEED_TAG . $this->userId, $this->key(), true);
-                $pair     = sodium_crypto_sign_seed_keypair($seed);
-                $escrowId = KeeperSeal::escrowIdFor(sodium_crypto_sign_publickey($pair));
-                Primitives::zeroize($pair);
+                $seed     = $this->objectionSeed();
+                $escrowId = $this->escrowId();
                 $plain = $escrowKey . $escrowId . $keeperPublicKeys['sign'] . $keeperPublicKeys['box'] . $seed;
             }
             $wrapUser = Primitives::encrypt($plain, $this->key(), EscrowVault::wrapAad($this->userId));
@@ -193,6 +190,51 @@ final class UnlockedVault
         } finally {
             Primitives::zeroize($escrowKey);
         }
+    }
+
+    /**
+     * The escrowId of this vault's escrow under a keeper: the fingerprint of
+     * its objection key, computed from the master key — what the holder asks
+     * the keeper about, whatever the database holds.
+     */
+    public function escrowId(): string
+    {
+        $pair = sodium_crypto_sign_seed_keypair($this->objectionSeed());
+        try {
+            return KeeperSeal::escrowIdFor(sodium_crypto_sign_publickey($pair));
+        } finally {
+            Primitives::zeroize($pair);
+        }
+    }
+
+    /** The holder's objection to the read of this vault's escrow for $caseRef (KeeperSeal::verifyObjection()). */
+    public function signEscrowObjection(string $caseRef): string
+    {
+        return $this->signEscrowToken(KeeperSeal::objectionMessage($this->escrowId(), $caseRef));
+    }
+
+    /** The holder's retirement of this vault's escrow from the keeper whose fingerprint is $keeperPrint. */
+    public function signEscrowRetirement(string $keeperPrint): string
+    {
+        return $this->signEscrowToken(KeeperSeal::retirementMessage($this->escrowId(), $keeperPrint));
+    }
+
+    private function signEscrowToken(string $message): string
+    {
+        $pair   = sodium_crypto_sign_seed_keypair($this->objectionSeed());
+        $secret = sodium_crypto_sign_secretkey($pair);
+        try {
+            return KeeperSeal::token($message, $secret);
+        } finally {
+            Primitives::zeroize($secret);
+            Primitives::zeroize($pair);
+        }
+    }
+
+    /** The same seed at every deposit and under every keeper: the holder objects to any box of the escrow. */
+    private function objectionSeed(): string
+    {
+        return hash_hmac('sha256', self::OBJECTION_SEED_TAG . $this->userId, $this->key(), true);
     }
 
     private function key(): string

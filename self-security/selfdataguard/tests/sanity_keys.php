@@ -115,9 +115,9 @@ $MAGIC = ['__clone', '__construct', '__debugInfo', '__destruct', '__serialize', 
 section('The public methods of each key-holding class are a closed list');
 
 $closed = [
-    UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'generation', 'isLocked', 'lock', 'openEscrow', 'sealLock'],
-    UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper', 'signObjection', 'signRetirement'],
-    UnlockedArchive::class => ['decryptFields', 'lock', 'openEscrow', 'userId'],
+    UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'escrowId', 'generation', 'isLocked', 'lock', 'openEscrow', 'sealLock', 'signEscrowObjection', 'signEscrowRetirement'],
+    UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper'],
+    UnlockedArchive::class => ['decryptFields', 'escrowId', 'lock', 'openEscrow', 'signEscrowObjection', 'userId'],
 ];
 foreach ($closed as $class => $expected) {
     $actual = array_values(array_diff(publicMethods($class), $MAGIC));
@@ -141,6 +141,7 @@ $now   = new DateTimeImmutable();
 $built = (new UserVault())->register('user-keys', 'keys-password-0001', 'keys-memorized', 'cheval agrafe batterie correct moulin ivoire');
 $vault = $built['unlocked'];
 $K     = heldKey($vault);
+$S     = (fn (): string => $this->objectionSeed())->call($vault);
 $field = $vault->encryptField('note', 'une note');
 $created = $vault->createEscrow($admin['publicKey'], $now);
 
@@ -151,11 +152,15 @@ $probes = [
     'UnlockedVault::sealLock()'     => static fn () => $vault->sealLock(Lock::Password, 'keys-password-0002'),
     'UnlockedVault::createEscrow()' => static fn () => $vault->createEscrow($admin['publicKey'], $now)['record'],
     'UnlockedVault::isLocked()'     => static fn () => $vault->isLocked(),
+    'UnlockedVault::escrowId()'     => static fn () => $vault->escrowId(),
+    'UnlockedVault::signEscrowObjection()'  => static fn () => $vault->signEscrowObjection('LIT-1'),
+    'UnlockedVault::signEscrowRetirement()' => static fn () => $vault->signEscrowRetirement(str_repeat('ab', 32)),
 ];
 foreach ($probes as $name => $call) {
-    !carries($call(), $K)
-        ? ok("{$name}: the master key is not in what it returns")
-        : ko("{$name} returns the master key");
+    $out = $call();
+    !carries($out, $K) && !carries($out, $S)
+        ? ok("{$name}: neither the master key nor the objection seed is in what it returns")
+        : ko("{$name} returns the master key or the objection seed");
 }
 !carries($vault->openEscrow($created['record']), $K) && !carries($created['unlocked'], $K)
     ? ok('UnlockedVault::createEscrow() and openEscrow(): the escrow they hand out carries its own key, not the master key')
@@ -179,16 +184,10 @@ $keeperSign = sodium_crypto_sign_publickey(sodium_crypto_sign_keypair());
 $bound = $vault->createEscrow($admin['publicKey'], $now, ['sign' => $keeperSign, 'box' => $keeperBox])['unlocked'];
 $EB    = heldKey($bound);
 $seed  = (fn (): string => $this->objectionSeed)->call($bound);
-foreach ([
-    'UnlockedEscrow::sealToKeeper()'  => static fn () => $bound->sealToKeeper($admin['publicKey']),
-    'UnlockedEscrow::signObjection()' => static fn () => $bound->signObjection('LIT-1'),
-    'UnlockedEscrow::signRetirement()' => static fn () => $bound->signRetirement(),
-] as $name => $call) {
-    $out = $call();
-    !carries($out, $EB) && !carries($out, $seed)
-        ? ok("{$name}: neither the escrow key nor the objection seed is in what it returns")
-        : ko("{$name} returns the escrow key or the objection seed");
-}
+$out   = $bound->sealToKeeper($admin['publicKey']);
+!carries($out, $EB) && !carries($out, $seed)
+    ? ok('UnlockedEscrow::sealToKeeper(): neither the escrow key nor the objection seed is in what it returns')
+    : ko('UnlockedEscrow::sealToKeeper() returns the escrow key or the objection seed');
 
 $dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32));
 $old = $dg->register('user-arch-keys', 'arch-keys-password-01');
@@ -196,16 +195,20 @@ $dg->setFields($old, ['note' => 'archivée']);
 $dg->setEscrowFields($old, $admin['publicKey'], ['contact' => 'secours']);
 $l3 = $dg->reEnroll($dg->generationOf('user-arch-keys'), 'arch-keys-password-02');
 $opened = $dg->openArchive($l3['unlocked'], $l3['archiveId'], Lock::Password, 'arch-keys-password-01');
-$A = heldKey((fn (): UnlockedVault => $this->session)->call($opened));
+$A  = heldKey((fn (): UnlockedVault => $this->session)->call($opened));
+$AS = (fn (): string => $this->objectionSeed())->call((fn (): UnlockedVault => $this->session)->call($opened));
 foreach ([
     'UnlockedArchive::userId()'        => static fn () => $opened->userId(),
     'UnlockedArchive::decryptFields()' => static fn () => $opened->decryptFields(array_map(
         static fn (array $f): string => $f['ciphertext'], $opened->archive->privateFields)),
     'UnlockedArchive::openEscrow()'    => static fn () => $opened->openEscrow($opened->archive->escrow),
+    'UnlockedArchive::escrowId()'      => static fn () => $opened->escrowId(),
+    'UnlockedArchive::signEscrowObjection()' => static fn () => $opened->signEscrowObjection('LIT-1'),
 ] as $name => $call) {
-    !carries($call(), $A)
-        ? ok("{$name}: the archive's master key is not in what it returns")
-        : ko("{$name} returns the archive's master key");
+    $out = $call();
+    !carries($out, $A) && !carries($out, $AS)
+        ? ok("{$name}: neither the archive's master key nor its objection seed is in what it returns")
+        : ko("{$name} returns the archive's master key or its objection seed");
 }
 
 // -----------------------------------------------------------------------------

@@ -12,9 +12,12 @@ use Throwable;
  * The EscrowKeeper contract, played against an implementation.
  *
  * A keeper that hands back the box without recording it, before the delay
- * ends, once its holder objected, or to a box that carries another objection
- * key than the escrow is named after, satisfies every signature and leaves the
- * holder blind. These cases are what tells it apart.
+ * ends, once its holder objected, under the announcement of another escrow,
+ * or to a box that carries another objection key than the escrow is named
+ * after, satisfies every signature and leaves the holder blind; one that
+ * takes a retirement meant for another keeper lets a former keeper retire the
+ * escrow from it. These cases are what tells them apart. They play one caller at a time: that each call is atomic against the
+ * others is the contract's (EscrowKeeper), not played here.
  *
  * It takes a factory, `$make(int $delay, callable $clock): EscrowKeeper`: each
  * call returns a keeper on a store of its own, which the suite fills and
@@ -88,12 +91,16 @@ final class KeeperConformance
             'release-only-when-due'               => ['releaseOnlyWhenDue', self::DELAY],
             'release-within-the-lapse'            => ['releaseWithinTheLapse', self::DELAY],
             'release-repeatable-within-the-window' => ['releaseRepeatable', 0],
+            'release-refuses-another-escrow'      => ['releaseRefusesAnotherEscrow', 0],
             'announcement-lapses'                 => ['announcementLapses', self::DELAY],
             'attestation-fresh-and-scoped'        => ['attestationFreshAndScoped', 0],
             'objection-under-the-escrow-key'      => ['objectionUnderTheEscrowKey', self::DELAY],
             'objection-needs-an-announcement'     => ['objectionNeedsAnAnnouncement', self::DELAY],
             'objection-survives-re-announce'      => ['objectionSurvivesReAnnounce', self::DELAY],
+            'objection-after-a-release'           => ['objectionAfterARelease', 0],
             'retire-is-final'                     => ['retireIsFinal', 0],
+            'retire-names-the-keeper'             => ['retireNamesTheKeeper', 0],
+            'retire-is-idempotent'                => ['retireIsIdempotent', 0],
         ];
     }
 
@@ -257,6 +264,17 @@ final class KeeperConformance
         );
     }
 
+    private function releaseRefusesAnotherEscrow(): void
+    {
+        $box   = $this->box();
+        $other = $this->box();
+        $this->releaseOf($box, 'K-cross');
+        $this->expectRefused(
+            fn () => $this->keeper->release($box['escrowId'], $other['outer'], 'K-cross', ++$this->seq, 'h'),
+            'the release, under an announcement of one escrow, of a box of another escrow'
+        );
+    }
+
     private function announcementLapses(): void
     {
         $box = $this->box();
@@ -337,6 +355,18 @@ final class KeeperConformance
         );
     }
 
+    private function objectionAfterARelease(): void
+    {
+        $box = $this->box();
+        $this->releaseOf($box, 'K-released');
+        $this->keeper->object($box['escrowId'], 'K-released', $this->objection($box, 'K-released'));
+        $this->assert(($this->pendingOf($box['escrowId'], 'K-released')['objected'] ?? false) === true, 'the attestation does not show an objection made after a release');
+        $this->expectRefused(
+            fn () => $this->keeper->release($box['escrowId'], $box['outer'], 'K-released', ++$this->seq, 'h'),
+            'a second release of a read its holder objected to after the first'
+        );
+    }
+
     private function retireIsFinal(): void
     {
         $box = $this->box();
@@ -344,18 +374,38 @@ final class KeeperConformance
         $stranger = sodium_crypto_sign_keypair();
         $this->expectRefused(
             fn () => $this->keeper->retire($box['escrowId'], KeeperSeal::token(
-                KeeperSeal::retirementMessage($box['escrowId']),
+                KeeperSeal::retirementMessage($box['escrowId'], $this->print()),
                 sodium_crypto_sign_secretkey($stranger)
             )),
             'a retirement signed under another key than the one the escrowId is the fingerprint of'
         );
-        $this->keeper->retire($box['escrowId'], KeeperSeal::token(KeeperSeal::retirementMessage($box['escrowId']), $box['objectionSecret']));
+        $this->assert(!$this->attested($box['escrowId'])['retired'], 'the attestation says retired before any retirement');
+        $this->keeper->retire($box['escrowId'], $this->retirement($box));
         $this->expectRefused(fn () => $this->announce($box, 'K-after'), 'an announcement of an escrow retired here');
         $this->expectRefused(
             fn () => $this->keeper->release($box['escrowId'], $box['outer'], 'K-before', ++$this->seq, 'h'),
             'a release of an escrow retired here'
         );
-        $this->attested($box['escrowId']);
+        $this->assert($this->attested($box['escrowId'])['retired'], 'the attestation does not say the escrow is retired here');
+    }
+
+    private function retireNamesTheKeeper(): void
+    {
+        $box = $this->box();
+        $this->announce($box, 'K-elsewhere');
+        $this->expectRefused(
+            fn () => $this->keeper->retire($box['escrowId'], $this->retirement($box, str_repeat('0', 64))),
+            'a retirement signed for another keeper — the one a former keeper would replay here'
+        );
+        $this->assert(!$this->attested($box['escrowId'])['retired'], 'a retirement for another keeper retired the escrow here');
+    }
+
+    private function retireIsIdempotent(): void
+    {
+        $box = $this->box();
+        $this->keeper->retire($box['escrowId'], $this->retirement($box));
+        $this->keeper->retire($box['escrowId'], $this->retirement($box));
+        $this->assert($this->attested($box['escrowId'])['retired'], 'the attestation does not say the escrow is retired here');
     }
 
     // -- Fixtures -----------------------------------------------------------------
@@ -406,6 +456,17 @@ final class KeeperConformance
         return KeeperSeal::token(KeeperSeal::objectionMessage($box['escrowId'], $caseRef), $box['objectionSecret']);
     }
 
+    /** @param array{escrowId: string, objectionSecret: string} $box */
+    private function retirement(array $box, ?string $keeperPrint = null): string
+    {
+        return KeeperSeal::token(KeeperSeal::retirementMessage($box['escrowId'], $keeperPrint ?? $this->print()), $box['objectionSecret']);
+    }
+
+    private function print(): string
+    {
+        return KeeperSeal::fingerprint($this->keys);
+    }
+
     /** @return array{case: string, due: int, objected: bool}|null */
     private function pendingOf(string $escrowId, string $caseRef): ?array
     {
@@ -417,7 +478,7 @@ final class KeeperConformance
         return null;
     }
 
-    /** @return array{releases: list<array{case: string, seq: int, at: int}>, pending: list<array{case: string, due: int, objected: bool}>} */
+    /** @return array{releases: list<array{case: string, seq: int, at: int}>, pending: list<array{case: string, due: int, objected: bool}>, retired: bool} */
     private function attested(string $escrowId): array
     {
         $nonce = random_bytes(16);

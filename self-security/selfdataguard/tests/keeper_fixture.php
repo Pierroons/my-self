@@ -86,7 +86,7 @@ class BenchKeeper implements EscrowKeeper
         if ($this->lapsed($held)) {
             throw new RuntimeException('This announcement has lapsed: announce it again');
         }
-        $box = $this->boxOf($escrowId, $outerBox);
+        $box = $this->releasedBox($escrowId, $outerBox);
         $this->releases[bin2hex($escrowId)][] = ['case' => $caseRef, 'seq' => $seq, 'at' => $this->time()];
         return $box['inner'];
     }
@@ -101,7 +101,7 @@ class BenchKeeper implements EscrowKeeper
                 $pending[] = ['case' => $held['case'], 'due' => $held['due'], 'objected' => $held['objected']];
             }
         }
-        return KeeperSeal::attestation($escrowId, $nonce, $this->releases[$hex] ?? [], $pending, $this->signSecret);
+        return KeeperSeal::attestation($escrowId, $nonce, $this->releases[$hex] ?? [], $pending, $this->signSecret, isset($this->retired[$hex]));
     }
 
     public function object(string $escrowId, string $caseRef, string $token): void
@@ -121,8 +121,8 @@ class BenchKeeper implements EscrowKeeper
     public function retire(string $escrowId, string $token): void
     {
         $this->answer();
-        if (!KeeperSeal::verifyRetirement($token, $escrowId)) {
-            throw new RuntimeException('This retirement is not signed by the key this escrow is named after');
+        if (!KeeperSeal::verifyRetirement($token, $escrowId, KeeperSeal::fingerprint($this->publicKeys()))) {
+            throw new RuntimeException('This retirement is not signed, for this keeper, by the key this escrow is named after');
         }
         $this->retired[bin2hex($escrowId)] = true;
     }
@@ -157,6 +157,12 @@ class BenchKeeper implements EscrowKeeper
             $this->keyed[$hex] = true;
         }
         return $box;
+    }
+
+    /** @return array{escrowId: string, userId: string, objection: ?string, inner: string} the box a release hands back */
+    protected function releasedBox(string $escrowId, string $outerBox): array
+    {
+        return $this->boxOf($escrowId, $outerBox);
     }
 
     /** @param array{escrowId: string, objection: ?string} $box */
@@ -198,52 +204,51 @@ final class FileBenchKeeper extends BenchKeeper
     public function __construct(private readonly string $file, int $delay = 0)
     {
         parent::__construct($delay);
-        is_file($file) ? $this->load() : $this->save();
+        $this->locked(static fn () => null);
     }
 
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
-        $this->load();
-        try {
-            return parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac);
-        } finally {
-            $this->save();
-        }
+        return $this->locked(fn (): int => parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac));
     }
 
     public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string
     {
-        $this->load();
-        try {
-            return parent::release($escrowId, $outerBox, $caseRef, $seq, $hmac);
-        } finally {
-            $this->save();
-        }
+        return $this->locked(fn (): string => parent::release($escrowId, $outerBox, $caseRef, $seq, $hmac));
     }
 
     public function attest(string $escrowId, string $nonce): string
     {
-        $this->load();
-        return parent::attest($escrowId, $nonce);
+        return $this->locked(fn (): string => parent::attest($escrowId, $nonce));
     }
 
     public function object(string $escrowId, string $caseRef, string $token): void
     {
-        $this->load();
-        try {
-            parent::object($escrowId, $caseRef, $token);
-        } finally {
-            $this->save();
-        }
+        $this->locked(fn () => parent::object($escrowId, $caseRef, $token));
     }
 
     public function retire(string $escrowId, string $token): void
     {
-        $this->load();
+        $this->locked(fn () => parent::retire($escrowId, $token));
+    }
+
+    /** $op on the state read from the file, written back, under one lock: two processes never lose one another's record. */
+    private function locked(callable $op): mixed
+    {
+        $lock = fopen($this->file . '.lock', 'c');
+        flock($lock, LOCK_EX);
         try {
-            parent::retire($escrowId, $token);
+            if (is_file($this->file)) {
+                $this->load();
+            }
+            try {
+                return $op();
+            } finally {
+                $this->save();
+            }
         } finally {
-            $this->save();
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
     }
 

@@ -26,7 +26,7 @@ use RuntimeException;
  *
  * An attestation is base64(json) . "." . base64(Ed25519 signature over the tag
  * and the json): what the keeper released for one escrow, and what it holds
- * announced, for one nonce.
+ * announced, and whether the escrow was retired from it, for one nonce.
  *
  * The objection key belongs to the escrow, not to a box: its secret seed is
  * derived from the holder's master key, and the escrowId of an escrow a holder
@@ -65,6 +65,25 @@ final class KeeperSeal
             throw new InvalidArgumentException('A keeper gives two raw public keys of 32 bytes: sign (Ed25519) and box (X25519)');
         }
         return ['sign' => $sign, 'box' => $box];
+    }
+
+    /**
+     * The fingerprints a record of former keepers lists — the setting
+     * SelfDataGuard::changeKeeper() appends to.
+     *
+     * @return list<string>
+     * @throws InvalidArgumentException when the record is not a list of fingerprints
+     */
+    public static function formerPrints(?string $recorded): array
+    {
+        if ($recorded === null) {
+            return [];
+        }
+        $prints = json_decode($recorded, true);
+        if (!is_array($prints) || !array_is_list($prints) || array_filter($prints, 'is_string') !== $prints) {
+            throw new InvalidArgumentException('The record of former keepers is unreadable: it was changed in the database');
+        }
+        return $prints;
     }
 
     /**
@@ -183,7 +202,8 @@ final class KeeperSeal
         string $nonce,
         array $releases,
         array $pending,
-        #[\SensitiveParameter] string $signSecret
+        #[\SensitiveParameter] string $signSecret,
+        bool $retired = false
     ): string {
         $json = json_encode([
             'v'        => 1,
@@ -191,6 +211,7 @@ final class KeeperSeal
             'nonce'    => bin2hex($nonce),
             'releases' => array_values($releases),
             'pending'  => array_values($pending),
+            'retired'  => $retired,
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         return base64_encode($json) . '.' . base64_encode(sodium_crypto_sign_detached(self::ATTEST_TAG . $json, $signSecret));
     }
@@ -200,7 +221,7 @@ final class KeeperSeal
      * and for this escrow and nonce. Throws KeeperAttestationException, naming
      * why, when it does not hold.
      *
-     * @return array{releases: list<array{case: string, seq: int, at: int}>, pending: list<array{case: string, due: int, objected: bool}>}
+     * @return array{releases: list<array{case: string, seq: int, at: int}>, pending: list<array{case: string, due: int, objected: bool}>, retired: bool}
      */
     public static function verifyAttestation(string $attestation, string $signPublic, string $escrowId, string $nonce): array
     {
@@ -232,7 +253,7 @@ final class KeeperSeal
         foreach ($body['pending'] as $p) {
             $pending[] = ['case' => (string) ($p['case'] ?? ''), 'due' => (int) ($p['due'] ?? 0), 'objected' => (bool) ($p['objected'] ?? false)];
         }
-        return ['releases' => $releases, 'pending' => $pending];
+        return ['releases' => $releases, 'pending' => $pending, 'retired' => ($body['retired'] ?? false) === true];
     }
 
     /** What an objection signs. */
@@ -241,10 +262,10 @@ final class KeeperSeal
         return self::OBJECT_TAG . $escrowId . pack('N', strlen($caseRef)) . $caseRef;
     }
 
-    /** What a retirement signs: the escrow leaves the keeper that receives it. */
-    public static function retirementMessage(string $escrowId): string
+    /** What a retirement signs: the escrow leaves the keeper whose fingerprint is $keeperPrint, and no other. */
+    public static function retirementMessage(string $escrowId, string $keeperPrint): string
     {
-        return self::RETIRE_TAG . $escrowId;
+        return self::RETIRE_TAG . $escrowId . $keeperPrint;
     }
 
     /** A token: the public key, then the signature of $message under its secret. */
@@ -259,10 +280,14 @@ final class KeeperSeal
         return self::verifyToken($token, $escrowId, self::objectionMessage($escrowId, $caseRef));
     }
 
-    /** The keeper's side: whether $token retires $escrowId, under the key $escrowId is the fingerprint of. */
-    public static function verifyRetirement(string $token, string $escrowId): bool
+    /**
+     * The keeper's side: whether $token retires $escrowId from the keeper whose
+     * fingerprint is $keeperPrint — its own —, under the key $escrowId is the
+     * fingerprint of.
+     */
+    public static function verifyRetirement(string $token, string $escrowId, string $keeperPrint): bool
     {
-        return self::verifyToken($token, $escrowId, self::retirementMessage($escrowId));
+        return self::verifyToken($token, $escrowId, self::retirementMessage($escrowId, $keeperPrint));
     }
 
     private static function verifyToken(string $token, string $escrowId, string $message): bool

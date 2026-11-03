@@ -354,7 +354,11 @@ final class EscrowCeremony
             return [];
         }
         $recorded = $this->storage->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS);
-        $prints   = $recorded === null ? [] : json_decode($recorded, true, flags: JSON_THROW_ON_ERROR);
+        try {
+            $prints = KeeperSeal::formerPrints($recorded);
+        } catch (InvalidArgumentException $unreadable) {
+            throw new EscrowKeeperException('keeper-mismatch', $unreadable->getMessage() . ' — the escrow stays sealed', $unreadable);
+        }
         foreach ($this->formerKeepers as $former) {
             try {
                 $print = KeeperSeal::fingerprint(KeeperSeal::checkKeys($former->publicKeys()));
@@ -419,13 +423,13 @@ final class EscrowCeremony
         $outer    = KeeperSeal::outerOf($record->wrapAdmin);
         $seq      = (int) $intent['seq'];
         $hmac     = (string) $intent['hmac'];
-        $failure  = null;
-        foreach ([$this->keeper, ...$this->recordedFormerKeepers()] as $keeper) {
+        $failures = [];
+        foreach ([$this->keeper, ...$this->recordedFormerKeepers()] as $i => $keeper) {
             try {
                 $due = $keeper->announce($escrowId, $outer, $record->userId, $caseRef, $seq, $hmac);
             } catch (Throwable $e) {
                 // A box sealed to another keeper does not open here: the next one may hold it.
-                $failure = $e;
+                $failures[] = [$i === 0 ? 'the keeper' : "former keeper {$i}", $e];
                 continue;
             }
             if ($due > time()) {
@@ -438,7 +442,12 @@ final class EscrowCeremony
             }
             return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision);
         }
-        throw new EscrowKeeperException('keeper-failed', 'No keeper given recorded the read: the escrow stays sealed', $failure);
+        throw new EscrowKeeperException(
+            'keeper-failed',
+            'No keeper given recorded the read: the escrow stays sealed — '
+            . implode('; ', array_map(static fn (array $f): string => "{$f[0]}: {$f[1]->getMessage()}", $failures)),
+            $failures[0][1]
+        );
     }
 
     /**

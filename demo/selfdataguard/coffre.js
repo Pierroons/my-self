@@ -92,22 +92,30 @@ const MOTIFS = {
   'keeper-mismatch': "le gardien donné à ce service n'est pas celui que sa base a inscrit",
   'no-keeper': 'aucun gardien joignable par ce service',
   'keeper-unreachable': 'le gardien ne répond pas',
+  'retired': "ce séquestre est retiré du gardien qu'il désigne, qui ne le remettra plus : ton prochain dépôt le scelle au gardien de ce service",
+  'escrow-replaced': "la ligne de ton séquestre en base n'est pas celle que ta clé désigne — remise d'une sauvegarde, réécrite ou supprimée ; voici ce que le gardien tient pour ton séquestre",
 };
+
+function listeDesRemises(reads) {
+  const remises = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
+  const annoncees = reads.pending.map((r) => `${r.case} ${r.objected ? 'refusée par toi' : 'annoncée pour le ' + new Date(r.due * 1000).toLocaleString()}`);
+  return [...remises, ...annoncees].join(' · ');
+}
 
 function renderReads(reads) {
   const p = $('#escrow-reads');
   if (!reads) { p.textContent = ''; return; }
   if (!reads.established) {
-    p.textContent = '🔎 Remises non établies — ' + (MOTIFS[reads.reason] || `attestation refusée (${reads.reason})`) + '.';
+    const vues = listeDesRemises(reads);
+    p.textContent = '🔎 Remises non établies — ' + (MOTIFS[reads.reason] || `attestation refusée (${reads.reason})`) + '.'
+      + (vues ? ' Le gardien atteste : ' + vues + '.' : '');
     return;
   }
   if (reads.keeper === null) {
     p.textContent = '🔎 Aucun séquestre déposé : rien à remettre.';
     return;
   }
-  const remises = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
-  const annoncees = reads.pending.map((r) => `${r.case} ${r.objected ? 'refusée par toi' : 'annoncée pour le ' + new Date(r.due * 1000).toLocaleString()}`);
-  p.textContent = '🔎 Remises attestées par le gardien : ' + ([...remises, ...annoncees].join(' · ') || 'aucune') + '.';
+  p.textContent = '🔎 Remises attestées par le gardien : ' + (listeDesRemises(reads) || 'aucune') + '.';
 }
 
 function renderCoffre(data) {
