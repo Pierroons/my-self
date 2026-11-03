@@ -35,8 +35,8 @@ réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire
 détail, la migration et les limites déclarées :
 [`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
 
-Mesuré : 890 cas sur 14 suites (le gardien 167, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
-125), chacune vue rouge sur son cas.
+Mesuré : 901 cas sur 14 suites (le gardien 178, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
+132), chacune vue rouge sur son cas.
 
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
