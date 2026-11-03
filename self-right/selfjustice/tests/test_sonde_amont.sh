@@ -443,9 +443,11 @@ controle "même jugement, sans juridiction → non retrouvé, et la réserve dit
     "21%2F04567?date=2026-03-05" \
     "etat:absente" "reserve:~ne les interroge que si la juridiction est précisée" \
     "reserve:!Tribunaux judiciaires, tribunaux de commerce : l'absence"
-controle "« tj » sans date → l'amont n'est pas interrogé, et c'est dit" \
+# Sans date, aucune source n'a été consultée : « absente » serait une absence
+# que personne n'a vérifiée.
+controle "« tj » sans date → indéterminé, et la raison le dit" \
     "21%2F04567?jurisdiction=tj" \
-    "etat:absente" "reserve:~sans la date de la décision la base amont n'est pas interrogée"
+    "http:503" "etat:indeterminee" "raison:~n'est interrogée qu'avec la date de la décision"
 juri=$(curl -s "$BASE/21%2F04567?jurisdiction=tj&date=2026-03-05" \
     | python3 -c 'import json,sys; d=json.load(sys.stdin)["decisions"]; print(d[0]["juridiction"] if d else "")')
 [ "$juri" = "tj" ] \
@@ -584,6 +586,9 @@ controle "amont injoignable → réserve prudente, et la panne est nommée" \
 controle "amont injoignable → la raison remonte" \
     "23%2F03077?jurisdiction=ca&date=2026-08-12" \
     "reserve:~ne l'a pas pu"
+controle "« tj », amont injoignable → indéterminé : aucune autre source ne le porte" \
+    "21%2F04567?jurisdiction=tj&date=2026-03-05" \
+    "http:503" "etat:indeterminee" "raison:~ne l'a pas pu"
 controle "amont injoignable → l'index local répond quand même" \
     "22%2F00111?jurisdiction=ca&date=2026-06-10" \
     "etat:trouvee" "source:index local"

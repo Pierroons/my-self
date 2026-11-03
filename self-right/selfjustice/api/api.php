@@ -17,7 +17,7 @@
  *   GET /api/legi/search?q={query}&limit={n}
  *   GET /api/eu/article/{source}/{num}
  *   GET /api/eu/search?q={query}&source={src}&limit={n}
- *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca}&date={AAAA-MM-JJ}
+ *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca|tj|tcom|…}&date={AAAA-MM-JJ}
  *   GET /api/jurisprudence/search?q={query}&champ={summary|text|...}&jurisdiction={cc|ca}
  *   GET /api/jurisprudence/decision/{id}
  *   GET /api/status
@@ -1043,7 +1043,7 @@ function judilibre_tenter(string $chemin, array $params, int $timeout = 15): arr
     if ($cle === '') {
         return "Clé Judilibre absente de cette instance : la recherche par thème et "
             . "le texte intégral sont indisponibles. La vérification d'une "
-            . "référence dans l'index local reste possible.";
+            . "référence reste possible pour les juridictions que l'index local moissonne.";
     }
 
     $url = JUDILIBRE_BASE . $chemin . '?' . http_build_query($params);
@@ -1098,7 +1098,7 @@ if (empty($segments)) {
             'GET /api/legi/search?q={query}'           => 'Recherche plein texte LEGI',
             'GET /api/eu/article/{source}/{num}'       => 'Article européen (CEDH, CHARTE_UE, TUE, TFUE, RGPD, AI_ACT)',
             'GET /api/eu/search?q={query}'             => 'Recherche dans conventionnalité',
-            'GET /api/jurisprudence/verifier/{ref}'     => 'Cette référence existe-t-elle ? (ex: 25-10.377, ?jurisdiction=cc|ca)',
+            'GET /api/jurisprudence/verifier/{ref}'     => 'Cette référence existe-t-elle ? (ex: 25-10.377, ?jurisdiction=cc|ca|tj|tcom…)',
             'GET /api/jurisprudence/search?q={query}'   => 'Recherche de jurisprudence par thème',
             'GET /api/jurisprudence/decision/{id}'      => 'Texte intégral d\'une décision',
             'GET /api/status'                          => 'État des bases : volumétrie, date du contenu (last_update) et de la dernière synchronisation (last_sync)',
@@ -1663,16 +1663,25 @@ if ($segments[0] === 'legi') {
 
         // 🔑 La fenêtre lue ne contient pas toujours la version applicable d'un
         // article dont une autre version a répondu : elle se cherche alors par son
-        // numéro, et prend la place de la morte en gardant l'extrait trouvé.
+        // numéro. Elle ne prend la place de la version trouvée que si elle porte
+        // aussi les mots cherchés, et avec son propre extrait. Sinon les mots ne
+        // sont que dans une version qui ne s'applique pas : celle-ci reste ce
+        // qu'elle est, et nomme la version applicable. Fusionner les deux
+        // présenterait un texte abrogé sous l'état « en vigueur ».
         if (!empty($rang_texte)) {
             $col_nature = legi_a_nature($db) ? ", a.nature" : "";
             $version_applicable = $db->prepare(
-                "SELECT a.num, a.etat, a.code_id, a.date_debut, a.code_titre$col_nature,
+                "SELECT a.rowid AS rid, a.num, a.etat, a.code_id, a.date_debut, a.code_titre$col_nature,
                         " . legi_sql_applicable('a') . " AS applicable
                  FROM articles a
                  WHERE a.num = :num AND a.code_id = :code AND " . legi_sql_applicable('a') . "
                  ORDER BY " . legi_sql_ordre_version('a') . "
                  LIMIT 1"
+            );
+            $repond_aussi = $db->prepare(
+                "SELECT snippet(articles_fts, 0, '', '', '…', 12) AS extrait
+                 FROM articles_fts f
+                 WHERE f.articles_fts MATCH :q AND f.rowid = :rid"
             );
             foreach ($rang_texte as $i) {
                 if ($results[$i]['en_vigueur']) {
@@ -1682,7 +1691,14 @@ if ($segments[0] === 'legi') {
                 $version_applicable->bindValue(':code', $results[$i]['code_id'], SQLITE3_TEXT);
                 $row = $version_applicable->execute()->fetchArray(SQLITE3_ASSOC);
                 $version_applicable->reset();
-                if ($row) {
+                if (!$row) {
+                    continue;
+                }
+                $repond_aussi->bindValue(':q', fts5_requete($q));
+                $repond_aussi->bindValue(':rid', $row['rid'], SQLITE3_INTEGER);
+                $extrait = $repond_aussi->execute()->fetchArray(SQLITE3_ASSOC);
+                $repond_aussi->reset();
+                if ($extrait) {
                     $results[$i] = array_merge($results[$i], [
                         'etat'          => $row['etat'],
                         'en_vigueur'    => true,
@@ -1690,7 +1706,14 @@ if ($segments[0] === 'legi') {
                         'date_debut'    => $row['date_debut'],
                         'code'          => $row['code_titre'],
                         'nature'        => $row['nature'] ?? null,
+                        'extrait'       => trim($extrait['extrait']),
                     ]);
+                } else {
+                    $results[$i]['version_applicable'] = [
+                        'etat'          => $row['etat'],
+                        'applicabilite' => legi_applicabilite($row),
+                        'date_debut'    => $row['date_debut'],
+                    ];
                 }
             }
         }
@@ -1874,7 +1897,7 @@ if ($segments[0] === 'eu') {
 // ============================================================
 if ($segments[0] === 'jurisprudence') {
 
-    // /api/jurisprudence/verifier/{ref}?jurisdiction=cc|ca
+    // /api/jurisprudence/verifier/{ref}?jurisdiction=cc|ca|tj|tcom…
     //
     // Trois états, jamais deux : « trouvee », « absente », « indeterminee ».
     // Confondre les deux derniers reviendrait à affirmer une absence sans
@@ -2158,12 +2181,26 @@ if ($segments[0] === 'jurisprudence') {
                   . "les interroge que si la juridiction est précisée." : "")
             . $jade_aussi;
         $echec = $amont_echec !== null ? rtrim($amont_echec, " .") : '';
+
+        // Une juridiction que l'index ne porte pas n'a qu'une source, la sonde
+        // amont. Sans date elle n'a pas lieu, et elle peut échouer : dans les deux
+        // cas rien n'a été consulté, et « absente » affirmerait une absence que
+        // personne n'a vérifiée.
+        if ($hors_index_amont && $amont === null) {
+            $db->close();
+            json_indetermine(
+                "Non vérifiable : l'index local ne porte pas les $libelle_j, et la base "
+                . "amont, seule à les servir, "
+                . ($date_annoncee === null
+                    ? "n'est interrogée qu'avec la date de la décision."
+                    : "ne l'a pas pu — $echec."),
+                ['reference' => $ref, 'juridiction' => $juridiction]
+            );
+        }
+
         $reserve_borne = ($a_la_date || $amont) ? null : match (true) {
             $arret === null && !$hors_index_amont => "Introuvable, et cet index ne déclare "
                 . "aucune couverture : rien ne peut se conclure de cette absence.",
-            $date_annoncee === null && $hors_index_amont => "Introuvable : l'index ne porte "
-                . "pas les $libelle_j, et sans la date de la décision la base amont n'est pas "
-                . "interrogée.",
             $date_annoncee === null   => "Introuvable dans un index arrêté au $arret : "
                 . "une décision postérieure ne peut pas être exclue."
                 . ($juridiction === null && $hors_locales ? " " . ucfirst($noms($hors_locales))
@@ -2187,9 +2224,6 @@ if ($segments[0] === 'jurisprudence') {
                 . " et dans la base amont Judilibre interrogée au $date_annoncee pour les "
                 . "$libelle_j : l'absence ne vaut que dans les limites de ce que Judilibre "
                 . "diffuse de ces juridictions.",
-            $amont_echec !== null && $hors_index_amont => "Introuvable : l'index local ne "
-                . "porte pas les $libelle_j, et la base amont, seule à les servir, ne l'a "
-                . "pas pu — $echec.",
             $amont_echec !== null && $borne_depassee => "Introuvable, et la date annoncée "
                 . "($date_annoncee) est postérieure à l'arrêt de l'index local ($arret) : "
                 . "cette absence ne prouve rien. La base amont, qui aurait tranché, ne "

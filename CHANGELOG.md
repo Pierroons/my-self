@@ -20,11 +20,34 @@ tel volume, l'amont refuse une partie des tranches anciennes (`circuit_breaking_
 large`), la moisson se déclare incomplète et la date de synchronisation ne progresse plus. L'index
 continuait de recevoir les décisions récentes, mais `/status` annonçait un retard depuis le 1er octobre.
 
-- La reprise ne lit plus que les juridictions de `JURIDICTIONS` (`cc`, `ca`).
-- Une juridiction moissonnée absente de l'index fait repartir du début, au lieu de ne recevoir que les
-  trente jours de recouvrement.
-- `tests/test_reprise_judilibre.py`, branché dans `structure` : il rejoue les dates de l'index servi et
-  rougit sur le code précédent (fenêtre ouverte le 20/03/2000).
+- La reprise ne lit plus que les juridictions de `JURIDICTIONS` (`cc`, `ca`), et écarte une décision
+  datée après le jour du passage, comme le fait déjà la couverture de l'API.
+- Une juridiction moissonnée absente de l'index n'est plus remplie par le rafraîchissement, qui ne lui
+  apporterait que la fenêtre récente : le passage la nomme au journal et sort incomplet, et une moisson
+  complète (sans `--depuis`) la remplit. L'effacement des tranches à refaire se borne aux juridictions
+  remoissonnées.
+- `tests/test_reprise_judilibre.py`, branché dans `structure` : il rejoue les dates de l'index servi,
+  puis lance le vrai moissonneur contre un amont simulé (juridictions interrogées, début de fenêtre,
+  tranches conservées, code de sortie, marqueur). Il rougit sur le code précédent (fenêtre ouverte le
+  20/03/2000).
+
+### SelfJustice 0.4.3 et `selfright-mcp` 0.4.7 : trois réponses qui en disaient plus que ce qui était établi — 3 novembre 2026
+
+Corrections de la relecture du lot, avant sa publication.
+
+- **Recherche LEGI** : quand les mots cherchés ne figurent que dans une version qui ne s'applique pas,
+  celle-ci n'est plus présentée sous l'état de la version applicable avec son propre extrait. La version
+  applicable ne prend sa place que si elle porte aussi ces mots, et avec son extrait à elle ; sinon le
+  résultat reste rangé hors du droit applicable et nomme la version qui s'applique (`version_applicable`),
+  que le client MCP affiche.
+- **Vérification d'une référence** : pour un tribunal judiciaire ou de commerce, que l'index ne porte pas,
+  une absence n'est plus rendue quand aucune source n'a été consultée — sans date, ou quand la base amont
+  n'a pas répondu. La réponse est « indéterminée » (503), comme pour toute vérification impossible.
+- Le message « clé Judilibre absente » borne ce qui reste vérifiable aux juridictions que l'index
+  moissonne ; la description de l'outil MCP et l'aide de l'API nomment `tj` et `tcom`.
+- Bancs : `test_applicabilite.py` et `test_sonde_amont.sh` portent ces cas, vus rouges sur le code
+  précédent. Le cas qui exigeait l'état « en vigueur » pour des mots absents de la version applicable
+  est inversé.
 
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 

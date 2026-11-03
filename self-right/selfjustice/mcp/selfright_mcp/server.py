@@ -884,6 +884,7 @@ COURS_APPEL = {
 
 JURIDICTIONS = {
     "cc": "Cour de cassation", "ca": "Cour d'appel",
+    "tj": "Tribunal judiciaire", "tcom": "Tribunal de commerce",
     "ce": "Conseil d'État", "caa": "Cour administrative d'appel",
     "ta": "Tribunal administratif", "tc": "Tribunal des conflits",
     "cdbf": "Cour de discipline budgétaire et financière",
@@ -1593,7 +1594,19 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
             ligne += f"\n      code={r.get('code_id')}"
 
         extrait = (r.get("extrait") or "").strip()
-        return ligne + (f"\n      {extrait[:160]}" if extrait else "")
+        ligne += f"\n      {extrait[:160]}" if extrait else ""
+
+        # Les mots cherchés ne sont que dans cette version : la version qui
+        # s'applique existe, mais ne les porte pas. Elle se lit par son numéro.
+        applicable = r.get("version_applicable")
+        if isinstance(applicable, dict):
+            ligne += (
+                f"\n      → version applicable : "
+                f"[{_ou(applicable.get('etat'), 'état non déclaré')}, depuis "
+                f"{_fin_reelle(applicable.get('date_debut')) or 'date non déclarée'}]"
+                f" — les mots cherchés n'y figurent pas ; la lire par son numéro"
+            )
+        return ligne
 
     # Les abrogés arrivent en dernier, jamais mêlés au droit applicable : c'est
     # l'ordre qui porte l'avertissement, autant que la mention d'état.
@@ -1838,6 +1851,9 @@ async def verifier_jurisprudence(
             quand l'index les porte — `statut` le dit —, « ce » (Conseil
             d'État), « caa » (cours administratives d'appel), « ta »
             (tribunaux administratifs), « tc » (Tribunal des conflits).
+            « tj » (tribunaux judiciaires) et « tcom » (tribunaux de commerce)
+            ne sont pas dans l'index : seule la base amont les vérifie, et
+            seulement avec la date de la décision.
             À préciser quand on la connaît : le même numéro normalisé peut
             désigner un pourvoi et un RG de cour d'appel.
         date: la date attribuée à la décision, au format « AAAA-MM-JJ », quand

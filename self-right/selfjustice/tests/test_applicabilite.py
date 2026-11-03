@@ -241,13 +241,31 @@ def volet_recherche(url: str) -> None:
              bool(trouves) and trouves[0].get("applicabilite") == "en_vigueur",
              f"rendu : {trouves[:1] or 'absent'}")
 
-    # Même article, une fenêtre d'un seul résultat : la version applicable n'y
-    # est pas, elle se cherche par son numéro.
+    # Même article, une fenêtre d'un seul résultat, et des mots que seule la
+    # version de 1992-2000 porte : la version applicable (2024) existe mais ne
+    # dit ni « modifié » ni « suivantes ». Présenter la trouvée sous l'état de
+    # l'applicable afficherait un texte abrogé comme du droit en vigueur.
     r = lire(f"{url}/api/legi/search?q={urllib.parse.quote('modifié dispositions suivantes')}&limit=1")
     tete = (r.get("results") or r.get("resultats") or [{}])[0]
-    verifier("fenêtre d'un résultat : l'art. 1 de 1992 ressort sous sa version applicable",
+    pointee = tete.get("version_applicable") or {}
+    verifier("mots de la seule version de 1992 : elle ne se dit pas applicable",
              tete.get("reference") == "1" and tete.get("code_id") == "JORFTEXT000000724377"
-             and tete.get("applicabilite") == "en_vigueur", f"rendu : {tete}")
+             and tete.get("applicabilite") != "en_vigueur"
+             and "modifi" in (tete.get("extrait") or ""), f"rendu : {tete}")
+    verifier("… et elle nomme la version applicable, du 08/07/2024",
+             pointee.get("date_debut") == "2024-07-08"
+             and pointee.get("applicabilite") == "en_vigueur", f"rendu : {pointee or 'aucune'}")
+
+    # Une fenêtre d'un seul résultat où la version applicable porte AUSSI le mot :
+    # elle prend la place de la trouvée, avec son propre extrait.
+    r = lire(f"{url}/api/legi/search?q={urllib.parse.quote('dispositions')}&limit=1")
+    tete = (r.get("results") or r.get("resultats") or [{}])[0]
+    verifier("« dispositions », fenêtre d'un résultat : l'art. 1 sort sous sa version applicable, "
+             "avec son extrait",
+             tete.get("reference") == "1" and tete.get("code_id") == "JORFTEXT000000724377"
+             and tete.get("applicabilite") == "en_vigueur"
+             and "modifi" not in (tete.get("extrait") or "")
+             and "dispositions" in (tete.get("extrait") or ""), f"rendu : {tete}")
 
     # Une référence coupée par un « / » non encodé ne sert pas son début.
     try:
@@ -426,6 +444,17 @@ def volet_mcp(url: str) -> None:
                 defauts.append(f"rangé sous {titre or '(le bloc du droit applicable)'!r}")
             verifier(f"recherche « {requete} » rangée sous « {bloc_attendu} »",
                      not defauts, " · ".join(defauts))
+
+        # Des mots que seule une version ancienne porte : le résultat est rangé
+        # hors du droit applicable, et nomme la version qui s'applique.
+        texte = await server.rechercher_droit_francais("modifié dispositions suivantes", limite=1)
+        defauts = propre(texte)
+        if not bloc_de(texte, "1"):
+            defauts.append("rangé dans le bloc du droit applicable")
+        if "→ version applicable : [VIGUEUR, depuis 2024-07-08]" not in texte:
+            defauts.append("la version applicable n'est pas nommée")
+        verifier("recherche sur les mots d'une version ancienne : rangée à part, l'applicable nommée",
+                 not defauts, " · ".join(defauts) + f" — {texte[-300:]!r}" if defauts else "")
 
         # Une référence qui porte « / » : interpolée telle quelle dans le chemin,
         # « 8/2 » servait l'article 8 du CPP sous l'en-tête de l'article demandé.

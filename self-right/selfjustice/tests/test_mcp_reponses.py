@@ -54,7 +54,7 @@ JAMAIS_REPRIS = ("banane", "saxophone", "tracteur")
 # Les corps de l'API, tels que `json_indetermine` et `champ_juris` les écrivent.
 CLE_ABSENTE = ("Clé Judilibre absente de cette instance : la recherche par thème et "
                "le texte intégral sont indisponibles. La vérification d'une "
-               "référence dans l'index local reste possible.")
+               "référence reste possible pour les juridictions que l'index local moissonne.")
 AMONT_INJOIGNABLE = ("API Judilibre injoignable : Operation timed out after 15001 "
                      "milliseconds with 0 bytes received")
 RESERVE_CA = ("Les décisions de cour d'appel n'ont pas de sommaire : cette combinaison "
