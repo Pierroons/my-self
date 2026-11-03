@@ -1,0 +1,12 @@
+[Unit]
+Description=CTF Saison 2 — purge horaire des empreintes d'adresse
+
+[Timer]
+OnBootSec=7min
+# La fenêtre de rétention est d'une heure : un passage horaire borne le
+# dépassement à une heure au pire, au lieu de « jamais ».
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

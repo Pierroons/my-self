@@ -1,16 +1,60 @@
 # Configuration de service du lab CTF (Saison 2)
 
-Ce que nginx sert sur l'instance publique du lab, versionné parce qu'il
-n'existait qu'à un exemplaire : sur la machine. Perdre le serveur, c'était
-réécrire tout cela de mémoire.
+Ce que nginx sert sur l'instance publique du lab, et les scripts qui
+l'exploitent, versionnés parce qu'ils n'existaient qu'à un exemplaire : sur la
+machine. Perdre le serveur, c'était réécrire tout cela de mémoire.
+
+Une modification se fait ici, puis se pose. Le code est celui qui tourne ; les
+seuls écarts avec l'hôte sont les gabarits (section suivante) et des
+commentaires réécrits pour être publiés.
 
 ## Où va quoi
 
-| fichier | destination sur l'hôte |
-|---|---|
-| `nginx-ctf.conf` | `/etc/nginx/sites-available/lab` (lien dans `sites-enabled/`) |
-| `snippets/lab-deny-backups.conf` | `/etc/nginx/snippets/` |
-| `snippets/lab-entetes-statiques.conf` | `/etc/nginx/snippets/` |
+| fichier | destination sur l'hôte | droits |
+|---|---|---|
+| `nginx-ctf.conf` | `/etc/nginx/sites-available/lab` (lien dans `sites-enabled/`) | `644 root:root` |
+| `snippets/lab-deny-backups.conf` | `/etc/nginx/snippets/` | `644 root:root` |
+| `snippets/lab-entetes-statiques.conf` | `/etc/nginx/snippets/` | `644 root:root` |
+| `ctf-s2-annonces`, `ctf-s2-anonymiser-journaux`, `ctf-s2-exporter`, `ctf-s2-integrite`, `ctf-s2-sauvegarde`, `ctf-s2-sortie-deposer`, `ctf-s2-veille` | `/usr/local/sbin/` | `750 root:root` |
+| `ctf-s2-purge-empreintes` | `/usr/local/sbin/` | `750 root:www-data` — son service tourne en `www-data` |
+| `ctf-s2-sortie-lire` | `/usr/local/bin/` — commande forcée de la clé qui rapatrie l'archive | `755 root:root` |
+| `00-anonymiser-journaux` | `/etc/logrotate.d/httpd-prerotate/` | `755 root:root` |
+| `ctf-s2-*.service`, `ctf-s2-*.timer` | `/etc/systemd/system/` | `644 root:root` |
+| `ctf-s2-sauvegarde.cron` | `/etc/cron.d/ctf-s2-sauvegarde` | `644 root:root` |
+| `maj-code.sh` | le répertoire personnel du compte d'administration | `700`, à ce compte |
+| `deploy-vhost-ctf.sh` | reste sur le poste : il pose `nginx-ctf.conf` à la révision que le lab sert | — |
+
+⚠️ `run-parts` n'exécute que les noms en `[A-Za-z0-9_-]` : renommer
+`00-anonymiser-journaux` avec un point le ferait ignorer en silence, et les
+journaux partiraient à l'archive sans être anonymisés.
+
+### Cinq gabarits à substituer à la pose
+
+Le dépôt ne publie ni les noms de comptes ni les désignations de l'hôte. Les
+copies en service portent les valeurs ; celles-ci portent un gabarit :
+
+| gabarit | ce qu'il désigne | fichiers |
+|---|---|---|
+| `<compte-sortie>` | le compte, sans privilège, dont la clé rapatrie l'archive | `ctf-s2-sortie-deposer`, `ctf-s2-sortie-lire`, `ctf-s2-sauvegarde` |
+| `<compte-admin>` | le compte d'administration du VPS, qui élève par `sudo` | `ctf-s2-sauvegarde` |
+| `<nom-de-l-adresse>` | le nom que l'hébergeur attache à l'adresse du lab | `ctf-s2-veille` |
+| `<ptr-du-vps>` | le nom que rend la résolution inverse de cette adresse | `ctf-s2-veille` |
+| `<compte-site-ferme>` | le compte de l'authentification basique que le vhost exige quand le site est fermé | `maj-code.sh` |
+
+Un gabarit oublié ne fait pas toujours échouer. `<compte-site-ferme>` laissé tel
+quel, `maj-code.sh` s'arrête sur le site fermé (401 au lieu de 200). Les deux derniers laissés tels
+quels, la veille ne reconnaît plus le serveur sous les noms que l'hébergeur lui
+donne : le balayage de masse qui vise ces noms déclenche l'alerte « on cherche
+autre chose que le lab ». Après une pose, cette recherche ne doit rien rendre sur l'hôte,
+lancée par le compte d'administration :
+
+```sh
+sudo grep -nE '<(compte-sortie|compte-admin|nom-de-l-adresse|ptr-du-vps|compte-site-ferme)>' /usr/local/sbin/ctf-s2-* /usr/local/bin/ctf-s2-* ~/maj-code.sh
+```
+
+`deploy-vhost-ctf.sh` lit ses deux alias SSH dans `CTF_SSH_LECTURE` (le compte de
+lecture, sans privilège) et `CTF_SSH_ADMIN` (le compte qui élève), et s'arrête
+si l'un manque.
 
 🔑 **Le gabarit déclare lui-même son contexte `http`** — la `map`, le
 `log_format` et la zone `limit_req`, en tête de fichier, comme les gabarits de
@@ -42,13 +86,13 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
 
 ## Ce qui n'est PAS ici, et pourquoi
 
-Les scripts d'exploitation — déploiement du code, sauvegarde quotidienne,
-export chiffré vers le NAS — suivent la règle d'`AGENTS.md` : le déployeur vit
-hors dépôt. Ils sont en revanche **repris dans l'archive quotidienne**, qui part
-chiffrée sur le NAS ; c'est leur seule copie hors machine.
+Le côté NAS du rapatriement — le script qui tire l'archive et son unité — vit
+avec la configuration du NAS. Les jetons d'alerte et la phrase de passe de
+l'export restent sur le serveur, dans les fichiers que les scripts nomment.
 
 Les secrets d'instance (`data/.blindkey`, `.sitesalt`, `.serversecret`, `.modaudit`) ne
-quittent jamais le serveur autrement que dans cette archive chiffrée. Deux sortes de
+quittent jamais le serveur autrement que dans l'archive quotidienne
+(`ctf-s2-sauvegarde`), chiffrée par `ctf-s2-exporter` avant de partir sur le NAS. Deux sortes de
 témoins vivent à côté d'eux et voyagent avec eux : `<secret>.existe`, qui empêche un
 secret disparu d'être remplacé en silence, et `.blindkey.scelle`, qui ferme la lecture
 des blobs sans contexte. ⚠️ Une restauration qui perdrait `.blindkey.scelle`
@@ -94,7 +138,7 @@ propose —, un numéro réécrit ne se voit plus : tout devient illisible, sans
 pour les secrets présents, avec l'identité qui possède `data/` — celle qui sert le
 site ne l'écrit pas forcément, et un témoin manquant se signale au journal du site :
 
-```
+```sh
 for s in .blindkey .sitesalt .serversecret .modaudit; do [ -f "data/$s" ] && touch "data/$s.existe"; done
 ```
 

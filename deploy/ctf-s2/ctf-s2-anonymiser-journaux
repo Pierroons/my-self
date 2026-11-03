@@ -1,0 +1,120 @@
+#!/bin/bash
+# Tronque les adresses deja ecrites dans les journaux du lab.
+#
+# La troncature posee dans `lab_anon` ne vaut que pour le trafic a venir : les
+# lignes anterieures portent l'adresse entiere de leur auteur. Sur une machine
+# faite pour etre attaquee, ces journaux sont ce qu'un intrus lirait.
+#
+# 🔑 Il ecrit avec `cat > fichier`, jamais `sed -i`. Un `sed -i` cree un nouveau
+# fichier et le renomme : nginx garde alors son descripteur sur l'ancien inode
+# et continue d'y ecrire, dans un fichier que plus personne ne lit. Le `cat`
+# tronque en place et preserve l'inode.
+#
+# ⚠️ Irreversible, et sans copie de sauvegarde — une copie rendrait le geste
+# inutile. Les lignes ecrites entre la lecture et l'ecriture sont perdues ;
+# c'est quelques lignes sur un serveur calme, et c'est le prix de l'inode.
+#
+# Sans argument il n'ecrit RIEN : il montre ce qu'il changerait. `--ecrire` agit.
+set -uo pipefail
+export LC_ALL=C
+
+D=${CTF_ANON_DIR:-/var/log/nginx}
+ECRIRE=0
+[ "${1:-}" = "--ecrire" ] && ECRIRE=1
+
+# Un prefixe suffit a reconnaitre une campagne ; l'hote precis ne sert a rien
+# ici. IPv4 perd son dernier octet, IPv6 tout ce qui suit son troisieme groupe —
+# les deux bornes que `lab_anon` applique deja au trafic a venir.
+#
+# 🔑 Les motifs sont ANCRES, et ce n'est pas un detail de style. Une adresse
+# n'apparait qu'a deux endroits : en tete de ligne dans un journal d'acces, et
+# derriere `client: ` dans un journal d'erreur. Cherchee partout, la forme IPv6
+# attrape l'horodatage de nginx — dans `[04/Oct/2026:15:21:14 +0000]`, la suite
+# `2026:15:21:14` a exactement la forme de quatre groupes hexadecimaux, et une
+# passe globale la reecrirait en `2026:15:21::`. Les trois journaux perdraient
+# leur heure.
+anonymiser() {
+  sed -E \
+    -e 's/^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.[0-9]{1,3}/\1.0/' \
+    -e 's/^([0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}):[0-9a-fA-F:]+/\1::/' \
+    -e 's/(client: )([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\.[0-9]{1,3}/\1\2.0/g' \
+    -e 's/(client: )([0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}):[0-9a-fA-F:]+/\1\2::/g'
+}
+
+# Ce que l'on cherche ensuite pour juger du resultat : aux deux memes endroits,
+# une IPv4 dont le dernier octet n'est pas nul, ou une IPv6 qui porte un
+# quatrieme groupe.
+A='([0-9]{1,3}\.){3}[1-9][0-9]{0,2}'
+B='([0-9a-fA-F]{1,4}:){3}[0-9a-fA-F]{1,4}'
+RESTE="^$A|^$B|client: $A|client: $B"
+
+total_av=0; total_ap=0
+# 🔑 Ce drapeau est la seule chose qui rende ce script utilisable en garde-fou.
+# Sans lui il sortait 0 meme apres « ecriture refusee » : un appelant qui s'y
+# fiait — le `prerotate` de logrotate, par exemple — laissait passer la rotation
+# et archivait les adresses qu'on croyait retirees. Un echec se raconte sur
+# stderr ET se compte.
+ECHEC=0
+# Les `.1` comptent autant que les fichiers vivants. `delaycompress` laisse
+# l'archive de la veille en clair un cycle entier : lancee en `prerotate`, cette
+# passe la nettoie juste avant qu'elle devienne un `.gz` que plus rien ne relit.
+# Elle rattrape surtout le cas ou nginx a continue d'ecrire dans l'ancien inode
+# — vu le 05/10 : apres une rotation, les workers n'avaient pas reouvert et
+# `error.log.1` avait pris 201 adresses entieres pendant que le fichier vivant
+# restait a zero. Les `.gz` ne sont pas traites : ils demanderaient de
+# recompresser, et ce qui y arrive est deja passe par ici.
+for f in access.log error.log lab-sondes.log access.log.1 error.log.1 lab-sondes.log.1; do
+  c="$D/$f"
+  # Absent n'est pas un echec : juste apres une rotation, le fichier n'est pas
+  # encore recree, et il n'a alors rien a anonymiser.
+  if [ ! -f "$c" ]; then echo "  — $f : absent, saute"; continue; fi
+  # Illisible, si : le fichier existe, porte peut-etre des adresses, et on ne
+  # peut pas les retirer.
+  if [ ! -r "$c" ]; then echo "  ✗ $f : illisible (droits)" >&2; ECHEC=1; continue; fi
+  # Vide non plus : c'est l'etat normal d'un journal juste apres une rotation.
+  # Sans ce test, `anonymiser` rend un flux vide, `[ -s "$t" ]` echoue, et le
+  # drapeau se leve sur un journal qui n'avait rien a nettoyer. Branche en
+  # `prerotate` avec `sharedscripts`, cet echec-la ANNULERAIT la rotation du
+  # groupe — un garde-fou qui bloque ce qu'il devait proteger. Mesure du 04/10,
+  # vue seulement en service : le banc ne fabriquait que des journaux garnis.
+  if [ ! -s "$c" ]; then echo "  — $f : vide, rien a faire"; continue; fi
+
+  av=$(grep -cE "$RESTE" "$c" || true)
+  ap=$(anonymiser < "$c" | grep -cE "$RESTE" || true)
+  total_av=$((total_av + av)); total_ap=$((total_ap + ap))
+
+  if [ "$ECRIRE" -eq 1 ]; then
+    t=$(mktemp) || { echo "  ✗ $f : pas de fichier temporaire" >&2; ECHEC=1; continue; }
+    if anonymiser < "$c" > "$t" && [ -s "$t" ]; then
+      # `cat >` et non `mv` : voir l'en-tete, l'inode doit survivre.
+      if cat "$t" > "$c"; then
+        reel=$(grep -cE "$RESTE" "$c" || true)
+        echo "  ✓ $f : $av → $reel ligne(s) portant une adresse entiere"
+        # Relu dans le fichier, pas deduit de la transformation : des lignes qui
+        # restent apres ecriture veulent dire que le motif ne couvre pas ce que
+        # nginx a ecrit. Annoncer un succes ici serait annoncer l'inverse de la
+        # mesure.
+        [ "$reel" -eq 0 ] || ECHEC=1
+      else
+        echo "  ✗ $f : ecriture refusee, fichier inchange" >&2
+        ECHEC=1
+      fi
+    else
+      echo "  ✗ $f : transformation vide, rien ecrit" >&2
+      ECHEC=1
+    fi
+    rm -f "$t"
+  else
+    echo "  · $f : $av → $ap ligne(s) portant une adresse entiere"
+  fi
+done
+
+echo
+if [ "$ECRIRE" -eq 1 ]; then
+  echo "Ecrit. Total : $total_av ligne(s) avant."
+  [ "$ECHEC" -eq 0 ] || echo "✗ Au moins un journal n'a PAS ete anonymise — voir ci-dessus." >&2
+else
+  echo "Essai seul, rien n'a ete ecrit — $total_av → $total_ap ligne(s)."
+  echo "Pour agir : $0 --ecrire"
+fi
+exit "$ECHEC"

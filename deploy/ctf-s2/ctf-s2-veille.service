@@ -1,0 +1,12 @@
+[Unit]
+Description=CTF Saison 2 — ce qui sort du perimetre annonce aux chercheurs
+Documentation=file:/usr/local/sbin/ctf-s2-veille
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ctf-s2-veille
+ProtectSystem=strict
+ReadWritePaths=/var/log /var/lib/ctf-s2-veille
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

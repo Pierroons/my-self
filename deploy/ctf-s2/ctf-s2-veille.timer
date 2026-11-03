@@ -1,0 +1,12 @@
+[Unit]
+Description=Veille du perimetre CTF, toutes les cinq minutes
+
+[Timer]
+# Cinq minutes, et la fenetre relue en couvre autant : on ne cherche pas a
+# bloquer une attaque en cours, on cherche a la savoir le jour meme.
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

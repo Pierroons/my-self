@@ -1,0 +1,69 @@
+#!/bin/sh
+# Sauvegarde quotidienne du CTF Saison 2 : copie cohérente de la base, secrets d'instance, état et
+# configuration de la console SU, plus la configuration de service. 14 jours gardés. Un échec part
+# sur le canal de notification du lab.
+# CTF_DATA ne sert qu'à éprouver l'alerte : pointé ailleurs, la copie échoue.
+#
+# 🔑 Depuis le 04/10/2026 l'archive emporte aussi ce qui fait tourner le service : vhost, snippets,
+# fichiers de contexte http, scripts d'exploitation et cron. Jusque-là elle ne gardait que les
+# données, et tout le reste n'existait qu'à un exemplaire — sur cette machine. Une perte du VPS
+# rendait les données mais laissait à réécrire de mémoire la configuration qui les sert.
+# La configuration nginx et ces scripts sont aussi versionnés (deploy/ctf-s2/), aux gabarits
+# près : cette archive garde les copies en service, valeurs comprises.
+#
+# ⚠️ La liste des chemins est explicite, sans joker : un fichier qui disparaît fait échouer tar,
+# donc le script, donc l'alerte. C'est voulu — une sauvegarde qui rétrécit en silence ne se
+# remarque qu'au jour de la restauration.
+set -eu
+L=${CTF_DATA:-/var/www/ctf-s2/demo/lab/data}
+N=${CTF_NOTIFY:-/etc/myself-lab/notify.conf}
+Q=/root/lab-backups/quotidien
+LOG=/var/log/ctf-s2-sauvegarde.log
+D=$(date +%Y%m%d)
+umask 077
+T=$(mktemp -d)
+fin() {
+  rc=$?
+  rm -rf "$T"
+  [ "$rc" = 0 ] && return 0
+  echo "$(date -Is) ÉCHEC (code $rc)" >> "$LOG"
+  [ -r "$N" ] || return 0
+  printf 'user = "%s"\n' "$(sed -n 2p "$N")" | curl -s -m 5 -K - -H 'Title: Sauvegarde CTF en échec' \
+    -H 'Priority: high' -d "La sauvegarde du $D a échoué (code $rc). Voir $LOG sur le VPS." "$(sed -n 1p "$N")" >/dev/null || true
+}
+trap fin EXIT
+mkdir -p "$Q"
+sqlite3 -readonly "$L/lab.db" ".backup '$T/lab.db'"
+[ "$(sqlite3 "$T/lab.db" 'PRAGMA integrity_check')" = ok ]
+cp -p "$L"/.[!.]* "$T"/
+tar -czf "$Q/ctf-s2-$D.tar.gz" -C "$T" . -C / \
+  var/lib/myself-lab etc/myself-lab \
+  etc/nginx/sites-available/lab \
+  etc/nginx/snippets/lab-deny-backups.conf \
+  etc/nginx/snippets/lab-entetes-statiques.conf \
+  etc/cron.d/ctf-s2-sauvegarde \
+  usr/local/sbin/ctf-s2-sauvegarde \
+  usr/local/sbin/ctf-s2-exporter \
+  usr/local/sbin/ctf-s2-sortie-deposer \
+  usr/local/bin/ctf-s2-sortie-lire \
+  etc/systemd/system/ctf-s2-sortie.service \
+  etc/systemd/system/ctf-s2-sortie.timer \
+  'var/lib/<compte-sortie>/.ssh/authorized_keys' \
+  usr/local/sbin/ctf-s2-veille \
+  usr/local/sbin/ctf-s2-integrite \
+  usr/local/sbin/ctf-s2-annonces \
+  usr/local/sbin/ctf-s2-anonymiser-journaux \
+  etc/systemd/system/ctf-s2-veille.service \
+  etc/systemd/system/ctf-s2-veille.timer \
+  etc/systemd/system/ctf-s2-integrite.service \
+  etc/systemd/system/ctf-s2-integrite.timer \
+  etc/systemd/system/ctf-s2-annonces.service \
+  etc/systemd/system/ctf-s2-annonces.timer \
+  etc/logrotate.d/nginx \
+  etc/logrotate.d/httpd-prerotate/00-anonymiser-journaux \
+  etc/systemd/system/selfrecover-purger.service \
+  etc/systemd/system/selfrecover-purger.timer \
+  opt/selfrecover/tools/purger.php \
+  'home/<compte-admin>/maj-code.sh'
+find "$Q" -name 'ctf-s2-*.tar.gz' -mtime +14 -delete
+echo "$(date -Is) ok $(stat -c %s "$Q/ctf-s2-$D.tar.gz") octets" >> "$LOG"

@@ -1,0 +1,14 @@
+[Unit]
+Description=Annonces du lab CTF, toutes les cinq minutes
+
+[Timer]
+# Cinq minutes : un chercheur qui depose un rapport ou sort un drapeau doit
+# etre vu vite, et le curseur est un ID — un passage manque ne perd rien, il
+# reporte. Pas de `Persistent` : rattraper au demarrage n'a pas de sens ici,
+# le script a sa propre fenetre de rattrapage quand son etat manque.
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

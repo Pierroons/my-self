@@ -1,0 +1,30 @@
+#!/bin/sh
+# Anonymise les journaux du lab AVANT que logrotate les archive.
+# A poser dans /etc/logrotate.d/httpd-prerotate/, mode 755, root:root.
+#
+# POURQUOI ICI, et pas dans un timer a part.
+# `lab_anon` tronque l'adresse du trafic a venir, mais `error_log` n'a pas de
+# format configurable : nginx y ecrit `client: <adresse entiere>` quoi qu'on
+# fasse, et le fichier en reaccumule en continu. Une rotation qui passe avant
+# l'anonymisation archive un `.gz` que l'anonymiseur ne lit pas — l'adresse y
+# devient permanente, et plus rien ne la reprend.
+#
+# Deux timers qui se courent apres laisseraient cette course ouverte. Ce
+# repertoire-ci est appele par le `prerotate` de /etc/logrotate.d/nginx, qui
+# vient du paquet nginx : l'ordre est garanti par construction, et le fichier
+# du paquet reste intact — dpkg ne reclamera rien a la prochaine mise a jour.
+#
+# 🔑 L'ECHEC EST BLOQUANT, ET C'EST VOULU. Avec `sharedscripts`, un prerotate
+# qui sort non nul annule la rotation du groupe. Mieux vaut un journal qui
+# grossit — 33 Go libres, des annees de marge au debit actuel — qu'une archive
+# d'adresses qu'on ne peut plus reprendre. Cela suppose que l'anonymiseur rende
+# un code honnete : il le rend depuis le 04/10, eprouve au banc sur « journal
+# illisible » et « ecriture refusee ». Avant, il sortait 0 meme apres un refus,
+# et ce garde-fou n'aurait rien garde.
+#
+# Ou le voir echouer :  journalctl -u logrotate.service
+#
+# ⚠️ run-parts n'execute que les noms en [A-Za-z0-9_-] : pas de point dans ce
+# nom de fichier, sinon il est ignore en silence.
+set -eu
+exec /usr/local/sbin/ctf-s2-anonymiser-journaux --ecrire

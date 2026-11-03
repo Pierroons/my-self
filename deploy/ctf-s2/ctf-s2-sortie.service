@@ -1,0 +1,7 @@
+[Unit]
+Description=Depot de la sauvegarde chiffree du lab dans la boite lue par le NAS
+Documentation=file:/usr/local/sbin/ctf-s2-sortie-deposer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ctf-s2-sortie-deposer
