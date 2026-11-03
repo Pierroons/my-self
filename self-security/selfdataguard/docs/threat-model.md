@@ -37,13 +37,14 @@ Untrusted input enters at eight places:
    `reEnroll()`, `reinstateArchive()`, `freeze()`, `unfreeze()`; without one, they take none.
 8. **What a keeper answers** (`EscrowKeeper`, written by the integrator): the inner box it hands back, the deadline it
    announces, and the attestation a holder's session verifies. The attestation is checked under the key the holder's
-   own deposit named, for the escrow and the nonce of the request; the inner box is opened as any `wrap_admin` is,
+   own deposit named, for the escrowId the session computes from the master key — not the one the row names — and
+   the nonce of the request, and it says whether the escrow is retired; the inner box is opened as any `wrap_admin` is,
    and must name its account. A keeper that hands back another box opens nothing; one that does not answer leaves
    the releases "not established", and one whose public keys do not come leaves the vaults open and takes no deposit.
    The ceremony and every façade refuse a keeper other than the one the database recorded, or than a former one it
-   recorded. A box is input too — anyone can seal one to the keeper's public key: the keeper refuses one whose
-   objection key is not the one the escrowId is the fingerprint of, and checks an objection or a retirement against
-   the escrowId alone.
+   recorded, and an unreadable record of former keepers. A box is input too — anyone can seal one to the
+   keeper's public key: the keeper refuses one whose objection key is not the one the escrowId is the fingerprint of,
+   checks an objection against the escrowId alone, and a retirement against the escrowId and its own fingerprint.
 
 ## Components that matter most, and least
 
@@ -59,7 +60,7 @@ Untrusted input enters at eight places:
   key is the one piece whose loss locks everything and whose leak makes enumerable indexed values
   findable by dictionary across all accounts.
 - `src/Escrow/` — the compartment with its own permanent key, the ceremony, and the signed log; and, since 0.9.0,
-  `KeeperSeal` — the outer box, the `k1:` marker, the attestation and the objection — and the ceremony's path
+  `KeeperSeal` — the outer box, the `k1:` marker, the attestation, the objection and the retirement — and the ceremony's path
   through the keeper. A defect there gives the administrator alone back what the keeper was for.
 
 **Secondary** — `src/SelfDataGuard.php` (orchestration), the exception hierarchy, the in-place

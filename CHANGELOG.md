@@ -14,13 +14,15 @@ Ce changelog agrège les jalons transversaux du projet.
 
 Sous un **gardien** — un second détenteur que l'intégrateur fait tourner hors de la machine qui sert —, le séquestre
 est scellé deux fois : l'administrateur n'ouvre la boîte intérieure qu'une fois le gardien la lui a rendue, après avoir
-inscrit la remise, et le gardien signe pour le titulaire ce qu'il a remis (`escrowReads()` : établi, ou « non établi »
-avec son motif, jamais « aucune remise »). Chaque dépôt tire une clé de séquestre neuve. Un délai, réglé par le
-gardien, change toute lecture, d'archive comprise, en annonce à laquelle le titulaire seul peut s'opposer, sous la
-clé d'objection du séquestre — l'escrowId en est l'empreinte ; qui joint le gardien hors de la cérémonie attend aussi.
-La base inscrit le gardien et la clé d'administration ; un gardien remplacé (`changeKeeper()`) reste donné aux
-façades et à la cérémonie : le dépôt suivant y retire le séquestre (`retire()`), et la cérémonie lit encore ce qui
-lui reste scellé. La passe de l'exploitant (`seal-to-keeper`)
+inscrit la remise, et le gardien signe pour le titulaire ce qu'il a remis pour l'escrowId que la session calcule depuis
+la clé maîtresse (`escrowReads()` : établi, ou « non établi » avec son motif, jamais « aucune remise ») : une ligne de
+séquestre supprimée, remise d'une sauvegarde ou réécrite n'ôte au titulaire ni la vue ni l'objection. Chaque dépôt tire une clé de
+séquestre neuve. Un délai, réglé par le gardien, change toute lecture, d'archive comprise, en annonce à laquelle le
+titulaire seul peut s'opposer, sous la clé d'objection du séquestre — l'escrowId en est l'empreinte ; qui joint le
+gardien hors de la cérémonie attend aussi. La base inscrit le gardien et la clé d'administration ; un gardien
+remplacé (`changeKeeper()`) n'est jamais repris et reste donné aux façades et à la cérémonie : chaque dépôt y retire
+le séquestre (`retire()`, un jeton qui nomme le gardien visé), et la cérémonie lit encore ce qui lui reste scellé.
+La passe de l'exploitant (`seal-to-keeper`)
 scelle au gardien les séquestres d'avant, sans aucun secret en main ; `bin/keeper-conformance.php` éprouve un
 gardien.
 
@@ -30,8 +32,8 @@ réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire
 détail, la migration et les limites déclarées :
 [`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
 
-Mesuré : 811 cas sur 14 suites (le gardien 92, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
-64), chacune vue rouge sur son cas.
+Mesuré : 845 cas sur 14 suites (le gardien 123, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
+86), chacune vue rouge sur son cas.
 
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
