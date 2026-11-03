@@ -106,9 +106,11 @@ interface EscrowKeeper
      * $escrowId is the fingerprint of, for this keeper's own fingerprint
      * (KeeperSeal::verifyRetirement()) — a token made for another keeper is
      * refused, so that no keeper can pass one on. Every later announce() and
-     * release() of it is refused; its attestation stays, and says it is
-     * retired. A retirement taken again is taken. What a holder's façade sends,
-     * at each deposit, every keeper the deployment replaced, before it writes.
+     * release() of it is refused; its attestation stays — the releases and
+     * announcements made before — and says it is retired. A retirement taken
+     * again is taken, and so is one for an escrowId this keeper never saw. What
+     * a holder's façade sends, at each deposit, every keeper the deployment
+     * replaced, before it writes.
      * Throws when the token does not verify.
      */
     public function retire(string $escrowId, string $token): void;

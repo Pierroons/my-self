@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowEnvelopeMismatchException;
 use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeper;
@@ -85,6 +86,9 @@ final class SelfDataGuard
     /** @var array{sign: string, box: string}|null the public keys of the keeper this façade seals escrows to, once checked */
     private ?array $keeperKeys = null;
 
+    /** @var array<int, array{0: string, 1: array{sign: string, box: string}}> the fingerprint and keys of each former keeper given, once they came */
+    private array $formerKeys = [];
+
     /** How many times a deposit is redone over a rotation that landed between its read and its write. */
     private const DEPOSIT_ATTEMPTS = 3;
 
@@ -93,6 +97,7 @@ final class SelfDataGuard
     public const SETTING_SHARED_INDEXES = 'selfdataguard.shared-indexes';
     public const SETTING_KEEPER         = 'selfdataguard.escrow-keeper';
     public const SETTING_FORMER_KEEPERS = 'selfdataguard.escrow-keeper-former';
+    public const SETTING_FORGOTTEN_KEEPERS = 'selfdataguard.escrow-keeper-forgotten';
     public const SETTING_ESCROW_ADMIN   = 'selfdataguard.escrow-admin';
 
     /**
@@ -122,10 +127,11 @@ final class SelfDataGuard
      *        NoKeeper: no keeper, as before 0.9.0, on a database that recorded
      *        none.
      * @param list<EscrowKeeper> $formerKeepers keepers the deployment replaced
-     *        (changeKeeper()), the database's record of them checked at use: a
-     *        holder sees and objects to what one of them still holds announced,
-     *        and the re-sealing of an escrow sealed to one retires it there
-     *        first. A former keeper the database did not record is ignored.
+     *        (changeKeeper()). With those the database recorded, they are the
+     *        former keepers: a holder sees what each still attests and objects
+     *        there, and each deposit retires the escrow from every one of them
+     *        first — refused while one recorded is not given, or one does not
+     *        answer.
      *
      * @throws InvalidArgumentException when the key, or the shared fields, are
      *         not the ones the database recorded, or when it recorded none and
@@ -288,12 +294,13 @@ final class SelfDataGuard
      * to $to. Each deposit retires the escrow from every former keeper, and is
      * refused without it: the façades keep $from for as long as the database
      * records it. An escrow retired from a keeper never reads there again, so
-     * $to is never a keeper replaced before, nor $from itself.
+     * $to is never a keeper replaced before — forgotten since or not —, nor
+     * $from itself.
      *
      * @throws InvalidArgumentException when $from is not the keeper the database
-     *         recorded, $to is $from or a keeper replaced before, the record of
-     *         former keepers does not read, or another operator changed the
-     *         record meanwhile
+     *         recorded, $to is $from or a keeper replaced before, a record of
+     *         former or forgotten keepers is unreadable, or another operator
+     *         changed the record meanwhile
      */
     public static function changeKeeper(StorageInterface $storage, EscrowKeeper $from, EscrowKeeper $to): void
     {
@@ -305,7 +312,8 @@ final class SelfDataGuard
         }
         $formerHeld = $storage->loadSetting(self::SETTING_FORMER_KEEPERS);
         $former     = KeeperSeal::formerPrints($formerHeld);
-        if (hash_equals($fromPrint, $toPrint) || in_array($toPrint, $former, true)) {
+        $forgotten  = KeeperSeal::formerPrints($storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS));
+        if (hash_equals($fromPrint, $toPrint) || in_array($toPrint, $former, true) || in_array($toPrint, $forgotten, true)) {
             throw new InvalidArgumentException(
                 "The keeper {$toPrint} is the one replaced, or one replaced before: escrows were retired from it, and "
                 . 'a keeper is never taken back — change to a keeper this database never had'
@@ -323,6 +331,47 @@ final class SelfDataGuard
         }
         if (!$storage->replaceSetting(self::SETTING_KEEPER, $fromPrint, $toPrint)) {
             throw new InvalidArgumentException('The recorded keeper changed meanwhile: it is no longer ' . $fromPrint);
+        }
+    }
+
+    /**
+     * Take the former keeper whose fingerprint is $print off the database's
+     * record of former keepers — the operator's act, for a former keeper that
+     * is gone for good: each deposit asks every former keeper to retire the
+     * escrow, and is refused while one does not answer. The operator stops
+     * giving it to the façades, which would keep asking it, and to the
+     * ceremony, which refuses a former keeper the database does not record —
+     * every read, not only those sealed to it. What is still sealed to it —
+     * the archives, the escrows no deposit re-sealed since — then no longer
+     * reads through the ceremony. Its fingerprint moves to the record of
+     * forgotten keepers, which changeKeeper() refuses as well: escrows were
+     * retired from it. Nothing else logs the act.
+     *
+     * @throws InvalidArgumentException when the database records no former keeper
+     *         $print, a record is unreadable, or another operator changed it meanwhile
+     */
+    public static function forgetFormerKeeper(StorageInterface $storage, string $print): void
+    {
+        $held   = $storage->loadSetting(self::SETTING_FORMER_KEEPERS);
+        $former = KeeperSeal::formerPrints($held);
+        if (!in_array($print, $former, true)) {
+            throw new InvalidArgumentException("This database records no former keeper {$print}: nothing was changed");
+        }
+        $forgottenHeld = $storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS);
+        $forgotten     = KeeperSeal::formerPrints($forgottenHeld);
+        if (!in_array($print, $forgotten, true)) {
+            $forgotten[] = $print;
+            $written     = json_encode($forgotten, JSON_THROW_ON_ERROR);
+            $recorded    = $forgottenHeld === null
+                ? hash_equals($storage->claimSetting(self::SETTING_FORGOTTEN_KEEPERS, $written), $written)
+                : $storage->replaceSetting(self::SETTING_FORGOTTEN_KEEPERS, $forgottenHeld, $written);
+            if (!$recorded) {
+                throw new InvalidArgumentException('The record of forgotten keepers changed meanwhile: nothing was changed');
+            }
+        }
+        $kept = json_encode(array_values(array_diff($former, [$print])), JSON_THROW_ON_ERROR);
+        if (!$storage->replaceSetting(self::SETTING_FORMER_KEEPERS, (string) $held, $kept)) {
+            throw new InvalidArgumentException('The record of former keepers changed meanwhile: nothing was changed');
         }
     }
 
@@ -895,9 +944,10 @@ final class SelfDataGuard
      * compartment as it stands then. The compartment keeps its escrowId, so
      * that the keeper's record of it follows.
      *
-     * Under a keeper, the escrow is first retired from every former keeper the
-     * database recorded; nothing is written when the vault is frozen, or when
-     * one of them was not given to this façade or does not take it.
+     * Under a keeper, once the fields of before open, the escrow is retired
+     * from every former keeper — recorded by the database or given to this
+     * façade —; nothing is written when the vault is frozen, or when one of
+     * them cannot be asked or does not take the retirement.
      *
      * wrap_admin is sealed to $adminPublicKey at each deposit, and, with a
      * keeper, sealed again to it. The first deposit records which key; a
@@ -910,10 +960,12 @@ final class SelfDataGuard
      *
      * @param array<string, string> $fields field_name => plaintext
      * @throws StaleEscrowException when other deposits kept landing between this one's read and its write
-     * @throws VaultFrozenException when a former keeper is recorded and the vault is frozen
-     * @throws EscrowKeeperException keeper-mismatch — a former keeper not given, a record of former keepers
-     *         unreadable or that lists the façade's own keeper —, or keeper-failed — a former keeper that does
-     *         not take the retirement
+     * @throws VaultFrozenException when there is a former keeper and the vault is frozen
+     * @throws EscrowKeeperException keeper-mismatch — a recorded former keeper not given, a record of former
+     *         keepers unreadable, the façade's own keeper among the former ones —, keeper-unreachable — a former
+     *         keeper given without keys —, or keeper-failed — a former keeper that does not take the retirement
+     * @throws EscrowEnvelopeMismatchException when the escrow row does not open the fields the database holds:
+     *         nothing is written, nothing retired
      */
     public function setEscrowFields(UnlockedVault $session, string $adminPublicKey, array $fields): void
     {
@@ -931,12 +983,13 @@ final class SelfDataGuard
      * keeper holds announced — that read hands back the compartment as it
      * stands then —: objectToEscrowRead() does. It is a deposit: it retires
      * the escrow from the former keepers first, and is refused as
-     * setEscrowFields() is. False when there is no escrow.
+     * setEscrowFields() is — EscrowEnvelopeMismatchException for a row deleted
+     * while its fields stayed. False when there is no escrow.
      */
     public function rotateEscrow(UnlockedVault $session, string $adminPublicKey): bool
     {
         $this->currentRecord($session);
-        if ($this->storage->loadEscrow($session->userId) === null) {
+        if ($this->rowRecord($session->userId) === null && $this->storage->loadEscrowFields($session->userId) === []) {
             return false;
         }
         $this->deposit($session, $adminPublicKey, []);
@@ -947,17 +1000,25 @@ final class SelfDataGuard
      * Seal the compartment to the façade's keeper, if it is not yet — sealed
      * before 0.9.0, sealed to another keeper, or wrapped by the operator's pass,
      * whose wrap_user still names no keeper. A new key is drawn, as at a
-     * deposit. False when there is nothing to do: no keeper, no escrow, or one
-     * already sealed to this keeper.
+     * deposit, and refused as one: EscrowEnvelopeMismatchException when the
+     * row does not open its fields. False when there is nothing to do: no
+     * keeper, no escrow, or one already sealed to this keeper.
      */
     public function sealEscrowToKeeper(UnlockedVault $session, string $adminPublicKey): bool
     {
         $this->currentRecord($session);
-        $record = $this->storage->loadEscrow($session->userId);
+        $record = $this->rowRecord($session->userId);
         if (!$this->hasKeeper() || $record === null) {
             return false;
         }
-        $unlocked = $this->escrow->unlockAsUser($record, $session);
+        if ($record === false) {
+            throw $this->mismatch($session->userId);
+        }
+        try {
+            $unlocked = $this->escrow->unlockAsUser($record, $session);
+        } catch (Throwable $e) {
+            throw $this->mismatch($session->userId, $e);
+        }
         try {
             if (EscrowVault::isKeeperSealed($record) && $this->boundToOurKeeper($unlocked)) {
                 return false;
@@ -970,10 +1031,12 @@ final class SelfDataGuard
     }
 
     /**
-     * What the keeper released of this account's escrow, and what it holds
-     * announced, as it signs it for this session — read when the holder opens
-     * their vault. The keeper is asked about the escrowId the session computes
-     * from the master key, not the one the row names. `established` false
+     * What the keepers released of this account's escrow, and what they hold
+     * announced, as they sign it for this session — read when the holder opens
+     * their vault. The keepers are asked about the escrowId the session
+     * computes from the master key, not the one the row names: the keeper the
+     * row pins first, then the façade's and every former keeper — those the
+     * database recorded and those the façade was given. `established` false
      * always says why (`reason`); it is never an empty list: an attestation
      * that does not arrive, or does not verify, is not the same as no read.
      *
@@ -982,47 +1045,59 @@ final class SelfDataGuard
      *     deposit from the holder's session named it since — the escrowId would
      *     come from the clear prefix of wrap_admin, which whoever writes the
      *     database rewrites;
-     *   - `keeper-changed`: the deposit named another keeper than the façade's,
-     *     and no former keeper answers for it — the façade was not given it,
-     *     the database did not record it as one (a keeper changed by hand, not
-     *     by changeKeeper()), or it gives no public keys; what it holds stays
-     *     with it, out of view. Also when the row names no keeper for the
-     *     escrowId, and a former keeper the database recorded was not given;
+     *   - `keeper-changed`: a keeper to ask is neither the façade's nor a
+     *     former one it was given — the row pins one the façade does not know
+     *     (a keeper changed by hand, not by changeKeeper(), or one the operator
+     *     forgot), or the database records a former keeper the façade was not
+     *     given; `keeper` names it;
+     *   - `keeper-unreachable`: a keeper gave no public keys or no attestation;
+     *     `keeper` names it — the façade's, by the fingerprint the database
+     *     recorded, a former one, or the class of a former keeper given without
+     *     keys (a recorded former keeper then reads unreachable too: it may be
+     *     that one);
+     *   - `unreadable`, `signature`, `escrow`, `nonce`: an attestation that does
+     *     not verify (KeeperAttestationException); `keeper` names its keeper;
      *   - `keeper-mismatch`: the façade's keeper, whose keys came after it was
      *     built, is not the one the database recorded; or the record of former
-     *     keepers does not read;
-     *   - `retired`: the keeper the row pins retired the escrow, and releases
-     *     nothing more — a deposit retired it there and did not land, or the
-     *     row was put back from a backup;
-     *   - `escrow-replaced`: the row names another escrowId; or it is absent,
-     *     not keeper-sealed or not pinned, and a keeper holds reads of the
-     *     escrowId the session computes — the row was deleted, put back from a
-     *     backup or rewritten;
-     *   - `no-keeper`, `keeper-unreachable`, and `unreadable`, `signature`,
-     *     `escrow`, `nonce` (KeeperAttestationException);
-     *   - `reads`, `pending`: with `established`, `retired` and
-     *     `escrow-replaced`, what every keeper asked holds. When the row pins a
-     *     former keeper, or none, the façade's and every former keeper the
-     *     database recorded are asked too; `pending` leaves out a keeper that
-     *     retired the escrow;
+     *     keepers is unreadable;
+     *   - `retired`: the keeper the escrow answers to retired it, and releases
+     *     nothing more — a deposit retired it there and did not land, the row
+     *     was put back from a backup, or the façade's own keeper took a
+     *     retirement;
+     *   - `escrow-replaced`: the row does not parse, does not open, or names
+     *     another escrowId; or it is absent, not keeper-sealed or not pinned,
+     *     and a keeper holds reads of the escrowId the session computes — the
+     *     row was deleted, put back from a backup or rewritten;
+     *   - `no-keeper`: the façade was given none, and the row pins one;
+     *   - `reads`, `pending`: what every keeper that answered attests, each
+     *     entry naming its keeper by fingerprint — under `established`, and
+     *     under every reason above that asked the keepers: a keeper that cannot
+     *     be asked does not hide what the others attest. `pending` leaves out a
+     *     keeper that retired the escrow;
+     *   - `keeper`: the keeper the escrow answers to, or the one the reason is
+     *     about;
      *   - `pinned`: the keeper was named by the holder's own deposit;
      *   - `reseal`: the integrator should call sealEscrowToKeeper(), which is
-     *     refused while a former keeper the database recorded is not given to
-     *     the façade. False for an absent row: a deposit writes one.
+     *     refused while a former keeper cannot be asked, and while the row does
+     *     not open its fields (EscrowEnvelopeMismatchException) — a row put
+     *     back from a backup without them. False for an absent row — there is
+     *     nothing to re-seal —, for a row that does not parse or open, for an
+     *     archive, and for a row that pins the façade's own keeper, retired
+     *     there or not: no re-sealing changes it.
      *
      * A release is the keeper handing the inner box back: the read that
      * follows may still fail — a wrong passphrase —, and is listed all the
      * same.
      *
      * @return array{established: bool, reason: ?string, keeper: ?string, pinned: bool,
-     *               reads: list<array{case: string, seq: int, at: int}>,
-     *               pending: list<array{case: string, due: int, objected: bool}>, reseal: bool}
+     *               reads: list<array{case: string, seq: int, at: int, keeper: string}>,
+     *               pending: list<array{case: string, due: int, objected: bool, keeper: string}>, reseal: bool}
      */
     public function escrowReads(UnlockedVault $session): array
     {
         $this->currentRecord($session);
-        $record = $this->storage->loadEscrow($session->userId);
-        return $this->readsOf($record, fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), false, $session->escrowId());
+        $escrowId = $session->escrowId();
+        return $this->readsOf($this->rowRecord($session->userId), fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), false, $escrowId);
     }
 
     /**
@@ -1039,18 +1114,19 @@ final class SelfDataGuard
      * from the session under the escrow's objection key, which only the master
      * key derives — whatever the database holds —, so that the administrator
      * cannot object, or withdraw an objection, in the holder's place. It goes
-     * to every keeper that holds the case announced, among the one the row
-     * pins and, when that is not the façade's, the façade's and every former
-     * keeper the database recorded. Throws RuntimeException when the façade
-     * was given no keeper; EscrowKeeperException when a keeper cannot be asked,
-     * when one that holds the case does not record the objection, or when none
-     * holds it.
+     * to every keeper that holds the case announced and has not retired the
+     * escrow, among those escrowReads() asks. Throws RuntimeException when the
+     * façade was given no keeper; EscrowKeeperException keeper-mismatch, before
+     * any keeper is asked, when the façade's keeper is not the recorded one or
+     * the record of former keepers is unreadable; otherwise, after asking them
+     * all, when one could not be asked or did not record it — the message
+     * names those that did and those that did not —, or when none holds it.
      */
     public function objectToEscrowRead(UnlockedVault $session, string $caseRef): void
     {
         $this->currentRecord($session);
         $escrowId = $session->escrowId();
-        [$pinned] = $this->rowOf($this->storage->loadEscrow($session->userId), fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), $escrowId);
+        [$pinned] = $this->rowOf($this->rowRecord($session->userId), fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), $escrowId);
         $this->objectAt($pinned, $escrowId, $caseRef, $session->signEscrowObjection($caseRef));
     }
 
@@ -1106,24 +1182,76 @@ final class SelfDataGuard
      *
      * @param array<string> $fieldNames Empty = all escrow fields
      * @return array<string, string>    field_name => plaintext
+     * @throws EscrowEnvelopeMismatchException when the escrow row does not open its fields
      */
     public function getEscrowFieldsAsUser(UnlockedVault $session, array $fieldNames = []): array
     {
         $this->currentRecord($session);
-        $read = EscrowSnapshot::read($this->storage, $session->userId, $fieldNames);
+        $read = $this->snapshot($session->userId, $fieldNames);
         if ($read === null) {
             return [];
         }
-        [$record, $ciphertexts] = $read;
-        $unlocked = $this->escrow->unlockAsUser($record, $session);
+        return $this->openFields($session, ...$read);
+    }
+
+    /**
+     * The fields $ciphertexts holds, opened by the envelope $record.
+     *
+     * @param array<string, string> $ciphertexts
+     * @return array<string, string>
+     * @throws EscrowEnvelopeMismatchException when the envelope does not open, or does not open them
+     */
+    private function openFields(UnlockedVault $session, EscrowRecord $record, array $ciphertexts): array
+    {
+        try {
+            $unlocked = $this->escrow->unlockAsUser($record, $session);
+        } catch (Throwable $e) {
+            throw $this->mismatch($session->userId, $e);
+        }
         try {
             return EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
+        } catch (Throwable $e) {
+            throw $this->mismatch($session->userId, $e);
         } finally {
             $unlocked->lock();
         }
     }
 
+    private function mismatch(string $userId, ?Throwable $previous = null): EscrowEnvelopeMismatchException
+    {
+        return new EscrowEnvelopeMismatchException(
+            "The escrow row of '{$userId}' does not open its fields — deleted, put back from a backup without them, or "
+            . 'rewritten: nothing is written, nothing retired, and the row that wrote them opens them again',
+            0,
+            $previous
+        );
+    }
 
+    /**
+     * EscrowSnapshot::read(), an escrow row that does not even parse raised as
+     * one that does not open its fields.
+     *
+     * @param list<string> $fieldNames
+     * @return array{0: EscrowRecord, 1: array<string, string>}|null
+     */
+    private function snapshot(string $userId, array $fieldNames = []): ?array
+    {
+        try {
+            return EscrowSnapshot::read($this->storage, $userId, $fieldNames);
+        } catch (InvalidArgumentException $e) {
+            throw $this->mismatch($userId, $e);
+        }
+    }
+
+    /** The escrow row of $userId; false when it does not parse — rewritten in the database. */
+    private function rowRecord(string $userId): EscrowRecord|false|null
+    {
+        try {
+            return $this->storage->loadEscrow($userId);
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+    }
 
     /**
      * $fields deposited over the escrow under a new key, in one write; the
@@ -1135,13 +1263,21 @@ final class SelfDataGuard
     private function deposit(UnlockedVault $session, string $adminPublicKey, array $fields): void
     {
         $this->assertEscrowAdmin($adminPublicKey);
-        $keys = $this->keeperKeys();
-        if ($keys !== null) {
-            $this->retireFromFormerKeepers($session, $keys);
-        }
+        $keys    = $this->keeperKeys();
+        $retired = $keys === null;
         for ($attempt = 1; ; $attempt++) {
-            $read = EscrowSnapshot::read($this->storage, $session->userId);
+            $read = $this->snapshot($session->userId);
             if ($read === null) {
+                if ($this->storage->loadEscrowFields($session->userId) !== []) {
+                    if ($this->snapshot($session->userId) !== null) {
+                        continue;
+                    }
+                    throw $this->mismatch($session->userId);
+                }
+                if (!$retired) {
+                    $this->retireFromFormerKeepers($session, (array) $keys);
+                    $retired = true;
+                }
                 $first = $this->escrow->create($session, $adminPublicKey, $keys);
                 try {
                     $this->storage->createEscrow($session->generation(), $first['record']);
@@ -1150,15 +1286,14 @@ final class SelfDataGuard
                 } finally {
                     $first['unlocked']->lock();
                 }
-                $read = EscrowSnapshot::read($this->storage, $session->userId)
+                $read = $this->snapshot($session->userId)
                     ?? throw new RuntimeException("The escrow of '{$session->userId}' was created, then is gone");
             }
             [$record, $ciphertexts] = $read;
-            $old = $this->escrow->unlockAsUser($record, $session);
-            try {
-                $kept = EscrowFieldCrypter::decryptBatch($old, $ciphertexts);
-            } finally {
-                $old->lock();
+            $kept = $this->openFields($session, $record, $ciphertexts);
+            if (!$retired) {
+                $this->retireFromFormerKeepers($session, (array) $keys);
+                $retired = true;
             }
             $new = $this->escrow->create($session, $adminPublicKey, $keys, $record->createdAt, $record->revision);
             try {
@@ -1255,121 +1390,160 @@ final class SelfDataGuard
     }
 
     /**
-     * The former keeper this façade was given whose fingerprint is $print,
-     * with the keys it gave, when the database recorded it as one; null
-     * otherwise, or when it gives no keys.
+     * The former keepers this façade was given, by fingerprint; those whose
+     * keys did not come, by their index. Keys that came are kept for the life
+     * of the façade.
      *
-     * @return ?array{0: EscrowKeeper, 1: array{sign: string, box: string}}
-     * @throws InvalidArgumentException when the record of former keepers is unreadable
+     * @return array{0: array<string, array{0: EscrowKeeper, 1: array{sign: string, box: string}}>, 1: list<int>}
      */
-    private function formerKeeperFor(string $print): ?array
+    private function givenFormers(): array
     {
-        if (!in_array($print, KeeperSeal::formerPrints($this->storage->loadSetting(self::SETTING_FORMER_KEEPERS)), true)) {
-            return null;
-        }
-        foreach ($this->formerKeepers as $former) {
-            try {
-                $keys = KeeperSeal::checkKeys($former->publicKeys());
-            } catch (Throwable) {
-                continue;
+        $byPrint = [];
+        $silent  = [];
+        foreach ($this->formerKeepers as $i => $former) {
+            if (!isset($this->formerKeys[$i])) {
+                try {
+                    $keys = KeeperSeal::checkKeys($former->publicKeys());
+                } catch (Throwable) {
+                    $silent[] = $i;
+                    continue;
+                }
+                $this->formerKeys[$i] = [KeeperSeal::fingerprint($keys), $keys];
             }
-            if (hash_equals(KeeperSeal::fingerprint($keys), $print)) {
-                return [$former, $keys];
-            }
+            [$print, $keys] = $this->formerKeys[$i];
+            $byPrint[$print] = [$former, $keys];
         }
-        return null;
+        return [$byPrint, $silent];
     }
 
     /**
-     * The escrow of $session retired from every keeper the database recorded
-     * as former, before anything is written: none of them serves it again.
-     * Refused, nothing retired, when the vault is frozen, when the record lists
-     * the façade's own keeper, or when one of them was not given to this
-     * façade. Refused, nothing written, when one does not take the retirement:
-     * those asked before it took it, and the view says `retired` until a
-     * deposit goes through.
+     * Every former keeper: those the database recorded, and those this façade
+     * was given — emptying the record hides none the façade knows. Each entry
+     * carries the keeper and its keys, or the reason it cannot be asked:
+     * keeper-changed, recorded and not given; keeper-unreachable, given and
+     * gave no public keys — and a recorded one no given keeper answers to,
+     * while one of them gives no keys: it may be that one.
+     *
+     * @return list<array{print: string, keeper: ?EscrowKeeper, keys: ?array{sign: string, box: string}, reason: ?string}>
+     * @throws InvalidArgumentException when the record of former keepers is unreadable
+     */
+    private function formerEntries(): array
+    {
+        [$given, $silent] = $this->givenFormers();
+        $unmatched = $silent === [] ? 'keeper-changed' : 'keeper-unreachable';
+        $entries = [];
+        foreach (KeeperSeal::formerPrints($this->storage->loadSetting(self::SETTING_FORMER_KEEPERS)) as $print) {
+            $entries[$print] = isset($given[$print])
+                ? ['print' => $print, 'keeper' => $given[$print][0], 'keys' => $given[$print][1], 'reason' => null]
+                : ['print' => $print, 'keeper' => null, 'keys' => null, 'reason' => $unmatched];
+        }
+        foreach ($given as $print => [$keeper, $keys]) {
+            $entries[$print] ??= ['print' => $print, 'keeper' => $keeper, 'keys' => $keys, 'reason' => null];
+        }
+        foreach ($silent as $i) {
+            $name = get_class($this->formerKeepers[$i]) . " (former keeper {$i}, without public keys)";
+            $entries[$name] = ['print' => $name, 'keeper' => null, 'keys' => null, 'reason' => 'keeper-unreachable'];
+        }
+        return array_values($entries);
+    }
+
+    /**
+     * The escrow of $session retired from every former keeper — recorded or
+     * given —, before anything is written: none of them serves it again.
+     * Refused, nothing retired, when the vault is frozen, when the façade's own
+     * keeper is among them, when the record of former keepers is unreadable, or
+     * when one of them cannot be asked: recorded and not given, or given and
+     * without keys. Refused, nothing written, when one does not take the
+     * retirement: those asked before it took it, and when the keeper the row
+     * pins is among them, the view says `retired` until a deposit goes
+     * through.
      *
      * @param array{sign: string, box: string} $keys the façade's keeper
      */
     private function retireFromFormerKeepers(UnlockedVault $session, array $keys): void
     {
         try {
-            $prints = KeeperSeal::formerPrints($this->storage->loadSetting(self::SETTING_FORMER_KEEPERS));
+            $formers = $this->formerEntries();
         } catch (InvalidArgumentException $e) {
             throw new EscrowKeeperException('keeper-mismatch', $e->getMessage() . ' — nothing is retired, nothing re-sealed', $e);
         }
-        if ($prints === []) {
+        if ($formers === []) {
             return;
         }
         if ($this->storage->frozenState($session->userId) !== null) {
             throw new VaultFrozenException("The vault of '{$session->userId}' is frozen: nothing is retired, nothing re-sealed");
         }
-        if (in_array(KeeperSeal::fingerprint($keys), $prints, true)) {
-            throw new EscrowKeeperException(
-                'keeper-mismatch',
-                'The record of former keepers lists the façade\'s own keeper: it was changed in the database — nothing is retired, nothing re-sealed'
-            );
+        foreach ($formers as $former) {
+            if ($this->samePrintAs($former['print'], $keys)) {
+                throw new EscrowKeeperException(
+                    'keeper-mismatch',
+                    'The former keepers include the façade\'s own keeper — the record was changed in the database, or the '
+                    . 'façade was given its keeper as a former one: nothing is retired, nothing re-sealed'
+                );
+            }
         }
-        $formers = [];
-        foreach ($prints as $print) {
-            $formers[$print] = ($this->formerKeeperFor($print) ?? throw new EscrowKeeperException(
-                'keeper-mismatch',
-                "This database recorded the former keeper {$print}, and this façade was not given it, or it gives no keys: "
-                . 'the escrow cannot be retired from it — nothing is retired, nothing re-sealed'
-            ))[0];
+        foreach ($formers as $former) {
+            if ($former['reason'] !== null) {
+                throw new EscrowKeeperException(
+                    $former['reason'] === 'keeper-changed' ? 'keeper-mismatch' : $former['reason'],
+                    "The former keeper {$former['print']} was not given to this façade, or gives no keys: the escrow "
+                    . 'cannot be retired from it — nothing is retired, nothing re-sealed'
+                );
+            }
         }
-        foreach ($formers as $print => $former) {
+        foreach ($formers as $former) {
             try {
-                $former->retire($session->escrowId(), $session->signEscrowRetirement($print));
+                $former['keeper']->retire($session->escrowId(), $session->signEscrowRetirement($former['print']));
             } catch (Throwable $e) {
-                throw new EscrowKeeperException('keeper-failed', "The former keeper {$print} did not take the retirement: nothing is re-sealed", $e);
+                throw new EscrowKeeperException('keeper-failed', "The former keeper {$former['print']} did not take the retirement: nothing is re-sealed", $e);
             }
         }
     }
 
     /**
-     * The keepers asked about the escrow whose row pins $pinned. The façade's
-     * alone when the row pins it: the deposit that wrote that row retired the
-     * escrow from every former keeper first. Otherwise, the former keeper the
-     * row pins, when it pins one, then the façade's and every other former
-     * keeper the database recorded: a row put back from a backup, or one that
-     * pins no keeper (rowOf(): absent, not-keeper-sealed, not-pinned,
-     * escrow-replaced), says nothing of where the escrow is sealed now. The
-     * first is the keeper the escrow answers to.
+     * The keepers asked about the escrow whose row pins $pinned: the one it
+     * pins first — the façade's, or a former one —, then the façade's and every
+     * former keeper, recorded or given. When the row pins none (rowOf():
+     * absent, not-keeper-sealed, not-pinned, escrow-replaced), the façade's
+     * comes first. The first is the keeper the escrow answers to. A row pinned
+     * to a keeper neither recorded nor given puts it first, as keeper-changed.
      *
      * @param ?array{sign: string, box: string} $pinned the keys the row pins, when it names the escrowId the session computes
-     * @return list<array{0: EscrowKeeper, 1: array{sign: string, box: string}}>
-     * @throws EscrowKeeperException keeper-unreachable; keeper-mismatch, the record of former keepers unreadable;
-     *         keeper-changed, a keeper to ask not given
+     * @return list<array{print: string, keeper: ?EscrowKeeper, keys: ?array{sign: string, box: string}, reason: ?string}>
+     * @throws EscrowKeeperException keeper-mismatch, the façade's keeper is not the recorded one, or the record of
+     *         former keepers is unreadable — a façade's keeper without keys is an entry, keeper-unreachable
      */
     private function keepersOf(?array $pinned): array
     {
         try {
-            $ours = (array) $this->keeperKeys();
-            if ($pinned !== null && $this->samePrint($pinned, $ours)) {
-                return [[$this->keeper, $ours]];
+            try {
+                $ours    = (array) $this->keeperKeys();
+                $current = ['print' => KeeperSeal::fingerprint($ours), 'keeper' => $this->keeper, 'keys' => $ours, 'reason' => null];
+            } catch (EscrowKeeperException) {
+                $recorded = $this->storage->loadSetting(self::SETTING_KEEPER) ?? get_class($this->keeper) . ' (without public keys)';
+                $current  = ['print' => $recorded, 'keeper' => null, 'keys' => null, 'reason' => 'keeper-unreachable'];
             }
-            $first   = $pinned === null ? null : KeeperSeal::fingerprint($pinned);
-            $keepers = [];
-            if ($first !== null) {
-                $keepers[] = $this->formerKeeperFor($first) ?? throw new EscrowKeeperException(
-                    'keeper-changed',
-                    'The keeper this escrow names is not the façade\'s, nor a former one it was given'
-                );
-            }
-            $keepers[] = [$this->keeper, $ours];
-            foreach (KeeperSeal::formerPrints($this->storage->loadSetting(self::SETTING_FORMER_KEEPERS)) as $print) {
-                if ($print !== $first && !$this->samePrintAs($print, $ours)) {
-                    $keepers[] = $this->formerKeeperFor($print) ?? throw new EscrowKeeperException(
-                        'keeper-changed',
-                        "This database recorded the former keeper {$print}, and this façade was not given it"
-                    );
-                }
-            }
-            return $keepers;
+            $formers = array_values(array_filter(
+                $this->formerEntries(),
+                static fn (array $former): bool => $former['print'] !== $current['print']
+            ));
         } catch (InvalidArgumentException $e) {
             throw new EscrowKeeperException('keeper-mismatch', $e->getMessage(), $e);
         }
+        if ($pinned === null || KeeperSeal::fingerprint($pinned) === $current['print']) {
+            return [$current, ...$formers];
+        }
+        $first = KeeperSeal::fingerprint($pinned);
+        $head  = ['print' => $first, 'keeper' => null, 'keys' => null, 'reason' => 'keeper-changed'];
+        $rest  = [];
+        foreach ($formers as $former) {
+            if ($former['print'] === $first) {
+                $head = $former;
+            } else {
+                $rest[] = $former;
+            }
+        }
+        return [$head, $current, ...$rest];
     }
 
     /**
@@ -1397,20 +1571,28 @@ final class SelfDataGuard
 
     /**
      * The keys $record pins to escrow $escrowId, and the state of the row when
-     * it pins none: absent, not-keeper-sealed, not-pinned, escrow-replaced.
+     * it pins none: absent, not-keeper-sealed, not-pinned, escrow-replaced, or
+     * unreadable — a row that does not parse ($record false) or does not open.
      *
      * @param callable(EscrowRecord): UnlockedEscrow $open
      * @return array{0: ?array{sign: string, box: string}, 1: ?string}
      */
-    private function rowOf(?EscrowRecord $record, callable $open, string $escrowId): array
+    private function rowOf(EscrowRecord|false|null $record, callable $open, string $escrowId): array
     {
         if ($record === null) {
             return [null, 'absent'];
         }
+        if ($record === false) {
+            return [null, 'unreadable'];
+        }
         if (!EscrowVault::isKeeperSealed($record)) {
             return [null, 'not-keeper-sealed'];
         }
-        $unlocked = $open($record);
+        try {
+            $unlocked = $open($record);
+        } catch (Throwable) {
+            return [null, 'unreadable'];
+        }
         try {
             $rowId = (string) $unlocked->escrowId;
             $keys  = $unlocked->keeper;
@@ -1424,11 +1606,8 @@ final class SelfDataGuard
     }
 
     /**
-     * The objection to case $caseRef, signed with $token, recorded by every
-     * keeper of keepersOf() that holds a read announced for that case. Throws
-     * RuntimeException when the façade was given no keeper; EscrowKeeperException
-     * when one of them cannot be asked or does not record it, or when none
-     * holds the case announced.
+     * The objection to case $caseRef, signed with $token, sent to the keepers
+     * of keepersOf(): see objectToEscrowRead().
      *
      * @param ?array{sign: string, box: string} $pinned
      */
@@ -1437,82 +1616,116 @@ final class SelfDataGuard
         if (!$this->hasKeeper()) {
             throw new RuntimeException('This façade was given no keeper: there is no read to object to');
         }
-        $recorded = 0;
-        foreach ($this->keepersOf($pinned) as [$keeper, $keys]) {
-            $announced = array_filter($this->attestAt($keeper, $keys, $escrowId)['pending'], static fn (array $p): bool => $p['case'] === $caseRef);
-            if ($announced === []) {
+        $recorded = [];
+        $failed   = [];
+        foreach ($this->keepersOf($pinned) as $k) {
+            try {
+                if ($k['reason'] !== null) {
+                    throw new EscrowKeeperException($k['reason'], 'This keeper cannot be asked');
+                }
+                $view = $this->attestAt($k['keeper'], $k['keys'], $escrowId);
+            } catch (EscrowKeeperException $e) {
+                $failed[] = [$k['print'], $e->reason];
+                continue;
+            }
+            if ($view['retired'] || !in_array($caseRef, array_column($view['pending'], 'case'), true)) {
                 continue;
             }
             try {
-                $keeper->object($escrowId, $caseRef, $token);
-            } catch (Throwable $e) {
-                throw new EscrowKeeperException('keeper-failed', 'The keeper did not record the objection: the read it names may go through once due', $e);
+                $k['keeper']->object($escrowId, $caseRef, $token);
+                $recorded[] = $k['print'];
+            } catch (Throwable) {
+                $failed[] = [$k['print'], 'keeper-failed'];
             }
-            $recorded++;
         }
-        if ($recorded === 0) {
+        if ($failed !== []) {
+            throw new EscrowKeeperException(
+                in_array('keeper-failed', array_column($failed, 1), true) ? 'keeper-failed' : $failed[0][1],
+                'The objection was recorded by ' . ($recorded === [] ? 'no keeper' : implode(', ', $recorded))
+                . '; these keepers could not be asked or did not record it, and the read they hold may go through once due: '
+                . implode(', ', array_map(static fn (array $f): string => "{$f[0]} ({$f[1]})", $failed))
+            );
+        }
+        if ($recorded === []) {
             throw new EscrowKeeperException('keeper-failed', "No keeper of this escrow holds a read announced for case '{$caseRef}': there is nothing to object to");
         }
     }
 
     /**
      * The view of an escrow whose escrowId, computed from the master key, is
-     * $escrowId. Under a keeper, the keepers of keepersOf() are asked about
+     * $escrowId. Under a keeper, every keeper of keepersOf() is asked about
      * that escrowId, whatever the row holds: a row that is absent, put back
      * from a backup or rewritten cannot hide what a keeper released or holds
-     * announced.
+     * announced. A keeper that cannot be asked does not hide what the others
+     * attest: the view is then not established, names it, and lists the rest.
      *
+     * @param EscrowRecord|false|null $record false: a row that does not parse
      * @param callable(EscrowRecord): UnlockedEscrow $open
      * @return array<string, mixed> see escrowReads()
      */
-    private function readsOf(?EscrowRecord $record, callable $open, bool $archive, string $escrowId): array
+    private function readsOf(EscrowRecord|false|null $record, callable $open, bool $archive, string $escrowId): array
     {
-        $out    = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'reads' => [], 'pending' => [], 'reseal' => false];
-        $reseal = !$archive && $this->hasKeeper();
+        $out = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'reads' => [], 'pending' => [], 'reseal' => false];
         [$pinned, $row] = $this->rowOf($record, $open, $escrowId);
         if ($pinned !== null) {
             $out = ['pinned' => true, 'keeper' => KeeperSeal::fingerprint($pinned)] + $out;
         }
         if (!$this->hasKeeper()) {
             return match ($row) {
-                'absent' => ['established' => true] + $out,
-                null     => ['reason' => 'no-keeper'] + $out,
-                default  => ['reason' => $row] + $out,
+                'absent'     => ['established' => true] + $out,
+                null         => ['reason' => 'no-keeper'] + $out,
+                'unreadable' => ['reason' => 'escrow-replaced'] + $out,
+                default      => ['reason' => $row] + $out,
             };
         }
-        $views = [];
         try {
             $keepers = $this->keepersOf($pinned);
-            foreach ($keepers as [$keeper, $keys]) {
-                $views[] = $this->attestAt($keeper, $keys, $escrowId);
-            }
         } catch (EscrowKeeperException $e) {
-            return ['reason' => $e->reason, 'reseal' => $e->reason === 'keeper-changed' && $reseal] + $out;
+            return ['reason' => $e->reason] + $out;
         }
-        $out = ['keeper' => KeeperSeal::fingerprint($keepers[0][1])] + $out;
-        if ($keepers[0][0] !== $this->keeper) {
-            $out = ['reseal' => $reseal] + $out;
-        }
-        $reads = $pending = [];
-        foreach ($views as $view) {
-            $reads = [...$reads, ...$view['releases']];
-            if (!$view['retired']) {
-                $pending = [...$pending, ...$view['pending']];
+        $reads       = [];
+        $pending     = [];
+        $missing     = [];
+        $headRetired = false;
+        foreach ($keepers as $i => $k) {
+            try {
+                if ($k['reason'] !== null) {
+                    throw new EscrowKeeperException($k['reason'], 'This keeper cannot be asked');
+                }
+                $view = $this->attestAt($k['keeper'], $k['keys'], $escrowId);
+            } catch (EscrowKeeperException $e) {
+                $missing[] = [$k['print'], $e->reason];
+                continue;
             }
+            $from  = static fn (array $entry): array => $entry + ['keeper' => $k['print']];
+            $reads = [...$reads, ...array_map($from, $view['releases'])];
+            if (!$view['retired']) {
+                $pending = [...$pending, ...array_map($from, $view['pending'])];
+            }
+            $headRetired = $headRetired || ($i === 0 && $view['retired']);
         }
-        $seen = ['reads' => $reads, 'pending' => $pending];
-        if ($views[0]['retired']) {
-            return ['reason' => 'retired', 'reseal' => $reseal && $row !== 'absent'] + $seen + $out;
+        $ownHead = $keepers[0]['keeper'] === $this->keeper || $keepers[0]['print'] === $this->storage->loadSetting(self::SETTING_KEEPER);
+        $seen    = [
+            'keeper'  => $keepers[0]['print'],
+            'reads'   => $reads,
+            'pending' => $pending,
+            'reseal'  => !$archive && $row !== 'absent' && $row !== 'unreadable' && !($row === null && $ownHead),
+        ] + $out;
+        if ($missing !== []) {
+            return ['reason' => $missing[0][1], 'keeper' => $missing[0][0]] + $seen;
+        }
+        if ($headRetired) {
+            return ['reason' => 'retired'] + $seen;
         }
         if ($row === null) {
-            return ['established' => true] + $seen + $out;
+            return ['established' => true] + $seen;
         }
-        if ($reads !== [] || $pending !== [] || $row === 'escrow-replaced') {
-            return ['reason' => 'escrow-replaced', 'reseal' => $reseal && $row !== 'absent'] + $seen + $out;
+        if ($reads !== [] || $pending !== [] || $row === 'escrow-replaced' || $row === 'unreadable') {
+            return ['reason' => 'escrow-replaced'] + $seen;
         }
         return $row === 'absent'
-            ? ['established' => true, 'keeper' => null] + $out
-            : ['reason' => $row, 'reseal' => $reseal, 'keeper' => null] + $out;
+            ? ['established' => true, 'keeper' => null] + $seen
+            : ['reason' => $row, 'keeper' => null] + $seen;
     }
 
     // -------------------------------------------------------------------------

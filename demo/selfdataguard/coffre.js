@@ -91,8 +91,9 @@ const MOTIFS = {
   'keeper-changed': "le service a changé de gardien : ce que l'ancien a remis reste chez lui",
   'keeper-mismatch': "le gardien donné à ce service n'est pas celui que sa base a inscrit",
   'no-keeper': 'aucun gardien joignable par ce service',
-  'keeper-unreachable': 'le gardien ne répond pas',
+  'keeper-unreachable': 'un gardien ne répond pas : ce que les autres attestent suit',
   'retired': "ce séquestre est retiré du gardien qu'il désigne, qui ne le remettra plus : ton prochain dépôt le scelle au gardien de ce service",
+  'retired-here': "ce séquestre est retiré du gardien de ce service lui-même : aucun dépôt ne le rend lisible, seul un changement de gardien par l'exploitant le fait",
   'escrow-replaced': "la ligne de ton séquestre en base n'est pas celle que ta clé désigne — remise d'une sauvegarde, réécrite ou supprimée ; voici ce que le gardien tient pour ton séquestre",
 };
 
@@ -107,7 +108,8 @@ function renderReads(reads) {
   if (!reads) { p.textContent = ''; return; }
   if (!reads.established) {
     const vues = listeDesRemises(reads);
-    p.textContent = '🔎 Remises non établies — ' + (MOTIFS[reads.reason] || `attestation refusée (${reads.reason})`) + '.'
+    const motif = reads.reason === 'retired' && !reads.reseal ? 'retired-here' : reads.reason;
+    p.textContent = '🔎 Remises non établies — ' + (MOTIFS[motif] || `attestation refusée (${reads.reason})`) + '.'
       + (vues ? ' Le gardien atteste : ' + vues + '.' : '');
     return;
   }

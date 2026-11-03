@@ -14,9 +14,9 @@ use Throwable;
  * A keeper that hands back the box without recording it, before the delay
  * ends, once its holder objected, under the announcement of another escrow,
  * or to a box that carries another objection key than the escrow is named
- * after, satisfies every signature and leaves the holder blind; one that
- * takes a retirement meant for another keeper lets a former keeper retire the
- * escrow from it. These cases are what tells them apart. They play one caller at a time: that each call is atomic against the
+ * after, or that forgets at a retirement what it released, satisfies every
+ * signature and leaves the holder blind; one that takes a retirement meant for
+ * another keeper lets a former keeper retire the escrow from it. These cases are what tells them apart. They play one caller at a time: that each call is atomic against the
  * others is the contract's (EscrowKeeper), not played here.
  *
  * It takes a factory, `$make(int $delay, callable $clock): EscrowKeeper`: each
@@ -370,6 +370,7 @@ final class KeeperConformance
     private function retireIsFinal(): void
     {
         $box = $this->box();
+        $this->releaseOf($box, 'K-released-before');
         $this->announce($box, 'K-before');
         $stranger = sodium_crypto_sign_keypair();
         $this->expectRefused(
@@ -386,7 +387,13 @@ final class KeeperConformance
             fn () => $this->keeper->release($box['escrowId'], $box['outer'], 'K-before', ++$this->seq, 'h'),
             'a release of an escrow retired here'
         );
-        $this->assert($this->attested($box['escrowId'])['retired'], 'the attestation does not say the escrow is retired here');
+        $after = $this->attested($box['escrowId']);
+        $this->assert($after['retired'], 'the attestation does not say the escrow is retired here');
+        $this->assert(
+            in_array('K-released-before', array_column($after['releases'], 'case'), true)
+                && in_array('K-before', array_column($after['pending'], 'case'), true),
+            'the attestation lost, at the retirement, the releases and announcements made before it'
+        );
     }
 
     private function retireNamesTheKeeper(): void
@@ -394,7 +401,7 @@ final class KeeperConformance
         $box = $this->box();
         $this->announce($box, 'K-elsewhere');
         $this->expectRefused(
-            fn () => $this->keeper->retire($box['escrowId'], $this->retirement($box, str_repeat('0', 64))),
+            fn () => $this->keeper->retire($box['escrowId'], $this->retirement($box, str_repeat('0', 32))),
             'a retirement signed for another keeper — the one a former keeper would replay here'
         );
         $this->assert(!$this->attested($box['escrowId'])['retired'], 'a retirement for another keeper retired the escrow here');

@@ -279,3 +279,19 @@ final class UnsaidRetirementKeeper extends BenchKeeper
         }
     }
 }
+
+/** Forgets what it released and holds announced when it takes a retirement: the holder loses the record of past reads. */
+final class ForgetsHistoryOnRetireKeeper extends BenchKeeper
+{
+    public function retire(string $escrowId, string $token): void
+    {
+        parent::retire($escrowId, $token);
+        $hex = bin2hex($escrowId);
+        unset($this->releases[$hex]);
+        foreach (array_keys($this->pending) as $key) {
+            if (str_starts_with($key, $hex . '|')) {
+                unset($this->pending[$key]);
+            }
+        }
+    }
+}

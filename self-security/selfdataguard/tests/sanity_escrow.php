@@ -124,10 +124,12 @@ $asUser['indice_recup'] === ESCROW_PLAINTEXT['indice_recup'] ? ok('user reads ow
 
 section('Two first deposits at once: the one that loses the creation writes under the escrow that won');
 
-// Hides the escrow from one read, as when another request creates it between
-// this one's read and its own creation.
+// Hides the escrow — its row, then its fields — from one read each, as when
+// another request creates it between this one's reads and its own creation.
 $raced = new class ($storage) extends DelegatingStorage {
     public bool $hide = true;
+
+    public bool $hideFields = true;
 
     public function loadEscrow(string $u): ?EscrowRecord
     {
@@ -136,6 +138,15 @@ $raced = new class ($storage) extends DelegatingStorage {
             return null;
         }
         return $this->inner->loadEscrow($u);
+    }
+
+    public function loadEscrowFields(string $u, array $n = []): array
+    {
+        if ($this->hideFields) {
+            $this->hideFields = false;
+            return [];
+        }
+        return $this->inner->loadEscrowFields($u, $n);
     }
 };
 $twice = $dg->register('deux-depots', 'motdepasse-deux-depots');
@@ -152,6 +163,21 @@ try {
         : ko('the escrow does not hold both deposits', json_encode($both));
 } catch (RuntimeException $e) {
     ko('the escrow no longer reads in full: a deposit was sealed under a key that was replaced', $e->getMessage());
+}
+$rowOnly = clone $raced;
+$rowOnly->hide = true;
+$rowOnly->hideFields = false;
+$twiceBis = $dg->register('deux-depots-bis', 'motdepasse-deux-depots-bis');
+$dg->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
+try {
+    (new SelfDataGuard($rowOnly, $blindKey))->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+    $both = $dg->getEscrowFieldsAsUser($twiceBis);
+    ksort($both);
+    $both === ['contact_a' => 'premier dépôt', 'contact_b' => 'second dépôt']
+        ? ok('the second deposit finds the fields of the first before its row: it reads again, and both deposits hold')
+        : ko('the second deposit, finding the fields before the row, lost a deposit', json_encode($both));
+} catch (Throwable $e) {
+    ko('the second deposit, finding the fields before the row, was refused', get_class($e));
 }
 
 // -----------------------------------------------------------------------------
