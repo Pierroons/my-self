@@ -178,6 +178,13 @@ $altere['code'] === 409 && str_contains((string) ($altere['json']['error'] ?? ''
 $connexion('mot-de-passe-alice')['code'] === 200
     ? ok('remis en état, le coffre s\'ouvre')
     : ko('le coffre ne s\'ouvre plus après sa remise en état');
+$ligne = $pdoA->query("SELECT wrap_user FROM selfdataguard_escrow WHERE user_id = 'alice'")->fetchColumn();
+$pdoA->prepare("UPDATE selfdataguard_escrow SET wrap_user = ? WHERE user_id = 'alice'")->execute([base64_encode(random_bytes(150))]);
+$reecrit = appel($port, $NOM, 'coffre_open.php', ['userId' => 'alice', 'secret' => 'mot-de-passe-alice', 'mode' => 'password'], $cookieA);
+$pdoA->prepare("UPDATE selfdataguard_escrow SET wrap_user = ? WHERE user_id = 'alice'")->execute([$ligne]);
+$reecrit['code'] === 200 && isset($reecrit['json']['escrowReads']) && is_string($reecrit['json']['escrowError'] ?? null)
+    ? ok('une ligne de séquestre réécrite : le coffre s\'ouvre, la vue des lectures arrive, et les champs disent qu\'ils ne s\'ouvrent pas')
+    : ko('une ligne de séquestre réécrite cache la vue des lectures', $reecrit['code'] . ' ' . json_encode($reecrit['json']));
 
 $reserve = appel($port, $NOM, 'register.php', ['userId' => 'bob', 'password' => 'mot-de-passe-bob-01', 'fields' => ['escrow' => 'x']], $cookieA);
 $encore  = appel($port, $NOM, 'register.php', ['userId' => 'bob', 'password' => 'mot-de-passe-bob-01'], $cookieA);

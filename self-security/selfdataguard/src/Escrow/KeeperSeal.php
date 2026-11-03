@@ -68,13 +68,15 @@ final class KeeperSeal
     }
 
     /**
-     * The fingerprints a record of former keepers lists — the setting
-     * SelfDataGuard::changeKeeper() appends to —, each one of fingerprint().
+     * The fingerprints a record of keepers lists, each one of fingerprint():
+     * the former ones — SelfDataGuard::changeKeeper() and each deposit append
+     * to it — or the forgotten ones (SelfDataGuard::forgetFormerKeeper()).
      *
+     * @param string $record the record's name, for the message
      * @return list<string>
      * @throws InvalidArgumentException when the record is not a list of fingerprints
      */
-    public static function formerPrints(?string $recorded): array
+    public static function formerPrints(?string $recorded, string $record = 'former keepers'): array
     {
         if ($recorded === null) {
             return [];
@@ -82,7 +84,7 @@ final class KeeperSeal
         $prints = json_decode($recorded, true);
         if (!is_array($prints) || !array_is_list($prints)
             || array_filter($prints, static fn (mixed $p): bool => is_string($p) && preg_match('/\A[0-9a-f]{32}\z/', $p) === 1) !== $prints) {
-            throw new InvalidArgumentException('The record of former keepers is unreadable: it was changed in the database');
+            throw new InvalidArgumentException("The record of {$record} is unreadable: it was changed in the database");
         }
         return $prints;
     }

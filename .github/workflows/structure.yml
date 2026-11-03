@@ -3670,7 +3670,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=84 [sanity_escrow]=66
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=154 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=167 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -3749,6 +3749,9 @@ jobs:
           canari '    fail_vault($e);' "    fail('Authentication failed', 401);" 'un coffre falsifié est rendu comme autre chose'
           F=demo/selfdataguard/api/register.php
           canari '    isset($session) && $dataGuard->delete($session->generation());' '' "le compte d'une inscription refusée est resté"
+          F=demo/selfdataguard/api/coffre_open.php
+          canari '    } catch (EscrowEnvelopeMismatchException) {' '    } catch (\DomainException) {' \
+            'une ligne de séquestre réécrite cache la vue des lectures'
 
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce
@@ -4218,8 +4221,6 @@ jobs:
             $K 'wrap_user restored alone: the holder cannot object'
           canari $CER "            throw new EscrowKeeperException('keeper-mismatch', \$unreadable->getMessage() . ' — the escrow stays sealed', \$unreadable);" \
             "            throw \$unreadable;" $K 'the ceremony raised a bare error on an unreadable record of former keepers'
-          canari $SDG "            throw new EscrowKeeperException('keeper-mismatch', \$e->getMessage() . ' — nothing is retired, nothing re-sealed', \$e);" \
-            "            throw \$e;" $K 'a deposit under an unreadable record of former keepers raised a bare error'
           canari $CER "            . implode('; ', array_map(static fn (array \$f): string => \"{\$f[0]}: {\$f[1]->getMessage()}\", \$failures))," \
             "            . ''," $K 'the ceremony hides the failure of the current keeper'
           canari $D/tests/keeper_fixture.php "            if (is_file(\$this->file)) {" \
@@ -4253,11 +4254,6 @@ jobs:
                       }
                   }" "        \$formers = array_filter(\$formers, static fn (array \$f): bool => \$f['reason'] === null);" \
             $K 'a deposit went through without the former keeper the database recorded'
-          canari $SDG "            }
-                  }
-                  foreach (\$formers as \$former) {
-                      try {" "            }
-                      try {" $K 'one of two former keepers missing: the deposit was refused after retiring the escrow from the other'
           canari $SDG "            if (\$this->samePrintAs(\$former['print'], \$keys)) {" "            if (false) {" \
             $K "a deposit went through with the façade's own keeper listed as former"
           canari $SDG "            \$headRetired = \$headRetired || (\$i === 0 && \$view['retired']);" "            \$headRetired = false;" \
@@ -4265,8 +4261,6 @@ jobs:
           canari $SDG "            return [\$current, ...\$formers];" "            return [\$current];" \
             $K 'the row deleted after a keeper change hides what the former keeper holds announced'
           canari $SDG "        if (\$recorded === []) {" "        if (false) {" $K 'an objection to a case no keeper holds announced: the objection went through'
-          canari $D/src/Escrow/KeeperSeal.php "            throw new InvalidArgumentException('The record of former keepers is unreadable: it was changed in the database');" \
-            "            return [];" $K 'an unreadable record of former keepers was not reported'
           canari $D/src/Escrow/KeeperSeal.php "is_string(\$p) && preg_match('/\\A[0-9a-f]{32}\\z/', \$p) === 1" "is_string(\$p)" \
             $K 'a record of former keepers listing an empty name was read as a keeper'
           canari $SDG "        return [\$head, \$current, ...\$rest];" "        return [\$head];" \
@@ -4284,11 +4278,6 @@ jobs:
                       return false;" $K 'wrap_user rewritten (not even base64): escrowReads() threw'
           canari $SDG "                if (\$this->storage->loadEscrowFields(\$session->userId) !== []) {" "                if (false) {" \
             $K 'the row deleted: the deposit was refused, but wrote a row its fields do not open'
-          canari $SDG "            return EscrowFieldCrypter::decryptBatch(\$unlocked, \$ciphertexts);
-                  } catch (Throwable \$e) {
-                      throw \$this->mismatch(\$session->userId, \$e);
-                  } finally {" "            return EscrowFieldCrypter::decryptBatch(\$unlocked, \$ciphertexts);
-                  } finally {" $K 'the envelope put back without its fields: the deposit raised a bare error'
           canari $SDG "            return EscrowSnapshot::read(\$this->storage, \$userId, \$fieldNames);
                   } catch (InvalidArgumentException \$e) {" "            return EscrowSnapshot::read(\$this->storage, \$userId, \$fieldNames);
                   } catch (\\DomainException \$e) {" $K 'wrap_user not even base64: the deposit raised a bare error'
@@ -4328,8 +4317,6 @@ jobs:
             "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$forgotten, true)) {" $K 'changeKeeper() took back a keeper the database recorded as former'
           canari $SDG "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$former, true) || in_array(\$toPrint, \$forgotten, true)) {" \
             "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$former, true)) {" $K 'changeKeeper() took back a keeper the operator forgot'
-          canari $SDG "        if (\$reads !== [] || \$pending !== [] || \$row === 'escrow-replaced' || \$row === 'unreadable') {" \
-            "        if (\$row === 'escrow-replaced' || \$row === 'unreadable') {" $K 'wrap_user restored alone hides what the keeper holds announced'
           canari $SDG "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
             "            'reseal'  => false," $K 'a keeper other than the one the deposit pinned answered for it'
           canari $SDG "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
@@ -4374,6 +4361,64 @@ jobs:
                       if (EscrowVault::isKeeperSealed" "        \$unlocked = \$this->escrow->unlockAsUser(\$record, \$session);
                   try {
                       if (EscrowVault::isKeeperSealed" $K 'sealEscrowToKeeper() on a row that does not open raised a bare error'
+          canari $SDG "            \$formers = \$this->formerEntries();
+                  } catch (InvalidArgumentException \$e) {
+                      throw new EscrowKeeperException('keeper-mismatch', \$e->getMessage() . ' — nothing is retired, nothing re-sealed', \$e);" \
+            "            \$formers = \$this->formerEntries();
+                  } catch (InvalidArgumentException \$e) {
+                      throw \$e;" $K 'a deposit under an unreadable record of former keepers raised a bare error'
+          canari $SDG "            }
+                  }
+                  \$this->recordFormers(array_column(\$formers, 'print'));
+                  foreach (\$formers as \$former) {
+                      try {" "            }
+                      try {" $K 'one of two former keepers missing: the deposit was refused after retiring the escrow from the other'
+          canari $D/src/Escrow/KeeperSeal.php "            throw new InvalidArgumentException(\"The record of {\$record} is unreadable: it was changed in the database\");" \
+            "            return [];" $K 'an unreadable record of former keepers was not reported'
+          canari $SDG "        } catch (LegacyCipherUnavailableException \$e) {
+                      throw \$e;
+                  } catch (Throwable \$e) {
+                      throw \$this->mismatch(\$session->userId, \$e);
+                  } finally {" "        } catch (LegacyCipherUnavailableException \$e) {
+                      throw \$e;
+                  } finally {" $K 'the envelope put back without its fields: the deposit raised a bare error'
+          canari $SDG "        if (\$row !== null && \$row !== 'absent' && (\$reads !== [] || \$pending !== [] || \$row === 'escrow-replaced' || \$row === 'unreadable')) {" \
+            "        if (\$row !== null && \$row !== 'absent' && (\$row === 'escrow-replaced' || \$row === 'unreadable')) {" $K 'wrap_user restored alone hides what the keeper holds announced'
+          canari $SDG "        \$this->recordFormers(array_column(\$formers, 'print'));" "" \
+            $K 'a keeper given as former took the retirement without the record knowing it'
+          canari $SDG "            if (\$forgotten !== []) {" "            if (false) {" \
+            $K 'a keeper the operator forgot, given again as former, took a retirement'
+          canari $SDG "                \"The record of forgotten keepers took {\$print}, and the record of former keepers changed meanwhile: it \"
+                          . 'is still there — call again to take it off'" "                'nothing was changed'" \
+            $K 'forgetFormerKeeper() interrupted says "nothing was changed" when the forgotten record took the keeper'
+          canari $SDG "        \$forgotten  = KeeperSeal::formerPrints(\$storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS), 'forgotten keepers');" \
+            "        \$forgotten  = KeeperSeal::formerPrints(\$storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS));" \
+            $K 'an unreadable record of forgotten keepers is named as the former one'
+          canari $SDG "            if (\$this->storage->loadEscrowFields(\$session->userId) !== []) {
+                          throw \$this->mismatch(\$session->userId);
+                      }
+                      return [];" "            return [];" $K "the row deleted, its fields kept: the holder's read returned the fields as if there were none"
+          canari $SDG "        return \$this->rowRecord(\$session->userId) !== null || \$this->storage->loadEscrowFields(\$session->userId) !== [];" \
+            "        return \$this->rowRecord(\$session->userId) !== null;" $K 'the row deleted, its fields kept: hasEscrow() says there is none'
+          canari $SDG "        \$record = \$this->rowRecord(\$session->userId);
+                  if (\$record === false) {
+                      throw \$this->mismatch(\$session->userId);
+                  }
+                  if (\$record === null || EscrowVault::isAccountBound(\$record)) {" "        \$record = \$this->storage->loadEscrow(\$session->userId);
+                  if (\$record === null || EscrowVault::isAccountBound(\$record)) {" \
+            $K 'rebindEscrowAdmin() on a row that does not parse raised a bare error'
+          canari $SDG "            'unanswered' => array_map(static fn (array \$m): array => ['keeper' => \$m[0], 'reason' => \$m[1]], \$missing)," \
+            "            'unanswered' => []," $K 'a silent keeper hides "retired", or only one silent keeper is named'
+          canari $SDG "        if (\$headRetired) {
+                      return ['reason' => 'retired'] + \$seen;
+                  }" "        if (\$missing !== []) {
+                      return ['reason' => \$missing[0][1], 'keeper' => \$missing[0][0]] + \$seen;
+                  }
+                  if (\$headRetired) {
+                      return ['reason' => 'retired'] + \$seen;
+                  }" $K 'a silent keeper hides "retired", or only one silent keeper is named'
+          canari $SDG "\$recorded !== [] ? 'objection-partial' : (" "false ? 'objection-partial' : (" \
+            $K 'a partial objection reads as a failure of the whole'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
