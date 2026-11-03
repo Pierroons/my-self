@@ -36,8 +36,9 @@ and its command a keeper file.
   fingerprint, the keeper that attests it. `established` false always carries its reason (`not-keeper-sealed`,
   `not-pinned`, `keeper-changed`, `keeper-mismatch`, `no-keeper`, `keeper-unreachable`, `unreadable`, `signature`,
   `escrow`, `nonce`, `retired`, `escrow-replaced`) — never an empty list for an attestation that did not arrive. A
-  keeper that cannot be asked hides only itself: the reason and `keeper` name it, and the lists carry what the others
-  attest. A release is the keeper handing the box back: the read that follows may still fail, and it is listed all
+  keeper that cannot be asked hides only itself: `unanswered` names every such keeper with its reason, the lists carry
+  what the others attest, and `reason` is `retired` or `escrow-replaced` when one applies, otherwise the reason of the
+  first unanswered keeper. A release is the keeper handing the box back: the read that follows may still fail, and it is listed all
   the same.
 - **A delay with objection**, set by the keeper, for every read: it becomes an announcement the holder sees. The
   announcement holds the case: announced again, with any box of the escrow, it keeps its time; from then on the
@@ -46,8 +47,9 @@ and its command a keeper file.
   `objectToArchiveEscrowRead($opened, $caseRef)` for an archive's — cancels it for good. The token is signed from the
   session under the escrow's objection key, whatever the row holds; the keeper checks it against the escrowId alone;
   it is sent to every keeper that holds the case announced, and a keeper that cannot be asked does not keep it from
-  the others: once all were asked, `EscrowKeeperException` names it. The holder objects to any read of the escrow, before or after a
-  deposit, before it falls due or after a release; nobody else can.
+  the others: once all were asked, `EscrowKeeperException` names it — reason `objection-partial` when others recorded
+  the objection. The holder objects to any read of the escrow, before or after a deposit, before it falls due or after
+  a release; nobody else can.
 - **`rotateEscrow($session, $adminPublicKey)`** and **`sealEscrowToKeeper($session, $adminPublicKey)`**, from the
   holder's session.
 - **`new SelfDataGuard(..., keeper: $keeper)`**: the database records the keeper's fingerprint; a façade given
@@ -57,18 +59,23 @@ and its command a keeper file.
   former one on record, and `changeKeeper()` refuses a keeper it replaced before — forgotten since or not —, or a
   keeper replaced with itself.
   The former keepers of a façade are those the database recorded and those it was given (`formerKeepers:`): emptying
-  the record hides none from it. Each deposit first retires the escrow (`retire()`) from every one of them, before
-  anything is written; the deposit is refused, nothing written, when the vault is frozen, when one recorded was not
-  given to the façade, or when one does not take the retirement. The attestation says when an escrow is retired, and
+  the record hides none from it. Each deposit writes the given ones into the record, then retires the escrow
+  (`retire()`) from every one of them, before the escrow is written; `changeKeeper()` therefore refuses as the new
+  keeper any keeper that took retirements — give `formerKeepers:` only keepers the deployment replaced. The deposit is refused,
+  nothing written, when the vault is frozen, when one recorded was not given to the façade, when one given was
+  forgotten, or when one does not take the retirement. The attestation says when an escrow is retired, and
   `escrowReads()` says `retired`.
 - **`SelfDataGuard::forgetFormerKeeper($storage, $print)`**: the operator's act for a former keeper gone for good —
   its fingerprint leaves the record of former keepers for that of forgotten ones; once the operator also stops giving
   it to the façades and to the ceremony — which refuses every read while it is given a keeper the database does not
-  record —, the deposits stop asking it. What is still sealed to it no longer reads through the ceremony.
+  record —, the deposits stop asking it. What is still sealed to it no longer reads through the ceremony. When another
+  writer changes the record of former keepers during the call, it stops with `InvalidArgumentException`, whose message
+  says to call it again — every deposit is refused meanwhile —; the second call completes the act.
 - **`EscrowEnvelopeMismatchException`**: raised by a deposit, or by the holder reading the escrow fields, when the
-  escrow row does not open them — deleted while the fields stayed, put back from a backup without them, rewritten.
-  Nothing is written, and no former keeper is asked to retire the escrow; putting back the row that wrote the fields
-  opens them again.
+  escrow row does not open them — deleted while the fields stayed, put back from a backup without them, rewritten, or
+  a field rewritten —, and by `rotateEscrow()`, `sealEscrowToKeeper()` and `rebindEscrowAdmin()` on such a row, for
+  which `hasEscrow()` still returns `true`. Nothing is written, and no former keeper is asked to retire the escrow; putting back the row
+  that wrote the fields opens them again.
 - **The ceremony goes through the keeper**, after the intention, the witness's head and the passphrase checked — the
   admin key unsealed and erased, so that a typo reaches no keeper —, before the admin key is unsealed again to open
   the box; the intention names the keeper by its fingerprint. Given the former keepers the database recorded, it
@@ -151,7 +158,7 @@ and its command a keeper file.
   the escrow vanish or change; what the keepers released and hold announced for the escrowId the session computes
   stays in the holder's view (`escrow-replaced`). A row that does not open its fields stops every deposit and every
   read of them (`EscrowEnvelopeMismatchException`) until the row that wrote them is put back: the library does not
-  erase them.
+  erase them. If a field alone was rewritten, deposits and reads stay stopped for good.
 - A box the operator's pass sealed keeps the escrowId the pass drew, and carries no objection key: nobody can object
   to its reads, it stays releasable as long as the keeper lives, and its reads are out of the holder's view, before
   and after the escrow is pinned — the pinning computes another escrowId. An archive sealed by the pass stays without an objection
@@ -164,10 +171,15 @@ and its command a keeper file.
   replaced without `changeKeeper()`, and not given to the façades, still releases what it holds, and the holder does
   not see it (`keeper-changed`).
 - A former keeper stays on the database's record until the operator forgets it (`forgetFormerKeeper()`): each deposit
-  retires the escrow from it again, and every deposit is refused while it is not given or does not answer. A deposit refused because one did
-  not take the retirement leaves the escrow retired from those asked before it; the view says `retired` until a
-  deposit goes through. A former keeper that does not answer leaves the view not established — naming it, with what
-  the others attest — and the objection reaches the others.
+  retires the escrow from it again, and every deposit is refused while it is not given or does not answer. A deposit
+  that fails after the retirements — a former keeper that refuses, a write that fails, concurrent deposits that exhaust
+  the retries (`StaleEscrowException`) — leaves the escrow retired from the former keepers that took the retirement;
+  the view says `retired` until a deposit goes through. A former keeper
+  that does not answer leaves the view not established — naming it, with what the others attest — and the objection
+  reaches the others. The view asks every keeper at each opening of a vault: N former keepers make N + 1
+  attestations, and a slow one slows every opening.
+- A forgotten keeper that still lives keeps releasing what is still sealed to it, out of the holder's view, like a
+  keeper replaced without `changeKeeper()`: forget only a keeper gone for good.
 - A database put back from before a keeper change takes back a keeper the escrows were retired from: the view says
   `retired` and does not call for `sealEscrowToKeeper()` — no re-sealing changes it; the deposits go through and stay
   out of the ceremony's reach until the operator changes to a keeper the database never had.

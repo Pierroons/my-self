@@ -22,9 +22,10 @@ gardien, change toute lecture, d'archive comprise, en annonce à laquelle le tit
 d'objection du séquestre — l'escrowId en est l'empreinte ; qui joint le gardien hors de la cérémonie attend aussi. La
 base inscrit le gardien et la clé d'administration ; un gardien remplacé (`changeKeeper()`) n'est jamais repris et
 reste donné aux façades et à la cérémonie : chaque dépôt y retire le séquestre (`retire()`, un jeton qui nomme le
-gardien visé), et la cérémonie lit encore ce qui lui reste scellé ; vider le registre des anciens n'en cache aucun à
-une façade qui les a reçus, et un ancien disparu pour de bon s'oublie par `forgetFormerKeeper()`, l'exploitant cessant
-de le donner aux façades comme à la cérémonie. La passe de
+gardien visé), et la cérémonie lit encore ce qui lui reste scellé. Vider le registre des anciens n'en cache aucun à
+une façade qui les a reçus : elle les y réinscrit, et `changeKeeper()` refuse de prendre comme nouveau gardien un
+gardien qui a pris des retraits. Un ancien disparu pour de bon s'oublie par `forgetFormerKeeper()`, l'exploitant
+cessant de le donner aux façades comme à la cérémonie. La passe de
 l'exploitant (`seal-to-keeper`) scelle au gardien les séquestres d'avant, sans aucun secret en main ;
 `bin/keeper-conformance.php` éprouve un gardien.
 
@@ -34,8 +35,8 @@ réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire
 détail, la migration et les limites déclarées :
 [`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
 
-Mesuré : 877 cas sur 14 suites (le gardien 154, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
-115), chacune vue rouge sur son cas.
+Mesuré : 890 cas sur 14 suites (le gardien 167, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
+125), chacune vue rouge sur son cas.
 
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
