@@ -83,6 +83,8 @@ avant=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions" 2>/dev/null || 
 #
 #   0  moisson entière                 → on garde, le marqueur a avancé
 #   3  incomplète, base saine          → on GARDE, le marqueur n'a pas avancé
+#   4  juridiction absente de l'index  → on GARDE, et l'alerte demande une
+#                                        moisson complète : rien ne se reprendra seul
 #   *  échec, base peut-être à moitié  → on restaure
 #
 # `|| rc=$?` est nécessaire : `set -e` et le `trap ERR` tueraient le script sur
@@ -97,6 +99,14 @@ if [ "$rc" = "3" ]; then
     rm -f "$SAUVEGARDE"
     alerter "SelfJustice — moisson Judilibre partielle" \
             "Index conserve et enrichi ($avant -> $apres), mais incomplet : la fraicheur n'avance pas. Voir $LOG_FILE."
+    exit 1
+elif [ "$rc" = "4" ]; then
+    apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
+    journal "Juridiction absente de l'index — index CONSERVÉ : $avant → $apres (+$((apres - avant)))."
+    journal "Fraîcheur NON avancée ; une moisson complète (build_judilibre_index.py sans --depuis) est nécessaire."
+    rm -f "$SAUVEGARDE"
+    alerter "SelfJustice — Judilibre : juridiction absente de l'index" \
+            "Le rafraichissement ne la remplit pas : lancer une moisson complete (build_judilibre_index.py sans --depuis). Index conserve ($avant -> $apres). Voir $LOG_FILE."
     exit 1
 elif [ "$rc" != "0" ]; then
     if [ -f "$SAUVEGARDE" ]; then

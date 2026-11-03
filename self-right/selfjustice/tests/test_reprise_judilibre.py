@@ -184,10 +184,11 @@ def volet_passage() -> None:
         print()
         print("▸ Le vrai passage, sur un index vide")
         code, sortie, exports = passage()
-        verdict(code == 3, f"sort en 3 (incomplet) — rendu {code}")
+        verdict(code == 4, f"sort en 4 (juridiction absente) — rendu {code}")
         verdict("cc : absente" in sortie and "ca : absente" in sortie,
                 "le journal nomme les deux juridictions absentes")
         verdict(exports == [], f"aucune tranche demandée — {len(exports)} demandée(s)")
+        verdict("0100-01-01" not in sortie, "aucune fenêtre ouverte en l'an 0100 au journal")
         verdict(not marqueur.exists(), "le marqueur n'est pas écrit")
 
         print()
@@ -202,7 +203,8 @@ def volet_passage() -> None:
                ("ca", jour(20), jour(15), 7, jour(1)),
                ("cc", jour(20), jour(15), 7, jour(1)))
         code, sortie, exports = passage()
-        verdict(code == 3, f"sort en 3 (incomplet) — rendu {code}")
+        verdict(code == 4, f"sort en 4 (juridiction absente) — rendu {code}")
+        verdict("seront reprises" not in sortie, "rien ne promet un rattrapage au passage suivant")
         verdict("ca : absente" in sortie and "cc : absente" not in sortie,
                 "le journal nomme `ca`, et elle seule")
         juris = sorted({q.get("jurisdiction") for q in exports})

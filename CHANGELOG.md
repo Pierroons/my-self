@@ -23,9 +23,11 @@ continuait de recevoir les décisions récentes, mais `/status` annonçait un re
 - La reprise ne lit plus que les juridictions de `JURIDICTIONS` (`cc`, `ca`), et écarte une décision
   datée après le jour du passage, comme le fait déjà la couverture de l'API.
 - Une juridiction moissonnée absente de l'index n'est plus remplie par le rafraîchissement, qui ne lui
-  apporterait que la fenêtre récente : le passage la nomme au journal et sort incomplet, et une moisson
-  complète (sans `--depuis`) la remplit. L'effacement des tranches à refaire se borne aux juridictions
-  remoissonnées.
+  apporterait que la fenêtre récente : le passage la nomme au journal et sort en 4. `update_judilibre.sh`
+  garde alors l'index comme en 3, mais son alerte demande une moisson complète (sans `--depuis`) au lieu
+  d'annoncer un rattrapage au passage suivant. L'effacement des tranches à refaire se borne aux
+  juridictions remoissonnées. Le moissonneur et son enveloppe se posent ensemble : l'enveloppe
+  précédente restaurerait l'index sur un 4.
 - `tests/test_reprise_judilibre.py`, branché dans `structure` : il rejoue les dates de l'index servi,
   puis lance le vrai moissonneur contre un amont simulé (juridictions interrogées, début de fenêtre,
   tranches conservées, code de sortie, marqueur). Il rougit sur le code précédent (fenêtre ouverte le
@@ -43,6 +45,8 @@ Corrections de la relecture du lot, avant sa publication.
 - **Vérification d'une référence** : pour un tribunal judiciaire ou de commerce, que l'index ne porte pas,
   une absence n'est plus rendue quand aucune source n'a été consultée — sans date, ou quand la base amont
   n'a pas répondu. La réponse est « indéterminée » (503), comme pour toute vérification impossible.
+  Le client MCP y ajoute, quand la date fournie était mal formée, qu'elle n'a pas été transmise et que
+  l'outil est à rappeler avec une date au format AAAA-MM-JJ.
 - Le message « clé Judilibre absente » borne ce qui reste vérifiable aux juridictions que l'index
   moissonne ; la description de l'outil MCP et l'aide de l'API nomment `tj` et `tcom`.
 - Bancs : `test_applicabilite.py` et `test_sonde_amont.sh` portent ces cas, vus rouges sur le code
@@ -143,8 +147,9 @@ référence coupée par un « / » non encodé au lieu d'en servir le début.
 **Un article servi, introuvable par ses mots.** L'index plein texte excluait les versions sans état que l'API
 sert comme version courante : 286 sur la base servie au 15 octobre. Il les porte, hors des lignes
 sentinelles. Et quand deux versions d'un même article répondent à la recherche, c'est la version applicable
-qui ressort, au rang de la mieux classée — cherchée par son numéro si la fenêtre lue ne la contient pas : une version morte de trente-six caractères passait devant au
-score.
+qui ressort, au rang de la mieux classée : une version morte de trente-six caractères passait devant au
+score. Si la fenêtre lue ne la contient pas, elle est cherchée par son numéro (voir l'entrée du 3 novembre
+pour le cas où elle ne porte pas les mots cherchés).
 
 **Ce que le dépôt affirmait.**
 

@@ -203,6 +203,26 @@ grep -q "index CONSERVÉ" "$TMP/journal.log" \
     || verdict 1 "le journal dit que l'index est conservé"
 
 echo
+echo "▸ Issue 4 — juridiction absente : on garde, et l'alerte appelle une moisson complète"
+# Les données valent comme en 3 ; ce qui change, c'est que rien ne se reprendra
+# seul. Une alerte qui promettrait le rattrapage ferait attendre pour rien.
+preparer 4
+lancer_enveloppe; CODE=$?
+[ "$(compte)" = "2" ] && verdict 0 "les données gagnées sont CONSERVÉES (2 décisions)" \
+                      || verdict 1 "les données gagnées sont conservées" "$(compte) décision(s)"
+[ "$(cat "$TMP/db/marqueur.txt")" = "2026-09-01" ] \
+    && verdict 0 "le marqueur de fraîcheur n'a PAS avancé" \
+    || verdict 1 "le marqueur n'a pas avancé" "il vaut $(cat "$TMP/db/marqueur.txt")"
+[ "$CODE" != "0" ] && verdict 0 "l'enveloppe sort en ÉCHEC (code $CODE)" \
+                   || verdict 1 "l'enveloppe sort en échec" "code 0, la sentinelle se tairait"
+grep -q "moisson complète" "$TMP/journal.log" && grep -q "juridiction absente" "$TMP/journal.log" \
+    && verdict 0 "le journal et l'alerte demandent une moisson complète" \
+    || verdict 1 "le journal et l'alerte demandent une moisson complète"
+! grep -q "seront reprises" "$TMP/journal.log" \
+    && verdict 0 "rien ne promet un rattrapage au passage suivant" \
+    || verdict 1 "rien ne promet un rattrapage" "« seront reprises » au journal"
+
+echo
 echo "▸ Issue 1 — échec franc : l'index précédent est restauré"
 preparer 1
 lancer_enveloppe; CODE=$?

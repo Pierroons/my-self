@@ -1900,7 +1900,22 @@ async def verifier_jurisprudence(
 
     etat = data.get("etat")
 
+    # La date n'est transmise que bien formée (voir plus haut) : mal formée,
+    # l'index ne l'a pas vue, et sa réponse reste prudente sans savoir pourquoi.
+    # C'est le seul endroit où le client sait quelque chose que l'index ignore,
+    # donc le seul qu'il ait à dire.
+    date_ignoree = bool(date) and not DATE_ISO.fullmatch(date.strip())
+
     if etat == "indeterminee":
+        if date_ignoree:
+            # Pour une juridiction que seule la base amont vérifie, la raison
+            # rendue dit « sans date » : le remède est de rappeler l'outil.
+            return (
+                _msg_juris_morte(data.get("raison", "raison non précisée"))
+                + f"\n\n(La date « {date} » n'a pas été comprise — format attendu : "
+                "AAAA-MM-JJ. Elle n'a donc pas été transmise : rappelle l'outil avec "
+                "la date à ce format avant de conclure.)"
+            )
         return _msg_juris_morte(data.get("raison", "raison non précisée"))
 
     # 🔑 Le bandeau compte surtout ici : « introuvable » ne veut pas dire la même
@@ -1918,11 +1933,7 @@ async def verifier_jurisprudence(
         # exclue » alors que l'amont venait de trancher.
         reserve = data.get("reserve") or ""
         note = ""
-        # La date n'est transmise que bien formée (voir plus haut) : mal formée,
-        # l'index ne l'a pas vue et sa réserve est restée prudente sans savoir
-        # pourquoi. C'est le seul endroit où le client sait quelque chose que
-        # l'index ignore, donc le seul qu'il ait à dire.
-        if date and not DATE_ISO.fullmatch(date.strip()):
+        if date_ignoree:
             note = (
                 f"\n\n(La date « {date} » n'a pas été comprise — format "
                 "attendu : AAAA-MM-JJ. Elle n'a donc pas été transmise à "

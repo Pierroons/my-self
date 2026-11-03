@@ -559,18 +559,19 @@ def main():
     # sur les juridictions suivantes masquerait la cause derrière un décompte
     # rassurant. Ce qui est déjà en base reste écrit — les commits sont par
     # tranche, pas en fin de course.
+    absentes = []
     try:
         if incremental:
             jusqua = datetime.now(timezone.utc).date().isoformat()
             if valeur == "auto":
                 depuis, absentes = depuis_auto(conn, jusqua)
             else:
-                depuis, absentes = valeur, []
+                depuis = valeur
             for juri in absentes:
                 journal(f"⚠️ {juri} : absente de l'index — le rafraîchissement ne la "
                         f"moissonne pas ; une moisson complète (sans --depuis) la remplit")
             presentes = [j for j in JURIDICTIONS if j not in absentes]
-            complet = rafraichir(conn, depuis, jusqua, presentes) and not absentes
+            complet = rafraichir(conn, depuis, jusqua, presentes) if presentes else True
         else:
             complet = True
             for juri in JURIDICTIONS:
@@ -611,9 +612,22 @@ def main():
     # elles étaient traitées comme une seule.
     #
     # Le code 3 est lu par `update_judilibre.sh`, qui restaure sur tout autre
-    # code non nul. Une exception non attrapée sort en 1 et fait donc toujours
-    # restaurer — c'est le cas du 15/09/2026, où la base pouvait être à moitié
-    # écrite.
+    # code non nul que 4. Une exception non attrapée sort en 1 et fait donc
+    # toujours restaurer — c'est le cas du 15/09/2026, où la base pouvait être à
+    # moitié écrite.
+    #
+    # 🔑 **Le code 4 dit autre chose : rien ne se reprendra seul.** Une juridiction
+    # absente de l'index n'est pas remplie par un rafraîchissement ; il faut une
+    # moisson complète, lancée à la main. Les données écrites valent comme en 3,
+    # mais l'alerte doit appeler ce geste, pas promettre un rattrapage. Il passe
+    # avant le 3 : une tranche refusée se reprendra, l'absence non.
+    if absentes:
+        journal(f"Juridiction(s) absente(s) de l'index : {', '.join(absentes)} — index "
+                "CONSERVÉ, marqueur de fraîcheur non avancé ; une moisson complète "
+                "(sans --depuis) est nécessaire.")
+        if not complet:
+            journal("Des tranches ont aussi été refusées : elles seront reprises.")
+        sys.exit(4)
     if not complet:
         journal("Moisson incomplète — index CONSERVÉ, marqueur de fraîcheur "
                 "non avancé ; les tranches refusées seront reprises.")

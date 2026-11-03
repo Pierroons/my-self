@@ -312,6 +312,22 @@ def main() -> int:
                  refus in texte and "corrige l'argument que l'index désigne" in texte
                  and "reprends le numéro" not in texte, texte)
 
+    @cas("verifier_jurisprudence — une date mal formée se dit, même quand rien n'a pu être vérifié")
+    def _():
+        # Pour `tj`, l'API répond « sans date, la base amont n'est pas interrogée » :
+        # le modèle qui en a donné une doit apprendre qu'elle n'est pas partie.
+        raison = ("Non vérifiable : l'index local ne porte pas les tribunaux judiciaires, et "
+                  "la base amont, seule à les servir, n'est interrogée qu'avec la date de la "
+                  "décision.")
+        texte = jouer({VERIFIER: indeterminee(raison)}, client.verifier_jurisprudence,
+                      "25-10.377", juridiction="tj", date="05/03/2026")
+        envoyees = [p for chemin, p in JOURNAL if chemin == VERIFIER]
+        verifier("date « 05/03/2026 » : non transmise, dite, et l'outil est à rappeler",
+                 "Vérification de jurisprudence impossible" in texte and raison in texte
+                 and "« 05/03/2026 » n'a pas été comprise" in texte
+                 and "rappelle l'outil" in texte
+                 and bool(envoyees) and all("date" not in p for p in envoyees), texte)
+
     @cas("T5 — une réponse non-JSON nomme la variable, jamais l'adresse")
     def _():
         texte = jouer({ARTICLE: (404, PAGE_404)}, client.article_francais, "1240", code="civil")
