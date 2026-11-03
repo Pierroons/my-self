@@ -185,6 +185,16 @@ $pdoA->prepare("UPDATE selfdataguard_escrow SET wrap_user = ? WHERE user_id = 'a
 $reecrit['code'] === 200 && isset($reecrit['json']['escrowReads']) && is_string($reecrit['json']['escrowError'] ?? null)
     ? ok('une ligne de séquestre réécrite : le coffre s\'ouvre, la vue des lectures arrive, et les champs disent qu\'ils ne s\'ouvrent pas')
     : ko('une ligne de séquestre réécrite cache la vue des lectures', $reecrit['code'] . ' ' . json_encode($reecrit['json']));
+$entiere = $pdoA->query("SELECT * FROM selfdataguard_escrow WHERE user_id = 'alice'")->fetch(PDO::FETCH_ASSOC);
+$pdoA->exec("DELETE FROM selfdataguard_escrow WHERE user_id = 'alice'");
+$supprime = appel($port, $NOM, 'coffre_open.php', ['userId' => 'alice', 'secret' => 'mot-de-passe-alice', 'mode' => 'password'], $cookieA);
+$colonnes = array_keys($entiere);
+$pdoA->prepare('INSERT INTO selfdataguard_escrow (' . implode(',', $colonnes) . ') VALUES (' . implode(',', array_fill(0, count($colonnes), '?')) . ')')
+    ->execute(array_values($entiere));
+$supprime['code'] === 200 && ($supprime['json']['escrowReads']['reason'] ?? null) === 'escrow-replaced'
+    && is_string($supprime['json']['escrowError'] ?? null)
+    ? ok('une ligne de séquestre supprimée, ses champs restés : la vue dit « remplacée », pas « aucun séquestre déposé »')
+    : ko('une ligne de séquestre supprimée se lit comme un séquestre jamais déposé', $supprime['code'] . ' ' . json_encode($supprime['json']));
 
 $reserve = appel($port, $NOM, 'register.php', ['userId' => 'bob', 'password' => 'mot-de-passe-bob-01', 'fields' => ['escrow' => 'x']], $cookieA);
 $encore  = appel($port, $NOM, 'register.php', ['userId' => 'bob', 'password' => 'mot-de-passe-bob-01'], $cookieA);

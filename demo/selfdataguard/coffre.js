@@ -95,7 +95,7 @@ const MOTIFS = {
   'keeper-mismatch': "le gardien donné à ce service n'est pas celui que sa base a inscrit",
   'no-keeper': 'aucun gardien joignable par ce service',
   'keeper-unreachable': "un gardien ne répond pas : une lecture qu'il tiendrait annoncée ne t'est pas montrée ; ce que les autres attestent suit",
-  'retired': "ce séquestre est retiré du gardien qu'il désigne, qui ne le remettra plus : ton prochain dépôt le scelle au gardien de ce service",
+  'retired': "ce séquestre est retiré du gardien qu'il désigne, qui ne le remettra plus : ton prochain dépôt le scelle au gardien de ce service, quand chaque ancien gardien répond",
   'retired-here': "ce séquestre est retiré du gardien de ce service lui-même : aucun dépôt ne le rend lisible, seul un changement de gardien par l'exploitant le fait",
   'escrow-replaced': "la ligne de ton séquestre en base n'est pas celle que ta clé désigne — remise d'une sauvegarde, réécrite ou supprimée ; voici ce que le gardien tient pour ton séquestre",
 };

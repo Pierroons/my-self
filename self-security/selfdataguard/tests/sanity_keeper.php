@@ -844,6 +844,14 @@ try {
         : ko('a record listing the façade\'s own keeper was refused, but not as expected', $e->reason);
 }
 $retDb->replaceSetting(SelfDataGuard::SETTING_FORMER_KEEPERS, json_encode([$printOf($kA), $printOf($kB)]), $noraFormer);
+try {
+    (new SelfDataGuard($retDb, $blindKey, keeper: $kB, formerKeepers: [$kA, $kB]))->setEscrowFields($nora, $admin['publicKey'], ['indice' => 'nora-5']);
+    ko('a deposit went through with the façade given its own keeper as former');
+} catch (EscrowKeeperException $e) {
+    $e->reason === 'keeper-mismatch' && $retDb->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS) === $noraFormer
+        ? ok('the façade given its own keeper as former: refused before anything is written — the record of former keepers untouched')
+        : ko('the façade given its own keeper as former wrote it into the record of former keepers before refusing', (string) $retDb->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS));
+}
 
 $kA2 = new BenchKeeper(delay: 3600);
 $kB2 = new BenchKeeper(delay: 3600);
@@ -1472,6 +1480,170 @@ try {
         : ko('a partial objection reads as a failure of the whole', $e->reason);
 }
 $kOb->down = false;
+
+$kV = new BenchKeeper(delay: 3600);
+$pdoV2 = new PDO('sqlite::memory:');
+$vDb = new SqliteAdapter($pdoV2);
+$dgV = new SelfDataGuard($vDb, $blindKey, keeper: $kV);
+$vera = $dgV->register('vera', 'motdepasse-vera-01');
+$dgV->setEscrowFields($vera, $admin['publicKey'], ['contact' => 'vera@example.org']);
+try {
+    benchCeremony($vDb, keeper: $kV)->readEscrow('vera', 'LIT-V1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$veraRow = $pdoV2->query("SELECT wrap_admin, created_at FROM selfdataguard_escrow WHERE user_id = 'vera'")->fetch(PDO::FETCH_ASSOC);
+foreach (['wrap_admin not base64' => ['wrap_admin', 'n0t-base64!!'], 'a date that does not parse' => ['created_at', 'not a date']] as $what => [$column, $garbage]) {
+    $pdoV2->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = 'vera'")->execute([$garbage]);
+    try {
+        $reads = $dgV->escrowReads($vera);
+        $reads['reason'] === 'escrow-replaced' && in_array('LIT-V1', $casesOf($reads['pending']), true)
+            ? ok("a row with {$what}: \"escrow-replaced\", and the announcement the keeper holds is shown")
+            : ko("a row with {$what} hides what the keeper holds announced", json_encode($reads));
+    } catch (Throwable $e) {
+        ko("a row with {$what}: escrowReads() threw before asking the keeper", get_class($e));
+    }
+    try {
+        $dgV->setEscrowFields($vera, $admin['publicKey'], ['contact' => 'vera-2@example.org']);
+        ko("a row with {$what}: the deposit went through");
+    } catch (EscrowEnvelopeMismatchException) {
+        ok("a row with {$what}: the deposit is refused, EscrowEnvelopeMismatchException");
+    } catch (Throwable $e) {
+        ko("a row with {$what}: the deposit raised a bare error", get_class($e));
+    }
+    $pdoV2->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = 'vera'")->execute([$veraRow[$column]]);
+}
+$pdoV2->prepare("UPDATE selfdataguard_escrow SET wrap_admin = ? WHERE user_id = 'vera'")->execute(['n0t-base64!!']);
+try {
+    $dgV->objectToEscrowRead($vera, 'LIT-V1');
+    $kV->pending[$hexOf($vera) . '|LIT-V1']['objected']
+        ? ok('a row with wrap_admin not base64: the holder objects all the same')
+        : ko('a row with wrap_admin not base64: the objection did not reach the keeper');
+} catch (Throwable $e) {
+    ko('a row with wrap_admin not base64: the holder cannot object', get_class($e));
+}
+$pdoV2->prepare("UPDATE selfdataguard_escrow SET wrap_admin = ? WHERE user_id = 'vera'")->execute([$veraRow['wrap_admin']]);
+
+$kVb = new BenchKeeper(delay: 3600);
+$pdoVb = new PDO('sqlite::memory:');
+$vbDb = new SqliteAdapter($pdoVb);
+$dgVb = new SelfDataGuard($vbDb, $blindKey, keeper: $kVb);
+$vince = $dgVb->register('vince', 'motdepasse-vince-01');
+$dgVb->setEscrowFields($vince, $admin['publicKey'], ['contact' => 'vince@example.org']);
+$pdoVb->exec("DELETE FROM selfdataguard_escrow WHERE user_id = 'vince'");
+$reads = $dgVb->escrowReads($vince);
+!$reads['established'] && $reads['reason'] === 'escrow-replaced' && !$reads['reseal']
+    ? ok('the row deleted, its fields kept, no read held anywhere: "escrow-replaced", not "established"')
+    : ko('the row deleted, its fields kept: the view says established while the fields refuse', json_encode($reads));
+
+$kNa = new BenchKeeper(delay: 3600);
+$kNb = new BenchKeeper(delay: 3600);
+$nDb = new SqliteAdapter('sqlite::memory:');
+$nils = (new SelfDataGuard($nDb, $blindKey))->register('nils', 'motdepasse-nils-01');
+(new SelfDataGuard($nDb, $blindKey))->setEscrowFields($nils, $admin['publicKey'], ['contact' => 'nils@example.org']);
+benchCeremony($nDb, keeper: $kNa)->sealToKeeper('nils');
+SelfDataGuard::changeKeeper($nDb, $kNa, $kNb);
+$kNa->down = true;
+$reads = (new SelfDataGuard($nDb, $blindKey, keeper: $kNb, formerKeepers: [$kNa]))->escrowReads($nils);
+$kNa->down = false;
+$reads['reason'] === 'not-pinned' && in_array(KeeperSeal::fingerprint($kNa->publicKeys()), array_column($reads['unanswered'], 'keeper'), true)
+    ? ok('a row the operator\'s pass sealed, a former keeper silent: "not-pinned" is kept, and "unanswered" names the silent one')
+    : ko('a silent keeper hides that the row was sealed by the pass', json_encode($reads));
+
+final class HookedSettings extends DelegatingStorage
+{
+    /** @var array<string, int> */
+    public array $reads = [];
+
+    /** @var array<string, array{0: int, 1: callable}> name => [the read it fires on, what it runs] */
+    public array $onRead = [];
+
+    /** @var (callable(): void)|null runs once, before the first replaceSetting() */
+    public $beforeReplace = null;
+
+    public function loadSetting(string $name): ?string
+    {
+        $this->reads[$name] = ($this->reads[$name] ?? 0) + 1;
+        if (isset($this->onRead[$name]) && $this->onRead[$name][0] === $this->reads[$name]) {
+            $run = $this->onRead[$name][1];
+            unset($this->onRead[$name]);
+            $run();
+        }
+        return $this->inner->loadSetting($name);
+    }
+
+    public function replaceSetting(string $name, string $expected, string $value): bool
+    {
+        if ($this->beforeReplace !== null) {
+            $run = $this->beforeReplace;
+            $this->beforeReplace = null;
+            $run();
+        }
+        return $this->inner->replaceSetting($name, $expected, $value);
+    }
+}
+$kHa = new BenchKeeper();
+$kHb = new BenchKeeper();
+$hInner = new SqliteAdapter('sqlite::memory:');
+$hDb = new HookedSettings($hInner);
+$hugo = (new SelfDataGuard($hInner, $blindKey, keeper: $kHa))->register('hugo', 'motdepasse-hugo-01');
+SelfDataGuard::changeKeeper($hInner, $kHa, $kHb);
+$printHa = KeeperSeal::fingerprint($kHa->publicKeys());
+$hDb->reads = [];
+$hDb->onRead[SelfDataGuard::SETTING_FORMER_KEEPERS] = [2, static fn () => SelfDataGuard::forgetFormerKeeper($hInner, $printHa)];
+try {
+    (new SelfDataGuard($hDb, $blindKey, keeper: $kHb, formerKeepers: [$kHa]))->setEscrowFields($hugo, $admin['publicKey'], ['contact' => 'hugo@example.org']);
+    ko('a deposit under way when the operator forgot its former keeper went through');
+} catch (EscrowKeeperException $e) {
+    !in_array($printHa, KeeperSeal::formerPrints($hInner->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS)), true)
+        ? ok('a deposit under way when the operator forgets its former keeper is refused, and does not write the keeper back')
+        : ko('a deposit under way wrote the forgotten keeper back among the former ones', $e->getMessage());
+}
+
+$kJa = new BenchKeeper();
+$kJc = new BenchKeeper();
+$jInner = new SqliteAdapter('sqlite::memory:');
+$jDb = new HookedSettings($jInner);
+(new SelfDataGuard($jInner, $blindKey, keeper: $kJa))->register('jade', 'motdepasse-jade-01');
+$printJa = KeeperSeal::fingerprint($kJa->publicKeys());
+$printJc = KeeperSeal::fingerprint($kJc->publicKeys());
+$jInner->claimSetting(SelfDataGuard::SETTING_FORMER_KEEPERS, json_encode([$printJa]));
+$jDb->beforeReplace = static function () use ($jInner, $printJa, $printJc): void {
+    $jInner->replaceSetting(SelfDataGuard::SETTING_FORMER_KEEPERS, json_encode([$printJa]), json_encode([$printJa, $printJc]));
+};
+try {
+    SelfDataGuard::changeKeeper($jDb, $kJa, $kJc);
+    ko('changeKeeper() promoted a keeper a deposit wrote among the former ones while it checked');
+} catch (InvalidArgumentException) {
+    $jInner->loadSetting(SelfDataGuard::SETTING_KEEPER) === $printJa
+        ? ok('a deposit that writes the coming keeper among the former ones while changeKeeper() checks: the change is refused')
+        : ko('changeKeeper() refused, but changed the keeper');
+}
+
+$kKa = new BenchKeeper();
+$kKc = new BenchKeeper();
+$kInner = new SqliteAdapter('sqlite::memory:');
+$kDb = new HookedSettings($kInner);
+$karl = (new SelfDataGuard($kInner, $blindKey, keeper: $kKa))->register('karl', 'motdepasse-karl-01');
+$printKa = KeeperSeal::fingerprint($kKa->publicKeys());
+$printKc = KeeperSeal::fingerprint($kKc->publicKeys());
+$dryInner = new SqliteAdapter('sqlite::memory:');
+$dryDb    = new HookedSettings($dryInner);
+$dryKarl  = (new SelfDataGuard($dryInner, $blindKey, keeper: $kKa))->register('karl', 'motdepasse-karl-01');
+$dryDg    = new SelfDataGuard($dryDb, $blindKey, keeper: $kKa, formerKeepers: [new BenchKeeper()]);
+$dryDb->reads = [];
+$dryDg->setEscrowFields($dryKarl, $admin['publicKey'], ['contact' => 'karl@example.org']);
+$lastKeeperRead = $dryDb->reads[SelfDataGuard::SETTING_KEEPER] ?? 0;
+$dgK = new SelfDataGuard($kDb, $blindKey, keeper: $kKa, formerKeepers: [$kKc]);
+$kDb->reads = [];
+$kDb->onRead[SelfDataGuard::SETTING_KEEPER] = [$lastKeeperRead, static fn () => $kInner->replaceSetting(SelfDataGuard::SETTING_KEEPER, $printKa, $printKc)];
+try {
+    $dgK->setEscrowFields($karl, $admin['publicKey'], ['contact' => 'karl@example.org']);
+    ko('a deposit retired the escrow at a keeper that became the database\'s keeper meanwhile');
+} catch (EscrowKeeperException $e) {
+    !isset($kKc->retired[$hexOf($karl)])
+        ? ok('a keeper given as former that becomes the database\'s keeper during the deposit: refused before any retirement')
+        : ko('the deposit retired the escrow at the new keeper before refusing', $e->getMessage());
+}
 
 // -----------------------------------------------------------------------------
 
