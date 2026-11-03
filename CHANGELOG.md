@@ -10,6 +10,22 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice 0.4.3 : le rafraîchissement Judilibre repart de ses propres juridictions — 3 novembre 2026
+
+`build_judilibre_index.py --depuis auto` calculait sa date de reprise sur toutes les juridictions de la
+table `decisions`, que le collecteur JADE partage depuis la 0.4.0. Le fonds éteint de la Cour de
+discipline budgétaire (dernière décision le 19/04/2000) fixait donc le début de la fenêtre : chaque
+rafraîchissement remoissonnait les cours d'appel et la Cour de cassation depuis le 20/03/2000. Sur un
+tel volume, l'amont refuse une partie des tranches anciennes (`circuit_breaking_exception: Data too
+large`), la moisson se déclare incomplète et la date de synchronisation ne progresse plus. L'index
+continuait de recevoir les décisions récentes, mais `/status` annonçait un retard depuis le 1er octobre.
+
+- La reprise ne lit plus que les juridictions de `JURIDICTIONS` (`cc`, `ca`).
+- Une juridiction moissonnée absente de l'index fait repartir du début, au lieu de ne recevoir que les
+  trente jours de recouvrement.
+- `tests/test_reprise_judilibre.py`, branché dans `structure` : il rejoue les dates de l'index servi et
+  rougit sur le code précédent (fenêtre ouverte le 20/03/2000).
+
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
 Aucune version ne monte : rien ne change dans ce que le code décide.

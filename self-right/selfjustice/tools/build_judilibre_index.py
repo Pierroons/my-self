@@ -488,13 +488,27 @@ RECOUVREMENT_JOURS = 30
 
 
 def depuis_auto(conn):
-    """Date de reprise : la plus récente décision connue, moins le recouvrement."""
-    borne = conn.execute(
-        "SELECT MIN(m) FROM (SELECT MAX(decision_date) AS m FROM decisions "
-        "WHERE date_suspecte = 0 GROUP BY jurisdiction)"
-    ).fetchone()[0]
-    if not borne:
+    """Date de reprise : la plus récente décision connue, moins le recouvrement.
+
+    🔑 Seules les juridictions de `JURIDICTIONS` comptent. La table `decisions`
+    est partagée avec le collecteur JADE, qui y range des fonds éteints : la
+    Cour de discipline budgétaire s'arrête en 2000. Prise dans le calcul, elle
+    fait repartir chaque rafraîchissement de l'an 2000.
+
+    Une juridiction moissonnée absente de l'index n'a pas de date de reprise :
+    on repart de `DATE_DEBUT`, sinon elle ne recevrait jamais que le
+    recouvrement.
+    """
+    plus_recentes = [
+        conn.execute(
+            "SELECT MAX(decision_date) FROM decisions "
+            "WHERE date_suspecte = 0 AND jurisdiction = ?", (juri,)
+        ).fetchone()[0]
+        for juri in JURIDICTIONS
+    ]
+    if not all(plus_recentes):
         return DATE_DEBUT
+    borne = min(plus_recentes)
     depart = datetime.strptime(borne, "%Y-%m-%d").date() - timedelta(days=RECOUVREMENT_JOURS)
     return depart.isoformat()
 
