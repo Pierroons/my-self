@@ -41,8 +41,10 @@ Untrusted input enters at eight places:
    the nonce of the request, and it says whether the escrow is retired; the inner box is opened as any `wrap_admin` is,
    and must name its account. A keeper that hands back another box opens nothing; one that does not answer leaves
    the releases "not established", and one whose public keys do not come leaves the vaults open and takes no deposit.
-   The ceremony and every façade refuse a keeper other than the one the database recorded, or than a former one it
-   recorded, and an unreadable record of former keepers. A box is input too — anyone can seal one to the
+   The ceremony and every façade refuse a keeper other than the one the database recorded, and an unreadable record of
+   former keepers. The ceremony refuses a former keeper the database does not record; a façade asks every former
+   keeper it was given, recorded or not, and retires the escrow from each at every deposit — emptying the record hides
+   none from it. A box is input too — anyone can seal one to the
    keeper's public key: the keeper refuses one whose objection key is not the one the escrowId is the fingerprint of,
    checks an objection against the escrowId alone, and a retirement against the escrowId and its own fingerprint.
 
