@@ -196,7 +196,8 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
     account_id  INTEGER NOT NULL,
     cause       TEXT NOT NULL,     -- état : 'reputation_zero' | 'ban_auto' | 'journal_en_panne' |
-                                   -- 'levee_en_attente' ; comportement :
+                                   -- 'levee_en_attente' | 'ban_en_attente' | 'droit_de_vote_perdu' |
+                                   -- 'ban_sans_fin' ; comportement :
                                    -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' |
                                    -- 'bans_arbitre' ;
                                    -- 'signal_anterieur' : une case ouverte sans cause, reprise à la migration

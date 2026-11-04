@@ -4270,11 +4270,12 @@ function arreterLab(array $serveur): void
 
 /**
  * Une requête au serveur du lab : son code et son corps. Avec un jeton de session,
- * la session qu'il ouvre ; avec un jeton CSRF en plus, un POST.
+ * la session qu'il ouvre ; avec un jeton CSRF en plus, un POST, dont `$json` est le corps.
  *
+ * @param array<string, mixed> $json
  * @return array{code: int, corps: string}
  */
-function requeteLab(array $serveur, string $chemin, ?string $session = null, ?string $csrf = null): array
+function requeteLab(array $serveur, string $chemin, ?string $session = null, ?string $csrf = null, array $json = []): array
 {
     if (!$serveur['debout']) {
         return ['code' => 0, 'corps' => ''];
@@ -4284,7 +4285,7 @@ function requeteLab(array $serveur, string $chemin, ?string $session = null, ?st
     if ($csrf !== null) {
         $entetes[] = 'X-CSRF-Token: ' . $csrf;
         $entetes[] = 'Content-Type: application/json';
-        $http += ['method' => 'POST', 'content' => '{}'];
+        $http += ['method' => 'POST', 'content' => $json === [] ? '{}' : json_encode($json, JSON_THROW_ON_ERROR)];
     }
     $http['header'] = implode("\r\n", $entetes);
     $corps = (string) @file_get_contents('http://127.0.0.1:' . $serveur['port'] . $chemin, false, stream_context_create(['http' => $http]));
@@ -5344,6 +5345,47 @@ $ban140['ok'] && $ban140['message'] === 'Compte banni sans fin.' && (int) $etat1
     && $versSansFin140['ok'] && Moteur::estSansFin((int) etatBan($pdo, $fini140)['banned_until']) && in_array('ban_sans_fin', causes($pdo, $fini140), true)
     ? ok('un ban d\'arbitre sans fin n\'échoit jamais, se signale déjà vu, se dit tel partout, et ne se lève qu\'avec un motif')
     : nok('le ban sans fin rate : ' . json_encode([$ban140, $etat140, $debut140, $vote140, $vu140, $liste140, $encore140, $plus140, $toujours140, $leverNu140, $graceNue140, $lever140, $leve140, $versSansFin140]));
+
+// ── 141. ⭐ La console du lab lève et rallonge par sa route, sans gracier ──────
+// Par HTTP, avec une session d'arbitre. Le bouton « lever » de la liste des bans
+// appelait la grâce, qui remet la récidive à zéro : il appelle la levée, et
+// « rallonger » la prolongation. La route sert les deux.
+$journalAvant141 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$cible141 = membre($pdo, 'console-141');
+poserReputation($pdo, $cible141, 15);
+Moderate::adminBan($pdo, $cible141, 'arbitre-banc', motif());
+Moderate::setJournal($journalAvant141);
+$avant141   = etatBan($pdo, $cible141);
+$session141 = sessionArbitre($pdo, 'arbitre-141');
+$serveur141 = serveurLab();
+$page141    = requeteLab($serveur141, '/admin.php', $session141)['corps'];
+$csrf141    = csrfDeLaPage($page141);
+$geste141   = static fn (string $op, array $plus = []): array => $csrf141 !== null
+    ? requeteLab($serveur141, '/api/admin.php', $session141, $csrf141,
+        ['action' => 'moderate', 'account_id' => $cible141, 'op' => $op, 'motif' => motif()] + $plus)
+    : ['code' => 0, 'corps' => ''];
+$plus141      = $geste141('prolonger', ['secondes' => 600]);
+$rallonge141  = etatBan($pdo, $cible141);
+$leve141      = $geste141('lever');
+$apres141     = etatBan($pdo, $cible141);
+arreterLab($serveur141);
+$boutons141 = [
+    'lever'     => str_contains($page141, 'data-id="' . $cible141 . '" data-op="lever"'),
+    'rallonger' => str_contains($page141, 'data-id="' . $cible141 . '" data-op="prolonger"'),
+];
+$boutons141 === ['lever' => true, 'rallonger' => true]
+    && $plus141['code'] === 200 && (int) $rallonge141['banned_until'] === (int) $avant141['banned_until'] + 600
+    && $leve141['code'] === 200 && (int) $apres141['banned_until'] === 0
+    && (int) $apres141['strikes_admin'] === (int) $avant141['strikes_admin'] && (int) $avant141['strikes_admin'] >= 1
+    ? ok('⭐ la console lève et rallonge par sa route : la peine s\'arrête ou s\'allonge, la récidive reste comptée')
+    : nok('⭐ la console gracie en levant, ou sa route ne sert ni la levée ni le rallongement : ' . json_encode([
+        'boutons' => $boutons141, 'csrf' => $csrf141 !== null,
+        'rallonger' => [$plus141['code'], substr($plus141['corps'], 0, 160)],
+        'lever' => [$leve141['code'], substr($leve141['corps'], 0, 160)],
+        'jusqua' => [(int) $avant141['banned_until'], (int) $rallonge141['banned_until'], (int) $apres141['banned_until']],
+        'strikes_admin' => [(int) $avant141['strikes_admin'], (int) $apres141['strikes_admin']],
+    ], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
