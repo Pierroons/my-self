@@ -44,9 +44,11 @@ Untrusted input enters at eight places:
    The ceremony and every façade refuse a keeper other than the one the database recorded, and an unreadable record of
    former keepers. The ceremony refuses a former keeper the database does not record; a façade asks every former
    keeper it was given, writes it into the record, and retires the escrow from each at every deposit — emptying the
-   record hides none from it, and `changeKeeper()` never promotes a keeper written there. A box is input too — anyone can seal one to the
-   keeper's public key: the keeper refuses one whose objection key is not the one the escrowId is the fingerprint of,
-   checks an objection against the escrowId alone, and a retirement against the escrowId and its own fingerprint.
+   record hides none from it, and `changeKeeper()` never promotes a keeper written there — unless a deposit writes it
+   during the change, a race the CHANGELOG declares, which leaves every deposit refused until a second change. A box is
+   input too — anyone can seal one to the keeper's public key: the keeper refuses one whose objection key is not the
+   one the escrowId is the fingerprint of, checks an objection against the escrowId alone, and a retirement against the
+   escrowId and its own fingerprint.
 
 ## Components that matter most, and least
 
