@@ -376,7 +376,7 @@ class Moderate
                 }
                 if ($rep >= self::config()->sortieConvalescence()) {
                     $l['convalescent'] = 0;
-                    $tombentRegen[]    = 'reputation_zero';
+                    array_push($tombentRegen, 'reputation_zero', 'ban_en_attente');
                     $effacer           = true;
                 }
             }
@@ -657,10 +657,21 @@ class Moderate
         if (!$rep['voting_rights']) {
             return [false, static::t('Droit de vote retiré (réputation trop basse).')];
         }
-        // Anti-Sybil : compte récent sans activité ne peut pas voter
+        // Anti-Sybil : compte récent sans activité ne peut pas voter. Un compte
+        // absent ou une date qui n'est pas un horodatage ne se convertissent pas :
+        // `(int)` en ferait 0 — un compte né en 1970 — ou l'année d'une date ISO,
+        // et l'un comme l'autre passerait pour très ancien.
         $stmt = $pdo->prepare('SELECT created_at FROM accounts WHERE id = ?');
         $stmt->execute([$accountId]);
-        $createdAt = (int) $stmt->fetchColumn();
+        $cree = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($cree === false) {
+            return [false, static::t('Compte introuvable.')];
+        }
+        if (!is_int($cree) && !(is_string($cree) && ctype_digit($cree))) {
+            return [false, static::t('Date de création du compte illisible : le vote attend un horodatage en secondes.')];
+        }
+        $createdAt = (int) $cree;
         $age = time() - $createdAt;
         $ageMin = self::config()->ageMinPourVoterSecondes;
         if ($age < $ageMin) {
@@ -1167,9 +1178,20 @@ class Moderate
             return [];
         }
         $ph = implode(',', array_fill(0, count($voters), '?'));
-        $stmt = $pdo->prepare("SELECT DISTINCT sender_id, recipient_id FROM dm
-                                WHERE created_at >= ? AND sender_id IN ($ph) AND recipient_id IN ($ph)");
-        $stmt->execute(array_merge([time() - self::config()->fenetreMeuteJours * 86400], $voters, $voters));
+        try {
+            $stmt = $pdo->prepare("SELECT DISTINCT sender_id, recipient_id FROM dm
+                                    WHERE created_at >= ? AND sender_id IN ($ph) AND recipient_id IN ($ph)");
+            $stmt->execute(array_merge([time() - self::config()->fenetreMeuteJours * 86400], $voters, $voters));
+        } catch (\PDOException $e) {
+            if (!self::tableDeLHote($pdo, 'dm')) {
+                throw new \LogicException(
+                    'SelfModerate : la table « dm » de l\'hôte est introuvable, ni table ni vue — la détection de meute la lit.',
+                    0,
+                    $e
+                );
+            }
+            throw $e;
+        }
         $aEcrit = [];
         foreach ($stmt->fetchAll() as $r) {
             $aEcrit[(int) $r['sender_id']][(int) $r['recipient_id']] = true;
@@ -1183,6 +1205,24 @@ class Moderate
             }
         }
         return $paires;
+    }
+
+    /**
+     * La base porte-t-elle cette table de l'hôte, ou une vue de ce nom, y compris
+     * une vue `TEMP` ? Lu seulement après un échec : le chemin normal n'en paie rien.
+     */
+    private static function tableDeLHote(PDO $pdo, string $nom): bool
+    {
+        $existe = $pdo->prepare(
+            "SELECT 1 FROM sqlite_master WHERE name = ? AND type IN ('table', 'view')
+             UNION ALL
+             SELECT 1 FROM sqlite_temp_master WHERE name = ? AND type IN ('table', 'view')"
+        );
+        $existe->execute([$nom, $nom]);
+        $trouvee = $existe->fetchColumn() !== false;
+        $existe->closeCursor();
+
+        return $trouvee;
     }
 
     /**
@@ -1643,7 +1683,7 @@ class Moderate
             // Seul le signalement que la chute a provoqué s'en va avec elle. Une
             // salve à arbitrer et une récidive de meute portent chacune leur
             // propre motif d'exister : la restauration d'un score n'y répond pas.
-            self::designaler($pdo, $author, 'reputation_zero');
+            self::designaler($pdo, $author, 'reputation_zero', 'ban_en_attente');
         }
     }
 
@@ -1770,7 +1810,7 @@ class Moderate
     /** Les causes d'état, que lisent `famille()` et la reprise (`migrerSignaux()`). */
     private static function causesEtat(): array
     {
-        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente'];
+        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente'];
     }
 
     /**
@@ -2229,20 +2269,36 @@ class Moderate
         $jusqua  = $maintenant + $duree;
         $signaux = self::signauxDe($pdo, $accountId);
 
-        self::inscrireAuJournal([
-            'acte'    => 'ban_debut',
-            'compte'  => $accountId,
-            'origine' => 'auto',
-            'episode' => $episode,
-            'dont_arbitre' => (int) $etat['strikes_admin'],
-            'duree'   => $duree,
-            'debut'   => $maintenant,
-            'jusqu_a' => $jusqua,
-            'motif'   => 'reputation_zero',
-            'arbitre' => null,
-            'ouverts' => self::causesEnTexte($signaux),
-            'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero')),
-        ]);
+        // Un refus du journal ne défait pas le vote qui a fait tomber le compte au
+        // plancher : la chute est signalée, le ban attend que le journal l'accepte
+        // (le vote négatif suivant le retente), et l'arbitre sait pourquoi.
+        try {
+            self::inscrireAuJournal([
+                'acte'    => 'ban_debut',
+                'compte'  => $accountId,
+                'origine' => 'auto',
+                'episode' => $episode,
+                'dont_arbitre' => (int) $etat['strikes_admin'],
+                'duree'   => $duree,
+                'debut'   => $maintenant,
+                'jusqu_a' => $jusqua,
+                'motif'   => 'reputation_zero',
+                'arbitre' => null,
+                'ouverts' => self::causesEnTexte($signaux),
+                'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero', 'ban_en_attente')),
+            ]);
+        } catch (\Throwable $e) {
+            if ($e instanceof LectureDansUneEcriture) {
+                throw $e;
+            }
+            error_log(sprintf('SelfModerate : ban automatique du compte %d non inscrit au journal — %s', $accountId, $e->getMessage()));
+            // `ban_en_attente` vit et tombe avec la chute ; posé avant elle, il
+            // laisse au résumé du compte (`review_reason`) la chute elle-même.
+            self::signaler($pdo, $accountId, 'ban_en_attente');
+            self::signaler($pdo, $accountId, 'reputation_zero');
+
+            return;
+        }
 
         $pdo->prepare(
             "UPDATE member_moderation
@@ -2250,8 +2306,9 @@ class Moderate
                     voting_rights = 0, strikes = ?, updated_at = ?
               WHERE account_id = ?"
         )->execute([$jusqua, $maintenant, $episode, $maintenant, $accountId]);
-        // Le ban prend la place de la chute qui l'a causé : un fait, un signal.
-        self::designaler($pdo, $accountId, 'reputation_zero');
+        // Le ban prend la place de la chute qui l'a causé : un fait, un signal. Un
+        // refus précédent de ce ban se ferme avec lui.
+        self::designaler($pdo, $accountId, 'reputation_zero', 'ban_en_attente');
         self::signaler($pdo, $accountId, 'ban_auto');
     }
 
