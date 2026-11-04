@@ -5,7 +5,7 @@
 **De « je connais mes droits » à la démarche : le formulaire officiel, le délai, un modèle de lettre à compléter.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.1.3 bêta](https://img.shields.io/badge/statut-v0.1.3%20b%C3%AAta-green.svg)](#statut)
+[![Statut : v0.1.4 bêta](https://img.shields.io/badge/statut-v0.1.4%20b%C3%AAta-green.svg)](#statut)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)

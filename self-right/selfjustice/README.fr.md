@@ -5,7 +5,7 @@
 **Le droit français et européen, lisible par ton IA : une API publique gratuite pour les textes, une page de directives pour la méthode.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.4.3 bêta](https://img.shields.io/badge/statut-v0.4.3%20b%C3%AAta-green.svg)](#statut)
+[![Statut : v0.4.4 bêta](https://img.shields.io/badge/statut-v0.4.4%20b%C3%AAta-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -185,7 +185,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Statut
 
-**En production sur [justice.my-self.fr](https://justice.my-self.fr) — v0.4.3 bêta**
+**En production sur [justice.my-self.fr](https://justice.my-self.fr) — v0.4.4 bêta**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
 - [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)

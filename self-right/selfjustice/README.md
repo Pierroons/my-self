@@ -5,7 +5,7 @@
 **French and EU law, readable by your AI: a free public API for the texts, a directives page for the method.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.3 beta](https://img.shields.io/badge/status-v0.4.3%20beta-green.svg)](#status)
+[![Status: v0.4.4 beta](https://img.shields.io/badge/status-v0.4.4%20beta-green.svg)](#status)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -184,7 +184,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**Live in production at [justice.my-self.fr](https://justice.my-self.fr) — v0.4.3 beta**
+**Live in production at [justice.my-self.fr](https://justice.my-self.fr) — v0.4.4 beta**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
 - [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)

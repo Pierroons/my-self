@@ -10,6 +10,27 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice 0.4.4 et SelfAct 0.1.4 : ce qui reste à dire juste, avant le passage du 15 novembre — 4 novembre 2026
+
+Les constats que la relecture de la 0.4.3 avait laissés pour après sa pose, et le registre des textes.
+
+- **« Opposable »** ne se dit plus pour la Cour de cassation à une date antérieure au début de sa propre
+  couverture, ni à une date plus récente que `CC_DELAI_PUBLICATION_JOURS` (60 jours) : une décision récente
+  peut ne pas être encore publiée. Le seuil vient de la mesure du 04/11 sur l'index servi (décisions `cc` de
+  2026 publiées à 90,8 % sous 15 jours, 96,4 % sous 30, 97,8 % sous 60). Une panne de l'amont ne se décrit plus
+  par « l'index, qui couvre cette date » quand le dernier fonds ouvert commence après elle. Le bras par défaut
+  de la réserve, qu'aucun chemin connu n'atteint, ne conclut plus.
+- **La sentinelle** juge la jurisprudence sur l'empreinte de Judilibre seul (`par_source.judilibre`) : JADE,
+  qui partage la table et avance chaque soir, masquait un Judilibre figé derrière une date avancée.
+- **`update_judilibre.sh`** compte ce que Judilibre écrit : un ajout de JADE pendant le passage ne fait plus
+  taire l'alerte « sans nouveauté ».
+- **Les bancs** demandent un port libre au système et refusent de démarrer quand le port est déjà servi : sur
+  un poste où Tor écoute sur 9050, dix d'entre eux pouvaient parler à un autre serveur. `test_jurisprudence.py`
+  ne mesure plus un chemin voisin de celui qu'il nomme.
+- **Registre** : les textes de MySelf tutoient le lecteur (messages du calcul d'échéance de SelfAct, deux
+  messages de l'API, avertissement « contenu généré par une IA » de la page). L'IA de SelfJustice vouvoie
+  l'utilisateur, et le tutoie s'il le demande. Les courriers de SelfAct à un tiers restent au vouvoiement.
+
 ### SelfJustice 0.4.3 : le rafraîchissement Judilibre repart de ses propres juridictions — 3 novembre 2026
 
 `build_judilibre_index.py --depuis auto` calculait sa date de reprise sur toutes les juridictions de la
