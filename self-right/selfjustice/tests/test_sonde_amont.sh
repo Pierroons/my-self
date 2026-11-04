@@ -32,10 +32,11 @@ command -v php     >/dev/null || { echo "php introuvable" >&2; exit 1; }
 command -v sqlite3 >/dev/null || { echo "sqlite3 introuvable" >&2; exit 1; }
 
 TMP="$(mktemp -d)"
-API_PID=""; AMONT_PID=""; BRIS_PID=""
+API_PID=""; AMONT_PID=""; BRIS_PID=""; SANS_CC_PID=""
 trap '[ -n "$API_PID" ] && kill "$API_PID" 2>/dev/null
       [ -n "$AMONT_PID" ] && kill "$AMONT_PID" 2>/dev/null
       [ -n "$BRIS_PID" ] && kill "$BRIS_PID" 2>/dev/null
+      [ -n "$SANS_CC_PID" ] && kill "$SANS_CC_PID" 2>/dev/null
       rm -rf "$TMP"' EXIT
 
 # ── L'index local : deux décisions, borne haute au 2026-07-31 ────────────────
@@ -405,10 +406,10 @@ echo "▸ Une absence dans un fonds administratif ne prouve rien"
 # y est faux, même à une date couverte.
 controle "« ce », date couverte → la sélection JADE est dite" \
     "999999?jurisdiction=ce&date=2026-06-09" \
-    "etat:absente" "reserve:~Le fonds JADE ne porte qu'une sélection" "reserve:!elle y figurerait"
+    "etat:absente" "reserve:~Le fonds JADE ne porte qu'une sélection" "reserve:!n'est pas prévu par la réserve"
 controle "« ta », date couverte → la même réserve" \
     "0612345?jurisdiction=ta&date=2007-05-15" \
-    "etat:absente" "reserve:~Le fonds JADE ne porte qu'une sélection" "reserve:!elle y figurerait"
+    "etat:absente" "reserve:~Le fonds JADE ne porte qu'une sélection" "reserve:!n'est pas prévu par la réserve"
 # Sans juridiction, la sonde ne voit que la Cour de cassation : la réserve ne
 # conclut que pour elle, et dit le reste.
 for cas in "77%2F77777?date=2026-03-02|date couverte" "88%2F88888?date=2026-07-15|au-delà de la borne"; do
@@ -417,7 +418,7 @@ for cas in "77%2F77777?date=2026-03-02|date couverte" "88%2F88888?date=2026-07-1
         "etat:absente" "reserve:~pour la Cour de cassation : pour elle, l'absence est opposable." \
         "reserve:~Cours d'appel : l'index local ne porte que ce que Judilibre en diffuse" \
         "reserve:~ne les interroge que si la juridiction est précisée" \
-        "reserve:~le fonds JADE ne porte qu'une sélection" "reserve:!elle y figurerait"
+        "reserve:~le fonds JADE ne porte qu'une sélection" "reserve:!n'est pas prévu par la réserve"
 done
 
 echo
@@ -505,6 +506,37 @@ controle "sans juridiction, amont en panne, date avant le début du dernier fond
     "etat:absente" "reserve:~dont tous les fonds ne commencent pas avant cette date" \
     "reserve:!qui couvre cette date" "reserve:~HTTP 500"
 
+# Une date à venir ne porte aucune décision : la réponse est ferme, pas « récente ».
+controle "sans juridiction, date à venir, amont vide → aucune décision ne peut porter cette date" \
+    "33%2F33333?date=2026-12-12" \
+    "etat:absente" "reserve:~postérieure à aujourd'hui" "reserve:!pas encore opposable"
+
+# Un index qui ne déclare pas la Cour de cassation n'a pas de début pour elle :
+# l'absence n'y conclut rien, au lieu de se dire opposable par défaut.
+cp "$DB" "$TMP/index-sans-cc.sqlite"
+sqlite3 "$TMP/index-sans-cc.sqlite" "DELETE FROM decisions WHERE jurisdiction = 'cc'"
+lancer_api_sans_cc() {
+    SELFJUSTICE_JOUR="$JOUR_FIGE" \
+    SELFJUSTICE_JURIS_DB="$TMP/index-sans-cc.sqlite" \
+    SELFJUSTICE_JUDILIBRE_BASE="$AMONT_URL" \
+    SELFJUSTICE_JUDILIBRE_KEY="factice" \
+        php -S "127.0.0.1:$1" -t "$RACINE/api" "$RACINE/api/api.php" >/dev/null 2>&1 &
+    SANS_CC_PID=$!
+    for _ in $(seq 40); do
+        kill -0 "$SANS_CC_PID" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$1/api/status" && return 0
+        sleep 0.1
+    done
+    kill "$SANS_CC_PID" 2>/dev/null; SANS_CC_PID=""; return 1
+}
+essayer_trois_ports lancer_api_sans_cc || { echo "api sans cc non démarrée" >&2; exit 1; }
+BASE_PRINCIPALE="$BASE"
+BASE="http://127.0.0.1:$PORT/api/jurisprudence/verifier"
+controle "index sans Cour de cassation, amont vide → rien ne se conclut pour elle" \
+    "33%2F33333?date=2026-03-02" \
+    "etat:absente" "reserve:~ne déclare pas de couverture pour elle" "reserve:!opposable"
+kill "$SANS_CC_PID" 2>/dev/null; wait "$SANS_CC_PID" 2>/dev/null; SANS_CC_PID=""
+BASE="$BASE_PRINCIPALE"
+
 echo
 echo "▸ À une date couverte, l'index ne conclut pas seul"
 # 🔑 Une moisson n'est pas exhaustive : une décision publiée tard lui échappe.
@@ -513,7 +545,7 @@ echo "▸ À une date couverte, l'index ne conclut pas seul"
 controle "« ca », absente, date DANS la plage, l'amont ne l'a pas → bornée à ce qu'il diffuse" \
     "99%2F99999?jurisdiction=ca&date=2026-06-10" \
     "etat:absente" "reserve:~ne vaut que dans les limites" "reserve:!opposable" \
-    "reserve:!elle y figurerait"
+    "reserve:!n'est pas prévu par la réserve"
 [ "$(au_journal 1 "99/99999")" -gt 0 ] \
     && ok "la sonde est au journal de l'amont" \
     || nok "aucune sonde amont pour 99/99999"
@@ -527,7 +559,7 @@ controle "même arrêt, sans juridiction → la sonde ne voit que la Cour de cas
 controle "« ca », date couverte, amont en panne → probable, pas établie" \
     "55%2F55555?jurisdiction=ca&date=2026-03-02" \
     "etat:absente" "reserve:~l'absence y est probable sans être établie" \
-    "reserve:~HTTP 500" "reserve:!elle y figurerait" \
+    "reserve:~HTTP 500" "reserve:!n'est pas prévu par la réserve" \
     "reserve:!Cour de cassation, cours d'appel" "reserve:!ribunaux judiciaires"
 controle "l'amont en annonce plus qu'une page n'en rend → rien ne s'établit" \
     "44%2F44444?jurisdiction=ca&date=2026-08-20" \

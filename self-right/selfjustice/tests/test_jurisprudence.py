@@ -90,9 +90,12 @@ def negatif() -> list[str]:
 
     # Un tribunal judiciaire sans date : l'index ne le porte pas et l'amont n'est
     # pas interrogé, donc rien n'a été vérifié.
-    statut, tj = appeler("/api/jurisprudence/verifier/21%2F04567?jurisdiction=tj")
-    if tj.get("etat") != "indeterminee" or statut != 503:
-        echecs.append(f"« tj » sans date → {statut} {tj.get('etat')} (attendu 503 indeterminee)")
+    if "tj" in couverts:
+        print("  · « tj » est dans l'index de cette instance : ce contrôle ne s'y applique pas")
+    else:
+        statut, tj = appeler("/api/jurisprudence/verifier/21%2F04567?jurisdiction=tj")
+        if tj.get("etat") != "indeterminee" or statut != 503:
+            echecs.append(f"« tj » sans date → {statut} {tj.get('etat')} (attendu 503 indeterminee)")
 
     statut, numero = appeler("/api/jurisprudence/search?q=" + urllib.parse.quote("25/01234"))
     if statut != 400:

@@ -60,7 +60,6 @@ const JURIS_SILENCE_MAX_JOURS = 365;
 // cassation : une décision rendue peut ne pas y être encore publiée. Mesuré le
 // 04/11/2026 sur l'index servi (décisions `cc` de 2026, date de décision contre
 // `update_date`) : 90,8 % publiées sous 15 jours, 96,4 % sous 30, 97,8 % sous 60.
-// Même borne que `SEDIMENTATION` du moissonneur.
 const CC_DELAI_PUBLICATION_JOURS = 60;
 
 // Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
@@ -245,7 +244,7 @@ function legi_jour(): string {
     static $jour = null;
     if ($jour !== null) return $jour;
     $fige = getenv('SELFJUSTICE_JOUR') ?: '';
-    return $jour = preg_match('/^\d{4}-\d{2}-\d{2}\z/', $fige) ? $fige : date('Y-m-d');
+    return $jour = date_iso_valide($fige) ? $fige : date('Y-m-d');
 }
 
 /** L'expression SQL « cette version s'applique au jour J ».
@@ -2218,9 +2217,19 @@ if ($segments[0] === 'jurisprudence') {
                     . " ne sont pas dans l'index : avec la juridiction et la date de la "
                     . "décision, la base amont est interrogée." : "")
                 . ($jade_concerne ? " " . JADE_SELECTION : ""),
+            // Une date à venir ne peut porter aucune décision : l'absence y est ferme,
+            // quoi que l'amont réponde. C'est le cas d'une référence inventée et datée.
+            $date_annoncee > legi_jour() => "Introuvable, et la date annoncée "
+                . "($date_annoncee) est postérieure à aujourd'hui : aucune décision ne peut "
+                . "porter cette date.",
             $ouvre_tot !== null && $date_annoncee < $ouvre_tot => "Introuvable, mais la date "
                 . "annoncée ($date_annoncee) précède le début de l'index ($ouvre_tot) : "
                 . "cette absence ne prouve rien.",
+            $amont === [] && ($juridiction === null || $juridiction === 'cc')
+                && $ouvre_cc === null => "Introuvable dans la base amont Judilibre "
+                . "interrogée au $date_annoncee pour la Cour de cassation, mais cet index "
+                . "ne déclare pas de couverture pour elle : rien ne se conclut de cette "
+                . "absence." . ($juridiction === null ? $autres : ""),
             $amont === [] && $juridiction === null && $ouvre_cc !== null
                 && $date_annoncee < $ouvre_cc => "Introuvable, mais la date annoncée "
                 . "($date_annoncee) précède le début de l'index pour la Cour de cassation "
