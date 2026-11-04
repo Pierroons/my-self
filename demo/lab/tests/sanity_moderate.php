@@ -140,7 +140,7 @@ function recalerCase(PDO $pdo, int $id): void
         "UPDATE member_moderation
             SET review_reason = COALESCE(
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL
-                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu') ORDER BY id LIMIT 1),
+                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin') ORDER BY id LIMIT 1),
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL ORDER BY id DESC LIMIT 1)),
                 needs_review = EXISTS (SELECT 1 FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL)
           WHERE account_id = :id"
@@ -879,10 +879,11 @@ Moderate::rangDe($pdo, $seulA) === 1 && $modSeulA['review_reason'] !== 'meute_re
 // ── 25. La config est la seule source des seuils ────────────────────────────
 // Deux sources pour un seuil, c'est un seuil que la config ne règle qu'à
 // moitié : `Config::prod()` ne changeait que les durées de ban, le moteur
-// lisant ses propres constantes pour tout le reste.
+// lisant ses propres constantes pour tout le reste. `SANS_FIN` n'en est pas
+// un : c'est l'échéance sentinelle d'un ban sans fin, qu'aucune config ne règle.
 $jumelles = array_values(array_filter(
     array_keys((new ReflectionClass(Moteur::class))->getConstants()),
-    static fn (string $c): bool => !str_starts_with($c, 'REASON_')
+    static fn (string $c): bool => !str_starts_with($c, 'REASON_') && $c !== 'SANS_FIN'
 ));
 $jumelles === []
     ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
@@ -2132,8 +2133,8 @@ $journal50 = Moderate::journal();
 Moderate::setJournal(new JournalDeBanc());      // la mise en place passe par des gestes, qui l'exigent
 $aBannir50 = membre($pdo, 'a-bannir-50');
 poserReputation($pdo, $aBannir50, 15);
-[$gracie50, $maintenu50] = [membre($pdo, 'gracie-50'), membre($pdo, 'maintenu-50')];
-foreach ([$gracie50, $maintenu50] as $id50) {
+[$gracie50, $maintenu50, $leve50, $prolonge50] = [membre($pdo, 'gracie-50'), membre($pdo, 'maintenu-50'), membre($pdo, 'leve-50'), membre($pdo, 'prolonge-50')];
+foreach ([$gracie50, $maintenu50, $leve50, $prolonge50] as $id50) {
     poserReputation($pdo, $id50, 15);
     Moderate::adminBan($pdo, $id50, 'arbitre-banc', motif());
 }
@@ -2145,6 +2146,8 @@ $gestes50 = [
     'adminPardon'    => [$gracie50, static fn (): array => Moderate::adminPardon($pdo, $gracie50, 'arbitre-banc', motif())],
     'adminMaintenir' => [$maintenu50, static fn (): array => Moderate::adminMaintenir($pdo, $maintenu50, 'arbitre-banc', motif())],
     'adminClasser'   => [$enRevue50, static fn (): array => Moderate::adminClasser($pdo, $enRevue50, 'arbitre-banc', motif())],
+    'adminLever'     => [$leve50, static fn (): array => Moderate::adminLever($pdo, $leve50, 'arbitre-banc', motif())],
+    'adminProlonger' => [$prolonge50, static fn (): array => Moderate::adminProlonger($pdo, $prolonge50, 'arbitre-banc', motif(), 3600)],
 ];
 Moderate::setJournal(null);
 try {
@@ -2383,7 +2386,7 @@ $journal56 = new class implements \Pierroons\SelfModerate\Journal {
 };
 Moderate::setJournal($journal56);
 $fautes56 = [];
-foreach (['ban', 'grace', 'classement'] as $geste) {
+foreach (['ban', 'grace', 'classement', 'levee', 'prolongation'] as $geste) {
     $attente56 = membre($pdo, "attente-$geste-56");
     Moderate::ensureRow($pdo, $attente56);
     $pdo->prepare("UPDATE member_moderation
@@ -2399,6 +2402,8 @@ foreach (['ban', 'grace', 'classement'] as $geste) {
             'ban'        => Moderate::adminBan($pdo, $attente56, 'arbitre-banc', motif()),
             'grace'      => Moderate::adminPardon($pdo, $attente56, 'arbitre-banc', motif()),
             'classement' => Moderate::adminClasser($pdo, $attente56, 'arbitre-banc', motif()),
+            'levee'        => Moderate::adminLever($pdo, $attente56, 'arbitre-banc', motif()),
+            'prolongation' => Moderate::adminProlonger($pdo, $attente56, 'arbitre-banc', motif(), 3600),
         };
     } catch (Throwable $t56) {
         $r56 = ['ok' => false, 'exception' => $t56->getMessage()];
@@ -2410,7 +2415,7 @@ foreach (['ban', 'grace', 'classement'] as $geste) {
 }
 Moderate::setJournal($journalAvant56);
 $fautes56 === []
-    ? ok('une peine qui attend sa fin au journal arrête le ban, la grâce et le classement, et son signal reste')
+    ? ok('une peine qui attend sa fin au journal arrête le ban, la grâce, le classement, la levée et la prolongation, et son signal reste')
     : nok('un geste passe par-dessus une peine qui attend sa fin : ' . json_encode($fautes56, JSON_UNESCAPED_UNICODE));
 
 // ── 57. Un geste décide sur l'état relu sous le verrou ───────────────────────
@@ -2515,24 +2520,28 @@ $levees58 === 0 && $encoreBanni58 && $apres58 === [1, false]
 // ── 59. Aucun geste d'arbitre dans la transaction d'un hôte ─────────────────
 // Le journal ne se défait pas avec la transaction de l'hôte : un geste qui y
 // rendrait `ok` laisserait son acte au journal si l'hôte annulait ensuite. Les
-// quatre gestes refusent, et rien n'est inscrit.
+// six gestes refusent, et rien n'est inscrit.
 $journalAvant59 = Moderate::journal();
 $journal59 = new JournalDeBanc();
 Moderate::setJournal($journal59);
 $cibles59 = [];
-foreach (['ban', 'grace', 'maintien', 'classement'] as $geste) {
+foreach (['ban', 'grace', 'maintien', 'classement', 'levee', 'prolongation'] as $geste) {
     $cibles59[$geste] = membre($pdo, "hote-$geste-59");
     poserReputation($pdo, $cibles59[$geste], 15);
 }
 Moderate::adminBan($pdo, $cibles59['grace'], 'arbitre-banc', motif());
 Moderate::adminBan($pdo, $cibles59['maintien'], 'arbitre-banc', motif());
+Moderate::adminBan($pdo, $cibles59['levee'], 'arbitre-banc', motif());
+Moderate::adminBan($pdo, $cibles59['prolongation'], 'arbitre-banc', motif());
 planterSignal($pdo, $cibles59['classement'], 'salve_rapide');
 $journal59->actes = [];
 $fautes59 = [];
 foreach (['ban'        => static fn (): array => Moderate::adminBan($pdo, $cibles59['ban'], 'arbitre-banc', motif()),
           'grace'      => static fn (): array => Moderate::adminPardon($pdo, $cibles59['grace'], 'arbitre-banc', motif()),
           'maintien'   => static fn (): array => Moderate::adminMaintenir($pdo, $cibles59['maintien'], 'arbitre-banc', motif()),
-          'classement' => static fn (): array => Moderate::adminClasser($pdo, $cibles59['classement'], 'arbitre-banc', motif())]
+          'classement' => static fn (): array => Moderate::adminClasser($pdo, $cibles59['classement'], 'arbitre-banc', motif()),
+          'levee'        => static fn (): array => Moderate::adminLever($pdo, $cibles59['levee'], 'arbitre-banc', motif()),
+          'prolongation' => static fn (): array => Moderate::adminProlonger($pdo, $cibles59['prolongation'], 'arbitre-banc', motif(), 3600)]
          as $geste => $faire59) {
     $pdo->beginTransaction();
     $r59 = $faire59();
@@ -2544,7 +2553,7 @@ foreach (['ban'        => static fn (): array => Moderate::adminBan($pdo, $cible
 $actes59 = count($journal59->actes);
 Moderate::setJournal($journalAvant59);
 $fautes59 === [] && $actes59 === 0
-    ? ok('dans la transaction d\'un hôte, aucun des quatre gestes ne passe, et rien n\'est inscrit')
+    ? ok('dans la transaction d\'un hôte, aucun des six gestes ne passe, et rien n\'est inscrit')
     : nok('un geste d\'arbitre passe dans la transaction d\'un hôte : ' . json_encode(['gestes' => $fautes59, 'actes' => $actes59], JSON_UNESCAPED_UNICODE));
 
 // ── 60. Dans la transaction d'un hôte, un vote n'arme pas le ban automatique ─
@@ -2603,7 +2612,8 @@ function invariantsSignaux(PDO $p): array
                  OR (s.cause = 'reputation_zero' AND m.convalescent = 0)
                  OR (s.cause = 'ban_en_attente' AND NOT EXISTS (SELECT 1 FROM mod_signaux z
                         WHERE z.account_id = s.account_id AND z.cause = 'reputation_zero'))
-                 OR (s.cause = 'droit_de_vote_perdu' AND m.voting_rights = 1)"
+                 OR (s.cause = 'droit_de_vote_perdu' AND m.voting_rights = 1)
+                 OR (s.cause = 'ban_sans_fin' AND m.banned_until < " . Moteur::SANS_FIN . ")"
         )->fetchAll(PDO::FETCH_ASSOC),
         'bans_sans_signal' => $p->query(
             "SELECT account_id FROM member_moderation m
@@ -2621,7 +2631,7 @@ function invariantsSignaux(PDO $p): array
                        EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
                        COALESCE(
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
-                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu') ORDER BY id LIMIT 1),
+                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin') ORDER BY id LIMIT 1),
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
                        ) AS attendu_cause
                   FROM member_moderation m)
@@ -3240,7 +3250,7 @@ $monte78 === array_fill_keys(['sans-intervalle', 'apres-un-intervalle'], ['reput
 // ── 79. ⭐ Un geste sur un compte inexistant est refusé, sans erreur ─────────
 // La ligne de modération a une clé étrangère vers les comptes de l'hôte : un
 // geste sur un identifiant inconnu butait sur elle, et la route rendait une
-// erreur 500. Les quatre gestes refusent, et rien ne s'inscrit au journal.
+// erreur 500. Les six gestes refusent, et rien ne s'inscrit au journal.
 $inconnu79 = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1000 FROM accounts')->fetchColumn();
 $actesAvant79 = count($journalC->actes);
 $gestes79 = [];
@@ -3249,6 +3259,8 @@ foreach ([
     'grace'     => static fn (): array => Moderate::adminPardon($pdo, $inconnu79, 'arbitre-banc', motif()),
     'maintenir' => static fn (): array => Moderate::adminMaintenir($pdo, $inconnu79, 'arbitre-banc', motif()),
     'classer'   => static fn (): array => Moderate::adminClasser($pdo, $inconnu79, 'arbitre-banc', motif()),
+    'lever'     => static fn (): array => Moderate::adminLever($pdo, $inconnu79, 'arbitre-banc', motif()),
+    'prolonger' => static fn (): array => Moderate::adminProlonger($pdo, $inconnu79, 'arbitre-banc', motif(), 3600),
 ] as $geste79 => $appel79) {
     try {
         $r79 = $appel79();
@@ -3257,9 +3269,9 @@ foreach ([
         $gestes79[$geste79] = get_class($t79);
     }
 }
-$gestes79 === array_fill_keys(['ban', 'grace', 'maintenir', 'classer'], [false, 'Compte introuvable.'])
+$gestes79 === array_fill_keys(['ban', 'grace', 'maintenir', 'classer', 'lever', 'prolonger'], [false, 'Compte introuvable.'])
     && count($journalC->actes) === $actesAvant79
-    ? ok('⭐ les quatre gestes refusent un compte inexistant, sans erreur et sans rien inscrire')
+    ? ok('⭐ les six gestes refusent un compte inexistant, sans erreur et sans rien inscrire')
     : nok('⭐ un geste sur un compte inexistant échoue autrement qu\'en refus : ' . json_encode([
         'gestes' => $gestes79, 'actes' => count($journalC->actes) - $actesAvant79,
     ], JSON_UNESCAPED_UNICODE));
@@ -5234,6 +5246,104 @@ $avant137 === ['droit_de_vote_perdu'] && !in_array('droit_de_vote_perdu', $apres
     && str_contains((string) $fin137[0]['ferme'], 'droit_de_vote_perdu')
     ? ok('la fin d\'un ban d\'arbitre qui rend le vote ferme la perte du vote, et son acte le dit')
     : nok('la perte du vote survit à la fin du ban qui rend le vote : ' . json_encode([$avant137, $apres137, etatBan($pdo, $arbitre137), $fin137]));
+
+// ── 138. ⭐ La levée arrête la peine sans gracier : la récidive reste comptée ──
+$journal138 = new JournalDeBanc();
+$journalAvant138 = Moderate::journal();
+Moderate::setJournal($journal138);
+$auto138 = membre($pdo, 'auto-138');
+poserReputation($pdo, $auto138, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-138'), 'member', $auto138, -1, motif(), 'agressif');
+$sansMotif138 = Moderate::adminLever($pdo, $auto138, 'arbitre-banc');
+$leveeAuto138 = Moderate::adminLever($pdo, $auto138, 'arbitre-banc', motif());
+$etatAuto138  = etatBan($pdo, $auto138);
+$acteAuto138  = $journal138->de($auto138, 'ban_leve');
+$arbitre138 = membre($pdo, 'arbitre-138');
+poserReputation($pdo, $arbitre138, 15);
+Moderate::adminBan($pdo, $arbitre138, 'arbitre-banc', motif());
+vieillirBan($pdo, $arbitre138, (int) ceil(Moderate::config()->dureeBanAdmin() / 2));
+$leveeArbitre138 = Moderate::adminLever($pdo, $arbitre138, 'arbitre-banc');
+$apresLevee138 = etatBan($pdo, $arbitre138);
+Moderate::adminBan($pdo, $arbitre138, 'arbitre-banc', motif());
+$causes138 = causes($pdo, $arbitre138);
+$rien138 = Moderate::adminLever($pdo, membre($pdo, 'libre-138'), 'arbitre-banc', motif());
+Moderate::setJournal($journalAvant138);
+!$sansMotif138['ok'] && str_contains($sansMotif138['message'], 'Levée anticipée')
+    && $leveeAuto138['ok'] && $leveeAuto138['anticipee'] === true
+    && (int) $etatAuto138['banned_until'] === 0 && (int) $etatAuto138['reputation'] === Moderate::config()->reputationInitiale
+    && (int) $etatAuto138['strikes'] === 1 && !in_array('ban_auto', causes($pdo, $auto138), true)
+    && count($acteAuto138) === 1 && $acteAuto138[0]['cause'] === 'levee' && $journal138->de($auto138, 'ban_fin') === []
+    && $leveeArbitre138['ok'] && $leveeArbitre138['anticipee'] === false
+    && (int) $apresLevee138['banned_until'] === 0 && (int) $apresLevee138['strikes_admin'] === 1
+    && in_array('bans_arbitre', $causes138, true)
+    && !$rien138['ok'] && $rien138['message'] === 'Aucun ban en cours à lever.'
+    ? ok('la levée arrête la peine dans l\'état de son échéance, garde la récidive, et ban → levée → ban signale l\'enchaînement')
+    : nok('la levée gracie, ou rate son état : ' . json_encode([$sansMotif138, $leveeAuto138, $etatAuto138, $acteAuto138, $leveeArbitre138, $apresLevee138, $causes138, $rien138]));
+
+// ── 139. ⭐ La prolongation repousse l'échéance, même épisode, sans strike ─────
+$journal139 = new JournalDeBanc();
+$journalAvant139 = Moderate::journal();
+Moderate::setJournal($journal139);
+$prolonge139 = membre($pdo, 'prolonge-139');
+poserReputation($pdo, $prolonge139, 15);
+Moderate::adminBan($pdo, $prolonge139, 'arbitre-banc', motif());
+$avant139 = etatBan($pdo, $prolonge139);
+$plus139  = Moderate::adminProlonger($pdo, $prolonge139, 'arbitre-banc', motif(), 3600);
+$apres139 = etatBan($pdo, $prolonge139);
+$acte139  = $journal139->de($prolonge139, 'ban_prolonge');
+$zero139  = Moderate::adminProlonger($pdo, $prolonge139, 'arbitre-banc', motif(), 0);
+$libre139 = Moderate::adminProlonger($pdo, membre($pdo, 'libre-139'), 'arbitre-banc', motif(), 3600);
+$auto139 = membre($pdo, 'auto-139');
+poserReputation($pdo, $auto139, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-139'), 'member', $auto139, -1, motif(), 'agressif');
+$autoSansFin139 = Moderate::adminProlonger($pdo, $auto139, 'arbitre-banc', motif(), 0, true);
+$autoPlus139    = Moderate::adminProlonger($pdo, $auto139, 'arbitre-banc', motif(), 600);
+Moderate::setJournal($journalAvant139);
+$plus139['ok'] && (int) $apres139['banned_until'] === (int) $avant139['banned_until'] + 3600
+    && (int) $apres139['strikes'] === (int) $avant139['strikes'] && (int) $apres139['strikes_admin'] === (int) $avant139['strikes_admin']
+    && count($acte139) === 1 && $acte139[0]['de'] === (int) $avant139['banned_until'] && $acte139[0]['sans_fin'] === false
+    && !$zero139['ok'] && !$libre139['ok'] && $libre139['message'] === 'Aucun ban en cours à rallonger.'
+    && !$autoSansFin139['ok'] && str_contains($autoSansFin139['message'], 'automatique')
+    && $autoPlus139['ok'] && etatBan($pdo, $auto139)['ban_origine'] === 'auto'
+    ? ok('la prolongation repousse l\'échéance sans strike, l\'inscrit, refuse sans ban ou sans durée, et laisse un ban automatique fini')
+    : nok('la prolongation rate : ' . json_encode([$plus139, $avant139, $apres139, $acte139, $zero139, $libre139, $autoSansFin139, $autoPlus139]));
+
+// ── 140. ⭐ Un ban d'arbitre sans fin : une échéance qui n'arrive pas, un motif pour en sortir ─
+$journal140 = new JournalDeBanc();
+$journalAvant140 = Moderate::journal();
+Moderate::setJournal($journal140);
+$sansFin140 = membre($pdo, 'sans-fin-140');
+poserReputation($pdo, $sansFin140, 15);
+$ban140    = Moderate::adminBan($pdo, $sansFin140, 'arbitre-banc', motif(), null, true);
+$etat140   = etatBan($pdo, $sansFin140);
+$debut140  = $journal140->de($sansFin140, 'ban_debut');
+$vote140   = Moderate::canVote($pdo, $sansFin140);
+$vu140     = $pdo->query("SELECT vu_le FROM mod_signaux WHERE account_id = $sansFin140 AND cause = 'ban_sans_fin'")->fetchColumn();
+$liste140  = array_values(array_filter(Moderate::bansEnCours($pdo, 10_000), static fn (array $b): bool => $b['account_id'] === $sansFin140));
+$encore140 = Moderate::adminBan($pdo, $sansFin140, 'arbitre-banc', motif());
+$plus140   = Moderate::adminProlonger($pdo, $sansFin140, 'arbitre-banc', motif(), 3600);
+rattraper($pdo, $sansFin140);
+$toujours140 = Moderate::estBanni($pdo, $sansFin140);
+$leverNu140  = Moderate::adminLever($pdo, $sansFin140, 'arbitre-banc');
+$graceNue140 = Moderate::adminPardon($pdo, $sansFin140, 'arbitre-banc');
+$lever140    = Moderate::adminLever($pdo, $sansFin140, 'arbitre-banc', motif());
+$leve140     = $journal140->de($sansFin140, 'ban_leve');
+$fini140 = membre($pdo, 'fini-140');
+poserReputation($pdo, $fini140, 15);
+Moderate::adminBan($pdo, $fini140, 'arbitre-banc', motif());
+$versSansFin140 = Moderate::adminProlonger($pdo, $fini140, 'arbitre-banc', motif(), 0, true);
+Moderate::setJournal($journalAvant140);
+$ban140['ok'] && $ban140['message'] === 'Compte banni sans fin.' && (int) $etat140['banned_until'] === Moteur::SANS_FIN
+    && Moteur::estSansFin((int) $etat140['banned_until']) && count($debut140) === 1 && $debut140[0]['duree'] === null && $debut140[0]['sans_fin'] === true
+    && $vote140 === [false, 'Compte banni sans fin.'] && $vu140 !== false && $vu140 !== null
+    && count($liste140) === 1 && $liste140[0]['sans_fin'] === true
+    && !$encore140['ok'] && str_contains($encore140['message'], 'sans fin') && !$plus140['ok'] && $toujours140
+    && !$leverNu140['ok'] && !$graceNue140['ok'] && str_contains($leverNu140['message'], 'motif écrit') && $leverNu140['message'] === $graceNue140['message']
+    && $lever140['ok'] && count($leve140) === 1 && $leve140[0]['sans_fin'] === true && $leve140[0]['reste'] === null
+    && !in_array('ban_sans_fin', causes($pdo, $sansFin140), true) && !Moderate::estBanni($pdo, $sansFin140)
+    && $versSansFin140['ok'] && Moteur::estSansFin((int) etatBan($pdo, $fini140)['banned_until']) && in_array('ban_sans_fin', causes($pdo, $fini140), true)
+    ? ok('un ban d\'arbitre sans fin n\'échoit jamais, se signale déjà vu, se dit tel partout, et ne se lève qu\'avec un motif')
+    : nok('le ban sans fin rate : ' . json_encode([$ban140, $etat140, $debut140, $vote140, $vu140, $liste140, $encore140, $plus140, $toujours140, $leverNu140, $graceNue140, $lever140, $leve140, $versSansFin140]));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

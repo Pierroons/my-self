@@ -36,7 +36,8 @@ interface Journal
     /**
      * Inscrit un acte. Le moteur passe un tableau dont les clés sont stables :
      *
-     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_maintenu` | `grace` | `revue_classee`
+     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_prolonge` | `ban_maintenu` | `grace` |
+     *              `revue_classee`
      *   compte     identifiant numérique du membre visé
      *   origine    `auto` (réputation à zéro) | `admin` (arbitre) ; null pour un ban
      *              posé avant que l'origine ne soit enregistrée
@@ -48,14 +49,20 @@ interface Journal
      *   dont_arbitre  combien de ces épisodes sont des bans     ban_debut
      *              d'arbitre : le palier d'un ban automatique en dépend aussi.
      *              Compté depuis la 0.7.0 : une base migrée part de zéro
-     *   duree      durée de la peine en secondes               ban_debut
+     *   duree      durée de la peine en secondes ; null pour   ban_debut
+     *              un ban sans fin
      *   debut      horodatage du début de la peine             ban_debut, ban_fin
-     *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu
+     *   jusqu_a    horodatage de fin prévue ; `Moderate::SANS_FIN`  ban_debut, ban_fin, ban_maintenu,
+     *              pour un ban sans fin                        ban_prolonge
+     *   sans_fin   le ban n'a pas d'échéance                   ban_debut, ban_leve, ban_prolonge
+     *   de         l'échéance que la prolongation repousse     ban_prolonge
      *   observe_a  instant où la fin s'est inscrite : la       ban_fin
      *              première écriture qui a touché le compte, ou le balayage
-     *   cause      `grace` | `meute_detectee`                  ban_leve
+     *   cause      `grace` | `levee` | `meute_detectee`        ban_leve ; `levee` arrête la peine sans
+     *              effacer la récidive, `grace` remet tout au départ
      *   anticipee  levée avant le plancher de la peine         ban_leve
-     *   reste      secondes de peine qui restaient             ban_leve
+     *   reste      secondes de peine qui restaient ; null      ban_leve
+     *              pour un ban sans fin
      *   plancher   horodatage du plancher, ou null             ban_leve
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace

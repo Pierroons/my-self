@@ -2391,7 +2391,7 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 197/197 contrôles passés' \
+          echo "$sortie" | grep -qx '✅ 202/202 contrôles passés' \
             || { echo "::error::le banc de modération n'a pas joué ses 186 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
@@ -2465,6 +2465,49 @@ jobs:
               refus)  attendu='ban posé sans trace, vote défait, ou refus muet' ;;
               classe) attendu='au début du ban passe pour une erreur d.intégration' ;;
               dm)     attendu='dm absente muette' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate gracie en levant, rend sans fin un ban automatique, ou laisse un ban sans fin dans la file
+        run: |
+          # @plante
+          # Trois défauts replantés tour à tour, chacun restauré avant le suivant :
+          # la levée qui remet la récidive à zéro comme une grâce ; la prolongation
+          # qui rend sans fin un ban automatique ; le ban sans fin posé sans être vu,
+          # qui resterait pour toujours dans la file de l'arbitre.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in gracie auto vu; do
+            cp "$M" /tmp/moderate.gestes.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'gracie': ("            self::designaler($pdo, $accountId, ...$tombent);\n",
+                         "            $pdo->prepare('UPDATE member_moderation SET strikes = 0, strikes_admin = 0 WHERE account_id = ?')->execute([$accountId]);\n"
+                         "            self::designaler($pdo, $accountId, ...$tombent);\n"),
+              'auto':   ("            if ($sansFin && $etat['ban_origine'] === 'auto') {", "            if (false) {"),
+              'vu':     ("        self::retirerDeLaFile($pdo, $accountId, self::deCause(self::signauxDe($pdo, $accountId), 'ban_sans_fin'));\n", ""),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.gestes.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.gestes.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.gestes.intact "$M"
+            cmp -s /tmp/moderate.gestes.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              gracie) attendu='la levée gracie, ou rate son état' ;;
+              auto)   attendu='la prolongation rate' ;;
+              vu)     attendu='le ban sans fin rate' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
@@ -3065,19 +3108,19 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           remplacements = {
-              'journal': [('        $sansTrace = self::refusSansJournal();\n', '        $sansTrace = null;\n', 4)],
+              'journal': [('        $sansTrace = self::refusSansJournal();\n', '        $sansTrace = null;\n', 6)],
               'revue':   [("            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n",
                            "            )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);\n            self::retirerDeLaFile($pdo, $accountId, $etat['signaux']);\n", 1)],
               'balayage': [("$close = self::transaction($pdo, static fn (): ?bool => self::rattraper($pdo, (int) $row['account_id'], contenir: true, clore: $refuse === null));",
                             "$close = self::rattraper($pdo, (int) $row['account_id'], contenir: true, clore: $refuse === null);", 1)],
               'hote':      [("                self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');\n", '', 1)],
-              'attente':   [('$enAttente = self::refusFinEnAttente($etat);', '$enAttente = null;', 2),
+              'attente':   [('$enAttente = self::refusFinEnAttente($etat);', '$enAttente = null;', 4),
                             ('$enAttente  = self::refusFinEnAttente($etat);', '$enAttente  = null;', 1)],
-              'relecture': [('        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds): array {\n            $etat = self::etat($pdo, $accountId);',
-                             '        self::rattraperSeul($pdo, $accountId);\n        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $etatLu): array {\n            self::etat($pdo, $accountId);\n            $etat = $etatLu;', 1)],
+              'relecture': [('        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $sansFin): array {\n            $etat = self::etat($pdo, $accountId);',
+                             '        self::rattraperSeul($pdo, $accountId);\n        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitre, $motif, $seconds, $sansFin, $etatLu): array {\n            self::etat($pdo, $accountId);\n            $etat = $etatLu;', 1)],
               'ordre':     [('                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);\n                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);\n',
                              '                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);\n                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);\n', 1)],
-              'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 4)],
+              'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 6)],
               'hote-vote':  [('if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {', 'if (self::$journal === null) {', 1)],
               'inconnu':    [("return $connu ? null : ['ok' => false, 'message' => static::t('Compte introuvable.')];", 'return null;', 1)],
               'enchaine':   [("                self::signaler($pdo, $accountId, 'bans_arbitre');\n", '', 1)],
@@ -3309,8 +3352,8 @@ jobs:
               'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
                                "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),
               'borne':     (M, "AND cause = ? AND derniere_le <= ?'", "AND cause = ? AND derniere_le < ?'", 1),
-              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu'];",
-                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'signal_anterieur'];", 1),
+              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin'];",
+                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'signal_anterieur'];", 1),
               'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
                                "                continue;\n", 1),
               'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
