@@ -70,7 +70,7 @@ Ce que tu écris dans un modèle ne quitte pas ton navigateur : le serveur refus
 
 ## Statut
 
-**v0.1.3 — bêta, servie sur `justice.my-self.fr/act`.**
+**v0.1.4 — bêta, servie sur `justice.my-self.fr/act`.**
 
 Tout est ici : [`api/`](api/) le service et ses données, [`site/`](site/) les
 pages, [`tests/`](tests/) les garde-fous, [`docs/`](docs/) le whitepaper. SelfAct

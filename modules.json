@@ -328,6 +328,26 @@
           "badge/statut-v"
         ],
         [
+          "self-right/selfact/README.md",
+          "**v"
+        ],
+        [
+          "self-right/selfact/README.fr.md",
+          "**v"
+        ],
+        [
+          "self-right/selfact/site/act.php",
+          "<strong>SelfAct v"
+        ],
+        [
+          "self-right/selfact/site/act-docs.html",
+          "<strong>SelfAct v"
+        ],
+        [
+          "self-right/selfact/api/directives.md",
+          "*SelfAct v"
+        ],
+        [
           "self-right/README.md",
           "badge/SelfAct-v"
         ],

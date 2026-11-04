@@ -231,6 +231,9 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
   from its LEGI state alone: an article whose repeal is scheduled stays applicable until that date,
   and an article whose entry into force is scheduled is not applicable yet. The article and
   search routes say so in an `applicabilite` field
+- **v0.4.4** — "Opposable" is no longer said for the Court of Cassation before the start of its
+  coverage, nor for a decision less than 60 days old, which may not be published yet; a future date
+  gets a firm answer. The freshness probe judges case law on Judilibre alone
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
 ---

@@ -232,6 +232,9 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
   sur son seul état LEGI : un article dont l'abrogation est programmée reste applicable jusqu'à
   cette date, un article dont l'entrée en vigueur est programmée ne l'est pas encore. Les routes
   d'article et de recherche le disent dans un champ `applicabilite`
+- **v0.4.4** — « Opposable » ne se dit plus pour la Cour de cassation avant le début de sa couverture,
+  ni pour une décision de moins de 60 jours, qui peut ne pas être encore publiée ; une date à venir
+  reçoit une réponse ferme. La sonde de fraîcheur juge la jurisprudence sur Judilibre seul
 - **v1.0.0** — Directives relues par un avocat praticien (l'intégration SelfAct est livrée depuis la v0.2.0)
 
 ---

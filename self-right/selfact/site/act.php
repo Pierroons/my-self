@@ -781,7 +781,7 @@ function chiffre(array $corpus, string $cle): string {
 
 <footer>
   <p>
-    <strong>SelfAct v0.1.3</strong> — module du binôme
+    <strong>SelfAct v0.1.4 bêta</strong> — module du binôme
     <a href="https://github.com/Pierroons/my-self/tree/main/self-right">Self-Right</a>
     de l'écosystème <a href="https://my-self.fr">MySelf</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>

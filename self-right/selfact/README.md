@@ -69,7 +69,7 @@ rejected with `405`, body unread).
 
 ## Status
 
-**v0.1.3 — beta, served at `justice.my-self.fr/act`.**
+**v0.1.4 — beta, served at `justice.my-self.fr/act`.**
 
 Everything is here: [`api/`](api/) the service and its data, [`site/`](site/) the
 pages, [`tests/`](tests/) the guards, [`docs/`](docs/) the whitepaper. SelfAct is
