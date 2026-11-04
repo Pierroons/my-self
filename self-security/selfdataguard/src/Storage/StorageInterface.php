@@ -170,9 +170,12 @@ interface StorageInterface
      * Load the escrow envelope for a user, with its revision, or null if none.
      *
      * @throws UnreadableEscrowException when the row is there but does not
-     *         parse — every failure to read it, those of EscrowRecord and
-     *         EncryptedBlob included, is raised as this one. Anything else
-     *         raised here is an outage, and the library lets it through.
+     *         parse — build the record from the fetched row with
+     *         EscrowRecord::parse(), which raises it for every failure to
+     *         parse, those of EscrowRecord and EncryptedBlob included. Anything
+     *         else raised here is an outage, and the library lets it through.
+     *         The conformance case escrow-unreadable-row-named checks it,
+     *         given the fourth argument of Conformance::run().
      */
     public function loadEscrow(string $userId): ?EscrowRecord;
 

@@ -3669,8 +3669,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=85 [sanity_escrow]=66
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=194 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=89 [sanity_escrow]=66
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=200 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4379,10 +4379,9 @@ jobs:
           canari $SDG "        \$forgotten  = KeeperSeal::formerPrints(\$storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS), 'forgotten keepers');" \
             "        \$forgotten  = KeeperSeal::formerPrints(\$storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS));" \
             $K 'an unreadable record of forgotten keepers is named as the former one'
-          canari $SDG "            if (\$this->storage->loadEscrowFields(\$session->userId) !== []) {
-                          throw \$this->mismatch(\$session->userId);
-                      }
-                      return [];" "            return [];" $K "the row deleted, its fields kept: the holder's read returned the fields as if there were none"
+          canari $SDG "            if (\$this->storage->loadEscrowFields(\$session->userId) === []) {
+                          return [];" "            if (true) {
+                          return [];" $K "the row deleted, its fields kept: the holder's read returned the fields as if there were none"
           canari $SDG "        return \$this->rowRecord(\$session->userId) !== null || \$this->storage->loadEscrowFields(\$session->userId) !== [];" \
             "        return \$this->rowRecord(\$session->userId) !== null;" $K 'the row deleted, its fields kept: hasEscrow() says there is none'
           canari $SDG "        \$record = \$this->rowRecord(\$session->userId);
@@ -4420,11 +4419,18 @@ jobs:
           canari $SDG "        } catch (UnreadableEscrowException \$e) {
                       throw \$this->mismatch(\$userId, \$e);" "        } catch (\\Exception \$e) {
                       throw \$this->mismatch(\$userId, \$e);" $K 'a storage outage under getEscrowFieldsAsUser() reads as an unreadable row'
-          canari $D/src/Storage/SqliteAdapter.php "        } catch (Exception \$e) {
+          canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception \$e) {
                       throw new UnreadableEscrowException(" "        } catch (\\LogicException \$e) {
                       throw new UnreadableEscrowException(" $K 'a row with wrap_admin not base64: escrowReads() threw before asking the keeper'
-          canari $D/src/Storage/SqliteAdapter.php "            if (filter_var(\$revision, FILTER_VALIDATE_INT) === false) {" "            if (false) {" \
-            $K 'a row with a revision that is not an integer hides what the keeper holds announced'
+          canari $D/src/Storage/SqliteAdapter.php "                || (\$row['revision_type'] ?? 'integer') !== 'integer'
+          " "" $K 'a row with a revision stored as a blob hides what the keeper holds announced'
+          canari $D/src/Storage/SqliteAdapter.php "FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]])" "FILTER_VALIDATE_INT)" \
+            $K 'a row with a revision the next write cannot bump hides what the keeper holds announced'
+          canari $SDG "            \$read = \$this->snapshot(\$session->userId, \$fieldNames) ?? throw \$this->mismatch(\$session->userId);" \
+            "            throw \$this->mismatch(\$session->userId);" \
+            $K "a first deposit landing between the reads of the row and of the fields: the holder's read says the row was deleted"
+          canari $D/src/Storage/SqliteAdapter.php "            if (\$held->fetchColumn() === false) {" "            if (\$this->loadEscrow(\$record->userId) === null) {" \
+            $K "a row made unreadable between a deposit's read and its write: the deposit raised a bare error"
           canari $SDG "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
             $K 'the row deleted, its fields kept: the view says established while the fields refuse'
           canari $SDG "            \$record = \$this->rowRecord(\$session->userId) ?? false;" "            \$record = false;" \
@@ -4445,8 +4451,10 @@ jobs:
                           \$held      = \$this->storage->loadSetting(self::SETTING_FORMER_KEEPERS);
                           \$recorded  = KeeperSeal::formerPrints(\$held);" $K 'a deposit under way when the operator forgot its former keeper went through'
           canari $SDG "        if (!\$recorded) {
-                      throw new InvalidArgumentException('The record of former keepers changed meanwhile: nothing was changed');" "        if (!\$recorded && !in_array(\$fromPrint, KeeperSeal::formerPrints(\$formerHeld), true)) {
-                      throw new InvalidArgumentException('The record of former keepers changed meanwhile: nothing was changed');" \
+                      throw new InvalidArgumentException(
+                          'The record of former keepers changed meanwhile, or the storage" "        if (!\$recorded && !in_array(\$fromPrint, KeeperSeal::formerPrints(\$formerHeld), true)) {
+                      throw new InvalidArgumentException(
+                          'The record of former keepers changed meanwhile, or the storage" \
             $K 'changeKeeper() promoted a keeper a deposit wrote among the former ones while it checked'
           canari $SDG "        if (\$current !== null && in_array(\$current, \$prints, true)) {" "        if (false) {" \
             $K "a deposit retired the escrow at a keeper that became the database's keeper meanwhile"
@@ -4454,6 +4462,13 @@ jobs:
             $K "forgetFormerKeeper() forgot the database's keeper"
           canari $D/src/Storage/Conformance.php "            \$this->storage->replaceSetting(\$name, 'second', 'second')," "            true," \
             $D/tests/sanity_conformance.php 'ChangedRowsSettingStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "            'escrow-unreadable-row-named'   => 'unreadableEscrowNamed',
+          " "" $D/tests/sanity_conformance.php 'BareParseErrorStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "            !\$this->storage->replaceSetting(\$name, 'first', 'first') && \$this->storage->loadSetting(\$name) === 'second'," \
+            "            true," $D/tests/sanity_conformance.php 'EqualValueShortcutStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "        } catch (UnreadableEscrowException) {
+                      return null;" "        } catch (\\DomainException) {
+                      return null;" $D/tests/sanity_conformance.php '❌ escrow-unreadable-row-named'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

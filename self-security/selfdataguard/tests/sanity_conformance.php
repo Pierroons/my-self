@@ -87,7 +87,13 @@ function connection(string $work, string $class): array
         var_export("sqlite:{$db}", true),
         $build
     ));
-    return [require $file, $file, require $callerFile, $callerFile];
+    $unparseFile = "{$work}/{$class}-unparse.php";
+    file_put_contents($unparseFile, sprintf(
+        "<?php\nreturn static function (string \$userId): void {\n"
+        . "    (new PDO(%s))->prepare(\"UPDATE selfdataguard_escrow SET wrap_admin = 'n0t-base64!!' WHERE user_id = ?\")->execute([\$userId]);\n};\n",
+        var_export("sqlite:{$db}", true)
+    ));
+    return [require $file, $file, require $callerFile, $callerFile, require $unparseFile, $unparseFile];
 }
 
 /** @return array<string, array{outcome: string, detail: string}> */
@@ -104,8 +110,8 @@ function outcomes(array $results): array
 
 section('The shipped SqliteAdapter passes every case');
 
-[$connect, $file, $withCaller] = connection($work, SqliteAdapter::class);
-$shipped = outcomes(Conformance::run($connect, $file, $withCaller));
+[$connect, $file, $withCaller, , $unparse] = connection($work, SqliteAdapter::class);
+$shipped = outcomes(Conformance::run($connect, $file, $withCaller, $unparse));
 foreach ($shipped as $case => $r) {
     $r['outcome'] === 'pass'
         ? ok($case)
@@ -180,10 +186,12 @@ $broken = [
     SettingReplacingBlindStorage::class => ['setting-replaced-over-expected'],
     CheckThenReplaceSettingStorage::class => ['concurrent-setting-replacements'],
     ChangedRowsSettingStorage::class   => ['setting-replaced-over-expected'],
+    EqualValueShortcutStorage::class   => ['setting-replaced-over-expected'],
+    BareParseErrorStorage::class       => ['escrow-unreadable-row-named'],
 ];
 foreach ($broken as $class => $expected) {
-    [$connect, $file, $withCaller] = connection($work, $class);
-    $results = outcomes(Conformance::run($connect, $file, $withCaller));
+    [$connect, $file, $withCaller, , $unparse] = connection($work, $class);
+    $results = outcomes(Conformance::run($connect, $file, $withCaller, $unparse));
     $failed = array_keys(array_filter($results, static fn (array $r): bool => $r['outcome'] === 'fail'));
     $missed = array_diff($expected, $failed);
     $missed === []
@@ -200,8 +208,8 @@ foreach ([
     RotateCheckThenWriteStorage::class     => 'rotate-escrow',
     CheckThenReplaceSettingStorage::class  => 'setting-replaced-over-expected',
 ] as $class => $sequential) {
-    [$connect, $file, $withCaller] = connection($work, $class);
-    $results = outcomes(Conformance::run($connect, $file, $withCaller));
+    [$connect, $file, $withCaller, , $unparse] = connection($work, $class);
+    $results = outcomes(Conformance::run($connect, $file, $withCaller, $unparse));
     $results[$sequential]['outcome'] === 'pass'
         ? ok("{$class} passes {$sequential}: only the racing processes catch it")
         : ko("{$class} failed {$sequential} — the racing case is not what catches it", $results[$sequential]['detail']);
@@ -217,8 +225,8 @@ $exit = static function (array $args): array {
     $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
     return [proc_close($process), $out];
 };
-[, $file, , $callerFile] = connection($work, SqliteAdapter::class);
-[$rc, $out] = $exit([$bin, $file, $callerFile]);
+[, $file, , $callerFile, , $unparseFile] = connection($work, SqliteAdapter::class);
+[$rc, $out] = $exit([$bin, $file, $callerFile, $unparseFile]);
 $rc === 0 && str_contains($out, 'Conforme')
     ? ok('0 on the shipped adapter')
     : ko('the shipped adapter was not reported conformant', "rc={$rc} {$out}");
@@ -226,6 +234,10 @@ $rc === 0 && str_contains($out, 'Conforme')
 $rc === 1 && str_contains($out, '⏭️ joins-callers-transaction')
     ? ok('without the caller-transaction file, the case is skipped and the adapter is not declared conformant')
     : ko('a run without the caller-transaction file was declared conformant', "rc={$rc} {$out}");
+[$rc, $out] = $exit([$bin, $file, $callerFile]);
+$rc === 1 && str_contains($out, '⏭️ escrow-unreadable-row-named')
+    ? ok('without the file that makes a row unreadable, the case is skipped and the adapter is not declared conformant')
+    : ko('a run without the file that makes a row unreadable was declared conformant', "rc={$rc} {$out}");
 [, $file] = connection($work, UpsertingStorage::class);
 [$rc, $out] = $exit([$bin, $file]);
 $rc === 1 && str_contains($out, '❌ vault-insert-never-replaces')

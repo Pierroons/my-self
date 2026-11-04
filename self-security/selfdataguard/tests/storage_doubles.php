@@ -15,6 +15,7 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultGeneration;
@@ -731,5 +732,27 @@ final class ChangedRowsSettingStorage extends DelegatingStorage
         $st = $this->pdo->prepare('UPDATE selfdataguard_settings SET value = ? WHERE name = ? AND value = ? AND value <> ?');
         $st->execute([$v, $n, $e, $v]);
         return $st->rowCount() === 1;
+    }
+}
+
+/** Answers true for a value replaced with itself without comparing it to what the name holds. */
+final class EqualValueShortcutStorage extends DelegatingStorage
+{
+    public function replaceSetting(string $n, string $e, string $v): bool
+    {
+        return $e === $v || $this->inner->replaceSetting($n, $e, $v);
+    }
+}
+
+/** Raises the failure to parse a row as it came, not as UnreadableEscrowException: an adapter of 0.8.x. */
+final class BareParseErrorStorage extends DelegatingStorage
+{
+    public function loadEscrow(string $u): ?EscrowRecord
+    {
+        try {
+            return $this->inner->loadEscrow($u);
+        } catch (UnreadableEscrowException $e) {
+            throw $e->getPrevious() ?? $e;
+        }
     }
 }

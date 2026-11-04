@@ -6,7 +6,6 @@ namespace Pierroons\SelfDataGuard\Storage;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use Exception;
 use InvalidArgumentException;
 use PDO;
 use PDOException;
@@ -385,7 +384,7 @@ final class SqliteAdapter implements StorageInterface
     public function loadEscrow(string $userId): ?EscrowRecord
     {
         $stmt = $this->pdo->prepare(
-            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at, revision
+            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at, revision, typeof(revision) AS revision_type
              FROM selfdataguard_escrow WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);
@@ -1349,19 +1348,26 @@ final class SqliteAdapter implements StorageInterface
     }
 
     /**
+     * The revision must be an integer the next write can bump, and, for the
+     * live row (`revision_type`), one SQLite stores as an integer: the write
+     * compares it in SQL, where a text or a blob equals no integer.
+     *
      * @param array<string, mixed> $row
-     * @throws UnreadableEscrowException when a column does not parse — it reads nothing, so nothing it raises is an outage
+     * @throws UnreadableEscrowException when a column does not parse
      */
     private function rowToEscrow(array $row): EscrowRecord
     {
-        try {
+        return EscrowRecord::parse((string) $row['user_id'], static function () use ($row): EscrowRecord {
             $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
             if ($wrapAdmin === false) {
                 throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');
             }
             $revision = $row['revision'] ?? 0;
-            if (filter_var($revision, FILTER_VALIDATE_INT) === false) {
-                throw new RuntimeException('Corrupted revision in DB (not an integer)');
+            if (
+                filter_var($revision, FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]]) === false
+                || ($row['revision_type'] ?? 'integer') !== 'integer'
+            ) {
+                throw new RuntimeException('Corrupted revision in DB (not an integer the next write can bump)');
             }
             return new EscrowRecord(
                 userId:    (string) $row['user_id'],
@@ -1371,9 +1377,7 @@ final class SqliteAdapter implements StorageInterface
                 updatedAt: new DateTimeImmutable((string) $row['updated_at']),
                 revision:  (int) $revision,
             );
-        } catch (Exception $e) {
-            throw new UnreadableEscrowException("The escrow row of '{$row['user_id']}' does not parse: {$e->getMessage()}", 0, $e);
-        }
+        });
     }
 
     /**
@@ -1395,7 +1399,9 @@ final class SqliteAdapter implements StorageInterface
             ':rev' => $record->revision,
         ]);
         if ($stmt->rowCount() === 0) {
-            if ($this->loadEscrow($record->userId) === null) {
+            $held = $this->pdo->prepare('SELECT 1 FROM selfdataguard_escrow WHERE user_id = :uid');
+            $held->execute([':uid' => $record->userId]);
+            if ($held->fetchColumn() === false) {
                 throw new EscrowNotFoundException("No escrow to replace for userId '{$record->userId}'");
             }
             throw new StaleEscrowException(

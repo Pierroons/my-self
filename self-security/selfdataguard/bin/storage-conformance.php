@@ -12,7 +12,7 @@ declare(strict_types=1);
  * conforme, et ne se met pas en service.
  *
  * Usage :
- *   php bin/storage-conformance.php <connexion.php> <transaction-appelant.php>
+ *   php bin/storage-conformance.php <connexion.php> <transaction-appelant.php> <ligne-illisible.php>
  *
  * <connexion.php> charge son autoloader et rend un callable qui ouvre une
  * NOUVELLE connexion à la base à éprouver, par exemple :
@@ -37,6 +37,20 @@ declare(strict_types=1);
  * Sans lui, le cas « joins-callers-transaction » est sauté, et un cas sauté
  * n'est pas un cas passé : l'implémentation n'est pas déclarée conforme.
  *
+ * <ligne-illisible.php> rend un callable qui reçoit un userId et réécrit, dans
+ * la base à éprouver, une colonne de sa ligne de séquestre pour qu'elle ne se
+ * lise plus, par exemple :
+ *
+ *   <?php
+ *   return static function (string $userId): void {
+ *       $pdo = new PDO('mysql:host=…;dbname=…', $u, $p);
+ *       $pdo->prepare("UPDATE selfdataguard_escrow SET wrap_admin = 'n0t-base64!!' WHERE user_id = ?")
+ *           ->execute([$userId]);
+ *   };
+ *
+ * Le cas « escrow-unreadable-row-named » exige alors que loadEscrow() lève
+ * UnreadableEscrowException. Sans lui, ce cas est sauté de même.
+ *
  * La suite écrit dans cette base, sous des userId tirés au hasard
  * (« conformance-<hex>-… »), et les efface à la fin de chaque cas. Les cas de
  * course lancent plusieurs processus PHP qui chargent le même fichier.
@@ -51,7 +65,7 @@ use Pierroons\SelfDataGuard\Storage\StorageInterface;
 
 $file = $argv[1] ?? '';
 if ($file === '' || !is_file($file)) {
-    fwrite(STDERR, "Usage : php bin/storage-conformance.php <connexion.php> <transaction-appelant.php>\n");
+    fwrite(STDERR, "Usage : php bin/storage-conformance.php <connexion.php> <transaction-appelant.php> <ligne-illisible.php>\n");
     exit(3);
 }
 $file = (string) realpath($file);
@@ -70,7 +84,15 @@ if ($callerFile !== null) {
     }
 }
 
-$results = Conformance::run($connect, $file, $withCaller);
+$unparseFile = $argv[3] ?? null;
+$unparse = null;
+if ($unparseFile !== null) {
+    if (!is_file($unparseFile) || !is_callable($unparse = require $unparseFile)) {
+        fwrite(STDERR, "{$unparseFile} doit rendre un callable qui rend illisible la ligne de séquestre du userId qu'il reçoit\n");
+        exit(3);
+    }
+}
+$results = Conformance::run($connect, $file, $withCaller, $unparse);
 $failed = 0;
 foreach ($results as $result) {
     $mark = ['pass' => '✅', 'fail' => '❌', 'skip' => '⏭️'][$result['outcome']];

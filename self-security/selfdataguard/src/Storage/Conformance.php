@@ -77,15 +77,23 @@ final class Conformance
 
     private ?EncryptedBlob $escrowWrap = null;
 
-    /**
-     * @param callable(): StorageInterface $connect a new connection to the database under test
-     */
     /** @var (callable(callable(StorageInterface): void): void)|null */
     private $withCallerTransaction;
 
-    private function __construct(callable $connect, private readonly ?string $connectFile, ?callable $withCallerTransaction)
-    {
+    /** @var (callable(string): void)|null */
+    private $unparseEscrow;
+
+    /**
+     * @param callable(): StorageInterface $connect a new connection to the database under test
+     */
+    private function __construct(
+        callable $connect,
+        private readonly ?string $connectFile,
+        ?callable $withCallerTransaction,
+        ?callable $unparseEscrow
+    ) {
         $this->withCallerTransaction = $withCallerTransaction;
+        $this->unparseEscrow = $unparseEscrow;
         $this->connect = $connect;
         $this->storage = $connect();
         $this->prefix  = 'conformance-' . bin2hex(random_bytes(6));
@@ -99,11 +107,18 @@ final class Conformance
      *        opens a transaction on a new connection to the database under test, hands the storage
      *        built on that connection to its argument, then rolls the transaction back. Without it,
      *        the case that needs it is reported skipped.
+     * @param (callable(string): void)|null $unparseEscrow rewrites a column of the escrow row of the
+     *        userId it is given, in the database under test, so that the row no longer parses. Without
+     *        it, the case that needs it is reported skipped.
      * @return list<array{case: string, outcome: string, detail: string}> outcome is pass, fail or skip
      */
-    public static function run(callable $connect, ?string $connectFile = null, ?callable $withCallerTransaction = null): array
-    {
-        $suite = new self($connect, $connectFile, $withCallerTransaction);
+    public static function run(
+        callable $connect,
+        ?string $connectFile = null,
+        ?callable $withCallerTransaction = null,
+        ?callable $unparseEscrow = null
+    ): array {
+        $suite = new self($connect, $connectFile, $withCallerTransaction, $unparseEscrow);
         $results = [];
         foreach (self::cases() as $case => $method) {
             try {
@@ -144,6 +159,7 @@ final class Conformance
             'escrow-round-trip'             => 'escrowRoundTrip',
             'escrow-compare-and-swap'       => 'escrowCompareAndSwap',
             'rotate-escrow'                 => 'rotateEscrowCase',
+            'escrow-unreadable-row-named'   => 'unreadableEscrowNamed',
             'delete-vault'                  => 'deleteVault',
             'replace-with-archive'          => 'replaceWithArchive',
             'delete-archive'                => 'deleteArchive',
@@ -428,6 +444,30 @@ final class Conformance
         ksort($all);
         $this->assert($all === ['contact' => 'c-3', 'hint' => 'c-2'], 'saving an escrow field again did not replace it');
         return null;
+    }
+
+    private function unreadableEscrowNamed(): ?string
+    {
+        if ($this->unparseEscrow === null) {
+            return 'no rewrite of the escrow row given';
+        }
+        $vault = $this->newVault('escrow-unreadable');
+        $this->storage->saveVault($vault);
+        $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+        ($this->unparseEscrow)($vault->userId);
+        try {
+            $read = $this->storage->loadEscrow($vault->userId);
+        } catch (UnreadableEscrowException) {
+            return null;
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                'loadEscrow() of a row that does not parse raised ' . $this->short($e::class) . ', not UnreadableEscrowException: '
+                . 'the library takes it for an outage, and the holder loses the view and the objection'
+            );
+        }
+        throw new RuntimeException($read === null
+            ? 'the rewrite deleted the escrow row instead of making it unreadable'
+            : 'loadEscrow() read the rewritten row as a record');
     }
 
     private function escrowCompareAndSwap(): ?string
@@ -995,6 +1035,10 @@ final class Conformance
         $this->assert(
             $this->storage->replaceSetting($name, 'second', 'second'),
             'replaceSetting() with the value already held returned false: the storage counts changed rows, not matched ones'
+        );
+        $this->assert(
+            !$this->storage->replaceSetting($name, 'first', 'first') && $this->storage->loadSetting($name) === 'second',
+            'replaceSetting() with an equal value the name does not hold returned true: the expected value is not compared'
         );
         $never = $this->setting('never-replaced');
         $this->assert(

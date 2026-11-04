@@ -335,7 +335,10 @@ final class SelfDataGuard
             ? hash_equals($storage->claimSetting(self::SETTING_FORMER_KEEPERS, $written), $written)
             : $storage->replaceSetting(self::SETTING_FORMER_KEEPERS, $formerHeld, $written);
         if (!$recorded) {
-            throw new InvalidArgumentException('The record of former keepers changed meanwhile: nothing was changed');
+            throw new InvalidArgumentException(
+                'The record of former keepers changed meanwhile, or the storage returned false for a value replaced with '
+                . 'itself (see StorageInterface::replaceSetting()): nothing was changed'
+            );
         }
         if (!$storage->replaceSetting(self::SETTING_KEEPER, $fromPrint, $toPrint)) {
             throw new InvalidArgumentException('The recorded keeper changed meanwhile: it is no longer ' . $fromPrint);
@@ -1244,10 +1247,11 @@ final class SelfDataGuard
         $this->currentRecord($session);
         $read = $this->snapshot($session->userId, $fieldNames);
         if ($read === null) {
-            if ($this->storage->loadEscrowFields($session->userId) !== []) {
-                throw $this->mismatch($session->userId);
+            if ($this->storage->loadEscrowFields($session->userId) === []) {
+                return [];
             }
-            return [];
+            // As in escrowReads(): only a row still absent is one deleted.
+            $read = $this->snapshot($session->userId, $fieldNames) ?? throw $this->mismatch($session->userId);
         }
         return $this->openFields($session, ...$read);
     }

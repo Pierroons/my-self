@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard\Escrow;
 
 use DateTimeImmutable;
+use Exception;
 use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 
 /**
  * Persistent state of a user's escrow compartment (the consented, admin-
@@ -41,6 +43,25 @@ final class EscrowRecord
         }
         if ($wrapAdmin === '') {
             throw new InvalidArgumentException('wrapAdmin (sealed box) must not be empty');
+        }
+    }
+
+    /**
+     * The record $build makes of the escrow row of $userId, which the storage
+     * has already fetched: any Exception $build raises comes out as
+     * UnreadableEscrowException, what StorageInterface::loadEscrow() raises
+     * for a row that does not parse. Fetch the row before calling it: an
+     * outage raised inside $build would read as a row rewritten.
+     *
+     * @param callable(): self $build
+     * @throws UnreadableEscrowException
+     */
+    public static function parse(string $userId, callable $build): self
+    {
+        try {
+            return $build();
+        } catch (Exception $e) {
+            throw new UnreadableEscrowException("The escrow row of '{$userId}' does not parse: {$e->getMessage()}", 0, $e);
         }
     }
 }

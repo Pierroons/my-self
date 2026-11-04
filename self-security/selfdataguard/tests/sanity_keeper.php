@@ -38,6 +38,7 @@ use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 
 $failures = 0;
 $passes = 0;
@@ -1494,11 +1495,13 @@ try {
 }
 $veraRow = $pdoV2->query("SELECT wrap_admin, created_at, revision FROM selfdataguard_escrow WHERE user_id = 'vera'")->fetch(PDO::FETCH_ASSOC);
 foreach ([
-    'wrap_admin not base64'          => ['wrap_admin', 'n0t-base64!!'],
-    'a date that does not parse'     => ['created_at', 'not a date'],
-    'a revision that is not an integer' => ['revision', 'abc'],
-] as $what => [$column, $garbage]) {
-    $pdoV2->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = 'vera'")->execute([$garbage]);
+    'wrap_admin not base64'                 => ['wrap_admin', '?', ['n0t-base64!!']],
+    'a date that does not parse'            => ['created_at', '?', ['not a date']],
+    'a revision that is not an integer'     => ['revision', '?', ['abc']],
+    'a revision stored as a blob'           => ['revision', 'CAST(revision AS BLOB)', []],
+    'a revision the next write cannot bump' => ['revision', '?', [PHP_INT_MAX]],
+] as $what => [$column, $value, $params]) {
+    $pdoV2->prepare("UPDATE selfdataguard_escrow SET {$column} = {$value} WHERE user_id = 'vera'")->execute($params);
     try {
         $reads = $dgV->escrowReads($vera);
         $reads['reason'] === 'escrow-replaced' && in_array('LIT-V1', $casesOf($reads['pending']), true)
@@ -1801,6 +1804,48 @@ $reads = $racingDg->escrowReads($lou);
 $reads['reason'] !== 'escrow-replaced'
     ? ok('a first deposit landing between the reads of the row and of the fields: the view reads the row again, no false alarm')
     : ko('a first deposit landing between the reads of the row and of the fields: the view says "escrow-replaced"', json_encode($reads));
+$lia = $dg->register('lia', 'motdepasse-lia-01');
+$racing->between = static fn () => $dg->setEscrowFields($lia, $admin['publicKey'], ['contact' => 'lia@example.org']);
+try {
+    $got = $racingDg->getEscrowFieldsAsUser($lia);
+    $got === ['contact' => 'lia@example.org']
+        ? ok('a first deposit landing between the reads of the row and of the fields: the holder\'s read reads the row again and opens them')
+        : ko('a first deposit landing between the reads of the row and of the fields: the holder\'s read returned other fields', json_encode($got));
+} catch (EscrowEnvelopeMismatchException) {
+    ko('a first deposit landing between the reads of the row and of the fields: the holder\'s read says the row was deleted');
+}
+
+/** Runs $before once, before the envelope is written: the row changes between a deposit's read and its write. */
+final class ChangeBeforeWrite extends DelegatingStorage
+{
+    /** @var (callable(): void)|null */
+    public $before = null;
+
+    public function rotateEscrow(VaultGeneration $generation, EscrowRecord $record, array $fields): void
+    {
+        if ($this->before !== null) {
+            $act = $this->before;
+            $this->before = null;
+            $act();
+        }
+        $this->inner->rotateEscrow($generation, $record, $fields);
+    }
+}
+$pdoW = new PDO('sqlite::memory:');
+$wInner = new SqliteAdapter($pdoW);
+$wDb = new ChangeBeforeWrite($wInner);
+$dgW = new SelfDataGuard($wDb, $blindKey, keeper: $keeper);
+$wren = $dgW->register('wren', 'motdepasse-wren-01');
+$dgW->setEscrowFields($wren, $admin['publicKey'], ['contact' => 'wren@example.org']);
+$wDb->before = static fn () => $pdoW->exec("UPDATE selfdataguard_escrow SET revision = 'abc' WHERE user_id = 'wren'");
+try {
+    $dgW->setEscrowFields($wren, $admin['publicKey'], ['contact' => 'wren-2@example.org']);
+    ko('a row made unreadable between a deposit\'s read and its write: the deposit went through');
+} catch (EscrowEnvelopeMismatchException) {
+    ok('a row made unreadable between a deposit\'s read and its write: EscrowEnvelopeMismatchException, nothing written');
+} catch (Throwable $e) {
+    ko('a row made unreadable between a deposit\'s read and its write: the deposit raised a bare error', get_class($e));
+}
 final class DepositAtEveryRead extends DelegatingStorage
 {
     /** @var (callable(): void)|null */
