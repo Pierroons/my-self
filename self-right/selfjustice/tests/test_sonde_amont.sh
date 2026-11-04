@@ -70,7 +70,10 @@ INSERT INTO numeros VALUES ('519395','CETATEXT000000519395');
 -- aucune date n'est « couverte ». Ils ne servent qu'à la couverture.
 INSERT INTO decisions VALUES
   ('aaaa000000000005','23-10.555','2024-01-17','cc','civ1',NULL,'f','b','rejet','ECLI:H','ar','2024-01-18',0),
-  ('CETATEXT000000400001','400001','2024-02-01','ce','5','Paris','f','','rejet','ECLI:I','ar','2024-02-02',0);
+  ('CETATEXT000000400001','400001','2024-02-01','ce','5','Paris','f','','rejet','ECLI:I','ar','2024-02-02',0),
+  -- Un fonds vivant qui commence AVANT la Cour de cassation : « opposable » se
+  -- juge sur le début de la seule Cour de cassation, pas sur celui du premier fonds.
+  ('CETATEXT000000300001','300001','2023-06-01','ce','5','Paris','f','','rejet','ECLI:N','ar','2023-06-02',0);
 -- Deux fonds CLOS, comme JADE les porte : la Cour de discipline budgétaire et
 -- financière s'arrête en 2000, les tribunaux administratifs en 2009.
 INSERT INTO decisions VALUES
@@ -196,7 +199,11 @@ lancer_amont() {
 essayer_trois_ports lancer_amont || { echo "faux amont non démarré" >&2; exit 1; }
 PORT_AMONT="$PORT"
 
+# Le jour est figé : « opposable » dépend de l'âge de la décision au jour de la
+# requête, et un banc qui lirait l'horloge changerait de verdict avec elle.
+JOUR_FIGE=2026-11-04
 lancer_api() {
+    SELFJUSTICE_JOUR="$JOUR_FIGE" \
     SELFJUSTICE_JURIS_DB="$DB" \
     SELFJUSTICE_JUDILIBRE_BASE="$AMONT_URL" \
     SELFJUSTICE_JUDILIBRE_KEY="factice" \
@@ -469,6 +476,29 @@ controle "sans juridiction, date couverte, amont en panne → la couverture est 
     "55%2F55555?date=2026-03-02" \
     "etat:absente" "reserve:~qui couvre cette date" "reserve:~probable sans être établie" \
     "reserve:~HTTP 500" "reserve:!postérieure à l'arrêt"
+
+echo
+echo "▸ « Opposable » se juge sur la Cour de cassation seule"
+# Le Conseil d'État de ce banc commence le 2023-06-01, la Cour de cassation le
+# 2024-01-17 : entre les deux, la sonde ne voit que la seconde, et n'en prouve rien.
+controle "sans juridiction, date avant le début de la Cour de cassation, amont vide → ne prouve rien pour elle" \
+    "33%2F33333?date=2023-09-01" \
+    "etat:absente" "reserve:~précède le début de l'index pour la Cour de cassation" \
+    "reserve:!opposable"
+# Une décision de moins de soixante jours peut ne pas être encore publiée.
+controle "sans juridiction, date de moins de 60 jours, amont vide → pas encore opposable" \
+    "33%2F33333?date=2026-10-01" \
+    "etat:absente" "reserve:~n'est pas encore opposable" "reserve:!elle est opposable" \
+    "reserve:!pour elle, l'absence est opposable"
+controle "« cc », date de moins de 60 jours, amont vide → pas encore opposable" \
+    "33%2F33333?jurisdiction=cc&date=2026-10-01" \
+    "etat:absente" "reserve:~n'est pas encore opposable" "reserve:!elle est opposable"
+# Une panne de l'amont à une date où le dernier fonds ouvert n'a pas commencé :
+# l'index ne « couvre » pas cette date.
+controle "sans juridiction, amont en panne, date avant le début du dernier fonds → pas « couverte »" \
+    "55%2F55555?date=2024-06-01" \
+    "etat:absente" "reserve:~dont tous les fonds ne commencent pas avant cette date" \
+    "reserve:!qui couvre cette date" "reserve:~HTTP 500"
 
 echo
 echo "▸ À une date couverte, l'index ne conclut pas seul"

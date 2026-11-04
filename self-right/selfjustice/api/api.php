@@ -56,6 +56,12 @@ const JADE_SELECTION = "Le fonds JADE ne porte qu'une sélection : les décision
 // budgétaire et financière s'arrête en 2000, les tribunaux administratifs en
 // 2009. Même règle et même seuil que `_SILENCE_MAX_JOURS` du client MCP.
 const JURIS_SILENCE_MAX_JOURS = 365;
+// Avant ce délai, une absence de la base amont ne vaut pas pour la Cour de
+// cassation : une décision rendue peut ne pas y être encore publiée. Mesuré le
+// 04/11/2026 sur l'index servi (décisions `cc` de 2026, date de décision contre
+// `update_date`) : 90,8 % publiées sous 15 jours, 96,4 % sous 30, 97,8 % sous 60.
+// Même borne que `SEDIMENTATION` du moissonneur.
+const CC_DELAI_PUBLICATION_JOURS = 60;
 
 // Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
 // « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
@@ -2181,6 +2187,11 @@ if ($segments[0] === 'jurisprudence') {
                   . "les interroge que si la juridiction est précisée." : "")
             . $jade_aussi;
         $echec = $amont_echec !== null ? rtrim($amont_echec, " .") : '';
+        // « Opposable » ne se dit que de la Cour de cassation : il se juge sur SA
+        // couverture et sur SON délai de publication, pas sur ceux des autres fonds.
+        $ouvre_cc = $couverture['cc']['debut'] ?? null;
+        $cc_trop_recente = $date_annoncee !== null && $date_annoncee > (new DateTimeImmutable(legi_jour()))
+            ->modify('-' . CC_DELAI_PUBLICATION_JOURS . ' days')->format('Y-m-d');
 
         // Une juridiction que l'index ne porte pas n'a qu'une source, la sonde
         // amont. Sans date elle n'a pas lieu, et elle peut échouer : dans les deux
@@ -2210,6 +2221,16 @@ if ($segments[0] === 'jurisprudence') {
             $ouvre_tot !== null && $date_annoncee < $ouvre_tot => "Introuvable, mais la date "
                 . "annoncée ($date_annoncee) précède le début de l'index ($ouvre_tot) : "
                 . "cette absence ne prouve rien.",
+            $amont === [] && $juridiction === null && $ouvre_cc !== null
+                && $date_annoncee < $ouvre_cc => "Introuvable, mais la date annoncée "
+                . "($date_annoncee) précède le début de l'index pour la Cour de cassation "
+                . "($ouvre_cc) : pour elle, cette absence ne prouve rien." . $autres,
+            $amont === [] && ($juridiction === null || $juridiction === 'cc')
+                && $cc_trop_recente => "Introuvable dans l'index local et dans la base amont "
+                . "Judilibre interrogée au $date_annoncee pour la Cour de cassation, mais une "
+                . "décision de moins de " . CC_DELAI_PUBLICATION_JOURS . " jours peut ne pas y "
+                . "être encore publiée : l'absence n'est pas encore opposable."
+                . ($juridiction === null ? $autres : ""),
             $amont === [] && $juridiction === null => "Introuvable dans l'index local, "
                 . "arrêté au $arret, et dans la base amont Judilibre interrogée au "
                 . "$date_annoncee pour la Cour de cassation : pour elle, l'absence est "
@@ -2228,19 +2249,25 @@ if ($segments[0] === 'jurisprudence') {
                 . "($date_annoncee) est postérieure à l'arrêt de l'index local ($arret) : "
                 . "cette absence ne prouve rien. La base amont, qui aurait tranché, ne "
                 . "l'a pas pu — $echec.",
-            $amont_echec !== null => "Introuvable dans l'index local, qui couvre cette "
+            $amont_echec !== null && ($ouvre === null || $date_annoncee >= $ouvre) => "Introuvable dans l'index local, qui couvre cette "
                 . "date ($ouvre → $arret) : l'absence y est probable sans être établie, car "
                 . "une décision publiée tard peut manquer à la moisson, et la base amont, "
                 . "qui l'aurait tranché, ne l'a pas pu — $echec." . $autres,
+            $amont_echec !== null => "Introuvable dans l'index local, dont tous les fonds "
+                . "ne commencent pas avant cette date (le dernier ouvert commence le $ouvre) : "
+                . "l'absence n'y est pas établie, et la base amont, qui l'aurait tranché, ne "
+                . "l'a pas pu — $echec." . $autres,
             $date_annoncee > $arret => "Introuvable, et la date annoncée ($date_annoncee) "
                 . "est postérieure à l'arrêt de l'index pour cette juridiction ($arret) : "
                 . "cette absence ne prouve rien, et aucune base amont ne la tranche ici.",
             $jade_concerne && $juridiction !== null => "Introuvable, alors que la date "
                 . "annoncée ($date_annoncee) est couverte par l'index ($ouvre → $arret). "
                 . JADE_SELECTION,
-            default => "Introuvable, et la date annoncée ($date_annoncee) est couverte "
-                . "par l'index ($ouvre → $arret) : si cette décision existait à cette "
-                . "date, elle y figurerait.",
+            // Aucun chemin connu n'arrive ici : chaque juridiction datée passe par la
+            // sonde ou par JADE. Le bras reste, parce qu'un `match` sans issue rendrait
+            // un 500, et il ne conclut rien de ce qu'il n'a pas vérifié.
+            default => "Introuvable, et ce cas n'est pas prévu par la réserve : ne rien "
+                . "conclure de cette absence.",
         };
 
         // Ce qui est rendu vient de l'index local, ou de la sonde amont quand
