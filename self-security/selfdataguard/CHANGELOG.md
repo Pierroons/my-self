@@ -88,11 +88,14 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
 - **`UnreadableEscrowException`**: what `StorageInterface::loadEscrow()` raises for a row that is there but does not
   parse — a column rewritten, a revision that is not an integer the next write can bump. It is raised by
   **`EscrowRecord::parse()`**: the storage builds its record in the closure it hands to `parse()`, from the row it has
-  already fetched. The façade reads it as a row rewritten (`escrow-replaced`, `EscrowEnvelopeMismatchException`); for an
-  archive, and in the ceremony, it comes out as it is. Any other exception of `loadEscrow()` is an outage of the
-  storage, and comes out as it is — from the view, the deposits and the objection alike. The conformance case
-  `escrow-unreadable-row-named` makes a row unreadable through a third file given to `bin/storage-conformance.php`, and
-  requires this exception.
+  already fetched, and any `Exception`, `TypeError` or `ValueError` the closure raises comes out as
+  `UnreadableEscrowException`. The façade reads it as a row rewritten (`escrow-replaced`,
+  `EscrowEnvelopeMismatchException`); for an archive, and in the ceremony, it comes out as it is. Any other exception of
+  `loadEscrow()` is an outage of the storage, and comes out as it is — from the view, the deposits and the objection
+  alike. The conformance case `escrow-unreadable-row-named` makes a row unreadable through a third file given to
+  `bin/storage-conformance.php`, one column at a time — `wrap_admin`, `wrap_user`, `created_at`, `revision` —, and
+  requires this exception for each column rewritten; the file may decline a typed column that cannot hold an unreadable
+  value.
 - **The ceremony goes through the keeper**, after the intention, the witness's head and the passphrase checked — the
   admin key unsealed and erased, so that a typo reaches no keeper —, before the admin key is unsealed again to open
   the box; the intention names the keeper by its fingerprint. Given the former keepers the database recorded, it
@@ -123,8 +126,8 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   your own adds the column and the three methods, builds its escrow record with `EscrowRecord::parse()` so that
   `loadEscrow()` raises `UnreadableEscrowException` for a row that does not parse, and returns `true` from
   `replaceSetting()` for a value replaced with itself — a storage that counts the rows an update changed, not those it
-  matched, does not. `bin/storage-conformance.php` takes a third file, which makes a row unreadable; without it, a
-  storage is not declared conformant. Conformance cases `escrow-compare-and-swap`, `rotate-escrow`,
+  matched, does not. `bin/storage-conformance.php` takes a third file, which makes a column of a row unreadable;
+  without it, a storage is not declared conformant. Conformance cases `escrow-compare-and-swap`, `rotate-escrow`,
   `escrow-unreadable-row-named`, `replace-archive-escrow`, `setting-replaced-over-expected`,
   `concurrent-escrow-rotations`, `concurrent-setting-replacements`.
 - **BREAKING** — `EscrowCeremony::__construct()` takes an `EscrowKeeper` after the witness; the command reads
@@ -179,7 +182,9 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   the escrow vanish or change; what the keepers released and hold announced for the escrowId the session computes
   stays in the holder's view (`escrow-replaced`). A row that does not open its fields stops every deposit and every
   read of them (`EscrowEnvelopeMismatchException`) until the row that wrote them is put back: the library does not
-  erase them. If a field alone was rewritten, putting back that field — not the row — reopens them.
+  erase them. If a field alone was rewritten, putting back that field — not the row — reopens them. A revision
+  rewritten one below the largest integer still reads; the holder's next deposit writes the largest, and the row then
+  reads as rewritten.
 - A box the operator's pass sealed keeps the escrowId the pass drew, and carries no objection key: nobody can object
   to its reads, it stays releasable as long as the keeper lives, and its reads are out of the holder's view, before
   and after the escrow is pinned — the pinning computes another escrowId. An archive sealed by the pass stays without an objection
@@ -201,6 +206,10 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   attestations, and a slow one slows every opening.
 - A forgotten keeper that still lives keeps releasing what is still sealed to it, out of the holder's view, like a
   keeper replaced without `changeKeeper()`: forget only a keeper gone for good.
+- The vault row has its own revision, which the vault's writes compare, without the check the escrow row's revision
+  has (`UnreadableEscrowException`): rewritten as text or a blob, that revision makes `setLock()` and `recover()` refuse
+  under `StaleVaultException`; at the largest integer, `setLock()` writes the new lock, then throws `TypeError`.
+  Whoever writes the database can already make the vault refuse every session (below).
 - A database put back from before a keeper change takes back a keeper the escrows were retired from: the view says
   `retired` and does not call for `sealEscrowToKeeper()` — no re-sealing changes it; the deposits go through and stay
   out of the ceremony's reach until the operator changes to a keeper the database never had.
@@ -218,9 +227,10 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   raced included, retires the escrow from the former keepers and seals it to the new one. `forgetFormerKeeper()` is no
   way out: it refuses the database's keeper. If the operator forgets the coming keeper while the change runs, the
   forgetting can read the database's keeper before the change lands: the coming keeper then ends both the database's
-  keeper and forgotten. Deposits go through under it, but the escrow of the account that raced stays sealed to a keeper
-  that retired it, out of the ceremony's reach;
-  after the next change, every deposit is refused until a second `forgetFormerKeeper()`.
+  keeper and forgotten. Deposits go through under it; the escrow of the account that raced, once deposited again,
+  stays sealed to a keeper that retired it, out of the ceremony's reach. After the next change every deposit is refused
+  until a second `forgetFormerKeeper()`, which forgets the keeper the race promoted while it still serves: what that
+  keeper holds leaves the holder's view, and the ceremony refuses that keeper.
 - A row written by a newer version of the library reads as one rewritten (`escrow-replaced`,
   `EscrowEnvelopeMismatchException`); its cause, returned by `getPrevious()`, says to upgrade.
 - `attest()` asks nothing of its caller: whoever holds an escrowId and reaches the keeper learns the cases of its
