@@ -425,6 +425,12 @@ if grep -q "jurisprudence : date avancée" <<<"$sortie"; then
 else
     nok "un Judilibre figé passe inaperçu derrière le mouvement de JADE : ${sortie//$'\n'/ }"
 fi
+# L'alerte cite le compteur jugé : le total, lui, a bougé de 40.
+if grep -q "décisions Judilibre : 1218780, inchangé" <<<"$sortie" && ! grep -q "1791963" <<<"$sortie"; then
+    ok "l'alerte cite les décisions Judilibre, pas le total qui a bougé"
+else
+    nok "l'alerte ne cite pas le compteur jugé : ${sortie//$'\n'/ }"
+fi
 
 # Judilibre a ajouté 540 décisions : la date avancée est justifiée.
 ecrire_judilibre_jade 1218780 573143 1219320 573143
@@ -433,6 +439,15 @@ if grep -q "jurisprudence : date avancée" <<<"$sortie"; then
     nok "Judilibre a bougé → trompe-l'œil crié à tort : ${sortie//$'\n'/ }"
 else
     ok "Judilibre a bougé, JADE figé → silence"
+fi
+
+# Judilibre perd 40 décisions, JADE en gagne autant : le total ne bouge pas.
+ecrire_judilibre_jade 1218780 573143 1218740 573183
+sortie=$(lancer)
+if grep -q "décisions Judilibre en BAISSE, 1218780 → 1218740" <<<"$sortie"; then
+    ok "baisse de Judilibre compensée par JADE → signalée"
+else
+    nok "une baisse de Judilibre passe inaperçue derrière JADE : ${sortie//$'\n'/ }"
 fi
 
 echo

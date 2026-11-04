@@ -80,7 +80,11 @@ fi
 # rafraîchissement qui n'a rien apporté. Même expression que `par_source` dans
 # `/status` ; une base d'avant JADE n'a pas la colonne et se compte entière.
 compter_judilibre() {
-    if sqlite3 "$JUDILIBRE_DB" "SELECT 1 FROM pragma_table_info('decisions') WHERE name='source'" | grep -q 1; then
+    # Une erreur de la base ne se confond pas avec « pas de colonne » : elle sort
+    # en échec, au lieu de basculer en silence sur le compte de toute la table.
+    local colonne
+    colonne=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM pragma_table_info('decisions') WHERE name='source'") || return 1
+    if [ "$colonne" = "1" ]; then
         sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions WHERE COALESCE(source,'judilibre')='judilibre'"
     else
         sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions"
