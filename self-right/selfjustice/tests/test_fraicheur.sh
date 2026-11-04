@@ -378,6 +378,59 @@ else
 fi
 
 echo
+echo "▸ JADE ne masque pas un Judilibre figé"
+# La table de la jurisprudence est partagée : JADE avance chaque soir. Si
+# l'empreinte de la jurisprudence le comptait, un Judilibre figé derrière une
+# date avancée passerait pour une base qui bouge.
+judilibre_jade() { # <judilibre avant> <jade avant> <judilibre après> <jade après>
+    python3 - "$1" "$2" "$3" "$4" "$AVANT" "$ATTENDU" <<'PY'
+import json, sys
+ja, da, jn, dn = (int(x) for x in sys.argv[1:5])
+avant, sain = sys.argv[5], sys.argv[6]
+etat = {
+    "catalogue SelfAct": {"date": sain, "volume": 1895, "vu_le": sain,
+                          "empreinte": {"total": 1895}},
+    "LEGI": {"date": sain, "volume": 525441, "vu_le": sain, "empreinte": {"articles": 525441}},
+    "conventionnalité": {"date": sain, "volume": 793, "vu_le": sain, "empreinte": {"articles": 793}},
+    "jurisprudence": {"date": avant, "volume": ja + da, "vu_le": avant,
+                      "empreinte": {"par_source.judilibre": ja}},
+}
+status = {
+    "legi": {"articles": 525441, "last_update": sain},
+    "eu": {"articles": 793, "last_update": sain},
+    "jurisprudence": {"decisions": jn + dn, "last_update": sain,
+                      "par_source": {"judilibre": jn, "jade": dn}},
+}
+print(json.dumps(etat))
+print(json.dumps(status))
+PY
+}
+ecrire_judilibre_jade() {
+    local sortie_py; sortie_py=$(judilibre_jade "$@")
+    sed -n '1p' <<<"$sortie_py" > "$BAC/etat.json"
+    sed -n '2p' <<<"$sortie_py" > "$BAC/status.json"
+    repartition "$ATTENDU" 1895 213 208
+}
+
+# Judilibre figé, JADE a ajouté 40 décisions, la date de Judilibre avance.
+ecrire_judilibre_jade 1218780 573143 1218780 573183
+sortie=$(lancer)
+if grep -q "jurisprudence : date avancée" <<<"$sortie"; then
+    ok "Judilibre figé, JADE en mouvement → trompe-l'œil signalé"
+else
+    nok "un Judilibre figé passe inaperçu derrière le mouvement de JADE : ${sortie//$'\n'/ }"
+fi
+
+# Judilibre a ajouté 540 décisions : la date avancée est justifiée.
+ecrire_judilibre_jade 1218780 573143 1219320 573143
+sortie=$(lancer)
+if grep -q "jurisprudence : date avancée" <<<"$sortie"; then
+    nok "Judilibre a bougé → trompe-l'œil crié à tort : ${sortie//$'\n'/ }"
+else
+    ok "Judilibre a bougé, JADE figé → silence"
+fi
+
+echo
 echo "▸ Un compteur qui suit le calendrier ne fait pas croire la base refaite"
 # 🔑 Depuis le 14/10/2026, `legi.vigueur` compte les versions applicables AU JOUR :
 # il bouge le jour où une version entre en vigueur ou cesse de s'appliquer, sans

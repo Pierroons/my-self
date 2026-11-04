@@ -148,6 +148,14 @@ try:
         volumes[nom] = volume(bloc)
         empreintes[nom] = empreinte(bloc)
         provenances[nom] = bloc.get("provenance") or {}
+    # 🔑 **La date de la jurisprudence est celle de Judilibre : son empreinte
+    # aussi.** La table est partagée avec JADE, qui avance chaque soir. Prise
+    # entière, l'empreinte bougeait avec JADE et masquait un Judilibre figé
+    # derrière une date avancée — exactement le trompe-l'œil que la règle doit
+    # voir. Le volume reste le total : une baisse vaut pour les deux collecteurs.
+    par_source = (st.get("jurisprudence") or {}).get("par_source") or {}
+    if isinstance(par_source.get("judilibre"), int):
+        empreintes["jurisprudence"] = {"par_source.judilibre": par_source["judilibre"]}
     # 🔑 **JADE se suit à part.** La date de la jurisprudence est celle de
     # Judilibre, qui avance : le fonds administratif est resté figé au 10/09/2026
     # trois semaines durant sans qu'elle bouge d'un jour. Sa date est celle du
