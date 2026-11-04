@@ -41,7 +41,7 @@ const SEARCH_URL = BASE_URL . '/particuliers/recherche?rubricFilter=serviceEnLig
  * Ce que SelfAct doit indexer, et pourquoi.
  *
  * 🔑 **Le catalogue ne se limite pas aux modèles de lettres.** SelfAct promet
- * de produire « le document réel que vous envoyez » — or une mise en demeure
+ * de produire « le document réel que tu envoies » — or une mise en demeure
  * se rédige à partir d'un modèle, mais une saisine se dépose sur un CERFA.
  * N'indexer que les lettres laissait 871 formulaires hors du catalogue, soit
  * les deux tiers du gisement, alors que le pré-remplissage CERFA est un pan

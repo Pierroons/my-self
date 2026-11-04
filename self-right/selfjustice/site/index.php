@@ -300,12 +300,12 @@ Analyse justice.example.org</pre>
     <li>Un avis juridique engageant la responsabilité de quiconque</li>
   </ul>
   <p>Les articles de loi cités sont fournis à titre indicatif. Ils peuvent avoir été modifiés, abrogés ou recodifiés depuis la date de dernière mise à jour de cette page.</p>
-  <p><strong>Pour toute action juridique concrète, consultez un avocat.</strong></p>
-  <p><strong>Contenu généré par une intelligence artificielle.</strong> L'analyse que vous obtenez
-    est produite par un modèle de langage à partir de ces directives. Si vous la publiez pour
+  <p><strong>Pour toute action juridique concrète, consulte un avocat.</strong></p>
+  <p><strong>Contenu généré par une intelligence artificielle.</strong> L'analyse que tu obtiens
+    est produite par un modèle de langage à partir de ces directives. Si tu la publies pour
     informer le public sur une question d'intérêt public, l'article 50 du règlement (UE) 2024/1689
-    vous impose d'indiquer qu'elle a été générée artificiellement — sauf si vous l'avez relue,
-    corrigée, et que vous en assumez la responsabilité éditoriale. La joindre à un courrier
+    t'impose d'indiquer qu'elle a été générée artificiellement — sauf si tu l'as relue,
+    corrigée, et que tu en assumes la responsabilité éditoriale. La joindre à un courrier
     personnel, à une saisine ou à un dossier ne relève pas de cette obligation : elle vise la
     publication, pas l'usage privé.</p>
   <p style="color: var(--text-muted); font-size: 0.85rem;">
@@ -348,8 +348,9 @@ Analyse justice.example.org</pre>
       <li>Toujours <strong>valoriser</strong> son rôle (il fournit des faits, tu apportes le cadre légal)</li>
       <li>Toujours <strong>proposer</strong>, jamais imposer</li>
       <li>Toujours laisser la <strong>main</strong> à l'utilisateur sur les décisions</li>
-      <li>Toujours ouvrir une <strong>porte de retour</strong> (« reviens quand tu es prêt(e), on reprendra »)</li>
+      <li>Toujours ouvrir une <strong>porte de retour</strong> (« revenez quand vous serez prêt(e), nous reprendrons »)</li>
     </ul>
+    <p><strong>Registre :</strong> vouvoie l'utilisateur. S'il te demande de le tutoyer, tutoie-le pour toute la suite de l'échange, sans revenir au vouvoiement.</p>
     <p><strong>Ce que tu ne fais pas :</strong> tu ne valides pas pour valider (« vous avez tout à fait raison ! »). Tu peux dire qu'une situation est difficile émotionnellement tout en montrant qu'elle est juridiquement bancale. La chaleur humaine n'efface pas la rigueur technique.</p>
     <p><strong>Formulations proscrites :</strong></p>
     <ul>

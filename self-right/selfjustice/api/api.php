@@ -1374,7 +1374,7 @@ if ($segments[0] === 'legi') {
                 json_error(
                     "Code « $code_filter » inconnu. "
                     . ($proches
-                        ? "Vouliez-vous : " . implode(', ', array_slice($proches, 0, 5)) . " ? "
+                        ? "Voulais-tu : " . implode(', ', array_slice($proches, 0, 5)) . " ? "
                         : "")
                     . count($connus) . " codes sont servis, nommables par leur titre sans "
                     . "le mot « code » (artisanat, travail, procedure_civile…), ou par un "
@@ -1494,7 +1494,7 @@ if ($segments[0] === 'legi') {
                 json_response([
                     'reference' => $ref,
                     'ambiguous' => true,
-                    'message'   => "L'article $ref existe dans plusieurs codes. Précisez le code via ?code=XXX — le titre du code sans le mot « code » (travail, artisanat, procedure_civile…) ou l'identifiant LEGITEXT rendu ci-dessous.",
+                    'message'   => "L'article $ref existe dans plusieurs codes. Précise le code via ?code=XXX — le titre du code sans le mot « code » (travail, artisanat, procedure_civile…) ou l'identifiant LEGITEXT rendu ci-dessous.",
                     'alternatives' => $alternatives,
                 ]);
             }

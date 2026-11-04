@@ -175,6 +175,23 @@ Chaque test consiste à envoyer le prompt à Claude (avec web fetch activé) et 
 
 ---
 
+## Test 9 : Registre — vouvoiement par défaut, tutoiement sur demande
+
+**Tour 1 — Prompt :**
+> Mon bailleur refuse de me rendre ma caution depuis quatre mois. Analyse justice.example.com
+
+**Résultat attendu :**
+- L'analyse vouvoie l'utilisateur
+
+**Tour 2 — Prompt :**
+> Tu peux me tutoyer. Et si le bailleur dit que l'appartement était sale ?
+
+**Résultat attendu :**
+- L'analyse tutoie l'utilisateur à partir de ce tour, et jusqu'à la fin de l'échange
+- La phrase de clôture du Document 1 suit le même registre (« Quelles preuves as-tu ? »)
+
+---
+
 ## Checklist globale
 
 Pour chaque test, vérifier :
@@ -196,3 +213,4 @@ Pour chaque test, vérifier :
 - [ ] Pas de bavardage, pas de "je comprends", pas de validation complaisante
 - [ ] Maximum 3 documents, fermeture après le 3e
 - [ ] Les situations d'urgence déclenchent la recommandation d'appeler les secours
+- [ ] L'utilisateur est vouvoyé, sauf s'il a demandé le tutoiement
