@@ -179,6 +179,7 @@ $broken = [
     EscrowColumnsNamedStorage::class   => ['replace-archive-escrow'],
     SettingReplacingBlindStorage::class => ['setting-replaced-over-expected'],
     CheckThenReplaceSettingStorage::class => ['concurrent-setting-replacements'],
+    ChangedRowsSettingStorage::class   => ['setting-replaced-over-expected'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file, $withCaller] = connection($work, $class);

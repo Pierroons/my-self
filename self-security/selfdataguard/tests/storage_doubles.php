@@ -714,3 +714,22 @@ final class CheckThenReplaceSettingStorage extends DelegatingStorage
         return true;
     }
 }
+
+/**
+ * Counts the rows an UPDATE changed, not those it matched — MySQL without
+ * MYSQL_ATTR_FOUND_ROWS: replacing a value with itself returns false.
+ */
+final class ChangedRowsSettingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function replaceSetting(string $n, string $e, string $v): bool
+    {
+        $st = $this->pdo->prepare('UPDATE selfdataguard_settings SET value = ? WHERE name = ? AND value = ? AND value <> ?');
+        $st->execute([$v, $n, $e, $v]);
+        return $st->rowCount() === 1;
+    }
+}

@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard;
 
 use DateTimeImmutable;
-use Exception;
 use InvalidArgumentException;
-use PDOException;
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
@@ -29,6 +27,7 @@ use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\RecoveryTicketException;
@@ -359,11 +358,12 @@ final class SelfDataGuard
      * replaced without changeKeeper(): forget only a keeper gone for good.
      * Nothing else logs the act. Interrupted after the record of forgotten
      * keepers took $print, it leaves every deposit refused until called
-     * again, which ends the act.
+     * again, which ends the act. Refused for the database's keeper: the
+     * operator changes first to a keeper this database never had.
      *
      * @throws InvalidArgumentException when the database records no former keeper
-     *         $print, a record is unreadable, or another operator changed one
-     *         meanwhile — the message says which
+     *         $print, $print is the database's keeper, a record is unreadable,
+     *         or another operator changed one meanwhile — the message says which
      */
     public static function forgetFormerKeeper(StorageInterface $storage, string $print): void
     {
@@ -371,6 +371,13 @@ final class SelfDataGuard
         $former = KeeperSeal::formerPrints($held);
         if (!in_array($print, $former, true)) {
             throw new InvalidArgumentException("This database records no former keeper {$print}: nothing was changed");
+        }
+        $keeper = $storage->loadSetting(self::SETTING_KEEPER);
+        if ($keeper !== null && hash_equals($keeper, $print)) {
+            throw new InvalidArgumentException(
+                "The former keeper {$print} is also the database's keeper: nothing was changed — change first to a keeper "
+                . 'this database never had (changeKeeper()), then forget it if it is gone for good'
+            );
         }
         $forgottenHeld = $storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS);
         $forgotten     = KeeperSeal::formerPrints($forgottenHeld, 'forgotten keepers');
@@ -982,8 +989,9 @@ final class SelfDataGuard
      * @throws StaleEscrowException when other deposits kept landing between this one's read and its write
      * @throws VaultFrozenException when there is a former keeper and the vault is frozen
      * @throws EscrowKeeperException keeper-mismatch — a recorded former keeper not given, a forgotten one given, a
-     *         record of former or forgotten keepers unreadable, the façade's own keeper among the former ones —,
-     *         keeper-unreachable — a former keeper given without keys —, or keeper-failed — a former keeper that
+     *         record of former or forgotten keepers unreadable, the façade's own keeper among the former ones, one
+     *         given as former that became the database's keeper meanwhile —, keeper-unreachable — a former keeper
+     *         given without keys —, or keeper-failed — a former keeper that
      *         does not take the retirement, or a record of former keepers that keeps changing
      * @throws EscrowEnvelopeMismatchException when the escrow row does not open the fields the database holds:
      *         nothing is written, nothing retired
@@ -1116,7 +1124,9 @@ final class SelfDataGuard
      * A release is the keeper handing the inner box back: the read that
      * follows may still fail — a wrong passphrase —, and is listed all the
      * same. A vault that refuses every session — rewritten in the database —
-     * gives neither this view nor an objection until the operator repairs it.
+     * gives neither this view nor an objection until the operator repairs it;
+     * an outage of the storage comes out of both as it is. A field rewritten
+     * alone leaves the view as the row says: reading the fields refuses.
      *
      * @return array{established: bool, reason: ?string, keeper: ?string, pinned: bool,
      *               reads: list<array{case: string, seq: int, at: int, keeper: string}>,
@@ -1129,7 +1139,8 @@ final class SelfDataGuard
         $escrowId = $session->escrowId();
         $record   = $this->rowRecord($session->userId);
         if ($record === null && $this->storage->loadEscrowFields($session->userId) !== []) {
-            $record = false;
+            // A first deposit can land between the two reads: only a row still absent is one deleted.
+            $record = $this->rowRecord($session->userId) ?? false;
         }
         return $this->readsOf($record, fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), false, $escrowId);
     }
@@ -1280,9 +1291,8 @@ final class SelfDataGuard
     }
 
     /**
-     * EscrowSnapshot::read(), a row whose reading raises anything but a
-     * PDOException or a StaleEscrowException raised as one that does not open
-     * its fields.
+     * EscrowSnapshot::read(), a row that does not parse raised as one that
+     * does not open its fields.
      *
      * @param list<string> $fieldNames
      * @return array{0: EscrowRecord, 1: array<string, string>}|null
@@ -1291,21 +1301,17 @@ final class SelfDataGuard
     {
         try {
             return EscrowSnapshot::read($this->storage, $userId, $fieldNames);
-        } catch (PDOException|StaleEscrowException $e) {
-            throw $e;
-        } catch (Exception $e) {
+        } catch (UnreadableEscrowException $e) {
             throw $this->mismatch($userId, $e);
         }
     }
 
-    /** The escrow row of $userId; false when reading it raises anything but a PDOException — a row that does not parse. */
+    /** The escrow row of $userId; false for a row that does not parse — an outage of the storage passes as it is. */
     private function rowRecord(string $userId): EscrowRecord|false|null
     {
         try {
             return $this->storage->loadEscrow($userId);
-        } catch (PDOException $e) {
-            throw $e;
-        } catch (Exception) {
+        } catch (UnreadableEscrowException) {
             return false;
         }
     }

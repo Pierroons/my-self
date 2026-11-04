@@ -6,6 +6,7 @@ namespace Pierroons\SelfDataGuard\Storage;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use Exception;
 use InvalidArgumentException;
 use PDO;
 use PDOException;
@@ -1349,21 +1350,30 @@ final class SqliteAdapter implements StorageInterface
 
     /**
      * @param array<string, mixed> $row
+     * @throws UnreadableEscrowException when a column does not parse — it reads nothing, so nothing it raises is an outage
      */
     private function rowToEscrow(array $row): EscrowRecord
     {
-        $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
-        if ($wrapAdmin === false) {
-            throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');
+        try {
+            $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
+            if ($wrapAdmin === false) {
+                throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');
+            }
+            $revision = $row['revision'] ?? 0;
+            if (filter_var($revision, FILTER_VALIDATE_INT) === false) {
+                throw new RuntimeException('Corrupted revision in DB (not an integer)');
+            }
+            return new EscrowRecord(
+                userId:    (string) $row['user_id'],
+                wrapUser:  EncryptedBlob::fromBase64((string) $row['wrap_user']),
+                wrapAdmin: $wrapAdmin,
+                createdAt: new DateTimeImmutable((string) $row['created_at']),
+                updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+                revision:  (int) $revision,
+            );
+        } catch (Exception $e) {
+            throw new UnreadableEscrowException("The escrow row of '{$row['user_id']}' does not parse: {$e->getMessage()}", 0, $e);
         }
-        return new EscrowRecord(
-            userId:    (string) $row['user_id'],
-            wrapUser:  EncryptedBlob::fromBase64((string) $row['wrap_user']),
-            wrapAdmin: $wrapAdmin,
-            createdAt: new DateTimeImmutable((string) $row['created_at']),
-            updatedAt: new DateTimeImmutable((string) $row['updated_at']),
-            revision:  (int) ($row['revision'] ?? 0),
-        );
     }
 
     /**

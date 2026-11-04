@@ -34,6 +34,7 @@ use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\VaultFrozenException;
@@ -1491,8 +1492,12 @@ try {
     benchCeremony($vDb, keeper: $kV)->readEscrow('vera', 'LIT-V1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
 } catch (EscrowAnnouncedException) {
 }
-$veraRow = $pdoV2->query("SELECT wrap_admin, created_at FROM selfdataguard_escrow WHERE user_id = 'vera'")->fetch(PDO::FETCH_ASSOC);
-foreach (['wrap_admin not base64' => ['wrap_admin', 'n0t-base64!!'], 'a date that does not parse' => ['created_at', 'not a date']] as $what => [$column, $garbage]) {
+$veraRow = $pdoV2->query("SELECT wrap_admin, created_at, revision FROM selfdataguard_escrow WHERE user_id = 'vera'")->fetch(PDO::FETCH_ASSOC);
+foreach ([
+    'wrap_admin not base64'          => ['wrap_admin', 'n0t-base64!!'],
+    'a date that does not parse'     => ['created_at', 'not a date'],
+    'a revision that is not an integer' => ['revision', 'abc'],
+] as $what => [$column, $garbage]) {
     $pdoV2->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = 'vera'")->execute([$garbage]);
     try {
         $reads = $dgV->escrowReads($vera);
@@ -1505,8 +1510,10 @@ foreach (['wrap_admin not base64' => ['wrap_admin', 'n0t-base64!!'], 'a date tha
     try {
         $dgV->setEscrowFields($vera, $admin['publicKey'], ['contact' => 'vera-2@example.org']);
         ko("a row with {$what}: the deposit went through");
-    } catch (EscrowEnvelopeMismatchException) {
-        ok("a row with {$what}: the deposit is refused, EscrowEnvelopeMismatchException");
+    } catch (EscrowEnvelopeMismatchException $e) {
+        $e->getPrevious() instanceof UnreadableEscrowException
+            ? ok("a row with {$what}: the deposit is refused, EscrowEnvelopeMismatchException, the unreadable row as its cause")
+            : ko("a row with {$what}: the deposit is refused without the unreadable row as its cause", get_debug_type($e->getPrevious()));
     } catch (Throwable $e) {
         ko("a row with {$what}: the deposit raised a bare error", get_class($e));
     }
@@ -1522,6 +1529,71 @@ try {
     ko('a row with wrap_admin not base64: the holder cannot object', get_class($e));
 }
 $pdoV2->prepare("UPDATE selfdataguard_escrow SET wrap_admin = ? WHERE user_id = 'vera'")->execute([$veraRow['wrap_admin']]);
+
+/** loadEscrow() raises $raise while it is set: an outage, or a storage that names an unreadable row. */
+final class FailingEscrowRead extends DelegatingStorage
+{
+    public ?Throwable $raise = null;
+
+    public function loadEscrow(string $u): ?EscrowRecord
+    {
+        return $this->raise === null ? $this->inner->loadEscrow($u) : throw $this->raise;
+    }
+}
+$kT = new BenchKeeper(delay: 3600);
+$tInner = new SqliteAdapter('sqlite::memory:');
+$tDb = new FailingEscrowRead($tInner);
+$dgT = new SelfDataGuard($tDb, $blindKey, keeper: $kT);
+$tess = $dgT->register('tess', 'motdepasse-tess-01');
+$dgT->setEscrowFields($tess, $admin['publicKey'], ['contact' => 'tess@example.org']);
+try {
+    benchCeremony($tInner, keeper: $kT)->readEscrow('tess', 'LIT-T1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+} catch (EscrowAnnouncedException) {
+}
+$tDb->raise = new RuntimeException('the storage does not answer');
+foreach ([
+    'hasEscrow()'             => static fn () => $dgT->hasEscrow($tess),
+    'escrowReads()'           => static fn () => $dgT->escrowReads($tess),
+    'getEscrowFieldsAsUser()' => static fn () => $dgT->getEscrowFieldsAsUser($tess),
+    'setEscrowFields()'       => static fn () => $dgT->setEscrowFields($tess, $admin['publicKey'], ['contact' => 'tess-2@example.org']),
+    'rotateEscrow()'          => static fn () => $dgT->rotateEscrow($tess, $admin['publicKey']),
+    'sealEscrowToKeeper()'    => static fn () => $dgT->sealEscrowToKeeper($tess, $admin['publicKey']),
+    'rebindEscrowAdmin()'     => static fn () => $dgT->rebindEscrowAdmin($tess, $admin['publicKey']),
+    'objectToEscrowRead()'    => static fn () => $dgT->objectToEscrowRead($tess, 'LIT-T1'),
+] as $call => $run) {
+    try {
+        $got = $run();
+        ko("a storage outage under {$call}: it returned as if the row did not parse", json_encode($got));
+    } catch (EscrowEnvelopeMismatchException $e) {
+        ko("a storage outage under {$call} reads as an unreadable row: EscrowEnvelopeMismatchException");
+    } catch (RuntimeException $e) {
+        $e === $tDb->raise
+            ? ok("a storage outage under {$call}: the outage itself comes out")
+            : ko("a storage outage under {$call} came out as another error", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+$tDb->raise = new UnreadableEscrowException('a column rewritten');
+$reads = $dgT->escrowReads($tess);
+$reads['reason'] === 'escrow-replaced' && in_array('LIT-T1', $casesOf($reads['pending']), true)
+    ? ok('a storage that names an unreadable row: "escrow-replaced", and the announcement the keeper holds is shown')
+    : ko('a storage that names an unreadable row: the view does not say it', json_encode($reads));
+try {
+    $dgT->objectToEscrowRead($tess, 'LIT-T1');
+    $kT->pending[$hexOf($tess) . '|LIT-T1']['objected']
+        ? ok('a storage that names an unreadable row: the holder objects all the same')
+        : ko('a storage that names an unreadable row: the objection did not reach the keeper');
+} catch (Throwable $e) {
+    ko('a storage that names an unreadable row: the holder cannot object', get_class($e));
+}
+try {
+    $dgT->setEscrowFields($tess, $admin['publicKey'], ['contact' => 'tess-2@example.org']);
+    ko('a storage that names an unreadable row: the deposit went through');
+} catch (EscrowEnvelopeMismatchException $e) {
+    $e->getPrevious() === $tDb->raise
+        ? ok('a storage that names an unreadable row: the deposit is refused, EscrowEnvelopeMismatchException, with it as its cause')
+        : ko('a storage that names an unreadable row: the deposit is refused without it as its cause');
+}
+$tDb->raise = null;
 
 $kVb = new BenchKeeper(delay: 3600);
 $pdoVb = new PDO('sqlite::memory:');
@@ -1645,6 +1717,38 @@ try {
         : ko('the deposit retired the escrow at the new keeper before refusing', $e->getMessage());
 }
 
+$kLa = new BenchKeeper();
+$kLc = new BenchKeeper();
+$kLd = new BenchKeeper();
+$lInner = new SqliteAdapter('sqlite::memory:');
+$lise = (new SelfDataGuard($lInner, $blindKey, keeper: $kLa))->register('lise', 'motdepasse-lise-01');
+(new SelfDataGuard($lInner, $blindKey, keeper: $kLa, formerKeepers: [$kLc]))->setEscrowFields($lise, $admin['publicKey'], ['contact' => 'lise@example.org']);
+$printLa = KeeperSeal::fingerprint($kLa->publicKeys());
+$printLc = KeeperSeal::fingerprint($kLc->publicKeys());
+$lInner->replaceSetting(SelfDataGuard::SETTING_FORMER_KEEPERS, json_encode([$printLc]), json_encode([$printLc, $printLa]));
+$lInner->replaceSetting(SelfDataGuard::SETTING_KEEPER, $printLa, $printLc);
+$lFormers = static fn (): string => (string) $lInner->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS);
+$lHeld = $lFormers();
+try {
+    SelfDataGuard::forgetFormerKeeper($lInner, $printLc);
+    ko('forgetFormerKeeper() forgot the database\'s keeper');
+} catch (InvalidArgumentException) {
+    $lFormers() === $lHeld && $lInner->loadSetting(SelfDataGuard::SETTING_FORGOTTEN_KEEPERS) === null
+        ? ok('after the race, forgetFormerKeeper() on the database\'s keeper is refused, nothing changed')
+        : ko('forgetFormerKeeper() refused the database\'s keeper, but changed a record');
+}
+try {
+    SelfDataGuard::changeKeeper($lInner, $kLc, $kLd);
+    $dgL = new SelfDataGuard($lInner, $blindKey, keeper: $kLd, formerKeepers: [$kLa, $kLc]);
+    $dgL->setEscrowFields($lise, $admin['publicKey'], ['contact' => 'lise-2@example.org']);
+    $reads = $dgL->escrowReads($lise);
+    $reads['established'] && $reads['keeper'] === KeeperSeal::fingerprint($kLd->publicKeys())
+        ? ok('after the race, changeKeeper() to a keeper the database never had: the deposit goes through, the escrow re-sealed to it')
+        : ko('after the race and a change of keeper, the escrow is not re-sealed to the new keeper', json_encode($reads));
+} catch (Throwable $e) {
+    ko('after the race, changeKeeper() to a keeper the database never had does not get the deposits through', get_class($e) . ': ' . $e->getMessage());
+}
+
 // -----------------------------------------------------------------------------
 
 section('A deposit landing between the reads of the envelope and of the fields');
@@ -1691,6 +1795,12 @@ try {
 } catch (Throwable $e) {
     ko('a deposit landing between the reads of the envelope and of the fields broke the read', $e->getMessage());
 }
+$lou = $dg->register('lou', 'motdepasse-lou-01');
+$racing->between = static fn () => $dg->setEscrowFields($lou, $admin['publicKey'], ['contact' => 'lou@example.org']);
+$reads = $racingDg->escrowReads($lou);
+$reads['reason'] !== 'escrow-replaced'
+    ? ok('a first deposit landing between the reads of the row and of the fields: the view reads the row again, no false alarm')
+    : ko('a first deposit landing between the reads of the row and of the fields: the view says "escrow-replaced"', json_encode($reads));
 final class DepositAtEveryRead extends DelegatingStorage
 {
     /** @var (callable(): void)|null */

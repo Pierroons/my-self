@@ -168,6 +168,11 @@ interface StorageInterface
 
     /**
      * Load the escrow envelope for a user, with its revision, or null if none.
+     *
+     * @throws UnreadableEscrowException when the row is there but does not
+     *         parse — every failure to read it, those of EscrowRecord and
+     *         EncryptedBlob included, is raised as this one. Anything else
+     *         raised here is an outage, and the library lets it through.
      */
     public function loadEscrow(string $userId): ?EscrowRecord;
 
@@ -325,8 +330,10 @@ interface StorageInterface
     /**
      * Write $value under $name only when the database holds $expected there,
      * compared in the same statement or inside the write's transaction: true
-     * when it was replaced, false when the name holds another value or none.
-     * Two callers that replace the same value at once: one gets true.
+     * when it was replaced — $value equal to $expected included, which a
+     * storage counting changed rows instead of matched ones gets wrong —,
+     * false when the name holds another value or none. Two callers that
+     * replace the same value at once: one gets true.
      */
     public function replaceSetting(string $name, string $expected, string $value): bool;
 

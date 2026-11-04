@@ -3669,8 +3669,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=84 [sanity_escrow]=66
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=178 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=85 [sanity_escrow]=66
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=194 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -3753,9 +3753,8 @@ jobs:
           canari '    } catch (EscrowEnvelopeMismatchException) {' '    } catch (\DomainException) {' \
             'une ligne de séquestre réécrite cache la vue des lectures'
           F=self-security/selfdataguard/src/SelfDataGuard.php
-          canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {
-                      \$record = false;
-                  }" "" 'une ligne de séquestre supprimée se lit comme un séquestre jamais déposé'
+          canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
+            'une ligne de séquestre supprimée se lit comme un séquestre jamais déposé'
 
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce
@@ -4410,32 +4409,26 @@ jobs:
                   foreach (\$formers as \$former) {
                       if (\$former['reason'] !== null) {" $K 'a deposit went through without the former keeper the database recorded'
           canari $SDG "            return \$this->storage->loadEscrow(\$userId);
-                  } catch (PDOException \$e) {
-                      throw \$e;
-                  } catch (Exception) {" "            return \$this->storage->loadEscrow(\$userId);
-                  } catch (PDOException \$e) {
-                      throw \$e;
+                  } catch (UnreadableEscrowException) {" "            return \$this->storage->loadEscrow(\$userId);
                   } catch (\\DomainException) {" $K 'wrap_user rewritten (not even base64): escrowReads() threw'
           canari $SDG "            return \$this->storage->loadEscrow(\$userId);
-                  } catch (PDOException \$e) {
-                      throw \$e;
-                  } catch (Exception) {" "            return \$this->storage->loadEscrow(\$userId);
-                  } catch (PDOException \$e) {
-                      throw \$e;
-                  } catch (InvalidArgumentException) {" $K 'a row with wrap_admin not base64: escrowReads() threw before asking the keeper'
-          canari $SDG "        } catch (PDOException|StaleEscrowException \$e) {
-                      throw \$e;
-                  } catch (Exception \$e) {" "        } catch (PDOException|StaleEscrowException \$e) {
-                      throw \$e;
-                  } catch (\\DomainException \$e) {" $K 'wrap_user not even base64: the deposit raised a bare error'
-          canari $SDG "        } catch (PDOException|StaleEscrowException \$e) {
-                      throw \$e;
-                  } catch (Exception \$e) {" "        } catch (PDOException|StaleEscrowException \$e) {
-                      throw \$e;
-                  } catch (InvalidArgumentException \$e) {" $K 'a row with wrap_admin not base64: the deposit raised a bare error'
-          canari $SDG "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {
-                      \$record = false;
-                  }" "" $K 'the row deleted, its fields kept: the view says established while the fields refuse'
+                  } catch (UnreadableEscrowException) {" "            return \$this->storage->loadEscrow(\$userId);
+                  } catch (\\Exception) {" $K 'a storage outage under hasEscrow(): it returned as if the row did not parse'
+          canari $SDG "        } catch (UnreadableEscrowException \$e) {
+                      throw \$this->mismatch(\$userId, \$e);" "        } catch (\\DomainException \$e) {
+                      throw \$this->mismatch(\$userId, \$e);" $K 'wrap_user not even base64: the deposit raised a bare error'
+          canari $SDG "        } catch (UnreadableEscrowException \$e) {
+                      throw \$this->mismatch(\$userId, \$e);" "        } catch (\\Exception \$e) {
+                      throw \$this->mismatch(\$userId, \$e);" $K 'a storage outage under getEscrowFieldsAsUser() reads as an unreadable row'
+          canari $D/src/Storage/SqliteAdapter.php "        } catch (Exception \$e) {
+                      throw new UnreadableEscrowException(" "        } catch (\\LogicException \$e) {
+                      throw new UnreadableEscrowException(" $K 'a row with wrap_admin not base64: escrowReads() threw before asking the keeper'
+          canari $D/src/Storage/SqliteAdapter.php "            if (filter_var(\$revision, FILTER_VALIDATE_INT) === false) {" "            if (false) {" \
+            $K 'a row with a revision that is not an integer hides what the keeper holds announced'
+          canari $SDG "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
+            $K 'the row deleted, its fields kept: the view says established while the fields refuse'
+          canari $SDG "            \$record = \$this->rowRecord(\$session->userId) ?? false;" "            \$record = false;" \
+            $K 'a first deposit landing between the reads of the row and of the fields: the view says "escrow-replaced"'
           canari $SDG "        if (\$row === 'not-keeper-sealed' || \$row === 'not-pinned') {
                       return ['reason' => \$row, 'keeper' => null] + \$seen;
                   }
@@ -4457,6 +4450,10 @@ jobs:
             $K 'changeKeeper() promoted a keeper a deposit wrote among the former ones while it checked'
           canari $SDG "        if (\$current !== null && in_array(\$current, \$prints, true)) {" "        if (false) {" \
             $K "a deposit retired the escrow at a keeper that became the database's keeper meanwhile"
+          canari $SDG "        if (\$keeper !== null && hash_equals(\$keeper, \$print)) {" "        if (false) {" \
+            $K "forgetFormerKeeper() forgot the database's keeper"
+          canari $D/src/Storage/Conformance.php "            \$this->storage->replaceSetting(\$name, 'second', 'second')," "            true," \
+            $D/tests/sanity_conformance.php 'ChangedRowsSettingStorage passed a case it breaks'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

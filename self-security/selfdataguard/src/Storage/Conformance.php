@@ -992,6 +992,10 @@ final class Conformance
         );
         $this->assert($this->storage->replaceSetting($name, 'first', 'second'), 'replaceSetting() over the value held returned false');
         $this->assert($this->storage->loadSetting($name) === 'second', 'replaceSetting() over the value held did not replace it');
+        $this->assert(
+            $this->storage->replaceSetting($name, 'second', 'second'),
+            'replaceSetting() with the value already held returned false: the storage counts changed rows, not matched ones'
+        );
         $never = $this->setting('never-replaced');
         $this->assert(
             !$this->storage->replaceSetting($never, 'x', 'y') && $this->storage->loadSetting($never) === null,
