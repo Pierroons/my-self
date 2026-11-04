@@ -2164,7 +2164,7 @@ try {
 }
 
 // ── 51. Un geste d'arbitre qui ne peut pas prendre le verrou n'écrit rien ───
-// Le pendant du n° 49 pour les quatre gestes : la décision se prend et
+// Le pendant du n° 49 pour chaque geste : la décision se prend et
 // s'inscrit sous le verrou d'écriture, pris d'emblée. Sans cela, un geste
 // inscrit son acte puis échoue sur la base — un journal qui annonce un ban, ou
 // une grâce, que la base n'a jamais vu. Deux connexions : A tient le verrou,
@@ -2179,11 +2179,13 @@ $journal51 = new class implements \Pierroons\SelfModerate\Journal {
 };
 Moderate::setJournal($journal51);
 $cible51 = [];
-foreach (['ban', 'pardon', 'maintenir', 'classer'] as $geste) {
+foreach (['ban', 'lever', 'pardon', 'prolonger', 'maintenir', 'classer'] as $geste) {
     $cible51[$geste] = membre($pdo, "verrou-$geste-51");
     poserReputation($pdo, $cible51[$geste], 15);
 }
-Moderate::adminBan($pdo, $cible51['pardon'], 'arbitre-banc', motif());
+foreach (['lever', 'pardon', 'prolonger'] as $geste) {
+    Moderate::adminBan($pdo, $cible51[$geste], 'arbitre-banc', motif());
+}
 // Seul un ban automatique attend un maintien.
 $pdo->prepare("UPDATE member_moderation
                   SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
@@ -2199,7 +2201,9 @@ $b51->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 $b51->exec('PRAGMA busy_timeout = 100');
 $gestes51 = [
     'ban'       => static fn (): array => Moderate::adminBan($b51, $cible51['ban'], 'arbitre-banc', motif()),
+    'lever'     => static fn (): array => Moderate::adminLever($b51, $cible51['lever'], 'arbitre-banc', motif()),
     'pardon'    => static fn (): array => Moderate::adminPardon($b51, $cible51['pardon'], 'arbitre-banc', motif()),
+    'prolonger' => static fn (): array => Moderate::adminProlonger($b51, $cible51['prolonger'], 'arbitre-banc', motif(), 600),
     'maintenir' => static fn (): array => Moderate::adminMaintenir($b51, $cible51['maintenir'], 'arbitre-banc', motif()),
     'classer'   => static fn (): array => Moderate::adminClasser($b51, $cible51['classer'], 'arbitre-banc', motif()),
 ];
@@ -2519,8 +2523,8 @@ $levees58 === 0 && $encoreBanni58 && $apres58 === [1, false]
 
 // ── 59. Aucun geste d'arbitre dans la transaction d'un hôte ─────────────────
 // Le journal ne se défait pas avec la transaction de l'hôte : un geste qui y
-// rendrait `ok` laisserait son acte au journal si l'hôte annulait ensuite. Les
-// six gestes refusent, et rien n'est inscrit.
+// rendrait `ok` laisserait son acte au journal si l'hôte annulait ensuite.
+// Chaque geste refuse, et rien n'est inscrit.
 $journalAvant59 = Moderate::journal();
 $journal59 = new JournalDeBanc();
 Moderate::setJournal($journal59);
@@ -2553,7 +2557,7 @@ foreach (['ban'        => static fn (): array => Moderate::adminBan($pdo, $cible
 $actes59 = count($journal59->actes);
 Moderate::setJournal($journalAvant59);
 $fautes59 === [] && $actes59 === 0
-    ? ok('dans la transaction d\'un hôte, aucun des six gestes ne passe, et rien n\'est inscrit')
+    ? ok('dans la transaction d\'un hôte, aucun geste ne passe, et rien n\'est inscrit')
     : nok('un geste d\'arbitre passe dans la transaction d\'un hôte : ' . json_encode(['gestes' => $fautes59, 'actes' => $actes59], JSON_UNESCAPED_UNICODE));
 
 // ── 60. Dans la transaction d'un hôte, un vote n'arme pas le ban automatique ─
@@ -3250,7 +3254,7 @@ $monte78 === array_fill_keys(['sans-intervalle', 'apres-un-intervalle'], ['reput
 // ── 79. ⭐ Un geste sur un compte inexistant est refusé, sans erreur ─────────
 // La ligne de modération a une clé étrangère vers les comptes de l'hôte : un
 // geste sur un identifiant inconnu butait sur elle, et la route rendait une
-// erreur 500. Les six gestes refusent, et rien ne s'inscrit au journal.
+// erreur 500. Chaque geste refuse, et rien ne s'inscrit au journal.
 $inconnu79 = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1000 FROM accounts')->fetchColumn();
 $actesAvant79 = count($journalC->actes);
 $gestes79 = [];
@@ -3271,7 +3275,7 @@ foreach ([
 }
 $gestes79 === array_fill_keys(['ban', 'grace', 'maintenir', 'classer', 'lever', 'prolonger'], [false, 'Compte introuvable.'])
     && count($journalC->actes) === $actesAvant79
-    ? ok('⭐ les six gestes refusent un compte inexistant, sans erreur et sans rien inscrire')
+    ? ok('⭐ chaque geste refuse un compte inexistant, sans erreur et sans rien inscrire')
     : nok('⭐ un geste sur un compte inexistant échoue autrement qu\'en refus : ' . json_encode([
         'gestes' => $gestes79, 'actes' => count($journalC->actes) - $actesAvant79,
     ], JSON_UNESCAPED_UNICODE));
@@ -5010,8 +5014,9 @@ $enPanne127 && $course127['final'] === ['intermede' => true, 'banni' => false, '
     : nok('⭐ une peine échue sous un journal qui refuse sa fin perd la levée en attente : ' . json_encode(['en_panne' => $enPanne127, ...$course127], JSON_UNESCAPED_UNICODE));
 
 // ── 128. ⭐ Un votant que l'hôte ne connaît pas, ou dont la date est illisible, ne vote pas ─
-// `(int)` d'une colonne absente vaut 0, et d'une date ISO, son année : les deux
-// paraissaient très anciens et passaient l'anti-Sybil.
+// Pour un compte absent, `fetchColumn()` rend `false`, que `(int)` change en 0 ;
+// d'une date ISO, `(int)` garde l'année : les deux paraissaient très anciens et
+// passaient l'anti-Sybil.
 $cible128   = membre($pdo, 'cible-128');
 $avant128   = reputation($pdo, $cible128);
 $fantome128 = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1000 FROM accounts')->fetchColumn();

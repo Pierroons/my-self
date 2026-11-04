@@ -195,7 +195,7 @@ class Moderate
     }
 
     /**
-     * Le refus commun aux quatre gestes d'arbitre quand aucun journal n'est
+     * Le refus commun aux gestes d'arbitre quand aucun journal n'est
      * branché. Un geste d'arbitre porte un nom et s'écrit au journal, comme le
      * ban que la machine prononce seule ; celui qui passerait sans trace est
      * celui qui efface — une grâce remet la réputation au départ et les strikes
@@ -675,7 +675,8 @@ class Moderate
         if (!$rep['voting_rights']) {
             return [false, static::t('Droit de vote retiré (réputation trop basse).')];
         }
-        // Anti-Sybil : compte récent sans activité ne peut pas voter. Un compte
+        // Anti-Sybil : un compte récent ne vote que s'il a assez publié
+        // (`messagesPourVoterAvantAge`). Un compte
         // absent ou une date qui n'est pas un horodatage ne se convertissent pas :
         // `(int)` en ferait 0 — un compte né en 1970 — ou l'année d'une date ISO,
         // et l'un comme l'autre passerait pour très ancien.
@@ -2251,7 +2252,8 @@ class Moderate
     }
 
     /**
-     * Réputation au plancher : bannir quand le journal le permet, signaler sinon.
+     * Réputation au plancher : bannir quand l'hôte arme le ban automatique
+     * (`banAutomatique`) et que le journal le permet, signaler sinon.
      * Dans la transaction d'un hôte, le journal ne le permet pas : l'hôte peut
      * encore annuler, et l'acte survivrait à la base. La réputation à zéro y est
      * signalée, comme sans journal ; le ban tombe au premier vote hors d'elle.
@@ -2267,7 +2269,6 @@ class Moderate
     {
         $maintenant = time();
 
-        // Ban automatique éteint par l'hôte : la machine signale, l'arbitre décide.
         if (!self::config()->banAutomatique) {
             if (!self::enPeineAutomatique($pdo, $accountId)) {
                 self::signaler($pdo, $accountId, 'reputation_zero');

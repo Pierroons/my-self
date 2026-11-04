@@ -29,7 +29,7 @@ switch ($action) {
         $ok = Admin::setReportStatus($pdo, (int) ($body['id'] ?? 0), (string) ($body['status'] ?? ''));
         json_out(['ok' => $ok], $ok ? 200 : 400);
 
-    case 'moderate': // geste d'arbitre : ban, levée, grâce, rallongement, maintien, classement — signé du nom de la session
+    case 'moderate': // geste d'arbitre, signé du nom de la session
         $id    = (int) ($body['account_id'] ?? 0);
         $op    = (string) ($body['op'] ?? '');
         $motif = (string) ($body['motif'] ?? '');

@@ -85,8 +85,8 @@ interface Journal
      * elle ne doit pas en retirer.
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
-     * qui échoue en silence vaut l'absence de journal. Trois exceptions à la
-     * règle, et aucune n'est muette. Quand un vote, un geste ou le balayage
+     * qui échoue en silence vaut l'absence de journal. Des exceptions à la
+     * règle, aucune muette. Quand un vote, un geste ou le balayage
      * constate une peine échue, le refus est consigné et signalé
      * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
      * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
