@@ -74,7 +74,20 @@ if [ -f "$JUDILIBRE_DB" ]; then
     journal "Sauvegarde : $SAUVEGARDE"
 fi
 
-avant=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions" 2>/dev/null || echo 0)
+# Ce que Judilibre a écrit, et lui seul. La table est partagée avec JADE, qui peut
+# tourner pendant ce passage : leurs deux timers sont `Persistent=true` et se
+# rattrapent au même démarrage. Comptée entière, un ajout de JADE masquerait un
+# rafraîchissement qui n'a rien apporté. Même expression que `par_source` dans
+# `/status` ; une base d'avant JADE n'a pas la colonne et se compte entière.
+compter_judilibre() {
+    if sqlite3 "$JUDILIBRE_DB" "SELECT 1 FROM pragma_table_info('decisions') WHERE name='source'" | grep -q 1; then
+        sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions WHERE COALESCE(source,'judilibre')='judilibre'"
+    else
+        sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions"
+    fi
+}
+
+avant=$(compter_judilibre 2>/dev/null || echo 0)
 
 # 🔑 **Trois issues, pas deux.** Le 16/09/2026, cinq tranches refusées sur
 # quatre-vingt-douze ont fait restaurer un index qui venait de gagner 4 190
@@ -93,7 +106,7 @@ rc=0
 python3 "$SCRIPT" --depuis auto >> "$LOG_FILE" 2>&1 || rc=$?
 
 if [ "$rc" = "3" ]; then
-    apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
+    apres=$(compter_judilibre)
     journal "Moisson partielle — index CONSERVÉ : $avant → $apres (+$((apres - avant)))."
     journal "Fraîcheur NON avancée ; les tranches refusées seront reprises au passage suivant."
     rm -f "$SAUVEGARDE"
@@ -101,7 +114,7 @@ if [ "$rc" = "3" ]; then
             "Index conserve et enrichi ($avant -> $apres), mais incomplet : la fraicheur n'avance pas. Voir $LOG_FILE."
     exit 1
 elif [ "$rc" = "4" ]; then
-    apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
+    apres=$(compter_judilibre)
     journal "Juridiction absente de l'index — index CONSERVÉ : $avant → $apres (+$((apres - avant)))."
     journal "Fraîcheur NON avancée ; une moisson complète (build_judilibre_index.py sans --depuis) est nécessaire."
     rm -f "$SAUVEGARDE"
@@ -118,8 +131,8 @@ elif [ "$rc" != "0" ]; then
     exit 1
 fi
 
-apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
-journal "Décisions : $avant → $apres (+$((apres - avant)))"
+apres=$(compter_judilibre)
+journal "Décisions Judilibre : $avant → $apres (+$((apres - avant)))"
 
 # Un rafraîchissement qui n'apporte rien n'est pas une réussite : soit la source
 # est muette, soit la fenêtre est mal calculée. Dans les deux cas ça se signale,

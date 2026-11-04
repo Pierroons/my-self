@@ -245,6 +245,29 @@ lancer_enveloppe; CODE=$?
     || verdict 1 "le marqueur a avancé" "il vaut $(cat "$TMP/db/marqueur.txt")"
 
 echo
+echo "▸ Un ajout de JADE ne masque pas un passage Judilibre sans nouveauté"
+# La table est partagée : si JADE écrit pendant le passage, un décompte de toute
+# la table voit monter le total et se tait, alors que Judilibre n'a rien apporté.
+rm -rf "$TMP/db"; mkdir -p "$TMP/db"
+sqlite3 "$TMP/db/index.sqlite" \
+    "CREATE TABLE decisions (id TEXT PRIMARY KEY, source TEXT);
+     INSERT INTO decisions VALUES ('judilibre-ancienne', NULL), ('jade-ancienne', 'jade');"
+echo "2026-09-01" > "$TMP/db/marqueur.txt"
+: > "$TMP/journal.log"
+cat > "$BAC/build_judilibre_index.py" <<'PYEOF'
+import os, sqlite3
+c = sqlite3.connect(os.environ["JUDILIBRE_DB"])
+c.execute("INSERT INTO decisions VALUES ('jade-du-soir', 'jade')")
+c.commit(); c.close()
+open(os.environ["JUDILIBRE_MARQUEUR"], "w").write("2026-09-16\n")
+PYEOF
+lancer_enveloppe; CODE=$?
+grep -q "sans nouveaute" "$TMP/journal.log" \
+    && verdict 0 "Judilibre n'a rien apporté → l'alerte « sans nouveauté » part" \
+    || verdict 1 "Judilibre n'a rien apporté → l'alerte « sans nouveauté » part" \
+                 "$(grep -E 'Décisions|ALERTE' "$TMP/journal.log" | tail -2)"
+
+echo
 if [ "$ECHECS" -gt 0 ]; then
     echo -e "\033[31m✗ $ECHECS contrôle(s) en échec\033[0m"
     exit 1
