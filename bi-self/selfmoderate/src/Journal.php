@@ -85,18 +85,20 @@ interface Journal
      * elle ne doit pas en retirer.
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
-     * qui échoue en silence vaut l'absence de journal. Deux exceptions à la
+     * qui échoue en silence vaut l'absence de journal. Trois exceptions à la
      * règle, et aucune n'est muette. Quand un vote, un geste ou le balayage
      * constate une peine échue, le refus est consigné et signalé
      * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
      * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
      * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
-     * le fait remonter aussitôt. Et quand le balayage du site, celui d'un vote ou
-     * du planificateur, lève pour meute le ban d'un compte autre que la cible du
-     * vote, le refus ne défait pas le vote :
-     * la levée attend le balayage suivant, le compte est signalé
+     * d'arbitre le fait remonter aussitôt. Au début d'un ban automatique, le
+     * refus ne défait pas le vote qui l'a causé : la chute est signalée avec le
+     * ban dû (`ban_en_attente`), et le vote négatif suivant le retente. Et quand
+     * le balayage du site, celui d'un vote ou du planificateur, lève pour meute
+     * le ban d'un compte autre que la cible du vote, le refus ne défait pas le
+     * vote : la levée attend le balayage suivant, le compte est signalé
      * (`levee_en_attente`), et `detectPackVoting()` le nomme. Un refus se lève par
-     * n'importe quelle exception ; sur ce second chemin, une `\Error` est un
+     * n'importe quelle exception ; sur le chemin du balayage, une `\Error` est un
      * défaut, et remonte.
      *
      * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu

@@ -10,6 +10,37 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfModerate 0.8.0 : lever n'est plus gracier, et un refus du journal ne défait plus le vote — 4 novembre 2026
+
+La 0.8.0 répond aux demandes d'un deuxième hôte, qui fait du moteur la seule source de ses bans. Aucun changement de
+schéma.
+
+- **Lever n'est plus gracier** : `adminLever()` arrête une peine et garde les strikes, ceux d'un arbitre compris — un
+  ban, une levée, un ban signalent l'enchaînement (`bans_arbitre`). `adminProlonger()` repousse l'échéance d'un ban en
+  cours, même épisode, motif exigé. Un arbitre peut poser un ban sans fin, ou y porter un ban d'arbitre en cours :
+  l'échéance vaut `Moderate::SANS_FIN` et n'arrive pas, le lever ou le gracier exige un motif, et le signal
+  `ban_sans_fin` le garde parmi les signalements ouverts, hors de la file. La machine ne prononce toujours aucun ban sans
+  fin.
+- **Un refus du journal au début d'un ban automatique ne défait plus le vote** : la chute est signalée avec le ban dû
+  (`ban_en_attente`), et le vote négatif suivant le retente.
+- **Un votant absent d'`accounts`, ou dont `created_at` n'est pas un horodatage entier en secondes, ne vote plus** : il
+  paraissait très ancien.
+- **Une table `dm` absente lève une `LogicException` qui la nomme**, l'erreur de la base chaînée ; une `dm` présente qui
+  échoue garde son erreur.
+- **Quatre réglages dans `Config`** : `banAutomatique` (éteint, une réputation au plancher est signalée sans ban),
+  `signalPerteDuVote` (actif : la perte du droit de vote se signale, `droit_de_vote_perdu`), `messagesPourVoterAvantAge`
+  (les messages qui dispensent de l'ancienneté anti-Sybil ; 0 n'en dispense personne), `motifsVotantsMin` (sous ce
+  nombre de votants distincts, `reasonsFor()` ne rend rien). Les valeurs par défaut gardent le comportement de la 0.7.1,
+  sauf le signal de perte du vote.
+- La documentation dit ce qu'une `dm` vide éteint, ce qu'un hôte sans journal construit ne doit pas servir, et comment
+  un hôte aux autres noms de tables branche le moteur par des vues temporaires — un cas du banc le joue.
+- Le lab : la console lève, rallonge et gracie par trois boutons distincts, et nomme les trois causes neuves.
+
+**Pour un intégrateur** : un `Journal` qui filtre les actes accepte `ban_prolonge`, la cause `levee` de `ban_leve` et la
+clé `sans_fin` ; `duree` et `reste` y valent `null` pour un ban sans fin. Une console d'arbitre nomme `ban_en_attente`,
+`droit_de_vote_perdu` et `ban_sans_fin`, et une page qui date une échéance teste d'abord `Moderate::estSansFin()`. Le
+détail : la section « Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+
 ### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
 
 Correctif du retour du titulaire dans la fenêtre d'après un niveau 3. Aucune rupture de contrat : ni

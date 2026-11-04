@@ -5387,6 +5387,60 @@ $boutons141 === ['lever' => true, 'rallonger' => true]
         'strikes_admin' => [(int) $avant141['strikes_admin'], (int) $apres141['strikes_admin']],
     ], JSON_UNESCAPED_UNICODE));
 
+// ── 142. ⭐ Un hôte aux autres noms branche le moteur par des vues TEMP ───────
+// Ses tables s'appellent autrement : il les expose sous les noms que le moteur lit,
+// par des vues temporaires sur la connexion qu'il lui passe, sans rien écrire dans
+// son schéma. Les clés étrangères des tables du moteur visent ses vraies tables :
+// une clé étrangère ne vise pas une vue. La meute se lit par la vue `dm`, l'âge et
+// les messages du votant par `accounts` et `posts`.
+$h142 = new PDO('sqlite::memory:');
+$h142->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$h142->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$h142->exec('PRAGMA foreign_keys = ON');
+$h142->exec('CREATE TABLE membres (uid INTEGER PRIMARY KEY, pseudo TEXT NOT NULL, inscrit INTEGER NOT NULL);
+             CREATE TABLE billets (bid INTEGER PRIMARY KEY, auteur INTEGER NOT NULL REFERENCES membres(uid));
+             CREATE TABLE prives (de INTEGER NOT NULL, a INTEGER NOT NULL, le INTEGER NOT NULL)');
+$schema142 = preg_replace('/--[^\n]*/', '', (string) file_get_contents(__DIR__ . '/../schema.sql'));
+preg_match_all('/CREATE (?:UNIQUE )?(?:TABLE IF NOT EXISTS|INDEX IF NOT EXISTS \w+ ON) (?:member_moderation|mod_\w+)\b.*?;/s', $schema142, $ddl142);
+foreach ($ddl142[0] as $instruction142) {
+    $h142->exec(str_replace('REFERENCES accounts(id)', 'REFERENCES membres(uid)', $instruction142));
+}
+$h142->exec('CREATE TEMP VIEW accounts AS SELECT uid AS id, pseudo AS username, inscrit AS created_at FROM membres;
+             CREATE TEMP VIEW posts AS SELECT bid AS id, auteur AS account_id FROM billets;
+             CREATE TEMP VIEW dm AS SELECT de AS sender_id, a AS recipient_id, le AS created_at FROM prives');
+$ancien142 = time() - 30 * 86400;
+$id142 = [];
+foreach (['cible', 'meneur', 'lie', 'neuf'] as $nom142) {
+    $h142->prepare('INSERT INTO membres (pseudo, inscrit) VALUES (?, ?)')->execute([$nom142, $nom142 === 'neuf' ? time() : $ancien142]);
+    $id142[$nom142] = (int) $h142->lastInsertId();
+}
+$h142->prepare('INSERT INTO prives (de, a, le) VALUES (?, ?, ?), (?, ?, ?)')
+    ->execute([$id142['meneur'], $id142['lie'], $ancien142, $id142['lie'], $id142['meneur'], $ancien142]);
+$journalAvant142 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$erreur142 = null;
+$mesure142 = [];
+try {
+    $mesure142['votes'] = [
+        Moderate::applyVote($h142, $id142['meneur'], 'member', $id142['cible'], -1, motif(), 'agressif')['ok'] ?? null,
+        Moderate::applyVote($h142, $id142['lie'], 'member', $id142['cible'], -1, motif(), 'agressif')['ok'] ?? null,
+    ];
+    $mesure142['reputation'] = Moderate::getReputation($h142, $id142['cible'])['reputation'];
+    $mesure142['neuf_sans_message'] = Moderate::canVote($h142, $id142['neuf'])[0];
+    $h142->prepare('INSERT INTO billets (auteur) VALUES (?)')->execute([$id142['neuf']]);
+    $mesure142['neuf_qui_a_publie'] = Moderate::canVote($h142, $id142['neuf'])[0];
+    $mesure142['bans'] = count(Moderate::bansEnCours($h142));
+} catch (Throwable $e142) {
+    $erreur142 = get_class($e142) . ' : ' . $e142->getMessage();
+}
+Moderate::setJournal($journalAvant142);
+$attendu142 = Moderate::config()->reputationInitiale - 1;
+$erreur142 === null && $mesure142['votes'] === [true, true] && $mesure142['reputation'] === $attendu142
+    && $mesure142['neuf_sans_message'] === false && $mesure142['neuf_qui_a_publie'] === true && $mesure142['bans'] === 0
+    ? ok('⭐ un hôte aux autres noms branche le moteur par des vues TEMP : la meute, l\'âge et les messages se lisent à travers elles')
+    : nok('⭐ le moteur ne tient pas sur des vues TEMP : ' . json_encode(['erreur' => $erreur142, 'mesure' => $mesure142,
+        'attendu' => $attendu142, 'ddl' => count($ddl142[0])], JSON_UNESCAPED_UNICODE));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une
