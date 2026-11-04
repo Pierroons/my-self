@@ -145,7 +145,9 @@ interface StorageInterface
      * own transaction or in the same statement: throws StaleEscrowException
      * when the envelope was replaced since — two re-sealings from one read
      * would otherwise both succeed, and the first one be lost without an
-     * error. Throws EscrowNotFoundException if the userId has none.
+     * error —, a row there that no longer parses included: test that a row
+     * is there without parsing it. Throws EscrowNotFoundException if the
+     * userId has none.
      * $record->userId must be $generation's.
      */
     public function replaceEscrow(VaultGeneration $generation, EscrowRecord $record): void;

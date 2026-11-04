@@ -9,6 +9,8 @@ use Exception;
 use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
+use TypeError;
+use ValueError;
 
 /**
  * Persistent state of a user's escrow compartment (the consented, admin-
@@ -48,10 +50,12 @@ final class EscrowRecord
 
     /**
      * The record $build makes of the escrow row of $userId, which the storage
-     * has already fetched: any Exception $build raises comes out as
-     * UnreadableEscrowException, what StorageInterface::loadEscrow() raises
-     * for a row that does not parse. Fetch the row before calling it: an
-     * outage raised inside $build would read as a row rewritten.
+     * has already fetched: any Exception $build raises, and any TypeError or
+     * ValueError — a value of the wrong shape for a typed parameter — comes
+     * out as UnreadableEscrowException, what StorageInterface::loadEscrow()
+     * raises for a row that does not parse; an UnreadableEscrowException
+     * $build raises itself comes out as it is. Fetch the row before calling it: an outage raised inside
+     * $build would read as a row rewritten.
      *
      * @param callable(): self $build
      * @throws UnreadableEscrowException
@@ -60,7 +64,9 @@ final class EscrowRecord
     {
         try {
             return $build();
-        } catch (Exception $e) {
+        } catch (UnreadableEscrowException $e) {
+            throw $e;
+        } catch (Exception|TypeError|ValueError $e) {
             throw new UnreadableEscrowException("The escrow row of '{$userId}' does not parse: {$e->getMessage()}", 0, $e);
         }
     }

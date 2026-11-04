@@ -998,6 +998,8 @@ final class SelfDataGuard
      *         does not take the retirement, or a record of former keepers that keeps changing
      * @throws EscrowEnvelopeMismatchException when the escrow row does not open the fields the database holds:
      *         nothing is written, nothing retired
+     * @throws \Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException when the escrow row is deleted between this
+     *         deposit's read and its write
      */
     public function setEscrowFields(UnlockedVault $session, string $adminPublicKey, array $fields): void
     {
@@ -1333,6 +1335,11 @@ final class SelfDataGuard
         $keys    = $this->keeperKeys();
         $retired = $keys === null;
         for ($attempt = 1; ; $attempt++) {
+            if ($attempt > self::DEPOSIT_ATTEMPTS) {
+                throw new StaleEscrowException(
+                    "The escrow of '{$session->userId}' kept appearing between this deposit's reads: nothing is written"
+                );
+            }
             $read = $this->snapshot($session->userId);
             if ($read === null) {
                 if ($this->storage->loadEscrowFields($session->userId) !== []) {

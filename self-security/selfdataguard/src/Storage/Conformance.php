@@ -61,6 +61,9 @@ final class Conformance
      */
     private const ROUNDS = 10;
 
+    /** The columns of the escrow row the rewrite of escrow-unreadable-row-named makes unreadable, one account each. */
+    private const UNPARSED_COLUMNS = ['wrap_admin', 'wrap_user', 'created_at', 'revision'];
+
     /** Argon2id profile written by the cases: not the constants, so a storage that substitutes them shows. */
     private const OPSLIMIT = 7;
     private const MEMLIMIT = 12_345_678;
@@ -80,7 +83,7 @@ final class Conformance
     /** @var (callable(callable(StorageInterface): void): void)|null */
     private $withCallerTransaction;
 
-    /** @var (callable(string): void)|null */
+    /** @var (callable(string, string): bool)|null */
     private $unparseEscrow;
 
     /**
@@ -107,9 +110,12 @@ final class Conformance
      *        opens a transaction on a new connection to the database under test, hands the storage
      *        built on that connection to its argument, then rolls the transaction back. Without it,
      *        the case that needs it is reported skipped.
-     * @param (callable(string): void)|null $unparseEscrow rewrites a column of the escrow row of the
-     *        userId it is given, in the database under test, so that the row no longer parses. Without
-     *        it, the case that needs it is reported skipped.
+     * @param (callable(string, string): bool)|null $unparseEscrow rewrites, in the database under
+     *        test, the column it is given — one of UNPARSED_COLUMNS — of the escrow row of the userId
+     *        it is given, so that the row no longer parses, and returns true; it returns false for a
+     *        typed column that cannot hold an unreadable value, which the case leaves out, and any
+     *        other return fails the case. Without it, or when it rewrites no column, the case that
+     *        needs it is reported skipped.
      * @return list<array{case: string, outcome: string, detail: string}> outcome is pass, fail or skip
      */
     public static function run(
@@ -451,23 +457,38 @@ final class Conformance
         if ($this->unparseEscrow === null) {
             return 'no rewrite of the escrow row given';
         }
-        $vault = $this->newVault('escrow-unreadable');
-        $this->storage->saveVault($vault);
-        $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
-        ($this->unparseEscrow)($vault->userId);
-        try {
-            $read = $this->storage->loadEscrow($vault->userId);
-        } catch (UnreadableEscrowException) {
-            return null;
-        } catch (Throwable $e) {
-            throw new RuntimeException(
-                'loadEscrow() of a row that does not parse raised ' . $this->short($e::class) . ', not UnreadableEscrowException: '
-                . 'the library takes it for an outage, and the holder loses the view and the objection'
-            );
+        $rewritten = 0;
+        foreach (self::UNPARSED_COLUMNS as $column) {
+            $vault = $this->newVault("escrow-unreadable-{$column}");
+            $this->storage->saveVault($vault);
+            $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+            $done = ($this->unparseEscrow)($vault->userId, $column);
+            if ($done === false) {
+                continue;
+            }
+            if ($done !== true) {
+                throw new RuntimeException(
+                    'the rewrite of the escrow row returned ' . get_debug_type($done) . ', not true or false: it must '
+                    . 'rewrite the column it is given, and say so'
+                );
+            }
+            $rewritten++;
+            try {
+                $read = $this->storage->loadEscrow($vault->userId);
+            } catch (UnreadableEscrowException) {
+                continue;
+            } catch (Throwable $e) {
+                throw new RuntimeException(
+                    "loadEscrow() of a row whose {$column} does not parse raised " . $this->short($e::class)
+                    . ', not UnreadableEscrowException: the library takes it for an outage, and the holder loses the '
+                    . 'view and the objection'
+                );
+            }
+            throw new RuntimeException($read === null
+                ? "the rewrite of {$column} deleted the escrow row instead of making it unreadable"
+                : "loadEscrow() read the row whose {$column} was rewritten as a record");
         }
-        throw new RuntimeException($read === null
-            ? 'the rewrite deleted the escrow row instead of making it unreadable'
-            : 'loadEscrow() read the rewritten row as a record');
+        return $rewritten === 0 ? 'the rewrite made no column of the escrow row unreadable' : null;
     }
 
     private function escrowCompareAndSwap(): ?string

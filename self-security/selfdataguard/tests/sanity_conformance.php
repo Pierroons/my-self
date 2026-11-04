@@ -88,11 +88,14 @@ function connection(string $work, string $class): array
         $build
     ));
     $unparseFile = "{$work}/{$class}-unparse.php";
-    file_put_contents($unparseFile, sprintf(
-        "<?php\nreturn static function (string \$userId): void {\n"
-        . "    (new PDO(%s))->prepare(\"UPDATE selfdataguard_escrow SET wrap_admin = 'n0t-base64!!' WHERE user_id = ?\")->execute([\$userId]);\n};\n",
-        var_export("sqlite:{$db}", true)
-    ));
+    file_put_contents($unparseFile, str_replace('DSN', var_export("sqlite:{$db}", true), <<<'PHP'
+        <?php
+        return static function (string $userId, string $column): bool {
+            $unreadable = ['wrap_admin' => 'n0t-base64!!', 'wrap_user' => 'n0t-base64!!', 'created_at' => 'not a date', 'revision' => 'abc'];
+            (new PDO(DSN))->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = ?")->execute([$unreadable[$column], $userId]);
+            return true;
+        };
+        PHP));
     return [require $file, $file, require $callerFile, $callerFile, require $unparseFile, $unparseFile];
 }
 
@@ -188,6 +191,7 @@ $broken = [
     ChangedRowsSettingStorage::class   => ['setting-replaced-over-expected'],
     EqualValueShortcutStorage::class   => ['setting-replaced-over-expected'],
     BareParseErrorStorage::class       => ['escrow-unreadable-row-named'],
+    WrapAdminOnlyStorage::class        => ['escrow-unreadable-row-named'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file, $withCaller, , $unparse] = connection($work, $class);
@@ -234,6 +238,15 @@ $rc === 0 && str_contains($out, 'Conforme')
 $rc === 1 && str_contains($out, '⏭️ joins-callers-transaction')
     ? ok('without the caller-transaction file, the case is skipped and the adapter is not declared conformant')
     : ko('a run without the caller-transaction file was declared conformant', "rc={$rc} {$out}");
+[$connect, , $withCaller] = connection($work, SqliteAdapter::class);
+$oneColumn = static function (string $userId) use ($work): void {
+    (new PDO("sqlite:{$work}/" . SqliteAdapter::class . '.sqlite'))
+        ->prepare("UPDATE selfdataguard_escrow SET wrap_admin = 'n0t-base64!!' WHERE user_id = ?")->execute([$userId]);
+};
+$byOne = outcomes(Conformance::run($connect, $file, $withCaller, $oneColumn))['escrow-unreadable-row-named'];
+$byOne['outcome'] === 'fail' && str_contains($byOne['detail'], 'not true or false')
+    ? ok('a rewrite that does not say which column it rewrote — the earlier one-column file — fails the case')
+    : ko('a rewrite that does not say which column it rewrote was taken', json_encode($byOne));
 [$rc, $out] = $exit([$bin, $file, $callerFile]);
 $rc === 1 && str_contains($out, '⏭️ escrow-unreadable-row-named')
     ? ok('without the file that makes a row unreadable, the case is skipped and the adapter is not declared conformant')

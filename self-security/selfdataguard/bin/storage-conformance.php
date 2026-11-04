@@ -37,19 +37,29 @@ declare(strict_types=1);
  * Sans lui, le cas « joins-callers-transaction » est sauté, et un cas sauté
  * n'est pas un cas passé : l'implémentation n'est pas déclarée conforme.
  *
- * <ligne-illisible.php> rend un callable qui reçoit un userId et réécrit, dans
- * la base à éprouver, une colonne de sa ligne de séquestre pour qu'elle ne se
- * lise plus, par exemple :
+ * <ligne-illisible.php> rend un callable qui reçoit un userId et un nom de
+ * colonne — wrap_admin, wrap_user, created_at, revision — et réécrit, dans la
+ * base à éprouver, cette colonne de sa ligne de séquestre pour qu'elle ne se
+ * lise plus. Il rend true une fois la colonne réécrite, false pour une colonne
+ * typée qui ne peut pas tenir de valeur illisible ; tout autre retour fait
+ * échouer le cas. Par exemple :
  *
  *   <?php
- *   return static function (string $userId): void {
+ *   return static function (string $userId, string $colonne): bool {
+ *       $illisible = ['wrap_admin' => 'n0t-base64!!', 'wrap_user' => 'n0t-base64!!',
+ *                     'created_at' => 'not a date', 'revision' => null][$colonne];
+ *       if ($illisible === null) {
+ *           return false;
+ *       }
  *       $pdo = new PDO('mysql:host=…;dbname=…', $u, $p);
- *       $pdo->prepare("UPDATE selfdataguard_escrow SET wrap_admin = 'n0t-base64!!' WHERE user_id = ?")
- *           ->execute([$userId]);
+ *       $pdo->prepare("UPDATE selfdataguard_escrow SET {$colonne} = ? WHERE user_id = ?")
+ *           ->execute([$illisible, $userId]);
+ *       return true;
  *   };
  *
- * Le cas « escrow-unreadable-row-named » exige alors que loadEscrow() lève
- * UnreadableEscrowException. Sans lui, ce cas est sauté de même.
+ * Le cas « escrow-unreadable-row-named » exige alors, pour chaque colonne
+ * réécrite, que loadEscrow() lève UnreadableEscrowException. Sans ce fichier,
+ * ou s'il ne réécrit aucune colonne, ce cas est sauté de même.
  *
  * La suite écrit dans cette base, sous des userId tirés au hasard
  * (« conformance-<hex>-… »), et les efface à la fin de chaque cas. Les cas de
@@ -88,7 +98,7 @@ $unparseFile = $argv[3] ?? null;
 $unparse = null;
 if ($unparseFile !== null) {
     if (!is_file($unparseFile) || !is_callable($unparse = require $unparseFile)) {
-        fwrite(STDERR, "{$unparseFile} doit rendre un callable qui rend illisible la ligne de séquestre du userId qu'il reçoit\n");
+        fwrite(STDERR, "{$unparseFile} doit rendre un callable qui rend illisible une colonne de la ligne de séquestre du userId qu'il reçoit\n");
         exit(3);
     }
 }

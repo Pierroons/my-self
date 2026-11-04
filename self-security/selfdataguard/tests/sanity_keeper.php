@@ -30,6 +30,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Escrow\KeeperConformance;
 use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 use Pierroons\SelfDataGuard\Escrow\NoKeeper;
+use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -1532,6 +1533,12 @@ try {
     ko('a row with wrap_admin not base64: the holder cannot object', get_class($e));
 }
 $pdoV2->prepare("UPDATE selfdataguard_escrow SET wrap_admin = ? WHERE user_id = 'vera'")->execute([$veraRow['wrap_admin']]);
+$pdoV2->prepare("UPDATE selfdataguard_escrow SET revision = ? WHERE user_id = 'vera'")->execute([PHP_INT_MAX - 1]);
+$reads = $dgV->escrowReads($vera);
+$reads['reason'] !== 'escrow-replaced'
+    ? ok('a revision one below the maximum still reads: the bound refuses only what the next write cannot bump')
+    : ko('a revision one below the maximum reads as a row rewritten', json_encode($reads));
+$pdoV2->prepare("UPDATE selfdataguard_escrow SET revision = ? WHERE user_id = 'vera'")->execute([$veraRow['revision']]);
 
 /** loadEscrow() raises $raise while it is set: an outage, or a storage that names an unreadable row. */
 final class FailingEscrowRead extends DelegatingStorage
@@ -1597,6 +1604,53 @@ try {
         : ko('a storage that names an unreadable row: the deposit is refused without it as its cause');
 }
 $tDb->raise = null;
+
+$typed = static fn (int $revision): int => $revision;
+try {
+    EscrowRecord::parse('tess', static fn () => $typed('abc'));
+    ko('EscrowRecord::parse(): a TypeError in the build came out as a record');
+} catch (UnreadableEscrowException $e) {
+    $e->getPrevious() instanceof TypeError
+        ? ok('EscrowRecord::parse(): a TypeError in the build — a value of the wrong shape — comes out as UnreadableEscrowException')
+        : ko('EscrowRecord::parse(): the TypeError is not kept as the cause', get_debug_type($e->getPrevious()));
+} catch (TypeError) {
+    ko('EscrowRecord::parse(): a TypeError in the build comes out bare: the library takes it for an outage');
+}
+$named = new UnreadableEscrowException('raised by the build itself');
+try {
+    EscrowRecord::parse('tess', static fn () => throw $named);
+} catch (UnreadableEscrowException $e) {
+    $e === $named
+        ? ok('EscrowRecord::parse(): an UnreadableEscrowException the build raises comes out as it is')
+        : ko('EscrowRecord::parse(): an UnreadableEscrowException the build raises is wrapped again');
+}
+
+/** createEscrow() always finds an escrow there, as a trigger could make it; past a bound it fails, so that a deposit that does not stop fails the bench instead of hanging it. */
+final class AlwaysExistsEscrow extends DelegatingStorage
+{
+    public int $creations = 0;
+
+    public function createEscrow(VaultGeneration $generation, EscrowRecord $record): void
+    {
+        if (++$this->creations > 10) {
+            throw new RuntimeException('createEscrow() called more than ten times: the deposit does not stop');
+        }
+        throw new EscrowExistsException("An escrow already exists for '{$record->userId}'");
+    }
+}
+$xDb = new AlwaysExistsEscrow(new SqliteAdapter('sqlite::memory:'));
+$dgX = new SelfDataGuard($xDb, $blindKey, keeper: $keeper);
+$xena = $dgX->register('xena', 'motdepasse-xena-01');
+try {
+    $dgX->setEscrowFields($xena, $admin['publicKey'], ['contact' => 'xena@example.org']);
+    ko('a first deposit whose escrow keeps appearing went through');
+} catch (StaleEscrowException) {
+    $xDb->creations === 3
+        ? ok('a first deposit whose escrow keeps appearing stops after three attempts, StaleEscrowException')
+        : ko('a first deposit whose escrow keeps appearing stopped after another number of attempts', (string) $xDb->creations);
+} catch (RuntimeException $e) {
+    ko('a first deposit whose escrow keeps appearing does not stop', $e->getMessage());
+}
 
 $kVb = new BenchKeeper(delay: 3600);
 $pdoVb = new PDO('sqlite::memory:');

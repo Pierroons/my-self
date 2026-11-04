@@ -756,3 +756,19 @@ final class BareParseErrorStorage extends DelegatingStorage
         }
     }
 }
+
+/** Names only an unreadable wrap_admin; any other column comes out as it came. */
+final class WrapAdminOnlyStorage extends DelegatingStorage
+{
+    public function loadEscrow(string $u): ?EscrowRecord
+    {
+        try {
+            return $this->inner->loadEscrow($u);
+        } catch (UnreadableEscrowException $e) {
+            if (str_contains($e->getMessage(), 'wrap_admin')) {
+                throw $e;
+            }
+            throw $e->getPrevious() ?? $e;
+        }
+    }
+}

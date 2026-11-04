@@ -3669,8 +3669,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=89 [sanity_escrow]=66
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=200 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=91 [sanity_escrow]=66
+            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=204 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -4419,7 +4419,7 @@ jobs:
           canari $SDG "        } catch (UnreadableEscrowException \$e) {
                       throw \$this->mismatch(\$userId, \$e);" "        } catch (\\Exception \$e) {
                       throw \$this->mismatch(\$userId, \$e);" $K 'a storage outage under getEscrowFieldsAsUser() reads as an unreadable row'
-          canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception \$e) {
+          canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception|TypeError|ValueError \$e) {
                       throw new UnreadableEscrowException(" "        } catch (\\LogicException \$e) {
                       throw new UnreadableEscrowException(" $K 'a row with wrap_admin not base64: escrowReads() threw before asking the keeper'
           canari $D/src/Storage/SqliteAdapter.php "                || (\$row['revision_type'] ?? 'integer') !== 'integer'
@@ -4460,15 +4460,69 @@ jobs:
             $K "a deposit retired the escrow at a keeper that became the database's keeper meanwhile"
           canari $SDG "        if (\$keeper !== null && hash_equals(\$keeper, \$print)) {" "        if (false) {" \
             $K "forgetFormerKeeper() forgot the database's keeper"
+          canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception|TypeError|ValueError \$e) {" "        } catch (Exception \$e) {" \
+            $K 'EscrowRecord::parse(): a TypeError in the build comes out bare'
+          canari $D/src/Escrow/EscrowRecord.php "        } catch (UnreadableEscrowException \$e) {
+                      throw \$e;
+                  } catch (Exception|TypeError|ValueError" "        } catch (Exception|TypeError|ValueError" \
+            $K 'EscrowRecord::parse(): an UnreadableEscrowException the build raises is wrapped again'
+          canari $SDG "            if (\$attempt > self::DEPOSIT_ATTEMPTS) {" "            if (false) {" \
+            $K 'a first deposit whose escrow keeps appearing does not stop'
+          canari $D/src/Storage/SqliteAdapter.php "['max_range' => PHP_INT_MAX - 1]" "['max_range' => PHP_INT_MAX - 2]" \
+            $K 'a revision one below the maximum reads as a row rewritten'
+
+      # Les canaris qui relancent sanity_conformance.php coûtent chacun une passe de la suite
+      # (ses cas concurrent-* paient autant de tours de processus que Conformance::ROUNDS) : ils
+      # tiennent leurs propres étapes, pour que chacune finisse sous le délai de check-canaris.sh.
+
+      - name: Canaris — la conformité de SelfDataGuard tient le remplacement d'un réglage
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
           canari $D/src/Storage/Conformance.php "            \$this->storage->replaceSetting(\$name, 'second', 'second')," "            true," \
             $D/tests/sanity_conformance.php 'ChangedRowsSettingStorage passed a case it breaks'
-          canari $D/src/Storage/Conformance.php "            'escrow-unreadable-row-named'   => 'unreadableEscrowNamed',
-          " "" $D/tests/sanity_conformance.php 'BareParseErrorStorage passed a case it breaks'
           canari $D/src/Storage/Conformance.php "            !\$this->storage->replaceSetting(\$name, 'first', 'first') && \$this->storage->loadSetting(\$name) === 'second'," \
             "            true," $D/tests/sanity_conformance.php 'EqualValueShortcutStorage passed a case it breaks'
-          canari $D/src/Storage/Conformance.php "        } catch (UnreadableEscrowException) {
-                      return null;" "        } catch (\\DomainException) {
-                      return null;" $D/tests/sanity_conformance.php '❌ escrow-unreadable-row-named'
+
+      - name: Canaris — la conformité de SelfDataGuard exige la ligne illisible nommée
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          canari $D/src/Storage/Conformance.php "            'escrow-unreadable-row-named'   => 'unreadableEscrowNamed',
+          " "" $D/tests/sanity_conformance.php 'BareParseErrorStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "            } catch (UnreadableEscrowException) {
+                          continue;" "            } catch (\\DomainException) {
+                          continue;" $D/tests/sanity_conformance.php '❌ escrow-unreadable-row-named'
+          canari $D/src/Storage/Conformance.php "    private const UNPARSED_COLUMNS = ['wrap_admin', 'wrap_user', 'created_at', 'revision'];" \
+            "    private const UNPARSED_COLUMNS = ['wrap_admin'];" $D/tests/sanity_conformance.php 'WrapAdminOnlyStorage passed a case it breaks'
+          canari $D/src/Storage/Conformance.php "            if (\$done !== true) {" "            if (false) {" \
+            $D/tests/sanity_conformance.php 'a rewrite that does not say which column it rewrote was taken'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
