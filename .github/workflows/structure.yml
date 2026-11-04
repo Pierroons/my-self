@@ -2391,7 +2391,7 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 192/192 contrôles passés' \
+          echo "$sortie" | grep -qx '✅ 197/197 contrôles passés' \
             || { echo "::error::le banc de modération n'a pas joué ses 186 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
@@ -2861,7 +2861,8 @@ jobs:
                      salveVotantsMin fenetreMeuteJours meuteLiensMin meuteVotantsMax balayagePeriodeSecondes \
                      meuteEpisodeCooldown fenetreFarmingJours farmingUpvotesMax farmingDownvotesMax \
                      ciblesParVotantMax ageMinPourVoterSecondes intervalleConvalescenceSecondes \
-                     dureesBan dureeBanAdminSecondes plancherFraction bansArbitreSignal balayageFiletMax; do
+                     dureesBan dureeBanAdminSecondes plancherFraction bansArbitreSignal balayageFiletMax \
+                     banAutomatique signalPerteDuVote messagesPourVoterAvantAge motifsVotantsMin; do
             cp "$M" /tmp/moderate.config.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, re, sys
@@ -3308,8 +3309,8 @@ jobs:
               'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
                                "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),
               'borne':     (M, "AND cause = ? AND derniere_le <= ?'", "AND cause = ? AND derniere_le < ?'", 1),
-              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente'];",
-                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'signal_anterieur'];", 1),
+              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu'];",
+                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'signal_anterieur'];", 1),
               'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
                                "                continue;\n", 1),
               'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
@@ -3565,7 +3566,7 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 45/45 contrôles passés' \
+          echo "$sortie" | grep -qx '✅ 47/47 contrôles passés' \
             || { echo "::error::le banc des promesses n'a pas joué ses 45 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet

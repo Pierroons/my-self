@@ -179,7 +179,7 @@ class Moderate
     /** Le bannissement automatique est-il armé sur ce déploiement ? */
     public static function banAutomatiqueArme(): bool
     {
-        return self::$journal !== null;
+        return self::$journal !== null && self::config()->banAutomatique;
     }
 
     /**
@@ -373,6 +373,7 @@ class Moderate
                 $l['last_regen_at'] = $last + $gagnes * self::config()->intervalleConvalescenceSecondes;
                 if ($rep >= self::config()->perteDroitDeVoteSous) {
                     $l['voting_rights'] = 1;
+                    $tombentRegen[]     = 'droit_de_vote_perdu';
                 }
                 if ($rep >= self::config()->sortieConvalescence()) {
                     $l['convalescent'] = 0;
@@ -401,6 +402,9 @@ class Moderate
                 array_push($tombentFin, 'ban_auto', 'reputation_zero');
             } elseif ((int) $l['reputation'] >= self::config()->perteDroitDeVoteSous) {
                 $l['voting_rights'] = 1;
+            }
+            if ((int) $l['voting_rights'] === 1) {
+                $tombentFin[] = 'droit_de_vote_perdu';
             }
             $tombentFin[]      = 'journal_en_panne';
             $l['banned_until'] = 0;
@@ -678,11 +682,15 @@ class Moderate
             $stmt = $pdo->prepare('SELECT COUNT(*) FROM posts WHERE account_id = ?');
             $stmt->execute([$accountId]);
             $nbPosts = (int) $stmt->fetchColumn();
-            if ($nbPosts < 1) {
-                return [false, sprintf(
-                    static::t('Compte trop récent : publie au moins un message ou attends encore %s pour pouvoir voter (anti-Sybil).'),
-                    static::dureeEnClair($ageMin - $age)
-                )];
+            $dispense = self::config()->messagesPourVoterAvantAge;
+            if ($dispense === 0 || $nbPosts < $dispense) {
+                $attente = static::dureeEnClair($ageMin - $age);
+
+                return [false, match (true) {
+                    $dispense === 0 => sprintf(static::t('Compte trop récent : attends encore %s pour pouvoir voter (anti-Sybil).'), $attente),
+                    $dispense === 1 => sprintf(static::t('Compte trop récent : publie au moins un message ou attends encore %s pour pouvoir voter (anti-Sybil).'), $attente),
+                    default         => sprintf(static::t('Compte trop récent : publie au moins %1$d messages ou attends encore %2$s pour pouvoir voter (anti-Sybil).'), $dispense, $attente),
+                }];
             }
         }
         return [true, ''];
@@ -1638,6 +1646,7 @@ class Moderate
         $rep = self::etat($pdo, $author);
         if ($rep['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
+            self::designaler($pdo, $author, 'droit_de_vote_perdu');
         }
         // Seul un ban automatique se lève ici : il est venu des votes. Un ban
         // d'arbitre n'en dépend pas. Pas de plancher non plus : cette levée
@@ -1810,7 +1819,7 @@ class Moderate
     /** Les causes d'état, que lisent `famille()` et la reprise (`migrerSignaux()`). */
     private static function causesEtat(): array
     {
-        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente'];
+        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu'];
     }
 
     /**
@@ -2195,6 +2204,12 @@ class Moderate
     {
         if ($reputation < self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
+            // Au plancher, la chute prend sa place, et un ban automatique porte déjà
+            // son signal : la perte du vote n'en ajoute pas.
+            if (self::config()->signalPerteDuVote && $reputation > self::config()->banA
+                && !self::enPeineAutomatique($pdo, $accountId)) {
+                self::signaler($pdo, $accountId, 'droit_de_vote_perdu');
+            }
         }
         // Une réputation au plancher qui arrive ici vient d'une érosion étalée :
         // toute meute a déjà été neutralisée et la réputation restituée par
@@ -2206,6 +2221,8 @@ class Moderate
         // inscrits au journal.
         if ($reputation <= self::config()->banA) {
             self::sanctionnerReputationZero($pdo, $accountId);
+            // La chute prend la place de la perte du vote : un fait, un signal.
+            self::designaler($pdo, $accountId, 'droit_de_vote_perdu');
         }
 
         // Sous le seuil de vote, la convalescence s'ouvre. `AND convalescent = 0`
@@ -2236,6 +2253,14 @@ class Moderate
     {
         $maintenant = time();
 
+        // Ban automatique éteint par l'hôte : la machine signale, l'arbitre décide.
+        if (!self::config()->banAutomatique) {
+            if (!self::enPeineAutomatique($pdo, $accountId)) {
+                self::signaler($pdo, $accountId, 'reputation_zero');
+            }
+
+            return;
+        }
         if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {
             if (!self::enPeineAutomatique($pdo, $accountId)) {
                 self::signaler($pdo, $accountId, 'reputation_zero');
@@ -2285,7 +2310,7 @@ class Moderate
                 'motif'   => 'reputation_zero',
                 'arbitre' => null,
                 'ouverts' => self::causesEnTexte($signaux),
-                'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero', 'ban_en_attente')),
+                'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero', 'ban_en_attente', 'droit_de_vote_perdu')),
             ]);
         } catch (\Throwable $e) {
             if ($e instanceof LectureDansUneEcriture) {
@@ -2308,7 +2333,7 @@ class Moderate
         )->execute([$jusqua, $maintenant, $episode, $maintenant, $accountId]);
         // Le ban prend la place de la chute qui l'a causé : un fait, un signal. Un
         // refus précédent de ce ban se ferme avec lui.
-        self::designaler($pdo, $accountId, 'reputation_zero', 'ban_en_attente');
+        self::designaler($pdo, $accountId, 'reputation_zero', 'ban_en_attente', 'droit_de_vote_perdu');
         self::signaler($pdo, $accountId, 'ban_auto');
     }
 
@@ -2399,6 +2424,16 @@ class Moderate
     public static function reasonsFor(PDO $pdo, int $accountId, int $limit = 50): array
     {
         $recus = "FROM mod_votes WHERE target_author = ? AND blocked = 0 AND reason IS NOT NULL AND reason <> ''";
+        // Sous ce nombre de votants, un motif peut désigner son auteur : rien n'est rendu.
+        if (self::config()->motifsVotantsMin > 1) {
+            $votants = $pdo->prepare("SELECT COUNT(DISTINCT voter_id) $recus");
+            $votants->execute([$accountId]);
+            $assez = (int) $votants->fetchColumn() >= self::config()->motifsVotantsMin;
+            $votants->closeCursor();
+            if (!$assez) {
+                return [];
+            }
+        }
         $borne = $pdo->prepare("SELECT created_at $recus ORDER BY created_at DESC LIMIT 1 OFFSET ?");
         $borne->bindValue(1, $accountId, PDO::PARAM_INT);
         $borne->bindValue(2, max(0, $limit - 1), PDO::PARAM_INT);

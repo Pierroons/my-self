@@ -140,7 +140,7 @@ function recalerCase(PDO $pdo, int $id): void
         "UPDATE member_moderation
             SET review_reason = COALESCE(
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL
-                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente') ORDER BY id LIMIT 1),
+                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu') ORDER BY id LIMIT 1),
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL ORDER BY id DESC LIMIT 1)),
                 needs_review = EXISTS (SELECT 1 FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL)
           WHERE account_id = :id"
@@ -2602,7 +2602,8 @@ function invariantsSignaux(PDO $p): array
                  OR (s.cause = 'journal_en_panne' AND m.banned_until = 0)
                  OR (s.cause = 'reputation_zero' AND m.convalescent = 0)
                  OR (s.cause = 'ban_en_attente' AND NOT EXISTS (SELECT 1 FROM mod_signaux z
-                        WHERE z.account_id = s.account_id AND z.cause = 'reputation_zero'))"
+                        WHERE z.account_id = s.account_id AND z.cause = 'reputation_zero'))
+                 OR (s.cause = 'droit_de_vote_perdu' AND m.voting_rights = 1)"
         )->fetchAll(PDO::FETCH_ASSOC),
         'bans_sans_signal' => $p->query(
             "SELECT account_id FROM member_moderation m
@@ -2620,7 +2621,7 @@ function invariantsSignaux(PDO $p): array
                        EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
                        COALESCE(
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
-                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente') ORDER BY id LIMIT 1),
+                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu') ORDER BY id LIMIT 1),
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
                        ) AS attendu_cause
                   FROM member_moderation m)
@@ -5133,6 +5134,106 @@ Moderate::setJournal($journalAvant132);
     && in_array('ban_en_attente', causes($pdo, $cible132), true)
     ? ok('un refus ordinaire du journal au début du ban est contenu : le vote tient, le ban dû se signale')
     : nok('un refus ordinaire du journal au début du ban passe pour une erreur d\'intégration : ' . json_encode([$vote132, causes($pdo, $cible132)]));
+
+// ── 133. ⭐ Le ban automatique éteint par l'hôte : la chute se signale, rien ne bannit ─
+$journal133 = new JournalDeBanc();
+$journalAvant133 = Moderate::journal();
+Moderate::setJournal($journal133);
+$chute133 = membre($pdo, 'chute-133');
+poserReputation($pdo, $chute133, 1);
+[$arme133, $etat133, $causes133] = sousConfig(new Config(banAutomatique: false), static function () use ($pdo, $chute133): array {
+    Moderate::applyVote($pdo, membre($pdo, 'votant-133'), 'member', $chute133, -1, motif(), 'agressif');
+    return [Moderate::banAutomatiqueArme(), etatBan($pdo, $chute133), causes($pdo, $chute133)];
+});
+$armeDefaut133 = Moderate::banAutomatiqueArme();
+Moderate::setJournal($journalAvant133);
+!$arme133 && $armeDefaut133 && (int) $etat133['banned_until'] === 0 && (int) $etat133['reputation'] === 0
+    && $causes133 === ['reputation_zero'] && $journal133->de($chute133, 'ban_debut') === []
+    ? ok('banAutomatique éteint : la réputation au plancher est signalée, rien ne bannit, et banAutomatiqueArme() le dit')
+    : nok('seuil sourd à la config (banAutomatique) : ' . json_encode([$arme133, $armeDefaut133, $etat133, $causes133]));
+
+// ── 134. ⭐ La perte du droit de vote se signale, et tombe quand le droit revient ─
+$perte134 = membre($pdo, 'perte-134');
+poserReputation($pdo, $perte134, 5);
+Moderate::applyVote($pdo, membre($pdo, 'votant-134-a'), 'member', $perte134, -1, motif(), 'agressif');
+$pendant134 = causes($pdo, $perte134);
+$pdo->prepare('UPDATE member_moderation SET last_regen_at = last_regen_at - ? WHERE account_id = ?')
+    ->execute([Moderate::config()->intervalleConvalescenceSecondes, $perte134]);
+rattraper($pdo, $perte134);
+$apres134 = causes($pdo, $perte134);
+$muet134 = membre($pdo, 'muet-134');
+poserReputation($pdo, $muet134, 5);
+$sansSignal134 = sousConfig(new Config(signalPerteDuVote: false), static function () use ($pdo, $muet134): array {
+    Moderate::applyVote($pdo, membre($pdo, 'votant-134-b'), 'member', $muet134, -1, motif(), 'agressif');
+    return causes($pdo, $muet134);
+});
+$plancher134 = membre($pdo, 'plancher-134');
+poserReputation($pdo, $plancher134, 2);
+Moderate::applyVote($pdo, membre($pdo, 'votant-134-c'), 'member', $plancher134, -1, motif(), 'agressif');
+$avantPlancher134 = causes($pdo, $plancher134);
+Moderate::applyVote($pdo, membre($pdo, 'votant-134-d'), 'member', $plancher134, -1, motif(), 'agressif');
+$auPlancher134 = causes($pdo, $plancher134);
+$sansBan134 = membre($pdo, 'sans-ban-134');
+poserReputation($pdo, $sansBan134, 2);
+$auPlancherSansBan134 = sousConfig(new Config(banAutomatique: false), static function () use ($pdo, $sansBan134): array {
+    Moderate::applyVote($pdo, membre($pdo, 'votant-134-e'), 'member', $sansBan134, -1, motif(), 'agressif');
+    Moderate::applyVote($pdo, membre($pdo, 'votant-134-f'), 'member', $sansBan134, -1, motif(), 'agressif');
+    return causes($pdo, $sansBan134);
+});
+$pendant134 === ['droit_de_vote_perdu'] && $apres134 === [] && reputation($pdo, $perte134) === 5
+    && $sansSignal134 === [] && $avantPlancher134 === ['droit_de_vote_perdu']
+    && !in_array('droit_de_vote_perdu', $auPlancher134, true) && $auPlancher134 !== []
+    && $auPlancherSansBan134 === ['reputation_zero']
+    ? ok('la perte du droit de vote se signale, tombe quand il revient, se tait sur demande, et cède la place à la chute')
+    : nok('seuil sourd à la config (signalPerteDuVote), ou perte du vote muette : ' . json_encode([$pendant134, $apres134, reputation($pdo, $perte134), $sansSignal134, $avantPlancher134, $auPlancher134, $auPlancherSansBan134]));
+
+// ── 135. ⭐ Les messages qui dispensent de l'ancienneté se règlent ──────────────
+$jeune135 = membre($pdo, 'jeune-135');
+$pdo->prepare('UPDATE accounts SET created_at = ? WHERE id = ?')->execute([time(), $jeune135]);
+message($pdo, $jeune135, 'fil-135');
+$defaut135 = Moderate::canVote($pdo, $jeune135);
+$deux135   = sousConfig(new Config(messagesPourVoterAvantAge: 2), static fn (): array => Moderate::canVote($pdo, $jeune135));
+$zero135   = sousConfig(new Config(messagesPourVoterAvantAge: 0), static fn (): array => Moderate::canVote($pdo, $jeune135));
+$defaut135 === [true, ''] && $deux135[0] === false && str_contains($deux135[1], '2 messages')
+    && $zero135[0] === false && !str_contains($zero135[1], 'publie')
+    ? ok('un message dispense par défaut ; deux en exigent deux ; zéro ne dispense personne, et chaque refus dit le sien')
+    : nok('seuil sourd à la config (messagesPourVoterAvantAge) : ' . json_encode([$defaut135, $deux135, $zero135]));
+
+// ── 136. ⭐ Sous le seuil de votants, reasonsFor() ne rend aucun motif ───────────
+$vise136 = membre($pdo, 'vise-136');
+$post136 = message($pdo, $vise136, 'fil-136');
+foreach (['a', 'b'] as $n) {
+    Moderate::applyVote($pdo, membre($pdo, "votant-136-$n"), 'post', $post136, -1, motif(), 'agressif');
+}
+$defaut136 = count(Moderate::reasonsFor($pdo, $vise136));
+$trois136  = sousConfig(new Config(motifsVotantsMin: 3), static fn (): int => count(Moderate::reasonsFor($pdo, $vise136)));
+Moderate::applyVote($pdo, membre($pdo, 'votant-136-c'), 'post', $post136, -1, motif(), 'agressif');
+$assez136  = sousConfig(new Config(motifsVotantsMin: 3), static fn (): int => count(Moderate::reasonsFor($pdo, $vise136)));
+$defaut136 === 2 && $trois136 === 0 && $assez136 === 3
+    ? ok('reasonsFor() rend les motifs à partir de motifsVotantsMin votants distincts, et rien en dessous')
+    : nok('seuil sourd à la config (motifsVotantsMin) : ' . json_encode([$defaut136, $trois136, $assez136]));
+
+// ── 137. ⭐ La fin d'un ban d'arbitre qui rend le vote ferme la perte du vote ───
+$journal137 = new JournalDeBanc();
+$journalAvant137 = Moderate::journal();
+Moderate::setJournal($journal137);
+$arbitre137 = membre($pdo, 'arbitre-137');
+poserReputation($pdo, $arbitre137, 5);
+Moderate::applyVote($pdo, membre($pdo, 'votant-137'), 'member', $arbitre137, -1, motif(), 'agressif');
+$avant137 = causes($pdo, $arbitre137);
+Moderate::adminBan($pdo, $arbitre137, 'arbitre', motif());
+// Remontée pendant la peine, hors convalescence : seule la fin de peine rend le vote.
+$pdo->prepare('UPDATE member_moderation SET reputation = 6, convalescent = 0 WHERE account_id = ?')->execute([$arbitre137]);
+vieillirBan($pdo, $arbitre137, 10 * Moderate::config()->dureeBanAdmin());
+rattraper($pdo, $arbitre137);
+$apres137 = causes($pdo, $arbitre137);
+$fin137 = $journal137->de($arbitre137, 'ban_fin');
+Moderate::setJournal($journalAvant137);
+$avant137 === ['droit_de_vote_perdu'] && !in_array('droit_de_vote_perdu', $apres137, true)
+    && (int) etatBan($pdo, $arbitre137)['voting_rights'] === 1 && count($fin137) === 1
+    && str_contains((string) $fin137[0]['ferme'], 'droit_de_vote_perdu')
+    ? ok('la fin d\'un ban d\'arbitre qui rend le vote ferme la perte du vote, et son acte le dit')
+    : nok('la perte du vote survit à la fin du ban qui rend le vote : ' . json_encode([$avant137, $apres137, etatBan($pdo, $arbitre137), $fin137]));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

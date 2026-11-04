@@ -246,6 +246,10 @@ return [
         => 'Vote recorded but neutralised: too many repeated downvotes towards this member (anti-farming).',
     'Compte trop récent : publie au moins un message ou attends encore %s pour pouvoir voter (anti-Sybil).'
         => 'Account too new: post at least once, or wait another %s, before you can vote (anti-Sybil).',
+    'Compte trop récent : attends encore %s pour pouvoir voter (anti-Sybil).'
+        => 'Account too new: wait another %s before you can vote (anti-Sybil).',
+    'Compte trop récent : publie au moins %1$d messages ou attends encore %2$s pour pouvoir voter (anti-Sybil).'
+        => 'Account too new: post at least %1$d messages, or wait another %2$s, before you can vote (anti-Sybil).',
     'Date de création du compte illisible : le vote attend un horodatage en secondes.'
         => 'Unreadable account creation date: voting expects a timestamp in seconds.',
     'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',

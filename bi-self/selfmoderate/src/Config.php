@@ -18,6 +18,9 @@ use InvalidArgumentException;
 final class Config
 {
     /**
+     * @param int      $banA                  Plancher de la réputation ET seuil du ban automatique :
+     *                                        aucun vote ne la descend plus bas, et l'atteindre
+     *                                        bannit (voir `banAutomatique`).
      * @param int      $fenetreSalveSecondes  Salve rapide : plusieurs downvotes groupés
      *                                        dans ce délai, SANS lien entre les votants.
      *                                        Le plus souvent une réaction spontanée au
@@ -60,6 +63,18 @@ final class Config
      *                                        desquels l'enchaînement est signalé à
      *                                        l'arbitre : chacun alourdit le ban
      *                                        automatique suivant.
+     * @param bool     $banAutomatique        La réputation au plancher bannit, journal branché et
+     *                                        hors de la transaction de l'hôte. Faux : elle est
+     *                                        signalée à l'arbitre, sans ban — la machine signale,
+     *                                        l'arbitre décide.
+     * @param bool     $signalPerteDuVote     Signale à l'arbitre le compte qui perd son droit de
+     *                                        vote sous `perteDroitDeVoteSous` ; le signal tombe
+     *                                        quand le droit revient.
+     * @param int      $messagesPourVoterAvantAge Messages publiés qui dispensent de
+     *                                        `ageMinPourVoterSecondes` ; 0 n'en dispense personne.
+     * @param int      $motifsVotantsMin      `reasonsFor()` ne rend les motifs reçus qu'à partir
+     *                                        de ce nombre de votants distincts : sous lui, un motif
+     *                                        peut désigner son auteur. 1 les rend toujours.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -84,6 +99,10 @@ final class Config
         public readonly float $plancherFraction = 1 / 3,
         public readonly int $bansArbitreSignal = 2,
         public readonly int $balayageFiletMax = 50,
+        public readonly bool $banAutomatique = true,
+        public readonly bool $signalPerteDuVote = true,
+        public readonly int $messagesPourVoterAvantAge = 1,
+        public readonly int $motifsVotantsMin = 1,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -101,6 +120,12 @@ final class Config
         }
         if ($this->balayageFiletMax < 0) {
             throw new InvalidArgumentException('balayageFiletMax compte des comptes : 0 ou plus, et 0 éteint le filet.');
+        }
+        if ($this->messagesPourVoterAvantAge < 0) {
+            throw new InvalidArgumentException('messagesPourVoterAvantAge compte des messages : 0 ou plus, et 0 ne dispense personne.');
+        }
+        if ($this->motifsVotantsMin < 1) {
+            throw new InvalidArgumentException('motifsVotantsMin compte des votants : 1 ou plus.');
         }
     }
 
