@@ -181,7 +181,12 @@ PHP
 # dans une variable, pas rendu sur la sortie.
 essayer_trois_ports() { # essayer_trois_ports <fonction-de-lancement>
     for _ in 1 2 3; do
-        PORT=$(( 8600 + RANDOM % 900 ))
+        # Un port que le système donne libre. Tiré au hasard, il pouvait être déjà pris
+        # (Tor écoute sur 9050, ou un autre serveur du même banc), et la sonde de
+        # démarrage acceptait alors celui qui répondait à sa place.
+        PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+        # Déjà servi par un autre : on en prend un autre, avant de lancer le nôtre.
+        if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
         "$1" "$PORT" && return 0
     done
     return 1
@@ -191,7 +196,7 @@ lancer_amont() {
     php -S "127.0.0.1:$1" "$TMP/amont/router.php" >/dev/null 2>&1 &
     AMONT_PID=$!
     for _ in $(seq 40); do
-        curl -sf -o /dev/null "http://127.0.0.1:$1/?query=x" && return 0
+        kill -0 "$AMONT_PID" 2>/dev/null && curl -sf -o /dev/null "http://127.0.0.1:$1/?query=x" && return 0
         sleep 0.1
     done
     kill "$AMONT_PID" 2>/dev/null; AMONT_PID=""; return 1
@@ -210,7 +215,7 @@ lancer_api() {
         php -S "127.0.0.1:$1" -t "$RACINE/api" "$RACINE/api/api.php" >/dev/null 2>&1 &
     API_PID=$!
     for _ in $(seq 40); do
-        curl -sf -o /dev/null "http://127.0.0.1:$1/api/jurisprudence/verifier/22%2F00111" && return 0
+        kill -0 "$API_PID" 2>/dev/null && curl -sf -o /dev/null "http://127.0.0.1:$1/api/jurisprudence/verifier/22%2F00111" && return 0
         sleep 0.1
     done
     kill "$API_PID" 2>/dev/null; API_PID=""; return 1
@@ -591,7 +596,7 @@ lancer_api_bris() {
         php -S "127.0.0.1:$1" -t "$RACINE/api" "$RACINE/api/api.php" >/dev/null 2>&1 &
     BRIS_PID=$!
     for _ in $(seq 40); do
-        curl -s -o /dev/null "http://127.0.0.1:$1/api/status" && return 0
+        kill -0 "$BRIS_PID" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$1/api/status" && return 0
         sleep 0.1
     done
     kill "$BRIS_PID" 2>/dev/null; BRIS_PID=""; return 1

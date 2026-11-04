@@ -52,12 +52,17 @@ c.commit()
 PY
 
 for _ in 1 2 3; do
-    PORT=$(( 8500 + RANDOM % 900 ))
+    # Un port que le système donne libre. Tiré au hasard, il pouvait être déjà pris
+    # (Tor écoute sur 9050, ou un autre serveur du même banc), et la sonde de
+    # démarrage acceptait alors celui qui répondait à sa place.
+    PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    # Déjà servi par un autre : on en prend un autre, avant de lancer le nôtre.
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
     SELFJUSTICE_LEGI_DB="$DB" php -S "127.0.0.1:$PORT" -t "$RACINE/api" \
         "$RACINE/api/api.php" >/dev/null 2>&1 &
     API_PID=$!
     for _ in $(seq 40); do
-        curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/legi/article/1103?code=civil" && break 2
+        kill -0 "$API_PID" 2>/dev/null && curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/legi/article/1103?code=civil" && break 2
         sleep 0.1
     done
     kill "$API_PID" 2>/dev/null; API_PID=""

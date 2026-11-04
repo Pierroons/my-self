@@ -91,7 +91,12 @@ HTTPServer(("127.0.0.1", int(os.environ["PORT"])), H).serve_forever()
 PY
 
 for _ in 1 2 3; do
-    PORT=$(( 8200 + RANDOM % 700 ))
+    # Un port que le système donne libre. Tiré au hasard, il pouvait être déjà pris
+    # (Tor écoute sur 9050, ou un autre serveur du même banc), et la sonde de
+    # démarrage acceptait alors celui qui répondait à sa place.
+    PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    # Déjà servi par un autre : on en prend un autre, avant de lancer le nôtre.
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
     printf '{}' > "$BAC/status.json"; printf '{}' > "$BAC/catalog.json"
     BAC="$BAC" PORT="$PORT" python3 "$BAC/amont.py" >/dev/null 2>&1 &
     candidat=$!
@@ -99,7 +104,7 @@ for _ in 1 2 3; do
         curl -sf -o /dev/null "http://127.0.0.1:$PORT/status" && break
         sleep 0.1
     done
-    if curl -sf -o /dev/null "http://127.0.0.1:$PORT/status"; then SERVEUR=$candidat; break; fi
+    if kill -0 "$candidat" 2>/dev/null && curl -sf -o /dev/null "http://127.0.0.1:$PORT/status"; then SERVEUR=$candidat; break; fi
     kill "$candidat" 2>/dev/null
 done
 [ -n "$SERVEUR" ] || { echo "l'amont de test n'a pas démarré" >&2; exit 1; }
