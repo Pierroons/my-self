@@ -91,7 +91,8 @@ function connection(string $work, string $class): array
     file_put_contents($unparseFile, str_replace('DSN', var_export("sqlite:{$db}", true), <<<'PHP'
         <?php
         return static function (string $userId, string $column): bool {
-            $unreadable = ['wrap_admin' => 'n0t-base64!!', 'wrap_user' => 'n0t-base64!!', 'created_at' => 'not a date', 'revision' => 'abc'];
+            $unreadable = ['wrap_admin' => 'n0t-base64!!', 'wrap_user' => 'n0t-base64!!', 'created_at' => 'not a date',
+                'updated_at' => 'not a date', 'revision' => 'abc'];
             (new PDO(DSN))->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = ?")->execute([$unreadable[$column], $userId]);
             return true;
         };
@@ -192,6 +193,7 @@ $broken = [
     EqualValueShortcutStorage::class   => ['setting-replaced-over-expected'],
     BareParseErrorStorage::class       => ['escrow-unreadable-row-named'],
     WrapAdminOnlyStorage::class        => ['escrow-unreadable-row-named'],
+    ParseInReplaceStorage::class       => ['escrow-unreadable-row-named'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file, $withCaller, , $unparse] = connection($work, $class);
@@ -244,6 +246,24 @@ $oneColumn = static function (string $userId) use ($work): void {
         ->prepare("UPDATE selfdataguard_escrow SET wrap_admin = 'n0t-base64!!' WHERE user_id = ?")->execute([$userId]);
 };
 $byOne = outcomes(Conformance::run($connect, $file, $withCaller, $oneColumn))['escrow-unreadable-row-named'];
+$declining = static fn (array $declined) => static function (string $userId, string $column) use ($work, $declined): bool {
+    if (in_array($column, $declined, true)) {
+        return false;
+    }
+    $unreadable = ['wrap_admin' => 'n0t-base64!!', 'wrap_user' => 'n0t-base64!!', 'created_at' => 'not a date',
+        'updated_at' => 'not a date', 'revision' => PHP_INT_MAX];
+    (new PDO("sqlite:{$work}/" . SqliteAdapter::class . '.sqlite'))
+        ->prepare("UPDATE selfdataguard_escrow SET {$column} = ? WHERE user_id = ?")->execute([$unreadable[$column], $userId]);
+    return true;
+};
+$wrapDeclined = outcomes(Conformance::run($connect, $file, $withCaller, $declining(['wrap_user'])))['escrow-unreadable-row-named'];
+$wrapDeclined['outcome'] === 'fail' && str_contains($wrapDeclined['detail'], 'declined wrap_user')
+    ? ok('a rewrite that declines wrap_user fails the case: only a date column may be declined')
+    : ko('a rewrite that declines wrap_user was taken', json_encode($wrapDeclined));
+$datesDeclined = outcomes(Conformance::run($connect, $file, $withCaller, $declining(['created_at', 'updated_at'])))['escrow-unreadable-row-named'];
+$datesDeclined['outcome'] === 'pass'
+    ? ok('a rewrite that declines the two dates, and writes PHP_INT_MAX into revision, passes on the shipped adapter')
+    : ko('a rewrite that declines only the dates does not pass on the shipped adapter', json_encode($datesDeclined));
 $byOne['outcome'] === 'fail' && str_contains($byOne['detail'], 'not true or false')
     ? ok('a rewrite that does not say which column it rewrote — the earlier one-column file — fails the case')
     : ko('a rewrite that does not say which column it rewrote was taken', json_encode($byOne));

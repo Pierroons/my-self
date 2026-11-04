@@ -62,7 +62,10 @@ final class Conformance
     private const ROUNDS = 10;
 
     /** The columns of the escrow row the rewrite of escrow-unreadable-row-named makes unreadable, one account each. */
-    private const UNPARSED_COLUMNS = ['wrap_admin', 'wrap_user', 'created_at', 'revision'];
+    private const UNPARSED_COLUMNS = ['wrap_admin', 'wrap_user', 'created_at', 'updated_at', 'revision'];
+
+    /** The date columns, which a rewrite may decline: a typed date column holds nothing but a date. */
+    private const DECLINABLE_COLUMNS = ['created_at', 'updated_at'];
 
     /** Argon2id profile written by the cases: not the constants, so a storage that substitutes them shows. */
     private const OPSLIMIT = 7;
@@ -112,10 +115,9 @@ final class Conformance
      *        the case that needs it is reported skipped.
      * @param (callable(string, string): bool)|null $unparseEscrow rewrites, in the database under
      *        test, the column it is given — one of UNPARSED_COLUMNS — of the escrow row of the userId
-     *        it is given, so that the row no longer parses, and returns true; it returns false for a
-     *        typed column that cannot hold an unreadable value, which the case leaves out, and any
-     *        other return fails the case. Without it, or when it rewrites no column, the case that
-     *        needs it is reported skipped.
+     *        it is given, so that the row no longer parses, and returns true; it may return false for a
+     *        column of DECLINABLE_COLUMNS, which the case leaves out. Any other return fails the case.
+     *        Without it, the case that needs it is reported skipped.
      * @return list<array{case: string, outcome: string, detail: string}> outcome is pass, fail or skip
      */
     public static function run(
@@ -457,13 +459,19 @@ final class Conformance
         if ($this->unparseEscrow === null) {
             return 'no rewrite of the escrow row given';
         }
-        $rewritten = 0;
         foreach (self::UNPARSED_COLUMNS as $column) {
             $vault = $this->newVault("escrow-unreadable-{$column}");
             $this->storage->saveVault($vault);
             $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+            $before = $this->storage->loadEscrow($vault->userId)
+                ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
             $done = ($this->unparseEscrow)($vault->userId, $column);
             if ($done === false) {
+                if (!in_array($column, self::DECLINABLE_COLUMNS, true)) {
+                    throw new RuntimeException(
+                        "the rewrite declined {$column}, which any storage can make unreadable: only a date column may be declined"
+                    );
+                }
                 continue;
             }
             if ($done !== true) {
@@ -472,11 +480,10 @@ final class Conformance
                     . 'rewrite the column it is given, and say so'
                 );
             }
-            $rewritten++;
             try {
                 $read = $this->storage->loadEscrow($vault->userId);
             } catch (UnreadableEscrowException) {
-                continue;
+                $read = false;
             } catch (Throwable $e) {
                 throw new RuntimeException(
                     "loadEscrow() of a row whose {$column} does not parse raised " . $this->short($e::class)
@@ -484,11 +491,20 @@ final class Conformance
                     . 'view and the objection'
                 );
             }
-            throw new RuntimeException($read === null
-                ? "the rewrite of {$column} deleted the escrow row instead of making it unreadable"
-                : "loadEscrow() read the row whose {$column} was rewritten as a record");
+            if ($read !== false) {
+                throw new RuntimeException($read === null
+                    ? "the rewrite of {$column} deleted the escrow row instead of making it unreadable"
+                    : "loadEscrow() read the row whose {$column} was rewritten as a record");
+            }
+            if ($column === 'revision') {
+                $this->expect(
+                    StaleEscrowException::class,
+                    fn () => $this->storage->replaceEscrow($vault->generation(), $before),
+                    'replaceEscrow() over a row whose revision was rewritten (it must test the row is there without parsing it)'
+                );
+            }
         }
-        return $rewritten === 0 ? 'the rewrite made no column of the escrow row unreadable' : null;
+        return null;
     }
 
     private function escrowCompareAndSwap(): ?string

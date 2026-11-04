@@ -1624,6 +1624,24 @@ try {
         ? ok('EscrowRecord::parse(): an UnreadableEscrowException the build raises comes out as it is')
         : ko('EscrowRecord::parse(): an UnreadableEscrowException the build raises is wrapped again');
 }
+try {
+    EscrowRecord::parse('tess', static fn () => throw new ValueError('a value out of range'));
+    ko('EscrowRecord::parse(): a ValueError in the build came out as a record');
+} catch (UnreadableEscrowException $e) {
+    $e->getPrevious() instanceof ValueError && str_contains($e->getMessage(), 'ValueError')
+        ? ok('EscrowRecord::parse(): a ValueError in the build comes out as UnreadableEscrowException, its class named')
+        : ko('EscrowRecord::parse(): a ValueError is not kept, or not named, as the cause', $e->getMessage());
+} catch (ValueError) {
+    ko('EscrowRecord::parse(): a ValueError in the build comes out bare');
+}
+try {
+    EscrowRecord::parse('tess', static fn () => throw new ArgumentCountError('a call written wrong'));
+    ko('EscrowRecord::parse(): an ArgumentCountError in the build came out as a record');
+} catch (UnreadableEscrowException) {
+    ko('EscrowRecord::parse(): an ArgumentCountError — a bug — reads as a row rewritten');
+} catch (ArgumentCountError) {
+    ok('EscrowRecord::parse(): an ArgumentCountError — a call written wrong, never a value — comes out as it is');
+}
 
 /** createEscrow() always finds an escrow there, as a trigger could make it; past a bound it fails, so that a deposit that does not stop fails the bench instead of hanging it. */
 final class AlwaysExistsEscrow extends DelegatingStorage
@@ -1650,6 +1668,64 @@ try {
         : ko('a first deposit whose escrow keeps appearing stopped after another number of attempts', (string) $xDb->creations);
 } catch (RuntimeException $e) {
     ko('a first deposit whose escrow keeps appearing does not stop', $e->getMessage());
+}
+
+/** rotateEscrow() always finds the envelope replaced since it was read; past a bound it fails, so that a deposit that does not stop fails the bench instead of hanging it. */
+final class AlwaysStaleRotation extends DelegatingStorage
+{
+    public int $rotations = 0;
+
+    public function rotateEscrow(VaultGeneration $generation, EscrowRecord $record, array $fields): void
+    {
+        if (++$this->rotations > 10) {
+            throw new RuntimeException('rotateEscrow() called more than ten times: the deposit does not stop');
+        }
+        throw new StaleEscrowException("The escrow of '{$record->userId}' was replaced since this record was read");
+    }
+}
+$sInner = new SqliteAdapter('sqlite::memory:');
+$sDb = new AlwaysStaleRotation($sInner);
+$yara = (new SelfDataGuard($sInner, $blindKey, keeper: $keeper))->register('yara', 'motdepasse-yara-01');
+(new SelfDataGuard($sInner, $blindKey, keeper: $keeper))->setEscrowFields($yara, $admin['publicKey'], ['contact' => 'yara@example.org']);
+try {
+    (new SelfDataGuard($sDb, $blindKey, keeper: $keeper))->setEscrowFields($yara, $admin['publicKey'], ['contact' => 'yara-2@example.org']);
+    ko('a deposit whose envelope is always replaced meanwhile went through');
+} catch (StaleEscrowException $e) {
+    $sDb->rotations === 3 && str_contains($e->getMessage(), 'was replaced since this record was read')
+        ? ok('a deposit whose envelope is always replaced meanwhile stops after three attempts, with the storage\'s StaleEscrowException')
+        : ko('a deposit whose envelope is always replaced meanwhile does not stop on its own bound', $sDb->rotations . ': ' . $e->getMessage());
+} catch (RuntimeException $e) {
+    ko('a deposit whose envelope is always replaced meanwhile does not stop', $e->getMessage());
+}
+
+/** Another writer always wins the record of former keepers; past a bound it fails instead of hanging the bench. */
+final class FormersKeepChanging extends DelegatingStorage
+{
+    public int $claims = 0;
+
+    public function claimSetting(string $n, string $v): string
+    {
+        if ($n !== SelfDataGuard::SETTING_FORMER_KEEPERS) {
+            return $this->inner->claimSetting($n, $v);
+        }
+        if (++$this->claims > 10) {
+            throw new RuntimeException('the record of former keepers was claimed more than ten times: the deposit does not stop');
+        }
+        return '[]';
+    }
+}
+$fDb = new FormersKeepChanging(new SqliteAdapter('sqlite::memory:'));
+$fDg = new SelfDataGuard($fDb, $blindKey, keeper: $keeper, formerKeepers: [new BenchKeeper()]);
+$zack = $fDg->register('zack', 'motdepasse-zack-01');
+try {
+    $fDg->setEscrowFields($zack, $admin['publicKey'], ['contact' => 'zack@example.org']);
+    ko('a deposit whose record of former keepers keeps changing went through');
+} catch (EscrowKeeperException $e) {
+    $e->reason === 'keeper-failed' && $fDb->claims === 3
+        ? ok('a record of former keepers that keeps changing: the deposit stops after three attempts, keeper-failed')
+        : ko('a record of former keepers that keeps changing: refused otherwise', $e->reason . ' after ' . $fDb->claims);
+} catch (RuntimeException $e) {
+    ko('a deposit whose record of former keepers keeps changing does not stop', $e->getMessage());
 }
 
 $kVb = new BenchKeeper(delay: 3600);

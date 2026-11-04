@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
@@ -769,6 +770,20 @@ final class WrapAdminOnlyStorage extends DelegatingStorage
                 throw $e;
             }
             throw $e->getPrevious() ?? $e;
+        }
+    }
+}
+
+/** replaceEscrow() that reads the row again after a failed compare, as a storage telling a missing row from a stale one would: on a row that no longer parses, the read raises UnreadableEscrowException instead of StaleEscrowException. */
+final class ParseInReplaceStorage extends DelegatingStorage
+{
+    public function replaceEscrow(VaultGeneration $generation, EscrowRecord $record): void
+    {
+        try {
+            $this->inner->replaceEscrow($generation, $record);
+        } catch (StaleEscrowException $e) {
+            $this->inner->loadEscrow($record->userId);
+            throw $e;
         }
     }
 }

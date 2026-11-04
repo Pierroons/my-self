@@ -38,16 +38,19 @@ declare(strict_types=1);
  * n'est pas un cas passé : l'implémentation n'est pas déclarée conforme.
  *
  * <ligne-illisible.php> rend un callable qui reçoit un userId et un nom de
- * colonne — wrap_admin, wrap_user, created_at, revision — et réécrit, dans la
- * base à éprouver, cette colonne de sa ligne de séquestre pour qu'elle ne se
- * lise plus. Il rend true une fois la colonne réécrite, false pour une colonne
- * typée qui ne peut pas tenir de valeur illisible ; tout autre retour fait
- * échouer le cas. Par exemple :
+ * colonne — wrap_admin, wrap_user, created_at, updated_at, revision — et
+ * réécrit, dans la base à éprouver, cette colonne de sa ligne de séquestre pour
+ * qu'elle ne se lise plus, puis rend true. Il peut rendre false pour une colonne
+ * de date (created_at, updated_at), quand son type n'y laisse tenir qu'une date.
+ * Toute autre colonne peut tenir une valeur illisible — pour la révision,
+ * PHP_INT_MAX, que l'écriture suivante ne peut plus monter : la refuser fait
+ * échouer le cas, comme tout retour qui n'est ni true ni false. Par exemple,
+ * pour une base où les dates sont typées :
  *
  *   <?php
  *   return static function (string $userId, string $colonne): bool {
  *       $illisible = ['wrap_admin' => 'n0t-base64!!', 'wrap_user' => 'n0t-base64!!',
- *                     'created_at' => 'not a date', 'revision' => null][$colonne];
+ *                     'revision' => PHP_INT_MAX][$colonne] ?? null;
  *       if ($illisible === null) {
  *           return false;
  *       }
@@ -58,8 +61,11 @@ declare(strict_types=1);
  *   };
  *
  * Le cas « escrow-unreadable-row-named » exige alors, pour chaque colonne
- * réécrite, que loadEscrow() lève UnreadableEscrowException. Sans ce fichier,
- * ou s'il ne réécrit aucune colonne, ce cas est sauté de même.
+ * réécrite, que loadEscrow() lève UnreadableEscrowException, et, pour la
+ * révision, que replaceEscrow() sur le record lu avant lève
+ * StaleEscrowException. Il ne relit pas la base : il croit que le fichier
+ * réécrit la colonne qu'on lui donne. Sans ce fichier, ce cas est sauté de
+ * même.
  *
  * La suite écrit dans cette base, sous des userId tirés au hasard
  * (« conformance-<hex>-… »), et les efface à la fin de chaque cas. Les cas de

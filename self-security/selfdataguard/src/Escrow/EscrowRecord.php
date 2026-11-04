@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pierroons\SelfDataGuard\Escrow;
 
+use ArgumentCountError;
 use DateTimeImmutable;
 use Exception;
 use InvalidArgumentException;
@@ -50,11 +51,13 @@ final class EscrowRecord
 
     /**
      * The record $build makes of the escrow row of $userId, which the storage
-     * has already fetched: any Exception $build raises, and any TypeError or
-     * ValueError — a value of the wrong shape for a typed parameter — comes
+     * has already fetched: any Exception $build raises, and any other TypeError
+     * or ValueError — a value of the wrong shape for a typed parameter — comes
      * out as UnreadableEscrowException, what StorageInterface::loadEscrow()
-     * raises for a row that does not parse; an UnreadableEscrowException
-     * $build raises itself comes out as it is. Fetch the row before calling it: an outage raised inside
+     * raises for a row that does not parse, its message naming the class of
+     * the cause. An UnreadableEscrowException $build raises itself, and an
+     * ArgumentCountError — a TypeError, but a call written wrong — come out as
+     * they are: the catch that lets them through comes first. Fetch the row before calling it: an outage raised inside
      * $build would read as a row rewritten.
      *
      * @param callable(): self $build
@@ -64,10 +67,14 @@ final class EscrowRecord
     {
         try {
             return $build();
-        } catch (UnreadableEscrowException $e) {
+        } catch (UnreadableEscrowException|ArgumentCountError $e) {
             throw $e;
         } catch (Exception|TypeError|ValueError $e) {
-            throw new UnreadableEscrowException("The escrow row of '{$userId}' does not parse: {$e->getMessage()}", 0, $e);
+            throw new UnreadableEscrowException(
+                "The escrow row of '{$userId}' does not parse (" . $e::class . "): {$e->getMessage()}",
+                0,
+                $e
+            );
         }
     }
 }
