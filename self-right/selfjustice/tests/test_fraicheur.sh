@@ -91,7 +91,12 @@ HTTPServer(("127.0.0.1", int(os.environ["PORT"])), H).serve_forever()
 PY
 
 for _ in 1 2 3; do
-    PORT=$(( 8200 + RANDOM % 700 ))
+    # Un port que le système donne libre. Tiré au hasard, il pouvait être déjà pris
+    # (Tor écoute sur 9050, ou un autre serveur du même banc), et la sonde de
+    # démarrage acceptait alors celui qui répondait à sa place.
+    PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    # Déjà servi par un autre : on en prend un autre, avant de lancer le nôtre.
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
     printf '{}' > "$BAC/status.json"; printf '{}' > "$BAC/catalog.json"
     BAC="$BAC" PORT="$PORT" python3 "$BAC/amont.py" >/dev/null 2>&1 &
     candidat=$!
@@ -99,7 +104,7 @@ for _ in 1 2 3; do
         curl -sf -o /dev/null "http://127.0.0.1:$PORT/status" && break
         sleep 0.1
     done
-    if curl -sf -o /dev/null "http://127.0.0.1:$PORT/status"; then SERVEUR=$candidat; break; fi
+    if kill -0 "$candidat" 2>/dev/null && curl -sf -o /dev/null "http://127.0.0.1:$PORT/status"; then SERVEUR=$candidat; break; fi
     kill "$candidat" 2>/dev/null
 done
 [ -n "$SERVEUR" ] || { echo "l'amont de test n'a pas démarré" >&2; exit 1; }
@@ -375,6 +380,110 @@ if grep -q "trompe-l" <<<"$sortie"; then
     ok "aucun compteur déplacé → trompe-l'œil signalé"
 else
     nok "une base strictement immobile à date avancée passe inaperçue"
+fi
+
+echo
+echo "▸ JADE ne masque pas un Judilibre figé"
+# La table de la jurisprudence est partagée : JADE avance chaque soir. Si
+# l'empreinte de la jurisprudence le comptait, un Judilibre figé derrière une
+# date avancée passerait pour une base qui bouge.
+judilibre_jade() { # <judilibre avant> <jade avant> <judilibre après> <jade après>
+    python3 - "$1" "$2" "$3" "$4" "$AVANT" "$ATTENDU" <<'PY'
+import json, sys
+ja, da, jn, dn = (int(x) for x in sys.argv[1:5])
+avant, sain = sys.argv[5], sys.argv[6]
+etat = {
+    "catalogue SelfAct": {"date": sain, "volume": 1895, "vu_le": sain,
+                          "empreinte": {"total": 1895}},
+    "LEGI": {"date": sain, "volume": 525441, "vu_le": sain, "empreinte": {"articles": 525441}},
+    "conventionnalité": {"date": sain, "volume": 793, "vu_le": sain, "empreinte": {"articles": 793}},
+    "jurisprudence": {"date": avant, "volume": ja + da, "vu_le": avant,
+                      "empreinte": {"par_source.judilibre": ja}},
+}
+status = {
+    "legi": {"articles": 525441, "last_update": sain},
+    "eu": {"articles": 793, "last_update": sain},
+    "jurisprudence": {"decisions": jn + dn, "last_update": sain,
+                      "par_source": {"judilibre": jn, "jade": dn}},
+}
+print(json.dumps(etat))
+print(json.dumps(status))
+PY
+}
+ecrire_judilibre_jade() {
+    local sortie_py; sortie_py=$(judilibre_jade "$@")
+    sed -n '1p' <<<"$sortie_py" > "$BAC/etat.json"
+    sed -n '2p' <<<"$sortie_py" > "$BAC/status.json"
+    repartition "$ATTENDU" 1895 213 208
+}
+
+# Judilibre figé, JADE a ajouté 40 décisions, la date de Judilibre avance.
+ecrire_judilibre_jade 1218780 573143 1218780 573183
+sortie=$(lancer)
+if grep -q "jurisprudence : date avancée" <<<"$sortie"; then
+    ok "Judilibre figé, JADE en mouvement → trompe-l'œil signalé"
+else
+    nok "un Judilibre figé passe inaperçu derrière le mouvement de JADE : ${sortie//$'\n'/ }"
+fi
+# L'alerte cite le compteur jugé : le total, lui, a bougé de 40.
+if grep -q "décisions Judilibre : 1218780, inchangé" <<<"$sortie" && ! grep -q "1791963" <<<"$sortie"; then
+    ok "l'alerte cite les décisions Judilibre, pas le total qui a bougé"
+else
+    nok "l'alerte ne cite pas le compteur jugé : ${sortie//$'\n'/ }"
+fi
+
+# Judilibre a ajouté 540 décisions : la date avancée est justifiée.
+ecrire_judilibre_jade 1218780 573143 1219320 573143
+sortie=$(lancer)
+if grep -q "jurisprudence : date avancée" <<<"$sortie"; then
+    nok "Judilibre a bougé → trompe-l'œil crié à tort : ${sortie//$'\n'/ }"
+else
+    ok "Judilibre a bougé, JADE figé → silence"
+fi
+
+# Judilibre perd 40 décisions, JADE en gagne autant : le total ne bouge pas.
+ecrire_judilibre_jade 1218780 573143 1218740 573183
+sortie=$(lancer)
+if grep -q "décisions Judilibre en BAISSE, 1218780 → 1218740" <<<"$sortie"; then
+    ok "baisse de Judilibre compensée par JADE → signalée"
+else
+    nok "une baisse de Judilibre passe inaperçue derrière JADE : ${sortie//$'\n'/ }"
+fi
+
+echo
+echo "▸ Un compteur qui suit le calendrier ne fait pas croire la base refaite"
+# 🔑 Depuis le 14/10/2026, `legi.vigueur` compte les versions applicables AU JOUR :
+# il bouge le jour où une version entre en vigueur ou cesse de s'appliquer, sans
+# que la base ait changé d'un octet — 16 jours de bascule entre le 01/10 et le
+# 31/12/2026, dont le 1er novembre, jour de synchronisation. Pris dans l'empreinte,
+# un tel jour faisait croire la base refaite, et la règle du trompe-l'œil se
+# taisait sur un marqueur avancé à base inchangée : la panne des treize mois.
+#
+# Deux VRAIS passages de la sonde, plutôt qu'un état de la veille écrit ici : le
+# premier mémorise la date et l'empreinte telles que la sonde les calcule, le
+# second compare. Un état fabriqué porterait l'empreinte qu'on suppose, pas celle
+# que la sonde écrit.
+status_avec_vigueur() { # <date LEGI> <articles> <vigueur>
+    python3 - "$1" "$2" "$3" "$ATTENDU" <<'PYS' > "$BAC/status.json"
+import json, sys
+d, a, vig, sain = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+print(json.dumps({
+    "legi": {"articles": a, "vigueur": vig, "last_update": d},
+    "eu": {"articles": 793, "last_update": sain},
+    "jurisprudence": {"decisions": 1191177, "last_update": sain},
+}))
+PYS
+}
+repartition "$ATTENDU" 1895 213 208
+printf '{}' > "$BAC/etat.json"
+status_avec_vigueur "$ATTENDU" 525441 693100
+lancer >/dev/null
+status_avec_vigueur "$APRES" 525441 693141
+sortie=$(lancer)
+if grep -q "trompe-l" <<<"$sortie"; then
+    ok "date avancée, articles figés, seul « vigueur » a bougé → trompe-l'œil signalé"
+else
+    nok "un compteur du calendrier fait passer une base inchangée pour refaite : ${sortie//$'\n'/ }"
 fi
 
 echo

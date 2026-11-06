@@ -1,0 +1,2 @@
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+17 4 * * * root /usr/local/sbin/ctf-s2-sauvegarde

@@ -1,0 +1,107 @@
+#!/bin/bash
+# Annonce les rapports red team et les drapeaux sortis, en lisant la base.
+#
+# POURQUOI CE SCRIPT EXISTE.
+# C'etait `demo/lab/lib/notify.php` qui le faisait, appele depuis `redteam.php`
+# et `flags.php`. Mais il lisait son identifiant dans `demo/lab/data/.notify`,
+# repertoire que PHP-FPM ouvre en `www-data` — c'est-a-dire le compte que le jeu
+# confie aux chercheurs des qu'une lecture de fichier cede. Qui prenait le lab
+# obtenait donc un droit d'ecriture sur le canal d'alerte, et pouvait le noyer
+# au moment precis ou il attaquait. Le fichier a ete retire le 04/10 : le code
+# PHP prevoit son absence et se tait, sans rien casser.
+#
+# Ici le secret vit dans /etc/myself-lab (700 root), hors de portee de
+# `www-data`, et c'est root qui lit la base. Le lab n'a plus aucun chemin vers
+# le canal d'alerte.
+#
+# 🔑 Le secret ne passe JAMAIS en ligne de commande : `curl -K -` le lit sur son
+# entree standard. En argument, `ps auxww` le rendrait a tout utilisateur de la
+# machine — y compris `www-data`, et on aurait rouvert la porte qu'on ferme.
+set -uo pipefail
+export LC_ALL=C
+
+BASE=${CTF_ANNONCES_BASE:-/var/www/ctf-s2/demo/lab/data/lab.db}
+CONF=${CTF_ANNONCES_CONF:-/etc/myself-lab/notify.conf}
+ETAT=${CTF_ANNONCES_ETAT:-/var/lib/myself-lab/annonces}
+LOG=${CTF_ANNONCES_LOG:-/var/log/ctf-s2-annonces.log}
+# Sans etat, on regarde en arriere sur cette duree plutot que de ne rien dire.
+RATTRAPAGE=${CTF_ANNONCES_RATTRAPAGE:-86400}
+
+journal() { echo "$(date -Is) $*" >> "$LOG"; }
+
+# La configuration manquante n'est pas une panne : c'est l'etat du lab entre le
+# retrait de `.notify` et la creation du jeton dedie. Le dire une fois par
+# passage, et sortir sans bruit — un timer qui echoue toutes les cinq minutes
+# finit par etre ignore, et c'est ainsi qu'on perd une vraie alerte.
+if [ ! -r "$CONF" ]; then
+  journal "silencieux : $CONF absent (jeton dedie pas encore pose)"
+  exit 0
+fi
+
+URL=$(sed -n 1p "$CONF")
+AUTH=$(sed -n 2p "$CONF")
+if [ -z "${URL:-}" ] || [ -z "${AUTH:-}" ]; then
+  journal "ECHEC : $CONF ne porte pas ses deux lignes (url, compte:secret)"
+  exit 1
+fi
+
+[ -r "$BASE" ] || { journal "ECHEC : base illisible ($BASE)"; exit 1; }
+mkdir -p "$ETAT" && chmod 700 "$ETAT"
+
+# `-K -` lit les options sur stdin : ni le secret ni l'URL n'apparaissent dans
+# la table des processus. L'echec d'une annonce ne doit jamais faire echouer le
+# passage : on le journalise et on continue, sinon un canal muet bloquerait la
+# progression du curseur et ferait tout re-annoncer au retour.
+annoncer() {  # $1 = titre · $2 = corps · $3 = priorite
+  printf 'user = "%s"\n' "$AUTH" | curl -s -m 10 -K - \
+    -H "Title: $1" -H "Priority: ${3:-default}" -H 'Tags: triangular_flag_on_post' \
+    -d "$2" "$URL" >/dev/null 2>&1 \
+    || journal "annonce non partie : $1"
+}
+
+# Le curseur est un ID, pas un horodatage : deux lignes ecrites dans la meme
+# seconde ne se perdent pas, et une horloge qui recule ne fait rien re-annoncer.
+curseur() {   # $1 = nom du curseur · $2 = colonne de temps · $3 = table
+  local f="$ETAT/$1"
+  if [ -s "$f" ]; then cat "$f"; return; fi
+  # Premier passage, ou etat perdu : on ne remonte pas tout l'historique, mais
+  # on ne part pas non plus du maximum — ce serait taire ce qui vient d'arriver.
+  # D'ou la fenetre de rattrapage. Au pire une annonce de trop ; c'est le sens
+  # de defaillance qu'on veut ici, l'inverse serait un silence.
+  sqlite3 -readonly "$BASE" \
+    "SELECT COALESCE(MAX(id), 0) FROM $3 WHERE $2 < strftime('%s','now') - $RATTRAPAGE;" 2>/dev/null \
+    || echo 0
+}
+
+poser() { printf '%s\n' "$2" > "$ETAT/$1"; }
+
+N=0
+
+# ── Rapports de chercheurs ───────────────────────────────────────────────────
+DR=$(curseur dernier-rapport created_at redteam_reports)
+while IFS='|' read -r id handle severite cible; do
+  [ -n "${id:-}" ] || continue
+  annoncer "CTF - rapport #$id ($severite)" \
+    "Cible : ${cible:-?} · pseudo : ${handle:-anonyme}. Le rapport est chiffre PGP, a dechiffrer sur le poste." \
+    high
+  journal "rapport #$id annonce (severite $severite)"
+  poser dernier-rapport "$id"; N=$((N + 1))
+done < <(sqlite3 -readonly "$BASE" \
+  "SELECT id, COALESCE(handle,''), severity, COALESCE(target,'') FROM redteam_reports WHERE id > ${DR:-0} ORDER BY id;" 2>/dev/null)
+
+# ── Drapeaux sortis ──────────────────────────────────────────────────────────
+# Le code du drapeau est annonce : il est public des qu'un chercheur l'a sorti,
+# et c'est precisement ce qu'on veut savoir tout de suite. La valeur, elle,
+# n'est nulle part en base — seulement son HMAC.
+DD=$(curseur dernier-drapeau captured_at flag_captures)
+while IFS='|' read -r id code handle; do
+  [ -n "${id:-}" ] || continue
+  annoncer "CTF - drapeau sorti : $code" \
+    "Capture #$id par ${handle:-un anonyme}." urgent
+  journal "drapeau $code annonce (capture #$id)"
+  poser dernier-drapeau "$id"; N=$((N + 1))
+done < <(sqlite3 -readonly "$BASE" \
+  "SELECT id, code, COALESCE(handle,'') FROM flag_captures WHERE id > ${DD:-0} ORDER BY id;" 2>/dev/null)
+
+[ "$N" -gt 0 ] || journal "ok rien de neuf (curseurs rapport=$DR drapeau=$DD)"
+exit 0

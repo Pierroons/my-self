@@ -31,14 +31,19 @@ cp "$ICI/catalog-fixture.json" "$BAC/catalog.json"
 empreinte=$(md5sum < "$BAC/catalog.json")
 
 for _ in 1 2 3; do
-    PORT=$(( 8300 + RANDOM % 600 ))
+    # Un port que le système donne libre. Tiré au hasard, il pouvait être déjà pris
+    # (Tor écoute sur 9050, ou un autre serveur du même banc), et la sonde de
+    # démarrage acceptait alors celui qui répondait à sa place.
+    PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    # Déjà servi par un autre : on en prend un autre, avant de lancer le nôtre.
+    if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
     SELFACT_CATALOG="$BAC/catalog.json" php -S "127.0.0.1:$PORT" -t "$API" >/dev/null 2>&1 &
     candidat=$!
     for _ in $(seq 40); do
         curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break
         sleep 0.1
     done
-    if curl -s -o /dev/null "http://127.0.0.1:$PORT/"; then SERVEUR=$candidat; break; fi
+    if kill -0 "$candidat" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$PORT/"; then SERVEUR=$candidat; break; fi
     kill "$candidat" 2>/dev/null
 done
 [ -n "$SERVEUR" ] || { echo "le serveur PHP n'a pas démarré" >&2; exit 1; }

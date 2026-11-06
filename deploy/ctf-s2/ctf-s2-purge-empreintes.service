@@ -1,0 +1,16 @@
+[Unit]
+Description=CTF Saison 2 — efface les empreintes d'adresse passé leur fenêtre
+Documentation=file:/usr/local/sbin/ctf-s2-purge-empreintes
+
+[Service]
+Type=oneshot
+# 🔑 www-data, et pas root : SQLite crée ses journaux avec le propriétaire du
+# processus, et des journaux en root couperaient l'écriture à PHP-FPM.
+User=www-data
+Group=www-data
+ExecStart=/usr/local/sbin/ctf-s2-purge-empreintes
+ProtectSystem=strict
+ReadWritePaths=/var/log /var/www/ctf-s2/demo/lab/data
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

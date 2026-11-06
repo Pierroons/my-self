@@ -1,0 +1,15 @@
+[Unit]
+Description=Annonce les rapports red team et les drapeaux sortis du lab CTF
+Documentation=file:/usr/local/sbin/ctf-s2-annonces
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ctf-s2-annonces
+# Il lit la base du lab et le secret de /etc/myself-lab : root, mais borne.
+# ProtectSystem=strict le priverait d'ecrire son journal et son etat, d'ou les
+# deux chemins ouverts et rien d'autre.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/myself-lab /var/log
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectHome=true

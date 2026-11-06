@@ -1,0 +1,12 @@
+[Unit]
+Description=Controle d'integrite du CTF, toutes les dix minutes
+
+[Timer]
+# Dix minutes : un depot de fichier se fait a un instant precis, et la fenetre
+# d'ignorance est ce qu'on cherche a reduire. 155 empreintes coutent une seconde.
+OnBootSec=5min
+OnUnitActiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

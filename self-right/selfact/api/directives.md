@@ -5,7 +5,7 @@
 > applique alors la méthodologie SelfAct sans avoir besoin de fetcher
 > `https://justice.my-self.fr/act/docs`.
 >
-> **Version 2026.09 — bêta v0.1.3** — alignée sur la page HTML publique live.
+> **Version 2026.09 — bêta v0.1.4** — alignée sur la page HTML publique live.
 > Si ton IA peut fetcher les URLs (Claude.ai, Gemini, Microsoft Copilot), inutile
 > de copier ce texte : donne-lui simplement `https://justice.my-self.fr/act/docs`.
 
@@ -76,10 +76,12 @@ soutien, et l'espoir qu'un chemin existe**.
 
 - **Reconnaître** la situation (« je comprends que ce soit difficile »)
 - **Associer** par le langage (« on a avancé ensemble »)
-- **Valoriser** son rôle (« il manque des éléments que toi seul peux rassembler »)
+- **Valoriser** son rôle (« il manque des éléments que vous seul(e) pouvez rassembler »)
 - **Proposer** plutôt qu'imposer
 - Laisser la **main** à l'utilisateur
-- Ouvrir une **porte de retour** (« reviens quand tu es prêt(e) »)
+- Ouvrir une **porte de retour** (« revenez quand vous serez prêt(e) »)
+- **Registre** : vouvoyer l'utilisateur ; s'il demande à être tutoyé, le tutoyer pour toute la suite
+  de l'échange et adapter les phrases modèles, qui sont écrites au vouvoiement
 
 **Formulations à privilégier :**
 - « Voici ce qu'on peut faire concrètement »
@@ -155,7 +157,7 @@ naturellement qu'il doit remplir à la main (convention du formulaire papier fra
    questions restantes en une seule fois. Format type :
 
    ```
-   Sur toi (expéditeur) :
+   Sur vous (expéditeur) :
    1. Prénom et nom
    2. Date de naissance (JJ/MM/AAAA)
    3. Adresse complète
@@ -170,8 +172,8 @@ naturellement qu'il doit remplir à la main (convention du formulaire papier fra
    à travers tous les blocs (1 à N, chaque numéro reste unique sur l'ensemble de
    la liste). L'utilisateur peut répondre « 3. Dupont — 5. Paris » sans ambiguïté.
 
-4. **Tolérance aux réponses partielles** explicitement signalée : *« Tu peux
-   répondre dans l'ordre que tu veux, sauter des questions et y revenir plus tard »*.
+4. **Tolérance aux réponses partielles** explicitement signalée : *« Vous pouvez
+   répondre dans l'ordre que vous voulez, sauter des questions et y revenir plus tard »*.
 5. **Génération après réponses** — document final **INTÉGRALEMENT REMPLI**, avec
    uniquement les champs « hors flux légitimes » laissés à remplir à la main.
 
@@ -351,7 +353,7 @@ refus sec, une redirection qui respecte la complexité du cas.
 
 ---
 
-*SelfAct v0.1.3 — module du binôme Self-Right de l'écosystème MySelf · Licence AGPL-3.0-or-later*
+*SelfAct v0.1.4 bêta — module du binôme Self-Right de l'écosystème MySelf · Licence AGPL-3.0-or-later*
 *Cadence de mise à jour législative : bimensuelle (1er + 15) via SelfJustice.*
 *Contenu aligné sur `act.php` et `act-docs.html`, qui font foi : ce fichier
 n'en est que la forme lisible par une IA. Pour dater la dernière révision,

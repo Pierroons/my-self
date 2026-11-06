@@ -37,7 +37,6 @@ ECHECS=0
 verdict() { if [ "$1" = "0" ]; then echo "  ✓ $2"; else echo "  ✗ $2"; ECHECS=$((ECHECS+1)); fi; }
 
 echo "factice" > "$TMP/keyid"
-PORT=8791
 
 # Un amont qui refuse, et qui compte ce qu'on lui demande. Le décompte est la
 # mesure décisive : la dichotomie se voit au NOMBRE d'appels, pas au verdict.
@@ -76,13 +75,21 @@ PYEOF
 lancer_amont() {  # $1 = motif
     [ -n "$AMONT_PID" ] && { kill "$AMONT_PID" 2>/dev/null; wait "$AMONT_PID" 2>/dev/null; }
     : > "$TMP/appels.txt"
-    MOTIF="$1" COMPTEUR="$TMP/appels.txt" PORT="$PORT" python3 "$TMP/amont.py" &
-    AMONT_PID=$!
-    for _ in $(seq 1 40); do
-        python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.3)
+    # Un port que le système donne libre, à chaque lancement : fixe, il était
+    # partagé avec toute autre exécution du banc, et la sonde de démarrage
+    # acceptait le serveur de l'autre — dont le décompte d'appels n'est pas le nôtre.
+    for _ in 1 2 3; do
+        PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+        if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
+        MOTIF="$1" COMPTEUR="$TMP/appels.txt" PORT="$PORT" python3 "$TMP/amont.py" &
+        AMONT_PID=$!
+        for _ in $(seq 1 40); do
+            kill -0 "$AMONT_PID" 2>/dev/null && python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.3)
 try: s.connect(('127.0.0.1', $PORT)); sys.exit(0)
 except Exception: sys.exit(1)" 2>/dev/null && return 0
-        sleep 0.25
+            sleep 0.25
+        done
+        kill "$AMONT_PID" 2>/dev/null; AMONT_PID=""
     done
     echo "l'amont factice n'a pas démarré" >&2; exit 2
 }

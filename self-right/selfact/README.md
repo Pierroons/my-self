@@ -5,7 +5,7 @@
 **From "I know my rights" to the step itself: the official form, the deadline, a letter template to complete.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.3 beta](https://img.shields.io/badge/status-v0.1.3%20beta-green.svg)](#status)
+[![Status: v0.1.4 beta](https://img.shields.io/badge/status-v0.1.4%20beta-green.svg)](#status)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -69,7 +69,7 @@ rejected with `405`, body unread).
 
 ## Status
 
-**v0.1.3 — beta, served at `justice.my-self.fr/act`.**
+**v0.1.4 — beta, served at `justice.my-self.fr/act`.**
 
 Everything is here: [`api/`](api/) the service and its data, [`site/`](site/) the
 pages, [`tests/`](tests/) the guards, [`docs/`](docs/) the whitepaper. SelfAct is

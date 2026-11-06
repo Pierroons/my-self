@@ -1,0 +1,37 @@
+#!/bin/bash
+# Depose l'archive chiffree du lab dans la boite de sortie que lit le NAS.
+#
+# Le NAS tirait l'archive par `sudo ctf-s2-exporter`. Depuis que sudo demande
+# un mot de passe (10/10), c'est root qui la produit ici, a heure fixe, et la
+# cle du NAS ne fait plus que lire un fichier. L'exporteur est appele tel quel.
+set -euo pipefail
+
+Q=/root/lab-backups/quotidien
+BOITE='/var/lib/<compte-sortie>/sortie'
+F="$BOITE/ctf-s2.tar.gz.gpg"
+
+# La meme regle que ctf-s2-exporter : la plus recente des archives du jour.
+# shellcheck disable=SC2012
+A=$(ls -1t "$Q"/ctf-s2-*.tar.gz 2>/dev/null | head -n 1 || true)
+[ -n "$A" ] || { echo "ECHEC : aucune archive dans $Q" >&2; exit 1; }
+
+T=$(mktemp "$BOITE/.encours-XXXXXX")
+trap 'rm -f "$T"' EXIT
+
+/usr/local/sbin/ctf-s2-exporter > "$T"
+
+[ -s "$T" ] || { echo "ECHEC : l'exporteur n'a rien rendu" >&2; exit 1; }
+# Le controle que fait aussi le NAS : un message GPG symetrique commence par
+# le paquet 0x8c. Mieux vaut refuser ici qu'au bout de la chaine.
+PREMIER=$(head -c 1 "$T" | od -An -tx1 | tr -d ' \n')
+[ "$PREMIER" = "8c" ] || { echo "ECHEC : entete $PREMIER, ce n'est pas un GPG symetrique" >&2; exit 1; }
+
+# 🔑 Le fichier depose porte la date de la sauvegarde qu'il contient, pas celle
+# du depot : c'est elle que le lecteur borne. Sans ce geste, une sauvegarde
+# quotidienne arretee serait rechiffree chaque jour et passerait pour fraiche.
+touch -r "$A" "$T"
+chgrp '<compte-sortie>' "$T"
+chmod 640 "$T"
+mv -f "$T" "$F"
+trap - EXIT
+echo "ok $(stat -c %s "$F") octets, archive du $(date -u -r "$F" '+%d/%m %H:%M') UTC, sha256 $(sha256sum "$F" | cut -c1-16)"

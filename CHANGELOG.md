@@ -10,6 +10,88 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice 0.4.4 et SelfAct 0.1.4 : ce qui reste à dire juste, avant le passage du 15 novembre — 4 novembre 2026
+
+Les constats que la relecture de la 0.4.3 avait laissés pour après sa pose, ceux de la relecture de ce lot, et le
+registre des textes.
+
+- **« Opposable »** ne se dit plus pour la Cour de cassation :
+  - à une date antérieure au début de sa propre couverture, ou quand l'index ne déclare aucune couverture pour elle ;
+    sans juridiction, la réserve ne la range plus parmi celles que l'amont n'interroge que nommées ;
+  - à une date plus récente que `CC_DELAI_PUBLICATION_JOURS` (60 jours) : une décision récente peut ne pas être
+    encore publiée. Le seuil vient de la mesure du 04/11 sur l'index servi : décisions `cc` de 2026 publiées à
+    90,8 % sous 15 jours, 96,4 % sous 30, 97,8 % sous 60, mesurées sur `update_date`, qui peut dater une mise à
+    jour plus tardive que la première publication.
+- **Une date à venir** reçoit une réponse ferme, quelle que soit la juridiction et même quand la base amont ne
+  répond pas : aucune décision ne peut la porter. Un jour de marge tient compte de l'outre-mer, puisque le serveur
+  compte en UTC.
+- **Une panne de l'amont** ne se décrit plus par « l'index, qui couvre cette date » quand le dernier fonds ouvert
+  commence après elle. Le bras par défaut de la réserve, qu'aucun chemin connu n'atteint, ne conclut plus, et le
+  banc vérifie qu'il ne sort pas.
+- **Un jour figé mal formé** (`SELFJUSTICE_JOUR`) retombe sur le jour réel au lieu de lever une erreur.
+- **La sentinelle** juge la jurisprudence sur le compteur de Judilibre seul (`par_source.judilibre`), le cite dans
+  ses alertes, et signale sa baisse même quand JADE la compense. JADE, qui partage la table et avance chaque soir,
+  masquait un Judilibre figé derrière une date avancée.
+- **`update_judilibre.sh`** compte ce que Judilibre écrit : un ajout de JADE pendant le passage ne fait plus taire
+  l'alerte « sans nouveauté ». Une erreur de lecture de la base sort en échec au lieu de devenir un zéro ou de se
+  confondre avec une base sans colonne `source`, et l'alerte d'échec ne prétend plus avoir restauré l'index.
+- **Les bancs** demandent un port libre au système, refusent un port déjà servi et exigent que leur serveur soit
+  vivant : sur un poste où Tor écoute sur 9050, douze d'entre eux pouvaient parler au serveur d'un autre.
+  `test_jurisprudence.py` ne mesure plus un chemin voisin de celui qu'il nomme.
+- **Registre** :
+  - les textes de MySelf tutoient le lecteur (messages du calcul d'échéance de SelfAct, deux messages de l'API) ;
+  - l'avertissement « contenu généré par une IA » de la page de SelfJustice devient impersonnel : l'IA lit aussi
+    cette page, et chaque « tu » y désigne l'IA ;
+  - les IA de SelfJustice et de SelfAct vouvoient l'utilisateur et le tutoient s'il le demande. Leurs phrases
+    modèles passent au vouvoiement, y compris les messages d'export et de clôture que l'IA reproduit mot pour mot.
+    Une consigne destinée à l'IA, glissée dans le message de clôture finale, en sort ;
+  - les courriers de SelfAct à un tiers restent au vouvoiement.
+- La bannière et les pieds de page de SelfAct, et l'en-tête comme le pied de `directives.md`, portaient leur
+  version sans être contrôlés : ils sont déclarés à `check-versions.sh`.
+
+### SelfJustice 0.4.3 : le rafraîchissement Judilibre repart de ses propres juridictions — 3 novembre 2026
+
+`build_judilibre_index.py --depuis auto` calculait sa date de reprise sur toutes les juridictions de la
+table `decisions`, que le collecteur JADE partage depuis la 0.4.0. Le fonds éteint de la Cour de
+discipline budgétaire (dernière décision le 19/04/2000) fixait donc le début de la fenêtre : chaque
+rafraîchissement remoissonnait les cours d'appel et la Cour de cassation depuis le 20/03/2000. Sur un
+tel volume, l'amont refuse une partie des tranches anciennes (`circuit_breaking_exception: Data too
+large`), la moisson se déclare incomplète et la date de synchronisation ne progresse plus. L'index
+continuait de recevoir les décisions récentes, mais `/status` annonçait un retard depuis le 1er octobre.
+
+- La reprise ne lit plus que les juridictions de `JURIDICTIONS` (`cc`, `ca`), et écarte une décision
+  datée après le jour du passage, comme le fait déjà la couverture de l'API.
+- Une juridiction moissonnée absente de l'index n'est plus remplie par le rafraîchissement, qui ne lui
+  apporterait que la fenêtre récente : le passage la nomme au journal et sort en 4. `update_judilibre.sh`
+  garde alors l'index comme en 3, mais son alerte demande une moisson complète (sans `--depuis`) au lieu
+  d'annoncer un rattrapage au passage suivant. L'effacement des tranches à refaire se borne aux
+  juridictions remoissonnées. Le moissonneur et son enveloppe se posent ensemble : l'enveloppe
+  précédente restaurerait l'index sur un 4.
+- `tests/test_reprise_judilibre.py`, branché dans `structure` : il rejoue les dates de l'index servi,
+  puis lance le vrai moissonneur contre un amont simulé (juridictions interrogées, début de fenêtre,
+  tranches conservées, code de sortie, marqueur). Il rougit sur le code précédent (fenêtre ouverte le
+  20/03/2000).
+
+### SelfJustice 0.4.3 et `selfright-mcp` 0.4.7 : trois réponses qui en disaient plus que ce qui était établi — 3 novembre 2026
+
+Corrections de la relecture du lot, avant sa publication.
+
+- **Recherche LEGI** : quand les mots cherchés ne figurent que dans une version qui ne s'applique pas,
+  celle-ci n'est plus présentée sous l'état de la version applicable avec son propre extrait. La version
+  applicable ne prend sa place que si elle porte aussi ces mots, et avec son extrait à elle ; sinon le
+  résultat reste rangé hors du droit applicable et nomme la version qui s'applique (`version_applicable`),
+  que le client MCP affiche.
+- **Vérification d'une référence** : pour un tribunal judiciaire ou de commerce, que l'index ne porte pas,
+  une absence n'est plus rendue quand aucune source n'a été consultée — sans date, ou quand la base amont
+  n'a pas répondu. La réponse est « indéterminée » (503), comme pour toute vérification impossible.
+  Le client MCP y ajoute, quand la date fournie était mal formée, qu'elle n'a pas été transmise et que
+  l'outil est à rappeler avec une date au format AAAA-MM-JJ.
+- Le message « clé Judilibre absente » borne ce qui reste vérifiable aux juridictions que l'index
+  moissonne ; la description de l'outil MCP et l'aide de l'API nomment `tj` et `tcom`.
+- Bancs : `test_applicabilite.py` et `test_sonde_amont.sh` portent ces cas, vus rouges sur le code
+  précédent. Le cas qui exigeait l'état « en vigueur » pour des mots absents de la version applicable
+  est inversé.
+
 ### SelfDataGuard 0.9.0 — un séquestre que l'administrateur seul n'ouvre plus — 2 novembre 2026
 
 Sous un **gardien** — un second détenteur que l'intégrateur fait tourner hors de la machine qui sert —, le séquestre
@@ -29,14 +111,15 @@ cessant de le donner aux façades comme à la cérémonie. La passe de
 l'exploitant (`seal-to-keeper`) scelle au gardien les séquestres d'avant, sans aucun secret en main ;
 `bin/keeper-conformance.php` éprouve un gardien.
 
-Rupture pour un stockage à soi (une colonne de révision, trois méthodes) et pour la cérémonie (un gardien, nommé ;
-`DATAGUARD_KEEPER_FILE`). Corrige quatre défauts du code publié, dont deux re-scellements d'une même lecture qui
+Rupture pour un stockage à soi (une colonne de révision, trois méthodes, le record du séquestre bâti par
+`EscrowRecord::parse()`, un troisième fichier pour `bin/storage-conformance.php`) et pour la cérémonie (un gardien,
+nommé ; `DATAGUARD_KEEPER_FILE`). Corrige quatre défauts du code publié, dont deux re-scellements d'une même lecture qui
 réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire un séquestre déposé sous gardien. Le
 détail, la migration et les limites déclarées :
 [`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
 
-Mesuré : 901 cas sur 14 suites (le gardien 178, la conformité du stockage 84) ; deux étapes de canaris neuves (9 et
-132), chacune vue rouge sur son cas.
+Mesuré : 942 cas sur 14 suites (le gardien 208, la conformité du stockage 95) ; cinq étapes de canaris neuves (9,
+147, et trois de 3), chacun vu rouge sur son cas.
 
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
@@ -69,6 +152,216 @@ Aucune version ne monte : rien ne change dans ce que le code décide.
 `tools/build-myself-live/` décrivait la construction et la signature d'une image ISO qui n'a jamais
 été produite : sa clé de signature était un emplacement réservé, sa liste de signataires était vide.
 Depuis le 5 octobre, plus aucun texte du dépôt ne le citait.
+
+### SelfJustice 0.4.3 et `selfright-mcp` 0.4.7 : une réponse ne se présente plus comme vérifiée quand elle ne l'est pas — 15 octobre 2026
+
+Un audit du lot, mené avant son envoi, a cherché les réponses qui portent toutes les marques de la
+vérification et disent pourtant faux. Il en a trouvé ; ce qui suit les corrige.
+
+**Une recherche qui n'a pas eu lieu.** Sans clé Judilibre, avec un amont injoignable ou une date mal formée,
+`rechercher_jurisprudence` répondait « aucune décision ne correspond », avec la consigne de le dire à
+l'utilisateur. Il dit désormais que la recherche n'a pas pu se faire. L'API refuse en 400 une date qui n'est
+pas au format `AAAA-MM-JJ`, et le client affiche la réserve de l'index quand une combinaison ne peut rien
+rendre.
+
+**Une base figée.** La fraîcheur se jugeait sur la seule date de synchronisation : un cron qui tourne à
+l'heure sur un contenu arrêté s'affichait « cadence tenue ». C'est la panne des treize mois, que le README du
+paquet raconte. Le client confronte maintenant le contenu à la synchronisation, et annonce « contenu figé »
+au-delà de 31 jours d'écart.
+
+**Un état qui ne se lit pas.** Quand `/status` échouait, le bandeau de fraîcheur disparaissait sans un mot ;
+il dit désormais que la fraîcheur n'a pas pu être vérifiée. Côté API, une base absente ne fait plus tomber
+`/status` en entier : les autres blocs répondent. `statut` ne lève plus d'exception sur un bloc nul : il dit
+la base absente ou illisible, sans lui chercher de fraîcheur, et alerte l'exploitant, jurisprudence comprise — l'API ne distingue pas
+une base qu'on n'a pas encore construite d'une base de production disparue.
+
+**Une date de contenu qui n'en était pas une.** La base européenne était datée du jour de chaque passage,
+même quand sa construction échouait. Elle se construit désormais sur une copie, qui ne remplace la base
+servie qu'une fois ses articles témoins conformes — contrôlés aussi quand une source échoue —, et sa date
+de contenu est celle de la plus récente source relue sur le réseau : elle n'avance plus quand aucune ne l'a
+été, ni pour une source servie depuis une copie locale. Comme une source peut échouer pendant que les autres se rafraîchissent, le client
+juge source par source ce que `/status` déclare : un texte servi depuis une copie déposée à la main porte sa
+date de dépôt, et une source dont la reconstruction échoue depuis plus d'un mois est signalée. Une date LEGI
+illisible ne devient plus la date du jour : le marqueur garde la précédente, et l'exploitant est alerté.
+
+**Une absence affirmée trop vite.**
+
+- Un mot « absent de l'index » n'était cherché que dans les sommaires, sans juridiction ni dates. La
+  vérification suit maintenant le périmètre de la recherche, et le dit.
+- `verifier_jurisprudence` disait d'une décision administrative absente « elle y figurerait », dans un fonds
+  qui n'en porte qu'une sélection. La réserve le dit désormais.
+- Sans juridiction, la borne de l'index se prenait sur des fonds arrêtés en 2000 et en 2009, et Judilibre,
+  qui ne porte que l'ordre judiciaire, tranchait pour l'ordre administratif : un jugement de tribunal
+  administratif ressortait « opposablement introuvable ». Seuls les fonds vivants bornent l'index, et
+  Judilibre n'est plus interrogé pour une juridiction administrative. Il l'est dès qu'une date est annoncée
+  et que rien ne lui correspond localement — une moisson n'est pas exhaustive —, toujours avec un filtre
+  explicite : sans juridiction, il ne cherche que dans la Cour de cassation. La réserve ne conclut que pour
+  la juridiction interrogée : opposable pour la Cour de cassation, que Judilibre diffuse en entier ; bornée à
+  ce qu'il diffuse pour les cours d'appel ; sans valeur de preuve pour l'ordre administratif. Les tribunaux
+  judiciaires et de commerce, que l'index local ne porte pas, se vérifient désormais par leur nom, auprès
+  de l'amont. Une date antérieure au premier fonds de l'index ne prouve jamais rien, une page de résultats
+  qui n'épuise pas l'amont non plus, et un amont qui ne répond pas laisse l'absence probable, jamais
+  établie. ⚠️ Chaque vérification datée sans correspondance locale coûte un appel Judilibre, sur la clé de
+  l'instance.
+- Une date qui n'existe pas (`2026-02-30`) est refusée, comme une date mal formée ; une décision datée dans
+  l'avenir ne fait plus la borne de la couverture.
+- Une juridiction mal écrite est refusée comme un argument (400), au lieu d'être présentée comme une panne ;
+  « CA » en capitales vaut « ca ».
+
+**Un autre article que celui demandé.** La référence n'était pas encodée dans le chemin : « 8/2 » servait
+l'article 8. Le client l'encode, l'API décode aussi les segments d'un article européen, et refuse une
+référence coupée par un « / » non encodé au lieu d'en servir le début.
+
+**Un article servi, introuvable par ses mots.** L'index plein texte excluait les versions sans état que l'API
+sert comme version courante : 286 sur la base servie au 15 octobre. Il les porte, hors des lignes
+sentinelles. Et quand deux versions d'un même article répondent à la recherche, c'est la version applicable
+qui ressort, au rang de la mieux classée : une version morte de trente-six caractères passait devant au
+score. Si la fenêtre lue ne la contient pas, elle est cherchée par son numéro (voir l'entrée du 3 novembre
+pour le cas où elle ne porte pas les mots cherchés).
+
+**Ce que le dépôt affirmait.**
+
+- Le README du paquet présentait `pip install selfright-mcp` comme disponible, alors que le paquet n'est pas
+  publié et que son nom reste libre. Il redit l'installation depuis les sources, et `pypi.yml` refuse de
+  publier tant que cette réserve y figure.
+- `pypi.yml` ne jouait aucun banc. Il exige désormais que le commit tagué ait passé `structure`, et installe
+  la roue construite dans un environnement neuf pour vérifier que son point d'entrée annonce les douze outils.
+- Les README de SelfJustice disaient 0.4.2 sous un badge 0.4.3, et PHP-FPM 8.2 pour une configuration en
+  8.4. Leur ligne de statut entre sous `check-versions.sh`.
+- L'adresse de l'instance — ni son URL, ni son nom d'hôte dans une erreur TLS — ne part plus dans les
+  messages d'erreur rendus au modèle, et `gabarit_document` ne dit plus « injoignable » d'une instance qui
+  répond sans gabarit.
+- `sanity_texte_decision.py`, que la CI lance, plantait sur une fonction ajoutée au client, et
+  `test_applicabilite.py` n'était pas joué par la CI. Le premier passe, le second y entre.
+
+Chaque cas a été vu rouge avant le correctif : `test_mcp_reponses.py` et `test_update_legi.sh`, neufs ;
+`test_sonde_amont.sh`, `sanity_fraicheur_bases.py` et `test_applicabilite.py`, étendus.
+
+⚠️ **La pose reste double, et s'élargit** : `update_legi.sh` et `build_eu_db.py` rejoignent les outils
+planifiés à poser à la main, **dans le même geste** — le nouveau script de synchronisation suppose que la
+construction contrôle ses témoins avant de rendre le code 2. `extract_selfjustice_db.py` se pose avant
+`audit_articles.py`, qui en importe la liste des états.
+
+D'autres constats de cet audit, de robustesse et d'exposition, restent à traiter dans un lot suivant.
+
+### SelfJustice 0.4.3 — un article se dit applicable selon sa période, plus selon son seul état — 14 octobre 2026
+
+**Le chiffre « en vigueur » de `/status` passe de 683 080 à environ 693 141.** C'est une correction, pas une
+croissance de la base : l'ancien compte était faux. Ce compte dépend désormais du calendrier — il bouge le
+jour où une version entre en vigueur, sans que la base change —, et la sonde de fraîcheur, qui le lisait
+pour juger qu'une base avait été refaite, l'écarte de son empreinte (voir plus bas).
+
+L'API ne calculait jamais si un article s'applique. Elle rendait `en_vigueur` égal à `etat === 'VIGUEUR'` :
+les dates étaient servies, jamais comparées. Or l'état LEGI nomme le dernier événement subi par une version,
+pas son applicabilité, et Légifrance ne l'affiche d'ailleurs pas — elle affiche une fenêtre de dates. Mesuré
+sur la base servie le 12 octobre : quelque dix mille articles applicables annoncés « PLUS EN VIGUEUR », dont
+l'article 8 du code de procédure pénale, applicable jusqu'au 1er janvier 2029 ; à l'inverse, des articles qui
+n'entreront en vigueur qu'en 2027 annoncés « EN VIGUEUR depuis ».
+
+**Plus grave que le libellé, le mauvais texte était servi.** À défaut de version `VIGUEUR`, le sélecteur
+prenait la `date_debut` la plus récente — qui peut être dans le futur. L'article 10 du même code servait sa
+version de 2027 ; l'article 13 d'un arrêté de 2012 servait une ligne sentinelle datée 2999, un article qui en
+modifie d'autres, à la place du texte en vigueur que la base possédait. Le sélecteur ne fait plus qu'une
+passe, ordonnée par l'applicabilité.
+
+**Plus caché encore, l'index de recherche.** Il ne retenait que l'état `VIGUEUR` : quelque vingt mille
+versions en abrogation ou en entrée en vigueur différée étaient introuvables par leur texte, l'article 8 du
+CPP en tête. Il porte désormais toutes les versions vivantes, et c'est la requête qui juge, au jour, ce qui
+s'applique — un index figé à sa date de construction perdrait les articles qui entrent en vigueur entre deux
+synchronisations. ⚠️ L'index ne se refait qu'à la synchronisation suivante après la pose.
+
+**La règle était recopiée en quinze endroits** — la recherche par numéro, le détecteur de numéros recyclés,
+le compte de `/status`, le sélecteur, le tri des alternatives, la réponse, l'index, le tri de la recherche dans
+le client MCP, l'outil d'audit. Elle n'a plus qu'une définition, `legi_sql_applicable()` : la période décide,
+et seuls trois états — `VIGUEUR`, `VIGUEUR_DIFF`, `ABROGE_DIFF` — peuvent désigner une version vivante. Sans
+cette liste, la sentinelle `2999-01-01` d'un article périmé ou annulé se lirait comme une perpétuité.
+Écrite pour qu'un état vide ne disparaisse pas de l'ancien droit : la recherche « ancien droit » était
+aveugle aux 241 785 versions sans état (au 12 octobre).
+
+**Zone sensible, route existante** : le *sens* du champ `en_vigueur` de `/api/legi/article` change — il
+disait faux. Un champ `applicabilite` s'y ajoute (`en_vigueur`, `pas_encore`, `plus_en_vigueur`,
+`sans_etat`), et chaque résultat de `/api/legi/search` porte désormais `en_vigueur`. Une version sans état
+déclaré n'est plus annoncée morte : la DILA n'en dit rien, et le dire « plus en vigueur » affirmait une
+abrogation que la source n'affirme pas.
+
+**Côté client MCP** (dans la 0.4.7, non publiée) : il présente ce que l'API a établi au lieu de le déduire
+de l'état, en cinq cas au lieu de deux. Il ne promet jamais une abrogation — 3 074 des 10 004 articles en
+abrogation différée seront *remplacés* à leur terme, pas supprimés. Et il n'écrit plus `None` dans un texte :
+`dict.get(clé, défaut)` ne prend son défaut que si la clé manque, si bien qu'une valeur nulle sortait telle
+quelle — « (état : None) », et « base au None » sur toute instance qui n'a pas encore écrit sa date de
+synchronisation, c'est-à-dire chez quiconque vient de monter la sienne.
+
+`tests/test_applicabilite.py` fait juger les mêmes lignes à l'API, à la recherche, à l'outil d'audit et au
+client : **rouge sur 22 contrôles avant le correctif, vert après**. Son jeu est fait de lignes réelles
+extraites de la base servie, et sa date est figée, parce qu'un témoin adossé au jour courant se périme à la première
+échéance qu'il porte.
+
+**Un audit du lot a trouvé ce que le premier jet cassait, et tout est repris** :
+
+- **Trois ordres de sélection coexistaient**, chacun faux à sa manière : l'un rangeait une version sans état
+  *sous* les versions mortes — l'article 41 d'un texte de 2014 servait son abrogée de 2017 au lieu de sa
+  version de 2023 —, un autre faisait passer une sentinelle 2999 devant la version abrogée qu'elle masquait
+  (l'article 135 d'un texte de 2008, et 80 groupes comme lui). Un seul ordre désormais,
+  `legi_sql_ordre_version()`, pour le sélecteur, les alternatives et l'ancien droit.
+- **La sonde de fraîcheur perdait son alarme.** Son empreinte prenait tous les compteurs du bloc LEGI, donc le
+  compte « en vigueur » — qui bouge 16 jours d'ici fin décembre, dont le 1er novembre, jour de
+  synchronisation. Un marqueur qui avance sur une base inchangée, la panne des treize mois, serait passé en
+  silence. Ce compteur est nommé et sort de l'empreinte.
+- **La recherche ne disait pas ce qu'elle rendait.** Chaque résultat porte maintenant `applicabilite`, et le
+  client MCP range ses résultats en quatre blocs au lieu de deux : un texte qui ne s'applique qu'en 2027 n'est
+  plus présenté « utile pour des faits antérieurs ».
+- **La page que lisent les IA ordonnait encore de juger sur l'état** — « si un article est abrogé, ne pas
+  l'utiliser » —, ce qui écartait l'article 8 du CPP. Elle dit désormais de lire `applicabilite`, ce que permet
+  chacun des quatre cas, et que 2999 et 2222 ne sont pas des échéances.
+- **Les listes d'états sont confrontées pour de bon** : l'outil d'audit reprend celle de l'outil d'extraction
+  au lieu de la recopier, et le banc exige que les deux ensembles, PHP et Python, soient égaux — un état ajouté
+  d'un seul côté y rougit.
+
+⚠️ **La pose sera double.** L'API passe par le déployeur ; les outils planifiés — l'extraction, l'audit, la
+sonde — ne sont posés par aucun script du dépôt, et ceux qui tournent sur l'instance datent du 27 août. Sans
+leur pose, l'index ne gagnera jamais les versions différées.
+
+Restent hors de ce lot : le titre d'un texte choisi sur l'état seul (429 textes), et l'outil d'audit,
+qui cherche un article par son numéro sans son code et ne peut donc départager deux homonymes.
+
+### `selfright-mcp` 0.4.7 — le paquet part sur PyPI, et quatre refus cessent de se faire passer pour des pannes — 12 octobre 2026
+
+Première mise sur index public. Ce que la préparation a trouvé pèse plus que la publication elle-même.
+
+**Un refus de l'amont arrivait vide.** Sur une réponse 404, le client remplaçait le corps de l'API par
+deux clés et jetait son `ok: false`, son `error` et son `hint`. Or SelfAct refuse en 404 : le refus
+écrit dans `actes_pour_situation` ne pouvait donc jamais partir, et son rendu normal annonçait
+« 0 acte(s) » — un modèle en concluait qu'aucune démarche n'existe quand seul le slug était faux. Le
+corps est désormais conservé et `__introuvable__` s'y ajoute. Six outils n'avaient aucune garde sur ce
+chemin.
+
+**Une absence n'est plus annoncée comme une panne.** `texte_decision` routait tout 404 vers le message
+d'API morte : une décision hors de la sélection JADE — qui ne porte que le recueil Lebon et une part
+des inédites — faisait dire « la vérification est indisponible » alors que l'index avait répondu et
+expliqué. Les deux cas se disent maintenant séparément.
+
+**Deux gardes trop sévères.** `calculer_echeance` refusait une `distance` vide, qu'un champ de
+formulaire non rempli produit et que l'API traite déjà comme la métropole. Et quand `SELFRIGHT_ACT_URL`
+ne se déduisait pas — la dérivation exige une racine finissant par `/api` —, le client annonçait
+« `SELFRIGHT_API_URL` n'est pas défini » sur une variable correctement renseignée, envoyant corriger la
+mauvaise.
+
+**Ce que le paquet donne à voir.** `authors` et `[project.urls]`, classifier en `4 - Beta`, et un
+`only-include` pour l'archive source : `hatchling` ne lit pas le `.gitignore` de la racine du dépôt, si
+bien qu'un journal ou une base atterrissant dans le dossier partirait dans une archive qui ne se
+remplace jamais — et, git l'ignorant, sans que `audit-opsec.sh` le voie. Éprouvé en y plantant
+`.env`, `collecte.log`, `base-test.sqlite` et `etat/dernier.json` : aucun ne part.
+
+Le README corrige cinq affirmations que sa publication rendait définitives — dont la portée de
+l'article 50 du règlement (UE) 2024/1689, vérifiée contre la base au 1er octobre 2026 —, nomme les
+chemins de l'auto-hébergement et le prérequis d'une clé Judilibre pour deux outils sur douze.
+
+**Publication sans jeton** : `.github/workflows/pypi.yml` publie par identité éphémère (*trusted
+publishing*), le droit n'étant accordé qu'au job d'envoi, lui-même retenu par un environnement protégé.
+Un garde y compare le tag, `modules.json` et la roue construite. `scripts/check-versions.sh
+--publications` interroge désormais un canal `pypi`, par l'API JSON et non par la page du projet, qui
+rend 200 pour un paquet inexistant ; une version *yanked*, que l'index liste encore mais que `pip`
+n'installe plus, ne compte pas comme servie.
 
 ### Le statut d'un module et les chemins des blocs de code entrent sous contrôle — 4 octobre 2026
 

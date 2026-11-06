@@ -41,7 +41,6 @@ ECHECS=0
 verdict() { if [ "$1" = "0" ]; then echo "  ✓ $2"; else echo "  ✗ $2${3:+ — $3}"; ECHECS=$((ECHECS+1)); fi; }
 
 echo "factice" > "$TMP/keyid"
-PORT=8793
 
 # ── 1. Le réessai du 400 sans corps ────────────────────────────────────────
 #
@@ -81,14 +80,22 @@ PYEOF
 lancer_amont() {  # $1 = forme du corps
     [ -n "$AMONT_PID" ] && { kill "$AMONT_PID" 2>/dev/null; wait "$AMONT_PID" 2>/dev/null; }
     : > "$TMP/appels.txt"
-    CORPS="$1" COMPTEUR="$TMP/appels.txt" PORT="$PORT" python3 "$TMP/amont.py" &
-    AMONT_PID=$!
-    for _ in $(seq 1 40); do
-        python3 -c "import socket,sys
+    # Un port que le système donne libre, à chaque lancement : fixe, il était
+    # partagé avec toute autre exécution du banc, et la sonde de démarrage
+    # acceptait le serveur de l'autre — dont le décompte d'appels n'est pas le nôtre.
+    for _ in 1 2 3; do
+        PORT=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+        if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then continue; fi
+        CORPS="$1" COMPTEUR="$TMP/appels.txt" PORT="$PORT" python3 "$TMP/amont.py" &
+        AMONT_PID=$!
+        for _ in $(seq 1 40); do
+            kill -0 "$AMONT_PID" 2>/dev/null && python3 -c "import socket,sys
 s=socket.socket(); s.settimeout(0.3)
 try: s.connect(('127.0.0.1', $PORT)); sys.exit(0)
 except Exception: sys.exit(1)" 2>/dev/null && return 0
-        sleep 0.25
+            sleep 0.25
+        done
+        kill "$AMONT_PID" 2>/dev/null; AMONT_PID=""
     done
     echo "l'amont factice n'a pas démarré" >&2; exit 2
 }
@@ -203,6 +210,26 @@ grep -q "index CONSERVÉ" "$TMP/journal.log" \
     || verdict 1 "le journal dit que l'index est conservé"
 
 echo
+echo "▸ Issue 4 — juridiction absente : on garde, et l'alerte appelle une moisson complète"
+# Les données valent comme en 3 ; ce qui change, c'est que rien ne se reprendra
+# seul. Une alerte qui promettrait le rattrapage ferait attendre pour rien.
+preparer 4
+lancer_enveloppe; CODE=$?
+[ "$(compte)" = "2" ] && verdict 0 "les données gagnées sont CONSERVÉES (2 décisions)" \
+                      || verdict 1 "les données gagnées sont conservées" "$(compte) décision(s)"
+[ "$(cat "$TMP/db/marqueur.txt")" = "2026-09-01" ] \
+    && verdict 0 "le marqueur de fraîcheur n'a PAS avancé" \
+    || verdict 1 "le marqueur n'a pas avancé" "il vaut $(cat "$TMP/db/marqueur.txt")"
+[ "$CODE" != "0" ] && verdict 0 "l'enveloppe sort en ÉCHEC (code $CODE)" \
+                   || verdict 1 "l'enveloppe sort en échec" "code 0, la sentinelle se tairait"
+grep -q "moisson complète" "$TMP/journal.log" && grep -q "juridiction absente" "$TMP/journal.log" \
+    && verdict 0 "le journal et l'alerte demandent une moisson complète" \
+    || verdict 1 "le journal et l'alerte demandent une moisson complète"
+! grep -q "seront reprises" "$TMP/journal.log" \
+    && verdict 0 "rien ne promet un rattrapage au passage suivant" \
+    || verdict 1 "rien ne promet un rattrapage" "« seront reprises » au journal"
+
+echo
 echo "▸ Issue 1 — échec franc : l'index précédent est restauré"
 preparer 1
 lancer_enveloppe; CODE=$?
@@ -223,6 +250,51 @@ lancer_enveloppe; CODE=$?
 [ "$(cat "$TMP/db/marqueur.txt")" = "2026-09-16" ] \
     && verdict 0 "le marqueur a avancé" \
     || verdict 1 "le marqueur a avancé" "il vaut $(cat "$TMP/db/marqueur.txt")"
+
+echo
+echo "▸ Un ajout de JADE ne masque pas un passage Judilibre sans nouveauté"
+# La table est partagée : si JADE écrit pendant le passage, un décompte de toute
+# la table voit monter le total et se tait, alors que Judilibre n'a rien apporté.
+rm -rf "$TMP/db"; mkdir -p "$TMP/db"
+sqlite3 "$TMP/db/index.sqlite" \
+    "CREATE TABLE decisions (id TEXT PRIMARY KEY, source TEXT);
+     INSERT INTO decisions VALUES ('judilibre-ancienne', NULL), ('jade-ancienne', 'jade');"
+echo "2026-09-01" > "$TMP/db/marqueur.txt"
+: > "$TMP/journal.log"
+cat > "$BAC/build_judilibre_index.py" <<'PYEOF'
+import os, sqlite3
+c = sqlite3.connect(os.environ["JUDILIBRE_DB"])
+c.execute("INSERT INTO decisions VALUES ('jade-du-soir', 'jade')")
+c.commit(); c.close()
+open(os.environ["JUDILIBRE_MARQUEUR"], "w").write("2026-09-16\n")
+PYEOF
+lancer_enveloppe; CODE=$?
+grep -q "sans nouveaute" "$TMP/journal.log" \
+    && verdict 0 "Judilibre n'a rien apporté → l'alerte « sans nouveauté » part" \
+    || verdict 1 "Judilibre n'a rien apporté → l'alerte « sans nouveauté » part" \
+                 "$(grep -E 'Décisions|ALERTE' "$TMP/journal.log" | tail -2)"
+
+echo
+echo "▸ Une base illisible au premier décompte : l'échec se dit, sans prétendre avoir restauré"
+# Avant, l'erreur devenait un zéro, et le passage continuait sur une base qu'on ne
+# savait pas lire ; et le piège d'erreur annonçait une restauration qu'il ne fait pas.
+rm -rf "$TMP/db"; mkdir -p "$TMP/db"
+printf 'pas une base sqlite\n' > "$TMP/db/index.sqlite"
+echo "2026-09-01" > "$TMP/db/marqueur.txt"
+: > "$TMP/journal.log"
+cat > "$BAC/build_judilibre_index.py" <<'PYEOF'
+import os
+open(os.environ["JUDILIBRE_MARQUEUR"], "w").write("2026-09-16\n")
+PYEOF
+lancer_enveloppe; CODE=$?
+[ "$CODE" != "0" ] && verdict 0 "l'enveloppe sort en échec (code $CODE)" \
+                   || verdict 1 "l'enveloppe sort en échec" "code 0"
+grep -q "index laisse en l etat" "$TMP/journal.log" && ! grep -q "precedent restaure" "$TMP/journal.log" \
+    && verdict 0 "l'alerte dit l'index laissé en l'état, sans restauration annoncée" \
+    || verdict 1 "l'alerte dit l'index laissé en l'état" "$(grep ALERTE "$TMP/journal.log" | tail -1)"
+[ "$(cat "$TMP/db/marqueur.txt")" = "2026-09-01" ] \
+    && verdict 0 "le moissonneur n'a pas tourné sur une base illisible" \
+    || verdict 1 "le moissonneur n'a pas tourné sur une base illisible" "marqueur $(cat "$TMP/db/marqueur.txt")"
 
 echo
 if [ "$ECHECS" -gt 0 ]; then

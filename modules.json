@@ -249,7 +249,7 @@
       "id": "selfjustice",
       "nom": "SelfJustice",
       "dossier": "self-right/selfjustice",
-      "version": "0.4.2",
+      "version": "0.4.4",
       "statut": {
         "fr": "bêta",
         "en": "beta"
@@ -266,6 +266,14 @@
         [
           "self-right/selfjustice/README.fr.md",
           "badge/statut-v"
+        ],
+        [
+          "self-right/selfjustice/README.md",
+          "**Live in production at ["
+        ],
+        [
+          "self-right/selfjustice/README.fr.md",
+          "**En production sur ["
         ],
         [
           "self-right/README.md",
@@ -301,7 +309,7 @@
       "id": "selfact",
       "nom": "SelfAct",
       "dossier": "self-right/selfact",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "statut": {
         "fr": "bêta",
         "en": "beta"
@@ -318,6 +326,34 @@
         [
           "self-right/selfact/README.fr.md",
           "badge/statut-v"
+        ],
+        [
+          "self-right/selfact/README.md",
+          "**v"
+        ],
+        [
+          "self-right/selfact/README.fr.md",
+          "**v"
+        ],
+        [
+          "self-right/selfact/site/act.php",
+          "<strong>SelfAct v"
+        ],
+        [
+          "self-right/selfact/site/act-docs.html",
+          "<strong>SelfAct v"
+        ],
+        [
+          "self-right/selfact/api/directives.md",
+          "*SelfAct v"
+        ],
+        [
+          "self-right/selfact/site/act.php",
+          "Version bêta v"
+        ],
+        [
+          "self-right/selfact/api/directives.md",
+          "bêta v"
         ],
         [
           "self-right/README.md",
@@ -353,11 +389,12 @@
       "id": "selfright-mcp",
       "nom": "selfright-mcp",
       "dossier": "self-right/selfjustice/mcp",
-      "version": "0.4.6",
+      "version": "0.4.7",
       "resume": {
         "fr": "serveur MCP de consultation du droit, adossé à SelfJustice",
         "en": "MCP server for law lookup, backed by SelfJustice"
       },
+      "pypi": "selfright-mcp",
       "porteurs": [
         [
           "self-right/selfjustice/mcp/pyproject.toml",

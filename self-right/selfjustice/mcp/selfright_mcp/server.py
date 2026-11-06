@@ -22,8 +22,13 @@ de juillet 2025 à août 2026, l'API a servi le droit au 13 juillet 2025 sans qu
 personne ne s'en aperçoive — la synchronisation tournait à l'heure, c'est son
 résultat qui était mort.
 
-Chaque réponse de chaque outil porte donc un état de fraîcheur, calculé contre
-la cadence de synchronisation annoncée (1er et 15 du mois). Quand la base est en
+Les dix outils qui lisent une base portent donc un état de fraîcheur dans leur
+réponse — `calculer_echeance` et `gabarit_document` n'en portent pas : ils ne
+servent aucun texte. Cet état se lit sur deux dates distinctes : `last_sync`,
+qui dit si la synchronisation a tenu sa cadence, et `last_update`, qui dit
+jusqu'où va le contenu servi. Le retard se juge sur la première, le contenu se
+dit avec la seconde ; les confondre condamne la date du contenu à ne jamais
+rattraper le calendrier, puisque c'est l'amont qui la fixe. Quand la base est en
 retard, le texte le dit avant de donner l'article, pour que le modèle le
 répercute à son utilisateur.
 
@@ -163,10 +168,10 @@ def _parse_date_fr(texte: str) -> dt.date | None:
 def _derniere_echeance(aujourdhui: dt.date) -> dt.date:
     """Dernière échéance de synchronisation **exigible** (cadence 1er et 15).
 
-    🔑 Le contrôle porte sur la date du **contenu**, jamais sur celle de la
-    dernière exécution. Un cron ponctuel qui reconstruit une base identique
-    passe tous les contrôles d'exécution en servant du droit périmé — c'est
-    exactement ce qui s'est produit pendant treize mois.
+    Elle borne la date de SYNCHRONISATION, pas celle du contenu : une
+    synchronisation qui tourne à l'heure et ne rapporte plus rien passe cette
+    borne. Le contenu se juge à part, contre la synchronisation elle-même
+    (`_CONTENU_FIGE_JOURS`).
 
     Le jour même d'une échéance, la synchronisation n'a pas encore tourné : à
     00h10 le 15, une base arrêtée au 1er est normale. Exiger l'échéance du jour
@@ -201,12 +206,34 @@ _NOM_JURIDICTION_COURT = {
 # administratifs) et en 2000 (Cour de discipline budgétaire et financière).
 _SILENCE_MAX_JOURS = 365
 
+# 🔑 Au-delà de cet écart entre la synchronisation et le plus récent de ce
+# qu'elle sert, la synchronisation tourne et ne rapporte plus rien. L'écart se
+# mesure contre la synchronisation, jamais contre le calendrier : le contenu
+# précède toujours le passage qui l'a rapporté. Deux échéances de cadence, soit au plus 31 jours, ne peuvent pas
+# passer sans que la source publie rien.
+_CONTENU_FIGE_JOURS = 31
+
+# Où vérifier un texte quand la base ne le permet plus, base par base.
+_SOURCE_OFFICIELLE = {
+    "LEGI": "legifrance.gouv.fr",
+    "conventionnalité": "eur-lex.europa.eu, ou hudoc.echr.coe.int pour la CEDH",
+    "jurisprudence": ("courdecassation.fr pour la justice judiciaire, "
+                      "legifrance.gouv.fr pour la justice administrative"),
+}
+
+
+def _titre_alerte(nom: str, message: str) -> str:
+    """Le titre de l'alerte envoyée à l'exploitant : un contenu figé n'est pas
+    un retard — son cron tourne, et chercher pourquoi il ne tourne pas égare."""
+    cause = "contenu figé" if message.startswith("⚠️ CONTENU FIGÉ") else "retard"
+    return f"SelfJustice — {nom} : {cause}"
+
 
 def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     """Rend (message lisible, retard constaté).
 
-    🔑 **Ne jamais juger un retard sur la date du CONTENU.** Elle est fixée par
-    l'amont, pas par nous : pour LEGI, c'est celle du dernier diff publié par la
+    🔑 **Ne jamais comparer la date du CONTENU au calendrier.** Elle est fixée
+    par l'amont, pas par nous : pour LEGI, c'est celle du dernier diff publié par la
     DILA, qui précède forcément notre passage et n'avance plus jusqu'au suivant.
     La comparer au calendrier de nos synchronisations la condamne à ne jamais
     l'atteindre.
@@ -221,7 +248,9 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     L'instance expose donc `last_sync` à côté de `last_update`. Le retard se
     juge sur la première — un cron mort, c'est une synchronisation qui n'a pas
     eu lieu — et le contenu se dit sur la seconde, pour que le lecteur voie
-    jusqu'où va ce qu'on lui sert.
+    jusqu'où va ce qu'on lui sert. Les deux se confrontent ensuite : un
+    contenu qui reste loin derrière une synchronisation récente dit un cron
+    vivant dont le résultat est mort (`_CONTENU_FIGE_JOURS`).
 
     Le bloc entier est passé plutôt que ses deux champs : deux valeurs qui n'ont
     de sens qu'ensemble ne se recopient pas chez chaque appelant.
@@ -243,6 +272,9 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     # Recopier la chaîne telle quelle ferait cohabiter « 2 août 2026 » et
     # « 2026-08-09 » dans le même statut.
     contenu = _format_fr(date_contenu)
+    # Le plus récent de ce que la base sert : c'est lui qu'une synchronisation
+    # vivante fait avancer. Une base à plusieurs fonds le prend sur son front.
+    plus_recent = date_contenu
 
     # 🔑 **Le marqueur de passage n'est pas une date de contenu.** Pour LEGI,
     # `last_update` porte la date du dump DILA — donc bien du contenu. Pour la
@@ -269,6 +301,7 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
             # la plus récente, pas depuis aujourd'hui : une synchronisation
             # morte vieillit tous les fonds ensemble, et l'âge doit le dire.
             front = max(bornes.values())
+            plus_recent = front
             vivants = {c: d for c, d in bornes.items()
                        if (front - d).days <= _SILENCE_MAX_JOURS}
             contenu = ", ".join(
@@ -310,6 +343,20 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     echeance = _derniere_echeance(aujourdhui)
     synchro = _format_fr(date_synchro)
 
+    fige = (date_synchro - plus_recent).days
+    if date_synchro >= echeance and fige > _CONTENU_FIGE_JOURS:
+        return (
+            f"⚠️ CONTENU FIGÉ — la base {base} a été synchronisée le {synchro}, "
+            f"mais le plus récent de son contenu date du {_format_fr(plus_recent)}, "
+            f"{fige} jours plus tôt : la synchronisation tourne et ne rapporte "
+            f"plus rien de sa source. Contenu servi : {contenu}{vieillesse}{arretes} "
+            "— les textes rendus peuvent être abrogés ou modifiés depuis. "
+            "Signale-le à l'utilisateur et renvoie-le vers "
+            f"{_SOURCE_OFFICIELLE.get(base, 'la source officielle')} avant tout usage "
+            "ayant des conséquences (saisine, courrier, décision).",
+            True,
+        )
+
     if date_synchro >= echeance:
         # 🔑 Cette ligne certifie la CADENCE du cron, jamais la fraîcheur du
         # contenu : ne pas y réécrire « à jour », que le lecteur porterait sur
@@ -327,8 +374,8 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
         f"{_format_fr(echeance)} n'a pas été honorée. Contenu servi : "
         f"{contenu}{vieillesse}{arretes} — les textes rendus peuvent être abrogés ou "
         "modifiés depuis. Signale-le à l'utilisateur et renvoie-le vers "
-        "legifrance.gouv.fr avant tout usage ayant des conséquences (saisine, "
-        "courrier, décision).",
+        f"{_SOURCE_OFFICIELLE.get(base, 'la source officielle')} avant tout usage "
+        "ayant des conséquences (saisine, courrier, décision).",
         True,
     )
 
@@ -392,17 +439,38 @@ async def _get(
 ) -> Any:
     racine = API_URL if base is None else base
     if not racine:
+        if base is None:
+            raise ApiIndisponible(
+                "SELFRIGHT_API_URL n'est pas défini : ce serveur ne sait pas quelle "
+                "instance interroger. Renseigne-la dans la configuration du client MCP. "
+                "N'invente aucun texte de loi en attendant."
+            )
+        # 🔑 Deux absences, deux causes, deux messages. `SELFRIGHT_ACT_URL` ne se
+        # déduit de l'API qu'à la condition que sa racine finisse par « /api » ;
+        # une instance servie sous un autre chemin, ou à la racine du domaine,
+        # laisse la dérivation vide. Ce garde annonçait alors
+        # « SELFRIGHT_API_URL n'est pas défini » — envoyant corriger une variable
+        # correctement renseignée, sur la seule piste donnée au lecteur. Les
+        # trois outils de démarches qui passent par cette base le payaient.
         raise ApiIndisponible(
-            "SELFRIGHT_API_URL n'est pas défini : ce serveur ne sait pas quelle "
-            "instance interroger. Renseigne-la dans la configuration du client MCP. "
-            "N'invente aucun texte de loi en attendant."
+            "l'adresse des routes de démarches n'a pas pu être déduite de "
+            "SELFRIGHT_API_URL : la dérivation demande une racine finissant par "
+            "« /api ». Renseigne SELFRIGHT_ACT_URL dans la configuration du "
+            "client MCP. N'invente aucune démarche en attendant."
         )
     url = f"{racine}{chemin}"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
             r = await client.get(url, params=params)
     except Exception as e:
-        raise ApiIndisponible(f"{type(e).__name__} : {e}") from e
+        # Le message de transport porte l'adresse, et l'erreur TLS le nom d'hôte :
+        # ce texte est rendu au modèle, l'adresse de l'instance ne part pas avec.
+        variable = "SELFRIGHT_API_URL" if base is None else "SELFRIGHT_ACT_URL"
+        detail = str(e).replace(racine, f"<{variable}>")
+        hote = urllib.parse.urlsplit(racine).hostname
+        if hote:
+            detail = detail.replace(hote, "<instance>")
+        raise ApiIndisponible(f"{type(e).__name__} : {detail}") from e
 
     if r.status_code >= 400:
         # L'API répond en JSON, y compris pour dire « article introuvable ».
@@ -411,9 +479,16 @@ async def _get(
         try:
             corps = r.json()
         except ValueError:
+            variable = "SELFRIGHT_API_URL" if base is None else "SELFRIGHT_ACT_URL"
+            if r.status_code >= 500:
+                raise ApiIndisponible(
+                    f"HTTP {r.status_code}, réponse non-JSON : l'instance a "
+                    "rencontré une erreur interne, ou un intermédiaire a répondu "
+                    "à sa place"
+                ) from None
             raise ApiIndisponible(
                 f"HTTP {r.status_code}, réponse non-JSON (l'API n'est "
-                f"probablement pas à l'adresse {API_URL})"
+                f"probablement pas à l'adresse que donne {variable})"
             ) from None
 
         message = str(corps.get("error", "")) if isinstance(corps, dict) else ""
@@ -443,10 +518,27 @@ async def _get(
         if r.status_code == 404 and message.startswith("Endpoint inconnu"):
             raise ApiIndisponible(
                 f"l'API ne connaît pas cette route ({message}) — vérifier "
-                f"SELFRIGHT_API_URL, actuellement {API_URL}"
+                # 🔑 Le nom de la variable suffit au diagnostic ; sa valeur, non.
+                # Ce texte est rendu au modèle, donc recopié dans un rapport de
+                # bug ou un fil de discussion — et c'est l'adresse de l'instance
+                # de celui qui l'exploite qui partirait avec.
+                + ("SELFRIGHT_API_URL" if base is None else "SELFRIGHT_ACT_URL")
             )
+        # 🔑 **Le corps de l'amont est conservé, pas remplacé.** Il porte souvent
+        # un `ok: false`, un `error` nommé et un `hint` que l'outil appelant sait
+        # déjà rendre ; les jeter laissait ce refus inatteignable. Mesuré le
+        # 12/10/2026 : SelfAct répond `situation_not_found` + « Call ?list=1 for
+        # available slugs » en **404**, si bien que le refus écrit dans
+        # `actes_pour_situation` ne se déclenchait jamais et que son rendu normal
+        # annonçait « 0 acte(s) » — un appelant en concluait qu'aucune démarche
+        # n'existe pour la situation, quand seul le slug était faux.
+        # `__introuvable__` s'ajoute donc au corps au lieu de s'y substituer, et
+        # `detail` ne comble que ce que l'amont n'a pas dit lui-même.
         if r.status_code == 404:
-            return {"__introuvable__": True, "detail": message or r.text[:400]}
+            absent = dict(corps) if isinstance(corps, dict) else {}
+            absent["__introuvable__"] = True
+            absent.setdefault("detail", message or r.text[:400])
+            return absent
         raise ApiIndisponible(f"HTTP {r.status_code} — {message or r.text[:200]}")
 
     try:
@@ -652,8 +744,11 @@ def _termes_jamais_repris(requete: str, resultats: list) -> list[str]:
 PLAFOND_TERMES_SONDES = 4
 
 
-async def _termes_absents(termes: list[str]) -> tuple[list[str], int]:
-    """Ceux de ces termes qui n'apparaissent dans AUCUNE décision de l'index.
+async def _termes_absents(termes: list[str], portee: dict[str, Any]) -> tuple[list[str], int]:
+    """Ceux de ces termes qui n'apparaissent dans AUCUNE décision du périmètre.
+
+    🔑 Le périmètre est celui de la recherche — champ, juridiction, dates :
+    sans champ, l'API ne cherche que dans les sommaires.
 
     🔑 **« Hors sujet » ne s'infère pas d'un faible recouvrement lexical ; « ce
     mot n'existe pas dans l'index » se mesure.** L'ancienne alerte affirmait que
@@ -682,10 +777,13 @@ async def _termes_absents(termes: list[str]) -> tuple[list[str], int]:
     sondes = 0
     for terme in termes[:PLAFOND_TERMES_SONDES]:
         try:
-            data = await _get("/jurisprudence/search", {"q": terme, "limit": 1})
-        except ApiIndisponible:
+            data = await _get("/jurisprudence/search", {**portee, "q": terme, "limit": 1})
+        except (ApiIndisponible, RequeteInvalide):
             # Une sonde muette ne doit pas transformer un terme en « absent » :
             # on rend ce qu'on a pu mesurer, et le compte le dit.
+            break
+        if isinstance(data, dict) and (data.get("etat") == "indeterminee"
+                                       or data.get("__introuvable__")):
             break
         sondes += 1
         if isinstance(data, dict) and data.get("total") == 0:
@@ -786,6 +884,7 @@ COURS_APPEL = {
 
 JURIDICTIONS = {
     "cc": "Cour de cassation", "ca": "Cour d'appel",
+    "tj": "Tribunal judiciaire", "tcom": "Tribunal de commerce",
     "ce": "Conseil d'État", "caa": "Cour administrative d'appel",
     "ta": "Tribunal administratif", "tc": "Tribunal des conflits",
     "cdbf": "Cour de discipline budgétaire et financière",
@@ -859,17 +958,58 @@ def _nom_juridiction(juridiction: Any, cour: Any) -> str:
     return f"{juri} {liaison}{nom}"
 
 
+def _ou(valeur: Any, defaut: Any) -> Any:
+    """La valeur, ou son défaut si elle est absente ou nulle.
+
+    🔑 `dict.get(cle, defaut)` ne prend son défaut que si la clé MANQUE. Une
+    clé présente à `null` rend `None`, et le texte affiché le recopiait : on
+    lisait « (état : None) » sur un article sans état déclaré, et « base au
+    None » sur une instance qui n'avait pas encore écrit sa date de
+    synchronisation — c'est-à-dire chez quiconque vient de monter la sienne.
+    Un 0 ou une chaîne vide, en revanche, sont des valeurs : ils passent. Un
+    compte de zéro décisions doit s'afficher zéro, pas « ? ».
+    """
+    return defaut if valeur is None else valeur
+
+
 def _fin_reelle(date_fin: Any) -> str | None:
     """Rend la date de fin, ou None quand elle n'en est pas une.
 
-    LEGI note « sans terme prévu » par une date lointaine — 2999-01-01. La
-    reprendre telle quelle donnerait une échéance à un texte qui n'en a pas, et
-    daterait un article en vigueur comme s'il expirait.
+    LEGI note « sans terme prévu » par une date lointaine, et en a deux :
+    `2999-01-01`, et `2222-02-22`, que Légifrance affiche « fin de vigueur :
+    date indéterminée ». Les reprendre telles quelles donnerait une échéance à
+    un texte qui n'en a pas, et daterait un article en vigueur comme s'il
+    expirait. Le test sur l'année les écarte toutes deux sans les énumérer.
     """
     d = _parse_date_fr(str(date_fin or ""))
     if d is None or d.year > dt.date.today().year + 50:
         return None
     return str(date_fin)
+
+
+def _applicabilite(r: dict[str, Any]) -> str:
+    """Ce qu'une version est au jour J, tel que l'API l'a établi.
+
+    🔑 Ce client PRÉSENTE l'applicabilité, il ne la juge pas : l'API la calcule
+    sur la période. Une seule fonction pour l'article, ses alternatives et les
+    résultats de recherche — trois replis écrits séparément finiraient par dire
+    trois choses. Une instance antérieure ne rend pas `applicabilite`, ni toujours
+    `en_vigueur` : le repli retombe alors sur l'état, comme avant, sans rien
+    recalculer ici.
+    """
+    if r.get("applicabilite"):
+        return str(r["applicabilite"])
+    if "en_vigueur" in r:
+        return "en_vigueur" if r["en_vigueur"] else "plus_en_vigueur"
+    return "en_vigueur" if r.get("etat") == "VIGUEUR" else "plus_en_vigueur"
+
+
+_DIT_APPLICABILITE = {
+    "en_vigueur": "en vigueur",
+    "pas_encore": "pas encore en vigueur",
+    "plus_en_vigueur": "plus en vigueur",
+    "sans_etat": "sans état déclaré",
+}
 
 
 def _msg_argument_refuse(detail: str) -> str:
@@ -926,11 +1066,20 @@ async def _statut_cache_court() -> Any:
 
 
 async def _bandeau(base: str) -> str:
-    """Ligne d'état à placer en tête de chaque réponse."""
+    """Ligne d'état à placer en tête de chaque réponse.
+
+    🔑 Elle ne se tait jamais : vide, elle laisserait partir un article sans
+    son âge, et le modèle n'aurait rien à répercuter.
+    """
+    avertir = (
+        "Ce qui suit n'est pas daté : dis-le à l'utilisateur avant tout usage "
+        "ayant des conséquences (saisine, courrier, décision)."
+    )
     try:
         statut = await _statut_cache_court()
-    except ApiIndisponible:
-        return ""
+    except (ApiIndisponible, RequeteInvalide) as e:
+        return (f"⚠️ Fraîcheur de la base {base} non vérifiable : l'état des "
+                f"bases n'a pas pu être lu ({e}). {avertir}")
     # Une correspondance explicite plutôt qu'un « sinon » : avec deux bases le
     # raccourci passait, la troisième l'aurait fait lire le mauvais bloc et
     # dater la jurisprudence avec la fraîcheur de la conventionnalité.
@@ -939,17 +1088,74 @@ async def _bandeau(base: str) -> str:
         "conventionnalité": "eu",
         "jurisprudence": "jurisprudence",
     }.get(base, "")
-    bloc = statut.get(cle, {})
+    bloc = (statut.get(cle) if isinstance(statut, dict) else None) or {}
     if not bloc:
-        return ""
+        return (f"⚠️ Fraîcheur de la base {base} non vérifiable : l'instance ne "
+                f"décrit pas cette base dans son état. {avertir}")
     message, retard = _etat_fraicheur(bloc, base)
     if retard:
-        await _alerter(
-            f"SelfJustice — base {base} en retard",
-            f"Consultation MCP : {message}",
-            cle,
-        )
+        await _alerter(_titre_alerte(f"base {base}", message),
+                       f"Consultation MCP : {message}", cle)
     return message + _perimetre(cle, bloc)
+
+
+async def _provenance_eu(sources: list[str] | None = None) -> str:
+    """Ce que `/status` dit de l'origine de chaque texte européen servi.
+
+    🔑 La date de contenu de cette base est celle de sa dernière construction
+    réussie, pas celle de chaque texte. Deux cas y échappent, et la provenance
+    les dit source par source : un texte servi depuis une copie déposée à la
+    main, et une source dont la reconstruction échoue — ses articles précédents
+    restent en place, et `construite_le` n'avance plus. Une date unique pour la
+    base les aurait soit tus, soit déclaré toute la base figée pour une seule
+    source.
+
+    `sources` borne la ligne à celles que la réponse sert ; `None`, à toutes.
+    """
+    try:
+        statut = await _statut_cache_court()
+    except (ApiIndisponible, RequeteInvalide):
+        # Le bandeau a déjà dit que l'état des bases n'a pas pu être lu.
+        return ""
+    eu = (statut.get("eu") if isinstance(statut, dict) else None) or {}
+    provenance = eu.get("provenance")
+    if not isinstance(provenance, dict):
+        return ""
+    synchro = _parse_date_fr(str(eu.get("last_sync") or "")) or dt.date.today()
+    copies, anciennes = [], []
+    for src, bloc in sorted(provenance.items()):
+        if not isinstance(bloc, dict) or (sources is not None and src not in sources):
+            continue
+        if bloc.get("origine") == "copie_locale":
+            depot = _parse_date_fr(str(bloc.get("depose_le") or ""))
+            if depot is None:
+                copies.append(f"{src} (date de dépôt inconnue)")
+                continue
+            age = (dt.date.today() - depot).days
+            depuis = (f", il y a {age} jour{'s' if age > 1 else ''}" if age > 0
+                      else ", aujourd'hui" if age == 0 else "")
+            copies.append(f"{src} (copie déposée le {_format_fr(depot)}{depuis})")
+            continue
+        construite = _parse_date_fr(str(bloc.get("construite_le") or ""))
+        if construite and (synchro - construite).days > _CONTENU_FIGE_JOURS:
+            anciennes.append(f"{src} (reconstruite pour la dernière fois le "
+                             f"{_format_fr(construite)})")
+    lignes = []
+    if copies:
+        lignes.append(
+            "Servi depuis une copie déposée à la main, pas depuis la source publique : "
+            + ", ".join(copies)
+            + ". Cite cette date avec le texte : il n'a pas été confronté à sa source depuis."
+        )
+    if anciennes:
+        lignes.append(
+            "⚠️ Source dont la reconstruction échoue depuis plus d'un mois : "
+            + ", ".join(anciennes)
+            + ". Le texte servi est celui de cette date : vérifie-le sur "
+            + _SOURCE_OFFICIELLE["conventionnalité"]
+            + " avant tout usage ayant des conséquences."
+        )
+    return "".join("\n" + ligne for ligne in lignes)
 
 
 # 🔑 **L'avertissement de périmètre doit accompagner l'outil qu'on APPELLE.**
@@ -1046,38 +1252,61 @@ async def statut() -> str:
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
-    legi, eu = data.get("legi", {}), data.get("eu", {})
+    # `or {}` et non `get(cle, {})` : l'API rend un bloc à `null` quand sa base
+    # manque ou ne se lit pas, et le défaut de `get` ne joue que si la clé manque.
+    if not isinstance(data, dict):
+        data = {}
+    legi, eu = data.get("legi") or {}, data.get("eu") or {}
 
-    # Une réponse sans aucun des deux blocs n'est pas un statut SelfJustice.
-    # Sans ce garde-fou, le serveur afficherait « ? articles » avec une
-    # fraîcheur « indéterminée » — présentable, et faux : rien ne dirait au
-    # modèle qu'il parle à autre chose que la base attendue.
-    if not legi and not eu:
+    # Une réponse sans aucune clé de base n'est pas un statut SelfJustice. Sans ce
+    # garde-fou, le serveur afficherait « ? articles » avec une fraîcheur
+    # « indéterminée » — présentable, et faux : rien ne dirait au modèle qu'il
+    # parle à autre chose que la base attendue. Les clés présentes et toutes
+    # nulles, c'est une instance SelfJustice dont aucune base ne se lit.
+    if not legi and not eu and not data.get("jurisprudence"):
+        if any(cle in data for cle in ("legi", "eu", "jurisprudence")):
+            await _alerter("SelfJustice — aucune base lisible",
+                           "Consultation MCP : /status répond, mais aucune base ne s'y lit.",
+                           "statut")
+            return _msg_api_morte(
+                "l'instance répond, mais aucune de ses bases ne se lit — absentes ou "
+                "illisibles"
+            )
         return _msg_api_morte(
-            f"{API_URL}/status répond, mais sans les blocs attendus — ce n'est "
-            "pas une instance SelfJustice"
+            "le /status de l'instance que donne SELFRIGHT_API_URL répond, mais "
+            "sans les blocs attendus — ce n'est pas une instance SelfJustice"
         )
-    etat_legi, retard_legi = _etat_fraicheur(legi, "LEGI")
-    etat_eu, retard_eu = _etat_fraicheur(eu, "conventionnalité")
+    # 🔑 L'API rend `null` pour une base absente comme pour une base illisible :
+    # rien ne distingue une instance qui ne la sert pas encore d'une base de
+    # production disparue. Elle se dit donc telle, sans volumétrie à « ? », et
+    # l'exploitant est alerté — taire la seconde pour ménager la première
+    # avalerait la panne.
+    async def _etat_ou_absente(bloc: dict, base: str, cle: str) -> str:
+        if bloc:
+            etat, retard = _etat_fraicheur(bloc, base)
+            if retard:
+                await _alerter(_titre_alerte(f"base {base}", etat), etat, cle)
+            return etat
+        etat = (f"⚠️ Base {base} absente ou illisible sur cette instance : aucun texte "
+                "de cette base ne peut être vérifié ici.")
+        await _alerter(f"SelfJustice — base {base} : absente ou illisible", etat, cle)
+        return etat
 
-    if retard_legi:
-        await _alerter("SelfJustice — base LEGI en retard", etat_legi, "legi")
-    if retard_eu:
-        await _alerter("SelfJustice — base UE en retard", etat_eu, "eu")
+    etat_legi = await _etat_ou_absente(legi, "LEGI", "legi")
+    etat_eu = await _etat_ou_absente(eu, "conventionnalité", "eu")
 
-    sources = ", ".join(f"{k} ({v})" for k, v in sorted(eu.get("sources", {}).items()))
+    sources = ", ".join(f"{k} ({v})" for k, v in sorted((eu.get("sources") or {}).items()))
 
     # La jurisprudence peut manquer : une instance plus ancienne ne sert que
     # LEGI et la conventionnalité. Son absence se dit, elle ne s'invente pas —
     # taire la ligne laisserait croire que la vérification des arrêts est
     # disponible alors qu'elle ne l'est pas.
-    juris = data.get("jurisprudence", {})
+    juris = data.get("jurisprudence") or {}
     if juris:
         etat_juris, retard_juris = _etat_fraicheur(juris, "jurisprudence")
         if retard_juris:
-            await _alerter(
-                "SelfJustice — index jurisprudence en retard", etat_juris, "jurisprudence"
-            )
+            await _alerter(_titre_alerte("base jurisprudence", etat_juris),
+                           etat_juris, "jurisprudence")
         # La couverture prime sur le total : un numéro hors période ne peut pas
         # être déclaré absent, seulement indéterminé.
         def _borne(bloc: dict) -> str:
@@ -1085,17 +1314,22 @@ async def statut() -> str:
             return _format_fr(fin) if fin else bloc.get("fin", "?")
 
         bornes = " · ".join(
-            f"{_NOM_JURIDICTION_COURT.get(code, code)} jusqu'au {_borne(bloc)} ({bloc.get('decisions', '?')} décisions)"
-            for code, bloc in sorted(juris.get("couverture", {}).items())
+            f"{_NOM_JURIDICTION_COURT.get(code, code)} jusqu'au {_borne(bloc)} ({_ou(bloc.get('decisions'), '?')} décisions)"
+            for code, bloc in sorted((juris.get("couverture") or {}).items())
         )
         ligne_juris = (
-            f"Jurisprudence : {juris.get('decisions', '?')} décisions — {bornes}.\n"
+            f"Jurisprudence : {_ou(juris.get('decisions'), '?')} décisions — {bornes}.\n"
         )
     else:
         etat_juris = (
             "Index de jurisprudence absent de cette instance : aucun numéro "
             "d'arrêt ne peut être vérifié ici."
         )
+        # Bloc présent mais nul : l'instance le sert d'ordinaire, et il ne se lit
+        # plus — la même panne possible que pour les deux autres bases.
+        if "jurisprudence" in data:
+            await _alerter("SelfJustice — base jurisprudence : absente ou illisible",
+                           etat_juris, "jurisprudence")
         ligne_juris = ""
 
     # 🔑 **Cet outil doit couvrir tout ce qui sera consulté.** Il s'annonce comme
@@ -1109,7 +1343,7 @@ async def statut() -> str:
     try:
         meta = (await _get("/catalog", {"limit": 1}, base=ACT_URL)).get("meta") or {}
         ligne_catalogue = await _bandeau_catalogue(meta) + (
-            f"\nRessources officielles au catalogue : {meta.get('total', '?')}."
+            f"\nRessources officielles au catalogue : {_ou(meta.get('total'), '?')}."
         )
     except (ApiIndisponible, RequeteInvalide) as e:
         ligne_catalogue = (
@@ -1119,10 +1353,12 @@ async def statut() -> str:
 
     return (
         f"{etat_legi}\n{etat_eu}\n{etat_juris}\n{ligne_catalogue}\n\n"
-        f"Droit français (LEGI, dumps officiels DILA) : "
-        f"{legi.get('articles', '?')} articles dont {legi.get('vigueur', '?')} en vigueur.\n"
-        f"Conventionnalité : {eu.get('articles', '?')} articles — {sources}.\n"
-        f"{ligne_juris}\n"
+        + (f"Droit français (LEGI, dumps officiels DILA) : "
+           f"{_ou(legi.get('articles'), '?')} articles dont {_ou(legi.get('vigueur'), '?')} en vigueur.\n"
+           if legi else "")
+        + (f"Conventionnalité : {_ou(eu.get('articles'), '?')} articles — {sources}."
+           f"{await _provenance_eu()}\n" if eu else "")
+        + f"{ligne_juris}\n"
         "Cadence de synchronisation annoncée : le 1er et le 15 de chaque mois. "
         "⚠️ Le rapprochement situation → acte est curé à la main, sans cadence : "
         "sa date ne se lit pas comme un retard."
@@ -1148,7 +1384,11 @@ async def article_francais(reference: str, code: str | None = None) -> str:
             `rechercher_droit_francais`, qui rend l'identifiant à reprendre ici.
     """
     try:
-        data = await _get(f"/legi/article/{reference}", {"code": code} if code else None)
+        # 🔑 Encodée comme un segment : interpolée telle quelle, « 8/2 » servait
+        # l'article 8 sous l'en-tête de l'article demandé, et « ../ » menait à
+        # une autre route de l'instance.
+        data = await _get(f"/legi/article/{urllib.parse.quote(reference, safe='')}",
+                          {"code": code} if code else None)
     except RequeteInvalide as e:
         return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
@@ -1181,16 +1421,24 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     # texte. Rendre l'un des deux au hasard serait la pire réponse possible —
     # L1152-1 existe au code du travail et au code de la défense.
     if data.get("ambiguous"):
-        lignes = "\n".join(
-            f"  · code={a.get('code_id')}"
-            + (f" — {a.get('code')}" if a.get("code") else "")
-            # L'état décide souvent du choix : entre deux codes, celui qui est
-            # encore en vigueur n'est pas un détail de présentation.
-            + (f" [{a.get('etat')}" + (f", jusqu'au {a.get('date_fin')}" if a.get("date_fin") else "") + "]"
-               if a.get("etat") else "")
-            + f"\n      « {(a.get('apercu') or '').strip()[:120]}… »"
-            for a in data.get("alternatives", [])
-        )
+        # L'applicabilité décide souvent du choix : entre deux codes, celui qui
+        # s'applique n'est pas un détail de présentation. L'état et les dates
+        # bruts trompaient — « [ABROGE_DIFF, jusqu'au 2029-01-01] » pour une
+        # version en vigueur, « [VIGUEUR, jusqu'au 2999-01-01] » pour une
+        # sentinelle sans terme.
+        def _ligne_alternative(a: dict[str, Any]) -> str:
+            cas = _applicabilite(a)
+            fin = _fin_reelle(a.get("date_fin"))
+            return (
+                f"  · code={a.get('code_id')}"
+                + (f" — {a.get('code')}" if a.get("code") else "")
+                + f" [{_DIT_APPLICABILITE.get(cas, cas)}"
+                + (f", jusqu'au {fin}" if fin else "")
+                + f" — état {_ou(a.get('etat'), 'non déclaré')}]"
+                + f"\n      « {(a.get('apercu') or '').strip()[:120]}… »"
+            )
+
+        lignes = "\n".join(_ligne_alternative(a) for a in data.get("alternatives", []))
         return (
             f"{bandeau}\n\nL'article {reference} existe dans plusieurs codes. "
             "Rappelle `article_francais` avec l'argument `code` : le titre du "
@@ -1205,12 +1453,43 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     # `date_fin` — que l'API rend — était jetée alors qu'elle porte
     # l'information décisive sur un article abrogé : jusqu'à quand il
     # s'appliquait, donc à quels faits il s'applique encore.
+    #
+    # 🔑 Ce client PRÉSENTE l'applicabilité, il ne la juge pas : l'API la
+    # calcule sur la période et rend `applicabilite`. Ce bloc lisait
+    # `en_vigueur`, un booléen qui ne distinguait pas un article qui ne
+    # s'applique plus d'un article qui ne s'applique pas encore, et que l'API
+    # tirait de l'état seul — l'art. 8 du CPP, applicable jusqu'en 2029, sortait
+    # « PLUS EN VIGUEUR ». Une instance antérieure ne rend pas `applicabilite` :
+    # le repli reprend alors son booléen, sans rien recalculer ici.
     debut = data.get("date_debut") or "?"
     fin = _fin_reelle(data.get("date_fin"))
-    if data.get("en_vigueur"):
+    cas = _applicabilite(data)
+    if cas == "en_vigueur":
         vigueur = f"EN VIGUEUR · depuis le {debut}"
+        if fin:
+            # « Jusqu'au », jamais « abrogé le » : 3 074 des 10 004 articles
+            # en abrogation différée applicables au 12/10/2026 seront REMPLACÉS
+            # par une nouvelle version à cette date, pas supprimés.
+            vigueur += (
+                f", applicable jusqu'au {fin}\nCe terme est programmé : ne le présente "
+                "pas comme une abrogation, une nouvelle version peut lui succéder."
+            )
+    elif cas == "pas_encore":
+        vigueur = (
+            f"PAS ENCORE EN VIGUEUR · à compter du {debut}\nNe le présente pas comme "
+            "le droit actuel : il ne s'applique qu'à compter de cette date."
+        )
+    elif cas == "sans_etat":
+        # Une version sans état n'est ni vivante ni morte pour la DILA — c'est
+        # souvent un article qui en modifie d'autres. La dire « plus en
+        # vigueur » affirmait une abrogation que la source n'affirme pas.
+        vigueur = (
+            "SANS ÉTAT DÉCLARÉ\nLa DILA ne déclare aucun état pour cette version. Ne "
+            "la présente ni comme en vigueur ni comme abrogée : renvoie vers "
+            "legifrance.gouv.fr pour savoir ce qui s'applique."
+        )
     else:
-        vigueur = f"⚠️ PLUS EN VIGUEUR (état : {data.get('etat', 'inconnu')})"
+        vigueur = f"⚠️ PLUS EN VIGUEUR (état : {_ou(data.get('etat'), 'inconnu')})"
         vigueur += f" · applicable du {debut} au {fin}" if fin else f" · entré en vigueur le {debut}"
         vigueur += (
             "\nIl reste opposable aux faits de cette période : ne le présente "
@@ -1228,12 +1507,12 @@ async def article_francais(reference: str, code: str | None = None) -> str:
 
     return (
         f"{bandeau}\n\n"
-        f"{data.get('code_titre') or data.get('code_id', '')} — article {data.get('reference', reference)}\n"
+        f"{data.get('code_titre') or _ou(data.get('code_id'), '')} — article {data.get('reference', reference)}\n"
         f"{vigueur}\n\n"
         f"{alerte}"
-        f"{data.get('texte', '(texte absent de la base)')}\n\n"
-        f"Source : {src.get('origine', 'LEGI')} — base au {src.get('last_update', '?')}\n"
-        f"Légifrance : {src.get('legifrance_url', '(lien indisponible)')}"
+        f"{_ou(data.get('texte'), '(texte absent de la base)')}\n\n"
+        f"Source : {_ou(src.get('origine'), 'LEGI')} — base au {_ou(src.get('last_update'), '?')}\n"
+        f"Légifrance : {_ou(src.get('legifrance_url'), '(lien indisponible)')}"
     )
 
 
@@ -1262,7 +1541,7 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
     spécifiques valent mieux qu'une phrase.
 
     Args:
-        requete: mots du sujet cherché (« harcèlement moral », « chanvre »)
+        requete: mots du sujet cherché (« harcèlement moral », « servitude »)
             ou fragment de numéro (« L1152 », « 1240 »).
         limite: nombre maximum de résultats (défaut 20).
     """
@@ -1288,12 +1567,15 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
     def _ligne_article(r: dict) -> str:
         # `code` est le titre lisible ; `code_titre` n'est rendu par aucune des
         # routes et faisait retomber l'affichage sur l'identifiant technique.
+        # Le début a ses sentinelles comme la fin : une ligne datée 2999 → 2999
+        # s'affichait « depuis 2999-01-01 », et un état nul « [None, … ] ».
+        debut = _fin_reelle(r.get("date_debut")) or "date non déclarée"
         fin = _fin_reelle(r.get("date_fin"))
-        periode = f"{r.get('date_debut')} → {fin}" if fin else f"depuis {r.get('date_debut')}"
+        periode = f"{debut} → {fin}" if fin else f"depuis {debut}"
         ligne = (
             f"  · {r.get('reference')} — "
             f"{_titre_court(r.get('code') or '') or r.get('code_id')} "
-            f"[{r.get('etat')}, {periode}]"
+            f"[{_ou(r.get('etat'), 'état non déclaré')}, {periode}]"
         )
 
         # 🔑 L'identifiant, pour les textes qui ne sont pas des codes.
@@ -1312,22 +1594,46 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
             ligne += f"\n      code={r.get('code_id')}"
 
         extrait = (r.get("extrait") or "").strip()
-        return ligne + (f"\n      {extrait[:160]}" if extrait else "")
+        ligne += f"\n      {extrait[:160]}" if extrait else ""
+
+        # Les mots cherchés ne sont que dans cette version : la version qui
+        # s'applique existe, mais ne les porte pas. Elle se lit par son numéro.
+        applicable = r.get("version_applicable")
+        if isinstance(applicable, dict):
+            ligne += (
+                f"\n      → version applicable : "
+                f"[{_ou(applicable.get('etat'), 'état non déclaré')}, depuis "
+                f"{_fin_reelle(applicable.get('date_debut')) or 'date non déclarée'}]"
+                f" — les mots cherchés n'y figurent pas ; la lire par son numéro"
+            )
+        return ligne
 
     # Les abrogés arrivent en dernier, jamais mêlés au droit applicable : c'est
     # l'ordre qui porte l'avertissement, autant que la mention d'état.
-    en_vigueur = [r for r in resultats if r.get("etat") == "VIGUEUR"]
-    anciens = [r for r in resultats if r.get("etat") != "VIGUEUR"]
-
+    # Un bloc par applicabilité, telle que l'API l'a établie. Deux blocs ne
+    # suffisaient pas : un texte qui ne s'applique qu'en 2027 tombait sous « utiles
+    # pour des faits antérieurs », et une version sans état y était dite morte.
+    # Le premier bloc, celui du droit applicable, ne porte pas de titre.
+    titres = {
+        "en_vigueur": "",
+        "pas_encore": "— Pas encore en vigueur (à compter de la date indiquée ; jamais "
+                      "pour dire le droit d'aujourd'hui) :",
+        "plus_en_vigueur": "— Ne sont plus en vigueur (utiles pour des faits antérieurs, "
+                           "jamais pour dire le droit d'aujourd'hui) :",
+        "sans_etat": "— Sans état déclaré par la DILA (ni en vigueur ni abrogés à "
+                     "coup sûr : vérifier sur legifrance.gouv.fr) :",
+    }
     blocs = []
-    if en_vigueur:
-        blocs.append("\n".join(_ligne_article(r) for r in en_vigueur))
-    if anciens:
-        blocs.append(
-            "— Ne sont plus en vigueur (utiles pour des faits antérieurs, "
-            "jamais pour dire le droit d'aujourd'hui) :\n"
-            + "\n".join(_ligne_article(r) for r in anciens)
-        )
+    for cas, titre in titres.items():
+        lignes_cas = [_ligne_article(r) for r in resultats if _applicabilite(r) == cas]
+        if lignes_cas:
+            blocs.append((titre + "\n" if titre else "") + "\n".join(lignes_cas))
+    # Un cas que l'API ajouterait et que ce client ne nomme pas ne doit pas
+    # disparaître du rendu : il rejoindrait sinon aucun bloc, sans un mot.
+    inconnus = [_ligne_article(r) for r in resultats if _applicabilite(r) not in titres]
+    if inconnus:
+        blocs.append("— Applicabilité que ce client ne sait pas nommer (vérifier sur "
+                     "legifrance.gouv.fr) :\n" + "\n".join(inconnus))
 
     return (
         f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
@@ -1358,13 +1664,14 @@ async def article_europeen(source: str, numero: str) -> str:
         )
 
     try:
-        data = await _get(f"/eu/article/{src}/{numero}")
+        data = await _get(f"/eu/article/{urllib.parse.quote(src, safe='')}/"
+                          f"{urllib.parse.quote(numero, safe='')}")
     except RequeteInvalide as e:
         return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
-    bandeau = await _bandeau("conventionnalité")
+    bandeau = await _bandeau("conventionnalité") + await _provenance_eu([src])
 
     if data.get("__introuvable__"):
         return (
@@ -1378,7 +1685,7 @@ async def article_europeen(source: str, numero: str) -> str:
         f"{bandeau}\n\n"
         f"{src} — article {data.get('reference', numero)}"
         + (f" : {titre}" if titre else "")
-        + f"\n\n{data.get('texte', '(texte absent de la base)')}"
+        + f"\n\n{_ou(data.get('texte'), '(texte absent de la base)')}"
     )
 
 
@@ -1407,7 +1714,8 @@ async def rechercher_conventionnalite(requete: str, source: str | None = None) -
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
-    bandeau = await _bandeau("conventionnalité")
+    bandeau = await _bandeau("conventionnalité") + await _provenance_eu(
+        [params["source"]] if params.get("source") else None)
     resultats = data.get("results", []) if not data.get("__introuvable__") else []
 
     # 🔑 Les formes réellement cherchées. Les textes écrivent « données à
@@ -1543,12 +1851,18 @@ async def verifier_jurisprudence(
             quand l'index les porte — `statut` le dit —, « ce » (Conseil
             d'État), « caa » (cours administratives d'appel), « ta »
             (tribunaux administratifs), « tc » (Tribunal des conflits).
+            « tj » (tribunaux judiciaires) et « tcom » (tribunaux de commerce)
+            ne sont pas dans l'index : seule la base amont les vérifie, et
+            seulement avec la date de la décision.
             À préciser quand on la connaît : le même numéro normalisé peut
             désigner un pourvoi et un RG de cour d'appel.
         date: la date attribuée à la décision, au format « AAAA-MM-JJ », quand
             la référence en porte une. Elle change la réponse en cas d'échec :
-            une date couverte par l'index rend le « introuvable » ferme, là où
-            il reste prudent sans elle.
+            elle permet d'interroger la base amont, et rend le « introuvable »
+            ferme pour la Cour de cassation, que l'amont diffuse en entier. Pour
+            les cours d'appel et les tribunaux, l'absence ne vaut que dans les
+            limites de ce qu'il diffuse ; pour l'ordre administratif, elle reste
+            prudente : le fonds JADE n'en porte qu'une sélection.
     """
     chemin = f"/jurisprudence/verifier/{urllib.parse.quote(reference, safe='')}"
     # La date n'est transmise que bien formée : mal formée, l'index la refuse en
@@ -1566,11 +1880,12 @@ async def verifier_jurisprudence(
         data = await _get(chemin, params)
     except RequeteInvalide as e:
         return (
-            f"La référence « {reference} » n'a pas été acceptée par l'index ({e}).\n\n"
-            "Ce n'est pas une panne : reprends le numéro tel qu'il s'écrit "
-            "(« 25-10.377 » pour un pourvoi, « 26/00027 » pour un rôle général "
-            "de cour d'appel) et rappelle l'outil. N'affirme rien sur cette "
-            "décision tant qu'elle n'est pas vérifiée."
+            f"La demande sur « {reference} » n'a pas été acceptée par l'index ({e}).\n\n"
+            "Ce n'est pas une panne : corrige l'argument que l'index désigne — le "
+            "numéro tel qu'il s'écrit (« 25-10.377 » pour un pourvoi, « 26/00027 » "
+            "pour un rôle général de cour d'appel), la juridiction ou la date — et "
+            "rappelle l'outil. N'affirme rien sur cette décision tant qu'elle n'est "
+            "pas vérifiée."
         )
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
@@ -1580,12 +1895,27 @@ async def verifier_jurisprudence(
     # contresens que cet outil doit empêcher.
     if data.get("__introuvable__"):
         return _msg_juris_morte(
-            f"l'index ne connaît pas cette route ({data.get('detail', '')})"
+            f"l'index ne connaît pas cette route ({_ou(data.get('detail'), '')})"
         )
 
     etat = data.get("etat")
 
+    # La date n'est transmise que bien formée (voir plus haut) : mal formée,
+    # l'index ne l'a pas vue, et sa réponse reste prudente sans savoir pourquoi.
+    # C'est le seul endroit où le client sait quelque chose que l'index ignore,
+    # donc le seul qu'il ait à dire.
+    date_ignoree = bool(date) and not DATE_ISO.fullmatch(date.strip())
+
     if etat == "indeterminee":
+        if date_ignoree:
+            # Pour une juridiction que seule la base amont vérifie, la raison
+            # rendue dit « sans date » : le remède est de rappeler l'outil.
+            return (
+                _msg_juris_morte(data.get("raison", "raison non précisée"))
+                + f"\n\n(La date « {date} » n'a pas été comprise — format attendu : "
+                "AAAA-MM-JJ. Elle n'a donc pas été transmise : rappelle l'outil avec "
+                "la date à ce format avant de conclure.)"
+            )
         return _msg_juris_morte(data.get("raison", "raison non précisée"))
 
     # 🔑 Le bandeau compte surtout ici : « introuvable » ne veut pas dire la même
@@ -1603,11 +1933,7 @@ async def verifier_jurisprudence(
         # exclue » alors que l'amont venait de trancher.
         reserve = data.get("reserve") or ""
         note = ""
-        # La date n'est transmise que bien formée (voir plus haut) : mal formée,
-        # l'index ne l'a pas vue et sa réserve est restée prudente sans savoir
-        # pourquoi. C'est le seul endroit où le client sait quelque chose que
-        # l'index ignore, donc le seul qu'il ait à dire.
-        if date and not DATE_ISO.fullmatch(date.strip()):
+        if date_ignoree:
             note = (
                 f"\n\n(La date « {date} » n'a pas été comprise — format "
                 "attendu : AAAA-MM-JJ. Elle n'a donc pas été transmise à "
@@ -1697,6 +2023,9 @@ async def rechercher_jurisprudence(
     # là où le texte entier en rend des milliers — un faux négatif produit par
     # le réglage lui-même. Le défaut suit donc la juridiction ; une valeur
     # explicite est toujours respectée.
+    # L'API admet la juridiction en capitales ; ce défaut, non, et « CA »
+    # repassait sur les sommaires — que les cours d'appel n'ont pas.
+    juridiction = juridiction.strip().lower() if juridiction else None
     if champ is None:
         champ = "text" if juridiction == "ca" else "summary"
 
@@ -1730,7 +2059,18 @@ async def rechercher_jurisprudence(
     # /verifier et /decision.
     if data.get("__introuvable__"):
         return _msg_juris_morte(
-            f"l'index ne connaît pas cette route ({data.get('detail', '')})"
+            f"l'index ne connaît pas cette route ({_ou(data.get('detail'), '')})"
+        )
+
+    # 🔑 **Une recherche qui n'a pas eu lieu n'est pas une recherche vide.**
+    # L'API rend `etat: indeterminee` quand elle n'a pas pu interroger
+    # Judilibre — clé absente, amont injoignable, quota épuisé. Lu comme une
+    # liste vide, ce corps devenait « aucune décision ne correspond », avec la
+    # consigne de le dire à l'utilisateur : une absence de jurisprudence
+    # affirmée sur une recherche jamais faite.
+    if data.get("etat") == "indeterminee":
+        return _msg_juris_morte(
+            str(_ou(data.get("raison"), None) or _ou(data.get("error"), "la recherche n'a pas eu lieu"))
         )
 
     bandeau = await _bandeau("jurisprudence")
@@ -1739,11 +2079,14 @@ async def rechercher_jurisprudence(
     if not resultats:
         # Le bandeau compte particulièrement ici : une recherche qui ne rend
         # rien sur un index arrêté au mois dernier ne dit pas la même chose que
-        # sur un index de la veille.
+        # sur un index de la veille. La réserve de l'API aussi : elle dit
+        # pourquoi une combinaison ne peut rien rendre.
+        reserve = data.get("reserve")
         return (
             f"{bandeau}\n\n"
-            f"Aucune décision ne correspond à « {requete} ».\n\n"
-            "N'invente pas d'arrêt approchant : dis que la recherche ne rend "
+            f"Aucune décision ne correspond à « {requete} »."
+            + (f"\n\nL'index précise : {reserve}" if reserve else "")
+            + "\n\nN'invente pas d'arrêt approchant : dis que la recherche ne rend "
             "rien et demande à l'utilisateur de préciser son sujet."
         )
 
@@ -1797,7 +2140,8 @@ async def rechercher_jurisprudence(
         moyenne = round(100 * trouves / poses)
 
         jamais = _termes_jamais_repris(requete, resultats)
-        absents, sondes = await _termes_absents(jamais)
+        portee = {k: v for k, v in params.items() if k not in ("q", "limit")}
+        absents, sondes = await _termes_absents(jamais, portee)
 
         alerte = (
             f"\n\n⚠️ Ces décisions ne reprennent que {moyenne} % des termes de "
@@ -1808,13 +2152,25 @@ async def rechercher_jurisprudence(
                 "\n   Aucune ne surligne : " + ", ".join(f"« {t} »" for t in jamais) + "."
             )
         if absents:
+            # La sonde n'a cherché que dans le champ de la recherche : la phrase
+            # ne dit pas plus qu'elle.
+            if champ == "summary":
+                ou = ("dans AUCUN sommaire, sur le périmètre de cette recherche : les "
+                      "arrêts publiés n'emploient pas ce vocabulaire dans leur "
+                      "sommaire. Le texte intégral des décisions peut l'employer — "
+                      "`champ=\"text\"` le dira.")
+            elif champ == "text":
+                ou = ("dans AUCUNE décision, sur le périmètre de cette recherche : la "
+                      "jurisprudence indexée n'emploie pas ce vocabulaire.")
+            else:
+                ou = (f"dans le champ « {champ} » d'AUCUNE décision, sur le périmètre "
+                      "de cette recherche. Le texte intégral peut l'employer — "
+                      "`champ=\"text\"` le dira.")
             alerte += (
                 "\n   Et " + ", ".join(f"« {t} »" for t in absents)
-                + (" n'apparaît" if len(absents) == 1 else " n'apparaissent")
-                + " dans AUCUNE décision de l'index : la jurisprudence indexée "
-                "n'emploie pas ce vocabulaire. Ce n'est pas forcément une "
-                "erreur de la question — le sujet peut n'avoir donné lieu à "
-                "aucune décision publiée."
+                + (" n'apparaît " if len(absents) == 1 else " n'apparaissent ")
+                + ou + " Ce n'est pas forcément une erreur de la question — le "
+                "sujet peut n'avoir donné lieu à aucune décision publiée."
             )
         if len(jamais) > sondes:
             # ⚠️ Ne jamais laisser croire que tout a été vérifié : le plafond
@@ -1884,8 +2240,32 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
 
-    if data.get("__introuvable__") or data.get("etat") == "indeterminee":
-        return _msg_juris_morte(data.get("raison", data.get("detail", "raison non précisée")))
+    # 🔑 **Une absence n'est pas une panne, et les deux ne se disent pas pareil.**
+    # `_get` lève déjà `ApiIndisponible` quand l'API ne connaît pas la route :
+    # ce qui arrive ici est donc une réponse réussie de l'amont, qui a cherché,
+    # n'a pas trouvé, et dit l'étendue de son fonds. Les confondre faisait
+    # répondre « la vérification est indisponible » sur une décision que l'index
+    # venait de déclarer hors de sa sélection — mesuré le 12/10/2026 sur un
+    # `CETATEXT` absent du fonds JADE, qui ne porte que le recueil Lebon et une
+    # part des inédites. Le modèle annonçait une panne de service là où la bonne
+    # réponse était « cette décision n'y figure pas, ce qui ne dit pas qu'elle
+    # n'existe pas ».
+    if data.get("__introuvable__"):
+        bandeau = await _bandeau("jurisprudence")
+        return (
+            f"{bandeau}\n\n"
+            f"La décision « {identifiant} » est absente de l'index "
+            f"({data.get('detail') or 'sans précision de l’index'}).\n\n"
+            "Ce n'est pas une panne : l'index a répondu. Dis-le comme une "
+            "absence, en reprenant ci-dessus ce qu'il déclare porter — une "
+            "absence n'établit pas que la décision n'existe pas. Ne cite AUCUNE "
+            "décision de mémoire et n'en invente pas le texte : renvoie vers "
+            "courdecassation.fr ou judilibre.io pour l'ordre judiciaire, "
+            "legifrance.gouv.fr pour l'ordre administratif."
+        )
+
+    if data.get("etat") == "indeterminee":
+        return _msg_juris_morte(data.get("raison", "raison non précisée"))
 
     bandeau = await _bandeau("jurisprudence")
     # 🔑 Deux fonds, deux formes. L'API relaie Judilibre tel quel pour l'ordre
@@ -1968,7 +2348,7 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
         provenance = f"Judilibre ({detail})" if detail else "Judilibre"
 
     return (
-        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n"
+        f"{bandeau}\n\n{entete}\n{_ou(data.get('ecli'), '')}\n\n"
         + (f"⚠️ {reserve}\n\n" if reserve else "")
         + f"{texte}{coupe}\n\n"
         f"Source : {provenance}, open data. Cite la décision "
@@ -2223,8 +2603,8 @@ async def actes_pour_situation(situation: str | None = None) -> str:
     if not situation or data.get("situations"):
         noms = data.get("situations") or []
         liste = "\n".join(
-            f"  · {s if isinstance(s, str) else s.get('slug', '?')}"
-            + ("" if isinstance(s, str) else f" — {s.get('label', '')}"
+            f"  · {s if isinstance(s, str) else _ou(s.get('slug'), '?')}"
+            + ("" if isinstance(s, str) else f" — {_ou(s.get('label'), '')}"
                + (f" ({s.get('acts_count')} actes)" if s.get("acts_count") else ""))
             for s in noms
         )
@@ -2233,10 +2613,15 @@ async def actes_pour_situation(situation: str | None = None) -> str:
     # L'amont répond « situation_not_found » avec un indice : le relayer plutôt
     # que de laisser le modèle inventer un slug voisin.
     if data.get("ok") is False:
+        # Sans bandeau, délibérément : un slug refusé ne dit rien de la fraîcheur
+        # du catalogue, et une réponse d'erreur ne porte pas de `meta` — le
+        # bandeau s'y dégraderait en « date inconnue » et ferait soupçonner un
+        # défaut de synchronisation qui n'existe pas.
         return (
-            f"{bandeau}\n\nLa situation « {situation} » n'est pas couverte "
-            f"({data.get('error', 'inconnue')}).\n\nRappelle l'outil sans argument "
-            "pour obtenir la liste, et n'invente pas de démarche pour combler le trou."
+            f"La situation « {situation} » n'est pas couverte "
+            f"({data.get('detail') or data.get('error') or 'inconnue'}).\n\n"
+            "Rappelle l'outil sans argument pour obtenir la liste des situations "
+            "acceptées, et n'invente pas de démarche pour combler le trou."
         )
 
     # 🔑 `catalog_suggestions` n'est PAS rendu, et c'est un choix. La réponse
@@ -2326,7 +2711,13 @@ async def calculer_echeance(
     # « oui » partait en « 1 » et revenait refusé. Le paramètre documenté ne
     # rendait jamais de résultat.
     lieux = ("metropole", "outremer", "etranger")
-    lieu = str(distance).strip().lower()
+    # 🔑 Une chaîne vide est une valeur ABSENTE, pas une valeur inconnue. Un champ
+    # de formulaire qu'on n'a pas rempli produit exactement cette requête, et
+    # l'index la traite déjà comme la métropole (`test_echeance.sh` : « vide →
+    # 200, la métropole par défaut »). La refuser rendait ce client plus sévère
+    # que l'API qu'il sert, sur le paramètre le plus facile à laisser vide — et
+    # le garde posé pour refuser « lune » attrapait « » au passage.
+    lieu = str(distance).strip().lower() or "metropole"
     if lieu not in lieux:
         return (
             f"« {distance} » n'est pas un lieu connu pour l'article 643.\n\n"
@@ -2351,7 +2742,7 @@ async def calculer_echeance(
 
     if data.get("ok") is False:
         return (
-            f"Le calcul a été refusé ({data.get('error', 'raison non précisée')}).\n\n"
+            f"Le calcul a été refusé ({_ou(data.get('error'), 'raison non précisée')}).\n\n"
             "Vérifie le format de la date (AAAA-MM-JJ) et qu'une durée est bien "
             "donnée. N'annonce aucune échéance tant qu'elle n'est pas calculée."
         )
@@ -2359,7 +2750,7 @@ async def calculer_echeance(
     # 🔑 Le raisonnement fait la valeur de cet outil : une date sans ses règles
     # ne se vérifie pas, et un délai de procédure manqué ne se rattrape pas.
     etapes = "\n".join(
-        f"  · {e.get('regle', '?')} — {e.get('detail', '')}"
+        f"  · {_ou(e.get('regle'), '?')} — {_ou(e.get('detail'), '')}"
         for e in (data.get("raisonnement") or [])
         if isinstance(e, dict)
     )
@@ -2367,7 +2758,8 @@ async def calculer_echeance(
     # calcul ; cet outil ne l'affichait nulle part. Le correctif du 21/08/2026 —
     # qui a réparé un lien menant deux mois avant la date annoncée — était donc
     # invisible à qui passe par le serveur MCP. Un essai extérieur l'a vu :
-    # « aucun export .ics dans les treize outils ».
+    # « aucun export .ics dans les treize outils » — treize était son compte, il
+    # y en a douze.
     #
     # Le chemin est relatif à la racine des démarches : on le rend absolu ici,
     # sans quoi il ne mène nulle part chez le lecteur.
@@ -2430,9 +2822,6 @@ async def gabarit_document(type_document: str | None = None) -> str:
     Args:
         type_document: l'un des gabarits disponibles. Sans argument, les liste.
     """
-    if not ACT_URL:
-        return _msg_api_morte("SELFRIGHT_ACT_URL introuvable et non dérivable")
-
     # 🔑 La liste vient de l'instance, elle n'est plus écrite ici. Elle l'était,
     # à côté de celle de `draft.php` : deux tables pour une seule vérité, qui
     # divergeaient déjà d'une entrée.
@@ -2443,9 +2832,21 @@ async def gabarit_document(type_document: str | None = None) -> str:
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
+    if data.get("__introuvable__"):
+        return _msg_api_morte(
+            f"l'instance ne sert pas la route des gabarits ({_ou(data.get('detail'), '')})"
+        )
+
     gabarits = data.get("gabarits") or {}
     if not gabarits:
-        return _msg_api_morte("l'instance ne déclare aucun gabarit")
+        # L'instance a répondu : la dire injoignable enverrait chercher une
+        # panne là où elle ne sert simplement pas de gabarits.
+        return (
+            "L'instance répond, mais ne déclare aucun gabarit de document : elle "
+            "n'en sert pas. Ce n'est pas une panne.\n\n"
+            "Ne rédige pas de courrier à la place. Cherche la démarche officielle "
+            "avec `catalogue_actes`, ou renvoie l'utilisateur vers service-public.fr."
+        )
 
     if not type_document:
         liste = "\n".join(
