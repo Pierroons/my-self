@@ -5447,8 +5447,11 @@ foreach (['cible', 'meneur', 'lie', 'neuf'] as $nom142) {
     $h142->prepare('INSERT INTO membres (pseudo, inscrit) VALUES (?, ?)')->execute([$nom142, $nom142 === 'neuf' ? time() : $ancien142]);
     $id142[$nom142] = (int) $h142->lastInsertId();
 }
+// Les messages privés se datent dans la fenêtre de meute, pas sur son bord : une seconde
+// qui passe entre le banc et le moteur les en sortirait, et la meute avec eux.
+$lien142 = time() - 86400;
 $h142->prepare('INSERT INTO prives (de, a, le) VALUES (?, ?, ?), (?, ?, ?)')
-    ->execute([$id142['meneur'], $id142['lie'], $ancien142, $id142['lie'], $id142['meneur'], $ancien142]);
+    ->execute([$id142['meneur'], $id142['lie'], $lien142, $id142['lie'], $id142['meneur'], $lien142]);
 $journalAvant142 = Moderate::journal();
 Moderate::setJournal(new JournalDeBanc());
 $erreur142 = null;
