@@ -339,7 +339,7 @@ function chiffre(array $corpus, string $cle): string {
 </header>
 
 <div class="disclaimer" style="margin-top: 0;">
-  <h4>⚠ Version bêta v0.1.3 — catalogue opérationnel, non validé par juriste</h4>
+  <h4>⚠ Version bêta v0.1.4 — catalogue opérationnel, non validé par juriste</h4>
   <p style="font-size: 0.95rem; margin-bottom: 0.5rem;">
     SelfAct indexe <strong><span id="act-catalog-total"><?= chiffre($corpus, "act_catalogue") ?></span> ressources
     officielles</strong> publiées par service-public.gouv.fr — modèles de lettres,

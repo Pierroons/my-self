@@ -58,7 +58,9 @@ alerter() {
         -d "$message" "$NTFY_URL" > /dev/null 2>&1 || true
 }
 
-trap 'alerter "SelfJustice — index Judilibre en echec" "Arret ligne $LINENO. Index precedent restaure, voir $LOG_FILE."' ERR
+# Ce piège ne restaure rien : il dit où le script s'est arrêté, et que l'index est
+# laissé en l'état. Seuls les chemins qui restaurent le disent, plus bas.
+trap 'alerter "SelfJustice — index Judilibre en echec" "Arret ligne $LINENO, index laisse en l etat (sauvegarde : $SAUVEGARDE si presente). Voir $LOG_FILE."' ERR
 
 journal "=== Début rafraîchissement Judilibre ==="
 
@@ -91,7 +93,9 @@ compter_judilibre() {
     fi
 }
 
-avant=$(compter_judilibre 2>/dev/null || echo 0)
+# Zéro seulement pour une base qui n'existe pas encore : une erreur de lecture sort
+# en échec, au lieu de devenir un zéro qui ferait passer toute la table pour neuve.
+if [ -f "$JUDILIBRE_DB" ]; then avant=$(compter_judilibre); else avant=0; fi
 
 # 🔑 **Trois issues, pas deux.** Le 16/09/2026, cinq tranches refusées sur
 # quatre-vingt-douze ont fait restaurer un index qui venait de gagner 4 190

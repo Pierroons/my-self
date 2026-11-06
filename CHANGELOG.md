@@ -17,11 +17,14 @@ registre des textes.
 
 - **« Opposable »** ne se dit plus pour la Cour de cassation :
   - à une date antérieure au début de sa propre couverture, ou quand l'index ne déclare aucune couverture pour elle ;
+    sans juridiction, la réserve ne la range plus parmi celles que l'amont n'interroge que nommées ;
   - à une date plus récente que `CC_DELAI_PUBLICATION_JOURS` (60 jours) : une décision récente peut ne pas être
     encore publiée. Le seuil vient de la mesure du 04/11 sur l'index servi : décisions `cc` de 2026 publiées à
     90,8 % sous 15 jours, 96,4 % sous 30, 97,8 % sous 60, mesurées sur `update_date`, qui peut dater une mise à
     jour plus tardive que la première publication.
-- **Une date à venir** reçoit une réponse ferme : aucune décision ne peut la porter.
+- **Une date à venir** reçoit une réponse ferme, quelle que soit la juridiction et même quand la base amont ne
+  répond pas : aucune décision ne peut la porter. Un jour de marge tient compte de l'outre-mer, puisque le serveur
+  compte en UTC.
 - **Une panne de l'amont** ne se décrit plus par « l'index, qui couvre cette date » quand le dernier fonds ouvert
   commence après elle. Le bras par défaut de la réserve, qu'aucun chemin connu n'atteint, ne conclut plus, et le
   banc vérifie qu'il ne sort pas.
@@ -30,7 +33,8 @@ registre des textes.
   ses alertes, et signale sa baisse même quand JADE la compense. JADE, qui partage la table et avance chaque soir,
   masquait un Judilibre figé derrière une date avancée.
 - **`update_judilibre.sh`** compte ce que Judilibre écrit : un ajout de JADE pendant le passage ne fait plus taire
-  l'alerte « sans nouveauté ». Une erreur de la base ne se confond plus avec une base sans colonne `source`.
+  l'alerte « sans nouveauté ». Une erreur de lecture de la base sort en échec au lieu de devenir un zéro ou de se
+  confondre avec une base sans colonne `source`, et l'alerte d'échec ne prétend plus avoir restauré l'index.
 - **Les bancs** demandent un port libre au système, refusent un port déjà servi et exigent que leur serveur soit
   vivant : sur un poste où Tor écoute sur 9050, douze d'entre eux pouvaient parler au serveur d'un autre.
   `test_jurisprudence.py` ne mesure plus un chemin voisin de celui qu'il nomme.
@@ -39,10 +43,11 @@ registre des textes.
   - l'avertissement « contenu généré par une IA » de la page de SelfJustice devient impersonnel : l'IA lit aussi
     cette page, et chaque « tu » y désigne l'IA ;
   - les IA de SelfJustice et de SelfAct vouvoient l'utilisateur et le tutoient s'il le demande. Leurs phrases
-    modèles passent au vouvoiement, y compris celles que l'IA reprend mot pour mot ;
+    modèles passent au vouvoiement, y compris les messages d'export et de clôture que l'IA reproduit mot pour mot.
+    Une consigne destinée à l'IA, glissée dans le message de clôture finale, en sort ;
   - les courriers de SelfAct à un tiers restent au vouvoiement.
-- Les pieds de page et `directives.md` de SelfAct, qui portaient leur version sans être contrôlés, sont déclarés
-  à `check-versions.sh`.
+- La bannière et les pieds de page de SelfAct, et l'en-tête comme le pied de `directives.md`, portaient leur
+  version sans être contrôlés : ils sont déclarés à `check-versions.sh`.
 
 ### SelfJustice 0.4.3 : le rafraîchissement Judilibre repart de ses propres juridictions — 3 novembre 2026
 

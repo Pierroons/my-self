@@ -239,7 +239,7 @@ const LEGI_ETATS_VIVANTS = ['VIGUEUR', 'VIGUEUR_DIFF', 'ABROGE_DIFF'];
  *
  * Calculé une fois par requête : appelé à chaque expression, il pouvait changer de
  * valeur en cours de route, et une requête à cheval sur minuit aurait jugé deux
- * jours à la fois. `\z` et non `$`, qui accepterait un saut de ligne final. */
+ * jours à la fois. La forme et l'existence du jour sont jugées par date_iso_valide(). */
 function legi_jour(): string {
     static $jour = null;
     if ($jour !== null) return $jour;
@@ -2098,7 +2098,9 @@ if ($segments[0] === 'jurisprudence') {
         // pour ce que l'index local moissonne, bornée à ce que l'amont diffuse pour
         // le reste de l'ordre judiciaire.
         $moissonnees = array_values(array_intersect(JURIDICTIONS_AMONT, array_keys($couverture)));
-        $hors_locales = $juridiction === null ? array_values(array_diff(JURIDICTIONS_AMONT, $moissonnees)) : [];
+        // Sans juridiction, la sonde interroge toujours la Cour de cassation : elle n'est
+        // jamais de celles que l'amont n'interroge « que si la juridiction est précisée ».
+        $hors_locales = $juridiction === null ? array_values(array_diff(JURIDICTIONS_AMONT, $moissonnees, ['cc'])) : [];
         $noms = fn(array $codes): string => $codes
             ? implode(', ', array_map('juridiction_libelle', $codes))
             : "aucune juridiction judiciaire";
@@ -2189,6 +2191,11 @@ if ($segments[0] === 'jurisprudence') {
         // « Opposable » ne se dit que de la Cour de cassation : il se juge sur SA
         // couverture et sur SON délai de publication, pas sur ceux des autres fonds.
         $ouvre_cc = $couverture['cc']['debut'] ?? null;
+        // Une date à venir ne peut porter aucune décision, quelle que soit la source.
+        // Un jour de marge : le serveur compte en UTC, et une juridiction d'outre-mer
+        // (Nouméa, UTC+11) a déjà changé de jour quand lui ne l'a pas encore fait.
+        $date_a_venir = $date_annoncee !== null && $date_annoncee > (new DateTimeImmutable(legi_jour()))
+            ->modify('+1 day')->format('Y-m-d');
         $cc_trop_recente = $date_annoncee !== null && $date_annoncee > (new DateTimeImmutable(legi_jour()))
             ->modify('-' . CC_DELAI_PUBLICATION_JOURS . ' days')->format('Y-m-d');
 
@@ -2196,7 +2203,7 @@ if ($segments[0] === 'jurisprudence') {
         // amont. Sans date elle n'a pas lieu, et elle peut échouer : dans les deux
         // cas rien n'a été consulté, et « absente » affirmerait une absence que
         // personne n'a vérifiée.
-        if ($hors_index_amont && $amont === null) {
+        if ($hors_index_amont && $amont === null && !$date_a_venir) {
             $db->close();
             json_indetermine(
                 "Non vérifiable : l'index local ne porte pas les $libelle_j, et la base "
@@ -2217,9 +2224,9 @@ if ($segments[0] === 'jurisprudence') {
                     . " ne sont pas dans l'index : avec la juridiction et la date de la "
                     . "décision, la base amont est interrogée." : "")
                 . ($jade_concerne ? " " . JADE_SELECTION : ""),
-            // Une date à venir ne peut porter aucune décision : l'absence y est ferme,
-            // quoi que l'amont réponde. C'est le cas d'une référence inventée et datée.
-            $date_annoncee > legi_jour() => "Introuvable, et la date annoncée "
+            // L'absence y est ferme, quoi que l'amont réponde, et même sans lui : c'est
+            // le cas d'une référence inventée et datée.
+            $date_a_venir => "Introuvable, et la date annoncée "
                 . "($date_annoncee) est postérieure à aujourd'hui : aucune décision ne peut "
                 . "porter cette date.",
             $ouvre_tot !== null && $date_annoncee < $ouvre_tot => "Introuvable, mais la date "

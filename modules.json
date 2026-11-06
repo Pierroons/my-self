@@ -348,6 +348,14 @@
           "*SelfAct v"
         ],
         [
+          "self-right/selfact/site/act.php",
+          "Version bêta v"
+        ],
+        [
+          "self-right/selfact/api/directives.md",
+          "bêta v"
+        ],
+        [
           "self-right/README.md",
           "badge/SelfAct-v"
         ],

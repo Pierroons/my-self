@@ -5,7 +5,7 @@
 > applique alors la méthodologie SelfAct sans avoir besoin de fetcher
 > `https://justice.my-self.fr/act/docs`.
 >
-> **Version 2026.09 — bêta v0.1.3** — alignée sur la page HTML publique live.
+> **Version 2026.09 — bêta v0.1.4** — alignée sur la page HTML publique live.
 > Si ton IA peut fetcher les URLs (Claude.ai, Gemini, Microsoft Copilot), inutile
 > de copier ce texte : donne-lui simplement `https://justice.my-self.fr/act/docs`.
 
@@ -81,7 +81,7 @@ soutien, et l'espoir qu'un chemin existe**.
 - Laisser la **main** à l'utilisateur
 - Ouvrir une **porte de retour** (« revenez quand vous serez prêt(e) »)
 - **Registre** : vouvoyer l'utilisateur ; s'il demande à être tutoyé, le tutoyer pour toute la suite
-  de l'échange et adapter les phrases modèles ci-dessous, qui sont écrites au vouvoiement
+  de l'échange et adapter les phrases modèles, qui sont écrites au vouvoiement
 
 **Formulations à privilégier :**
 - « Voici ce qu'on peut faire concrètement »
@@ -157,7 +157,7 @@ naturellement qu'il doit remplir à la main (convention du formulaire papier fra
    questions restantes en une seule fois. Format type :
 
    ```
-   Sur toi (expéditeur) :
+   Sur vous (expéditeur) :
    1. Prénom et nom
    2. Date de naissance (JJ/MM/AAAA)
    3. Adresse complète

@@ -275,6 +275,28 @@ grep -q "sans nouveaute" "$TMP/journal.log" \
                  "$(grep -E 'Décisions|ALERTE' "$TMP/journal.log" | tail -2)"
 
 echo
+echo "▸ Une base illisible au premier décompte : l'échec se dit, sans prétendre avoir restauré"
+# Avant, l'erreur devenait un zéro, et le passage continuait sur une base qu'on ne
+# savait pas lire ; et le piège d'erreur annonçait une restauration qu'il ne fait pas.
+rm -rf "$TMP/db"; mkdir -p "$TMP/db"
+printf 'pas une base sqlite\n' > "$TMP/db/index.sqlite"
+echo "2026-09-01" > "$TMP/db/marqueur.txt"
+: > "$TMP/journal.log"
+cat > "$BAC/build_judilibre_index.py" <<'PYEOF'
+import os
+open(os.environ["JUDILIBRE_MARQUEUR"], "w").write("2026-09-16\n")
+PYEOF
+lancer_enveloppe; CODE=$?
+[ "$CODE" != "0" ] && verdict 0 "l'enveloppe sort en échec (code $CODE)" \
+                   || verdict 1 "l'enveloppe sort en échec" "code 0"
+grep -q "index laisse en l etat" "$TMP/journal.log" && ! grep -q "precedent restaure" "$TMP/journal.log" \
+    && verdict 0 "l'alerte dit l'index laissé en l'état, sans restauration annoncée" \
+    || verdict 1 "l'alerte dit l'index laissé en l'état" "$(grep ALERTE "$TMP/journal.log" | tail -1)"
+[ "$(cat "$TMP/db/marqueur.txt")" = "2026-09-01" ] \
+    && verdict 0 "le moissonneur n'a pas tourné sur une base illisible" \
+    || verdict 1 "le moissonneur n'a pas tourné sur une base illisible" "marqueur $(cat "$TMP/db/marqueur.txt")"
+
+echo
 if [ "$ECHECS" -gt 0 ]; then
     echo -e "\033[31m✗ $ECHECS contrôle(s) en échec\033[0m"
     exit 1

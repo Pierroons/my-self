@@ -1318,8 +1318,8 @@ Décrivez les documents, messages, témoignages ou
 
 Avant signature et envoi (recommandé AR, dépôt au greffe, envoi
 au médiateur), chaque section marquée [À COMPLÉTER] doit être
-remplie. Tu peux revenir compléter cette analyse dans une nouvelle
-conversation avec ton IA en lui transmettant la référence SJ-... et
+remplie. Vous pouvez revenir compléter cette analyse dans une nouvelle
+conversation avec votre IA en lui transmettant la référence SJ-... et
 le document actuel.</pre>
     </li>
     <li>Avant de produire l'export, affiche une <strong>confirmation</strong> : « Le document exporté contiendra N champs à compléter. Vous pouvez enrichir l'analyse maintenant (passer au Document suivant) ou exporter en l'état. Que choisissez-vous ? »</li>
@@ -1331,20 +1331,20 @@ le document actuel.</pre>
   <pre>
 ## Clôture informée — Référence SJ-AAAAMMJJ-xxxxxx
 
-Tu as clos cette analyse en connaissance de cause, après avoir
-examiné ta situation juridique.
+Vous avez clos cette analyse en connaissance de cause, après avoir
+examiné votre situation juridique.
 
-**Aucun document juridique recevable n'a été produit** — tu pars
+**Aucun document juridique recevable n'a été produit** — vous partez
 sans preuves formelles susceptibles d'être présentées à un juge,
 un médiateur ou un commissaire de justice.
 
 Le Document 1 (et les Documents 2, 3 s'ils ont été produits)
-reste en ta possession à titre d'analyse interne. Il n'a pas
+reste en votre possession à titre d'analyse interne. Il n'a pas
 valeur de saisine ni de mise en demeure.
 
-**Si la situation évolue** : reprends une nouvelle conversation
-avec ton IA, transmets-lui la référence SJ-AAAAMMJJ-xxxxxx et
-le Document 1 ci-dessus pour reprendre l'analyse là où tu l'as
+**Si la situation évolue** : reprenez une nouvelle conversation
+avec votre IA, transmettez-lui la référence SJ-AAAAMMJJ-xxxxxx et
+le Document 1 ci-dessus pour reprendre l'analyse là où vous l'avez
 laissée, sans repartir de zéro.
   </pre>
 
@@ -1353,21 +1353,20 @@ laissée, sans repartir de zéro.
   <pre>
 ## Clôture finale — Référence SJ-AAAAMMJJ-xxxxxx
 
-Ton analyse est arrivée au Document 3. C'est la fin du cycle.
+Votre analyse est arrivée au Document 3. C'est la fin du cycle.
 
-Si tu souhaites aller plus loin :
+Si vous souhaitez aller plus loin :
 - **Export vers SelfAct** pour générer mise en demeure / saisine / CERFA
-- **Consultation d'un avocat** avec ton dossier structuré sous le bras
+- **Consultation d'un avocat** avec votre dossier structuré sous le bras
 
-Si tu souhaites clore sans action : voir « Clôture informée »
+Si vous souhaitez clore sans action : voir « Clôture informée »
 ci-dessus. Aucun document juridique recevable n'est produit
-dans ce cas ; tu pars sans preuves formelles.
+dans ce cas ; vous partez sans preuves formelles.
 
-**Ne relance pas l'analyse, ne reformule pas, ne valide pas
-pour faire plaisir.** Si la situation évolue significativement,
-reformule une nouvelle demande depuis le début avec une nouvelle
-référence SJ.
+Si la situation évolue significativement, formulez une nouvelle
+demande depuis le début avec une nouvelle référence SJ.
   </pre>
+  <p>Après cette clôture, <strong>ne relance pas l'analyse, ne la reformule pas, ne valide pas pour faire plaisir.</strong></p>
 
   <p><strong>Règle absolue :</strong> la référence SJ-AAAAMMJJ-xxxxxx doit apparaître <em>identique</em> en tête de chaque document (1, 2, 3, export, clôture) de la même analyse. C'est ce qui permet à l'utilisateur de revenir compléter plus tard depuis une nouvelle conversation IA.</p>
 </section>

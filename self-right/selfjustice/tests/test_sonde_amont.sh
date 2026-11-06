@@ -510,6 +510,10 @@ controle "sans juridiction, amont en panne, date avant le début du dernier fond
 controle "sans juridiction, date à venir, amont vide → aucune décision ne peut porter cette date" \
     "33%2F33333?date=2026-12-12" \
     "etat:absente" "reserve:~postérieure à aujourd'hui" "reserve:!pas encore opposable"
+# Un jour de marge : le serveur compte en UTC, l'outre-mer a déjà changé de jour.
+controle "sans juridiction, date du lendemain, amont vide → pas encore opposable, pas « à venir »" \
+    "33%2F33333?date=2026-11-05" \
+    "etat:absente" "reserve:~pas encore opposable" "reserve:!postérieure à aujourd'hui"
 
 # Un index qui ne déclare pas la Cour de cassation n'a pas de début pour elle :
 # l'absence n'y conclut rien, au lieu de se dire opposable par défaut.
@@ -533,7 +537,8 @@ BASE_PRINCIPALE="$BASE"
 BASE="http://127.0.0.1:$PORT/api/jurisprudence/verifier"
 controle "index sans Cour de cassation, amont vide → rien ne se conclut pour elle" \
     "33%2F33333?date=2026-03-02" \
-    "etat:absente" "reserve:~ne déclare pas de couverture pour elle" "reserve:!opposable"
+    "etat:absente" "reserve:~ne déclare pas de couverture pour elle" "reserve:!opposable" \
+    "reserve:!Cour de cassation, tribunaux judiciaires"
 kill "$SANS_CC_PID" 2>/dev/null; wait "$SANS_CC_PID" 2>/dev/null; SANS_CC_PID=""
 BASE="$BASE_PRINCIPALE"
 
@@ -653,6 +658,10 @@ controle "amont injoignable → réserve prudente, et la panne est nommée" \
 controle "amont injoignable → la raison remonte" \
     "23%2F03077?jurisdiction=ca&date=2026-08-12" \
     "reserve:~ne l'a pas pu"
+# Une date à venir n'a besoin d'aucune source : la réponse reste ferme, même amont coupé.
+controle "« tj », date à venir, amont injoignable → réponse ferme, pas « indéterminé »" \
+    "21%2F04567?jurisdiction=tj&date=2026-12-12" \
+    "etat:absente" "reserve:~postérieure à aujourd'hui"
 controle "« tj », amont injoignable → indéterminé : aucune autre source ne le porte" \
     "21%2F04567?jurisdiction=tj&date=2026-03-05" \
     "http:503" "etat:indeterminee" "raison:~ne l'a pas pu"
