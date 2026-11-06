@@ -2391,8 +2391,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 204/204 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 186 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 206/206 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 206 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2471,15 +2471,16 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate gracie en levant, rend sans fin un ban automatique, ou laisse un ban sans fin dans la file
+      - name: Canari — SelfModerate gracie en levant, rallonge un ban automatique, laisse un ban sans fin dans la file, en pose un par une durée, ou le lève sans motif
         run: |
           # @plante
-          # Trois défauts replantés tour à tour, chacun restauré avant le suivant :
+          # Cinq défauts replantés tour à tour, chacun restauré avant le suivant :
           # la levée qui remet la récidive à zéro comme une grâce ; la prolongation
-          # qui rend sans fin un ban automatique ; le ban sans fin posé sans être vu,
-          # qui resterait pour toujours dans la file de l'arbitre.
+          # d'un ban automatique ; le ban sans fin posé sans être vu, qui resterait
+          # pour toujours dans la file de l'arbitre ; la durée qui atteint la fin des
+          # temps sans être un ban sans fin ; le ban sans fin levé sans motif.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in gracie auto vu; do
+          for cas in gracie auto vu borne motif; do
             cp "$M" /tmp/moderate.gestes.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -2489,7 +2490,9 @@ jobs:
               'gracie': ("            self::designaler($pdo, $accountId, ...$tombent);\n",
                          "            $pdo->prepare('UPDATE member_moderation SET strikes = 0, strikes_admin = 0 WHERE account_id = ?')->execute([$accountId]);\n"
                          "            self::designaler($pdo, $accountId, ...$tombent);\n"),
-              'auto':   ("            if ($sansFin && $etat['ban_origine'] === 'auto') {", "            if (false) {"),
+              'auto':   ("            if ($etat['ban_origine'] === 'auto') {", "            if (false) {"),
+              'borne':  ("            if (!$sansFin && $seconds >= self::SANS_FIN - $maintenant) {", "            if (false) {"),
+              'motif':  ("            if (($anticipee || $sansFin) && $motif === '') {", "            if ($anticipee && $motif === '') {"),
               'vu':     ("        self::retirerDeLaFile($pdo, $accountId, self::deCause(self::signauxDe($pdo, $accountId), 'ban_sans_fin'));\n", ""),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
@@ -2508,6 +2511,7 @@ jobs:
               gracie) attendu='la levée gracie, ou rate son état' ;;
               auto)   attendu='la prolongation rate' ;;
               vu)     attendu='le ban sans fin rate' ;;
+              borne|motif) attendu='une durée fait un ban sans fin, ou un ban sans fin sort sans motif' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
@@ -3610,7 +3614,7 @@ jobs:
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
           echo "$sortie" | grep -qx '✅ 47/47 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 45 contrôles"; exit 1; }
+            || { echo "::error::le banc des promesses n'a pas joué ses 47 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |

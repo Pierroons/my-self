@@ -5296,12 +5296,23 @@ Moderate::adminBan($pdo, $prolonge139, 'arbitre-banc', motif());
 $avant139 = etatBan($pdo, $prolonge139);
 $plus139  = Moderate::adminProlonger($pdo, $prolonge139, 'arbitre-banc', motif(), 3600);
 $apres139 = etatBan($pdo, $prolonge139);
-$acte139  = $journal139->de($prolonge139, 'ban_prolonge');
 $zero139  = Moderate::adminProlonger($pdo, $prolonge139, 'arbitre-banc', motif(), 0);
+$bornes139 = [];
+foreach ([Moderate::SANS_FIN - (int) $apres139['banned_until'], PHP_INT_MAX] as $duree139) {
+    try {
+        $r139 = Moderate::adminProlonger($pdo, $prolonge139, 'arbitre-banc', motif(), $duree139);
+        $bornes139[] = [$r139['ok'], str_contains($r139['message'], 'trop longue')];
+    } catch (Throwable $e139) {
+        $bornes139[] = [get_class($e139)];
+    }
+}
+$borne139 = (int) etatBan($pdo, $prolonge139)['banned_until'];
+$acte139  = $journal139->de($prolonge139, 'ban_prolonge');
 $libre139 = Moderate::adminProlonger($pdo, membre($pdo, 'libre-139'), 'arbitre-banc', motif(), 3600);
 $auto139 = membre($pdo, 'auto-139');
 poserReputation($pdo, $auto139, 1);
 Moderate::applyVote($pdo, membre($pdo, 'votant-139'), 'member', $auto139, -1, motif(), 'agressif');
+$autoAvant139   = (int) etatBan($pdo, $auto139)['banned_until'];
 $autoSansFin139 = Moderate::adminProlonger($pdo, $auto139, 'arbitre-banc', motif(), 0, true);
 $autoPlus139    = Moderate::adminProlonger($pdo, $auto139, 'arbitre-banc', motif(), 600);
 Moderate::setJournal($journalAvant139);
@@ -5309,10 +5320,12 @@ $plus139['ok'] && (int) $apres139['banned_until'] === (int) $avant139['banned_un
     && (int) $apres139['strikes'] === (int) $avant139['strikes'] && (int) $apres139['strikes_admin'] === (int) $avant139['strikes_admin']
     && count($acte139) === 1 && $acte139[0]['de'] === (int) $avant139['banned_until'] && $acte139[0]['sans_fin'] === false
     && !$zero139['ok'] && !$libre139['ok'] && $libre139['message'] === 'Aucun ban en cours à rallonger.'
+    && $bornes139 === [[false, true], [false, true]] && $borne139 === (int) $apres139['banned_until']
     && !$autoSansFin139['ok'] && str_contains($autoSansFin139['message'], 'automatique')
-    && $autoPlus139['ok'] && etatBan($pdo, $auto139)['ban_origine'] === 'auto'
-    ? ok('la prolongation repousse l\'échéance sans strike, l\'inscrit, refuse sans ban ou sans durée, et laisse un ban automatique fini')
-    : nok('la prolongation rate : ' . json_encode([$plus139, $avant139, $apres139, $acte139, $zero139, $libre139, $autoSansFin139, $autoPlus139]));
+    && !$autoPlus139['ok'] && str_contains($autoPlus139['message'], 'automatique')
+    && (int) etatBan($pdo, $auto139)['banned_until'] === $autoAvant139
+    ? ok('la prolongation repousse l\'échéance d\'un ban d\'arbitre sans strike, l\'inscrit, refuse sans ban, sans durée ou jusqu\'à l\'échéance sans fin, et laisse un ban automatique tel quel')
+    : nok('la prolongation rate : ' . json_encode([$plus139, $avant139, $apres139, $acte139, $zero139, $bornes139, $libre139, $autoSansFin139, $autoPlus139]));
 
 // ── 140. ⭐ Un ban d'arbitre sans fin : une échéance qui n'arrive pas, un motif pour en sortir ─
 $journal140 = new JournalDeBanc();
@@ -5446,6 +5459,53 @@ $erreur142 === null && $mesure142['votes'] === [true, true] && $mesure142['reput
     : nok('⭐ le moteur ne tient pas sur des vues TEMP : ' . json_encode(['erreur' => $erreur142, 'mesure' => $mesure142,
         'attendu' => $attendu142, 'ddl' => count($ddl142[0])], JSON_UNESCAPED_UNICODE));
 
+// ── 143. ⭐ Une durée ne fait pas un ban sans fin, et un ban sans fin ne sort qu'avec un motif ─
+// Une durée qui atteignait `SANS_FIN` posait un ban que tout le moteur lit sans fin,
+// sans `sans_fin` au journal ni signal ; à `PHP_INT_MAX`, l'acte s'inscrivait puis le
+// geste levait. Le motif d'un ban sans fin n'était exigé qu'avant le plancher : sous
+// un plancher nul, ou sans `ban_debut`, la levée et la grâce passaient sans un mot.
+$journal143 = new JournalDeBanc();
+$journalAvant143 = Moderate::journal();
+Moderate::setJournal($journal143);
+$long143 = membre($pdo, 'long-143');
+poserReputation($pdo, $long143, 15);
+$bornes143 = [];
+foreach ([Moderate::SANS_FIN - time(), PHP_INT_MAX] as $duree143) {
+    try {
+        $r143 = Moderate::adminBan($pdo, $long143, 'arbitre-banc', motif(), $duree143);
+        $bornes143[] = [$r143['ok'], str_contains($r143['message'], 'trop longue')];
+    } catch (Throwable $e143) {
+        $bornes143[] = [get_class($e143)];
+    }
+}
+$bornesActes143 = count($journal143->de($long143, 'ban_debut'));
+$bornesBanni143 = Moderate::estBanni($pdo, $long143);
+$sansMotif143 = sousConfig(new Config(plancherFraction: 0.0), static function () use ($pdo): array {
+    $r = [];
+    foreach (['lever', 'gracier'] as $geste) {
+        foreach (['plancher-nul', 'sans-debut'] as $forme) {
+            $id = membre($pdo, "sans-fin-$geste-$forme-143");
+            poserReputation($pdo, $id, 15);
+            Moderate::adminBan($pdo, $id, 'arbitre-banc', motif(), null, true);
+            if ($forme === 'sans-debut') {
+                $pdo->prepare('UPDATE member_moderation SET ban_debut = 0 WHERE account_id = ?')->execute([$id]);
+            }
+            $sortie = $geste === 'lever' ? Moderate::adminLever($pdo, $id, 'arbitre-banc') : Moderate::adminPardon($pdo, $id, 'arbitre-banc');
+            $r["$geste/$forme"] = [$sortie['ok'], Moderate::estBanni($pdo, $id)];
+            Moderate::adminLever($pdo, $id, 'arbitre-banc', motif());
+        }
+    }
+
+    return $r;
+});
+Moderate::setJournal($journalAvant143);
+$bornes143 === [[false, true], [false, true]] && $bornesActes143 === 0 && !$bornesBanni143
+    && $sansMotif143 === array_fill_keys(['lever/plancher-nul', 'lever/sans-debut', 'gracier/plancher-nul', 'gracier/sans-debut'], [false, true])
+    ? ok('⭐ une durée qui atteindrait la fin des temps est refusée sans rien inscrire, et un ban sans fin ne sort qu\'avec un motif, même sous un plancher nul')
+    : nok('⭐ une durée fait un ban sans fin, ou un ban sans fin sort sans motif : ' . json_encode([
+        'bornes' => $bornes143, 'actes' => $bornesActes143, 'banni' => $bornesBanni143, 'sans_motif' => $sansMotif143,
+    ], JSON_UNESCAPED_UNICODE));
+
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
 // ban automatique en cours sans son signal échapperait à l'arbitre, comme une
@@ -5477,6 +5537,35 @@ foreach ([...$journal->actes, ...$journalC->actes] as $acteFin) {
 $nonScalairesFin === [] && count($journalC->actes) > 0
     ? ok('⭐ aucune valeur d\'acte n\'est une liste : un journal clé par clé n\'a rien à sérialiser')
     : nok('⭐ un acte porte une valeur non scalaire : ' . json_encode(array_values(array_unique($nonScalairesFin))));
+
+// ── Fin 3. ⭐ Les actes portent les clés que la table du journal leur promet ─────
+// `Journal.php` promet `sans_fin` à tout début de ban, `sans_fin` et `plancher` à
+// toute levée : le début automatique et la levée pour meute les omettaient. Les
+// actes relus sont ceux des deux journaux du banc, et chaque forme doit y figurer.
+$manquesFin3 = [];
+$vusFin3 = [];
+foreach ([...$journal->actes, ...$journalC->actes] as $acteFin3) {
+    $promisesFin3 = match ($acteFin3['acte'] ?? null) {
+        'ban_debut' => ['sans_fin'],
+        'ban_leve'  => ['sans_fin', 'plancher'],
+        default     => [],
+    };
+    if ($promisesFin3 === []) {
+        continue;
+    }
+    $formeFin3 = $acteFin3['acte'] . '/' . ($acteFin3['cause'] ?? $acteFin3['origine'] ?? '?');
+    $vusFin3[$formeFin3] = true;
+    foreach ($promisesFin3 as $cleFin3) {
+        if (!array_key_exists($cleFin3, $acteFin3)) {
+            $manquesFin3[] = "$formeFin3.$cleFin3";
+        }
+    }
+}
+$manquesFin3 === [] && isset($vusFin3['ban_debut/auto'], $vusFin3['ban_debut/admin'], $vusFin3['ban_leve/meute_detectee'], $vusFin3['ban_leve/grace'])
+    ? ok('⭐ chaque début de ban et chaque levée portent les clés que la table du journal leur promet')
+    : nok('⭐ un acte omet une clé que la table du journal lui promet : ' . json_encode([
+        'manques' => array_values(array_unique($manquesFin3)), 'formes' => array_keys($vusFin3),
+    ], JSON_UNESCAPED_UNICODE));
 
 Moderate::setJournal($journalAvantC);
 

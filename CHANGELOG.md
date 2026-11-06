@@ -16,8 +16,9 @@ La 0.8.0 répond aux demandes d'un deuxième hôte, qui fait du moteur la seule 
 schéma.
 
 - **Lever n'est plus gracier** : `adminLever()` arrête une peine et garde les strikes, ceux d'un arbitre compris — un
-  ban, une levée, un ban signalent l'enchaînement (`bans_arbitre`). `adminProlonger()` repousse l'échéance d'un ban en
-  cours, même épisode, motif exigé. Un arbitre peut poser un ban sans fin, ou y porter un ban d'arbitre en cours :
+  ban, une levée, un ban signalent l'enchaînement (`bans_arbitre`). `adminProlonger()` repousse l'échéance d'un ban
+  d'arbitre en cours, même épisode, motif exigé ; un ban automatique ne se rallonge pas, l'arbitre le lève puis pose le
+  sien. Une durée qui atteindrait `SANS_FIN` est refusée. Un arbitre peut poser un ban sans fin, ou y porter un ban d'arbitre en cours :
   l'échéance vaut `Moderate::SANS_FIN` et n'arrive pas, le lever ou le gracier exige un motif, et le signal
   `ban_sans_fin` le garde parmi les signalements ouverts, hors de la file. La machine ne prononce toujours aucun ban sans
   fin.

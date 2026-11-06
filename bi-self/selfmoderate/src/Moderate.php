@@ -1682,6 +1682,8 @@ class Moderate
                     'cause'     => 'meute_detectee',
                     'anticipee' => false,
                     'reste'     => $rep['banned_until'] - time(),
+                    'plancher'  => null,
+                    'sans_fin'  => false,
                     'ouverts'   => self::causesEnTexte($rep['signaux']),
                     'ferme'     => self::fermesEnTexte([...self::deCause($rep['signaux'], 'ban_auto'), ...$attente]),
                 ]);
@@ -2322,6 +2324,7 @@ class Moderate
                 'duree'   => $duree,
                 'debut'   => $maintenant,
                 'jusqu_a' => $jusqua,
+                'sans_fin' => false,
                 'motif'   => 'reputation_zero',
                 'arbitre' => null,
                 'ouverts' => self::causesEnTexte($signaux),
@@ -2531,6 +2534,9 @@ class Moderate
             }
 
             $maintenant = time();
+            if (!$sansFin && $seconds >= self::SANS_FIN - $maintenant) {
+                return ['ok' => false, 'message' => static::t('Durée trop longue : un ban qui ne doit pas finir se pose sans fin.')];
+            }
             $jusqua     = $sansFin ? self::SANS_FIN : $maintenant + $seconds;
             $episode    = $etat['strikes'] + 1;
             $parArbitre = $etat['strikes_admin'] + 1;
@@ -2638,7 +2644,7 @@ class Moderate
                     ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until'])
                     : null;
                 $anticipee = $plancher !== null && $maintenant < $plancher;
-                if ($anticipee && $motif === '') {
+                if (($anticipee || self::estSansFin($etat['banned_until'])) && $motif === '') {
                     return ['ok' => false, 'message' => self::refusLeveeSansMotif(self::estSansFin($etat['banned_until']), $plancher)];
                 }
                 self::inscrireAuJournal([
@@ -2743,7 +2749,7 @@ class Moderate
             $sansFin    = self::estSansFin($etat['banned_until']);
             $plancher   = $etat['ban_debut'] > 0 ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until']) : null;
             $anticipee  = $plancher !== null && $maintenant < $plancher;
-            if ($anticipee && $motif === '') {
+            if (($anticipee || $sansFin) && $motif === '') {
                 return ['ok' => false, 'message' => self::refusLeveeSansMotif($sansFin, $plancher)];
             }
 
@@ -2787,11 +2793,11 @@ class Moderate
     }
 
     /**
-     * Rallonge le ban en cours : une échéance plus lointaine de `$secondes`, ou sans
-     * fin. Même épisode, aucun strike de plus : c'est la même peine, plus longue.
-     * Un ban automatique se rallonge d'une durée, jamais sans fin — la machine ne
-     * prononce pas d'exclusion sans terme, et l'arbitre qui le veut lève ce ban
-     * pour poser le sien.
+     * Rallonge le ban d'arbitre en cours : une échéance plus lointaine de
+     * `$secondes`, ou sans fin. Même épisode, aucun strike de plus : c'est la même
+     * peine, plus longue. Un ban automatique ne se rallonge pas : l'arbitre qui
+     * veut une autre peine le lève, la récidive restant comptée, et pose la sienne.
+     * Une durée qui atteindrait `SANS_FIN` est refusée.
      *
      * @return array{ok: bool, message: string}
      */
@@ -2836,10 +2842,15 @@ class Moderate
             if (self::estSansFin($etat['banned_until'])) {
                 return ['ok' => false, 'message' => static::t('Ce ban est déjà sans fin.')];
             }
-            if ($sansFin && $etat['ban_origine'] === 'auto') {
-                return ['ok' => false, 'message' => static::t('Un ban automatique ne devient pas sans fin : rallonge-le d\'une durée, ou lève-le pour poser un ban d\'arbitre.')];
+            // Une meute reconnue ne lève jamais un ban d'arbitre : la rallonge d'un ban
+            // automatique serait levée avec lui, sans que l'arbitre le sache.
+            if ($etat['ban_origine'] === 'auto') {
+                return ['ok' => false, 'message' => static::t('Un ban automatique ne se rallonge pas : lève-le — la récidive reste comptée —, puis pose un ban d\'arbitre.')];
             }
-            $jusqua = $sansFin ? self::SANS_FIN : min(self::SANS_FIN - 1, $etat['banned_until'] + $secondes);
+            if (!$sansFin && $secondes >= self::SANS_FIN - $etat['banned_until']) {
+                return ['ok' => false, 'message' => static::t('Durée trop longue : un ban qui ne doit pas finir se pose sans fin.')];
+            }
+            $jusqua = $sansFin ? self::SANS_FIN : $etat['banned_until'] + $secondes;
             self::inscrireAuJournal([
                 'acte'     => 'ban_prolonge',
                 'compte'   => $accountId,
@@ -2875,11 +2886,11 @@ class Moderate
     }
 
     /** Le refus d'une levée sans motif avant le plancher ; un ban sans fin n'en a pas. */
-    private static function refusLeveeSansMotif(bool $sansFin, int $plancher): string
+    private static function refusLeveeSansMotif(bool $sansFin, ?int $plancher): string
     {
         return $sansFin
             ? static::t('Un ban sans fin ne se lève qu\'avec un motif écrit.')
-            : sprintf(static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'), date('d/m/Y H:i', $plancher));
+            : sprintf(static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'), date('d/m/Y H:i', (int) $plancher));
     }
 
     /**
