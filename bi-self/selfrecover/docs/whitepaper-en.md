@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.5
+# SelfRecover — Whitepaper v1.6
 
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 31 October 2026 — v1.5 — describes SelfRecover 0.13.2*
+*Edition of 6 November 2026 — v1.6 — describes SelfRecover 0.13.3*
 
 ---
 
@@ -273,7 +273,7 @@ When the admin reviews a dispute, two paths exist:
 
   On the return, the passphrase the holder brings may be neither the one from before — just served, and perhaps stolen — nor the requester's, which the requester knows (since 0.13.2). A second level 3 does not replace a window taken back: until the arbitrator closes it, granting is refused (`reprise_en_cours`), and a grant not made after that closure never runs (`accord_perime`). The holder changes their memorized word after that closure, not before: until then, only that word opens their former vault
 
-  Why: a fraudulent level 3 had no way back. Whoever convinced the arbitrator in the holder's place took the account, and a holder who found their paper the next day had only arbitration left to contest it. Within the window, the secret they kept prevails over the one a third party obtained by talking. The price: the window does not know who held the account rightfully. Each level 3 opens one for whoever held it just before — the thief of a sheet, or the author of a fraudulent level 3 noticed after its window expired (threat model)
+  Why: a fraudulent level 3 had no way back. Whoever convinced the arbitrator in the holder's place took the account, and a holder who found their paper the next day had only arbitration left to contest it. Within the window, the secret they kept prevails over the one a third party obtained by talking. The price: the window does not know who held the account rightfully. Each level 3 opens one for whoever held it just before — the thief of a sheet, or the author of a fraudulent level 3 noticed after its window expired (threat model). Since 0.13.3 the arbitrator can accept a level 3 without return (`trancher(…, sansRetour: true)`): the recovery of that dossier opens a window already expired, and whoever then holds the account does not come back. The judgement of who held the account rightfully moves to the arbitrator: deceived, they take from the real holder their only return
 
 **Option 2 — Refuse recovery:**
 
@@ -518,7 +518,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 
 ## 14. Roadmap
 
-- [x] Protocol specification (v1.5)
+- [x] Protocol specification (v1.6)
 - [x] Reference implementation (this repo)
 - [x] Whitepapers EN + FR
 - [x] Served demo (`demo/bi-self-duo/`) and lab (`demo/lab/`) — the standalone demo was removed on 18 August 2026

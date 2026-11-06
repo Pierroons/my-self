@@ -10,6 +10,34 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.3 — l'arbitre peut accorder un niveau 3 sans retour — 6 novembre 2026
+
+Correctif d'un défaut critique au barème, préexistant depuis la 0.13.0 et mesuré par les deux audits de la 0.13.2 :
+la fenêtre d'un niveau 3 range les secrets de qui tient le compte à la reprise, quel qu'il soit. Après un niveau 3
+frauduleux remarqué une fois sa fenêtre échue, le niveau 3 légitime du titulaire rouvrait un retour à l'auteur de la
+fraude ; après un papier volé, le voleur revenait à chaque cycle, et à la fin il gardait le compte. L'arbitre n'avait
+aucun geste pour accorder un niveau 3 sans rouvrir un retour à celui qu'il écartait. Aucune rupture de contrat :
+`StorageInterface` ne change pas, et un adaptateur dont `ouvrirFenetre()` suit son contrat n'a rien à reprendre.
+
+- **`Escalade::trancher()` prend `sansRetour`**, en dernier paramètre, `false` par défaut. Avec un accord, la reprise
+  de ce dossier ouvre une fenêtre déjà échue : qui tient alors le compte n'y revient ni par sa passphrase ni par ses
+  codes, que le niveau 2 juge comme des codes inconnus. Le choix est écrit avec la décision, dans sa transaction, par
+  une fenêtre de durée nulle que seule la reprise de ce dossier reconnaît ; la fenêtre d'avant, close ou échue, est
+  remplacée dès la décision. Une fenêtre ouverte et non reprise n'est que prolongée : elle garde les secrets de qui
+  tenait le compte avant son premier niveau 3, et le titulaire actuel n'y a pas de retour. Un retour validé entre la
+  lecture de la décision et sa transaction est vu par elle (`reprise_en_cours`), et rien n'est tranché. Avec un
+  refus, le paramètre fait refuser la décision.
+- **Les réponses le disent** : `sans_retour` dans celles de `trancher()` et de `reEnroler()`, dont `fenetre_jusqua`
+  vaut alors l'instant de la reprise ; `fenetre()` gagne la clé `sans_retour`, son `etat` restant `echue`. L'arbitre
+  reçoit un message à part (`l3.accepte_sans_retour`).
+- **La limite reste, déplacée** : la bibliothèque ne sait toujours pas qui tenait le compte à bon droit. Le geste
+  fait de ce jugement celui de l'arbitre ; un arbitre trompé qui l'emploie retire au vrai titulaire son seul retour.
+  Il se réserve à un dossier qui montre que le compte a été pris. Le lab ne l'expose pas. Sans le geste, les bornes
+  valent par fenêtre, comme avant : le modèle de menace, les whitepapers et les README le disent.
+
+Mesuré : `sanity_escalade` passe à 285 cas, chacun des deux cas du défaut joué sans le geste puis avec ; une étape
+de canaris neuve, cinq canaris, chacun vu rouge sur son cas.
+
 ### SelfJustice 0.4.4 et SelfAct 0.1.4 : ce qui reste à dire juste, avant le passage du 15 novembre — 4 novembre 2026
 
 Les constats que la relecture de la 0.4.3 avait laissés pour après sa pose, ceux de la relecture de ce lot, et le

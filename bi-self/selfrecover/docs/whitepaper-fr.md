@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.5
+# SelfRecover — Whitepaper v1.6
 
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 31 octobre 2026 — v1.5 — décrit SelfRecover 0.13.2*
+*Édition du 6 novembre 2026 — v1.6 — décrit SelfRecover 0.13.3*
 
 ---
 
@@ -274,7 +274,7 @@ Quand l'admin examine un litige, deux options existent :
 
   Au retour, la passphrase que le titulaire apporte ne peut être ni celle d'avant — qu'il vient de servir, et qui a peut-être été volée — ni celle du demandeur, qu'il connaît (depuis la 0.13.2). Un second niveau 3 ne remplace pas une fenêtre reprise : tant que l'arbitre ne l'a pas close, l'accord est refusé (`reprise_en_cours`), et un accord qui n'a pas été rendu après cette clôture ne s'exécute jamais (`accord_perime`). Le titulaire change son mot mémorisé après cette clôture, pas avant : d'ici là, son coffre d'avant ne s'ouvre qu'avec lui
 
-  Pourquoi : un niveau 3 frauduleux n'avait aucun retour. Celui qui convainc l'arbitre à la place du titulaire prenait le compte, et le titulaire qui retrouvait son papier le lendemain n'avait plus que l'arbitrage pour le contester. Dans la fenêtre, le secret qu'il a gardé l'emporte sur celui qu'un tiers a obtenu par la parole. Le prix : la fenêtre ne sait pas qui tenait le compte à bon droit. Chaque niveau 3 en ouvre une pour qui le tenait juste avant — le voleur d'un papier, ou l'auteur d'un niveau 3 frauduleux remarqué après l'échéance de sa fenêtre (modèle de menace)
+  Pourquoi : un niveau 3 frauduleux n'avait aucun retour. Celui qui convainc l'arbitre à la place du titulaire prenait le compte, et le titulaire qui retrouvait son papier le lendemain n'avait plus que l'arbitrage pour le contester. Dans la fenêtre, le secret qu'il a gardé l'emporte sur celui qu'un tiers a obtenu par la parole. Le prix : la fenêtre ne sait pas qui tenait le compte à bon droit. Chaque niveau 3 en ouvre une pour qui le tenait juste avant — le voleur d'un papier, ou l'auteur d'un niveau 3 frauduleux remarqué après l'échéance de sa fenêtre (modèle de menace). Depuis la 0.13.3, l'arbitre peut accorder un niveau 3 sans retour (`trancher(…, sansRetour: true)`) : la reprise de ce dossier ouvre une fenêtre déjà échue, et qui tient alors le compte n'y revient pas. Le jugement de qui tenait le compte à bon droit passe à l'arbitre : trompé, il retire au vrai titulaire son seul retour
 
 **Option 2 — Refuser la récupération :**
 
@@ -520,7 +520,7 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 
 ## 14. Feuille de route
 
-- [x] Spécification du protocole (v1.5)
+- [x] Spécification du protocole (v1.6)
 - [x] Implémentation de référence (ce dépôt)
 - [x] Livres blancs EN + FR
 - [x] Démo servie (`demo/bi-self-duo/`) et laboratoire (`demo/lab/`) — la démo autonome a été retirée le 18 août 2026

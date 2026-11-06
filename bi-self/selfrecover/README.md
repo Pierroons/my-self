@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.2](https://img.shields.io/badge/status-v0.13.2-green.svg)](#status)
+[![Status: v0.13.3](https://img.shields.io/badge/status-v0.13.3-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -422,7 +422,7 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 **Reference library + deployed implementation, self-audited**
 
 This repository contains:
-- The **protocol specification** (whitepapers v1.5)
+- The **protocol specification** (whitepapers v1.6)
 - A **PHP library** — `src/`, PSR-4 `Pierroons\SelfRecover\`: level 1 and level 2 recovery, recovery codes, the "this device" factor, the Argon2id profile, the diceware wordlist, and the storage interface an integrator implements against their own database — or, starting from scratch, its shipped implementation (`schema.sql` + `StockagePdo`)
 - The **browser deriver** — `client/sr-derive.js`, shipped rather than described: it is what carries the anti-phishing property, and the integrators who wrote it themselves produced variants that did not have it; and `client/sr-kdf.js`, which encrypts a local secret with Argon2id, version and parameters inside the blob
 - **All three levels**, since 2026-09-07: level 3 escalation now lives in `src/Recovery/Escalade.php` — case file, single-use claim secret, bundle of raw facts, arbitration and procedure freeze. It does not check *who* may decide: roles and sessions belong to the application. The super-user still lives in [`demo/lab/`](../../demo/lab/)
@@ -501,6 +501,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **A passphrase is consumed once, even under concurrency**, and **no vault write driven by a recovery happens without its ticket** — two requests carrying the same passphrase no longer both succeed, and SelfDataGuard refuses a re-enrolment or an archive reinstatement that no recovery decided (v0.13.0)
 - [x] **The holder who comes back with their old codes is no longer stopped by the requester** — the requester's new batch no longer counts against the holder's old codes and their own gestures no longer rearm that counter, the salt route serves the old salt for an old code, and `Recovery::estCodeDeRetour()` lets an integrator's service-wide cap step aside for a return (v0.13.1)
 - [x] **The return keeps what it was meant to take back** — the passphrase brought on return can be neither the one from before nor the requester's, and a second level 3 no longer replaces a window its holder has taken back until the arbitrator closes it; the threat model says the symmetric price holds per window — each level 3 reopens a return to whoever held the account just before (v0.13.2)
+- [x] **The arbitrator can accept a level 3 without return** — after a fraud noticed too late or a stolen sheet, the recovery no longer opens a window to whoever took the account; judging who held it rightfully is then the arbitrator's
 
 ### Next
 
