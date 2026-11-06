@@ -140,7 +140,9 @@ interface StorageInterface
 
     /**
      * Range les secrets ACTUELS du compte dans sa fenêtre, avant que la reprise
-     * ne les remplace. Dans la transaction de la reprise.
+     * ne les remplace. Dans la transaction de la reprise, ou dans celle d'un
+     * accord sans retour, qui y range une fenêtre de durée nulle
+     * (`Escalade::trancher()`).
      *
      * ⚠️ **Une fenêtre déjà ouverte et non reprise garde ses secrets** : ce sont
      * ceux du titulaire, et une seconde reprise dans la fenêtre ne doit pas les
