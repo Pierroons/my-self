@@ -157,10 +157,13 @@ just before. Present since 0.13.0.
 **Since 0.13.3 the arbitrator has that gesture**: `Escalade::trancher($numero, 'accepte', $par, sansRetour: true)`
 accepts a level 3 whose recovery opens a window already expired, so whoever holds the account when it runs has no
 return. The choice is written with the decision, as a window of zero length that only this dossier's recovery
-recognises; an open window that has not been taken back is only extended, and keeps the secrets of whoever held the
-account before its first level 3. The library still cannot tell who held the account rightfully: the gesture moves
-that judgement onto the arbitrator, and an arbitrator deceived into using it takes from the real holder their only
-return. Without the gesture, the bounds above hold per window, as before.
+recognises. On a window still open and not taken back the gesture is refused (`fenetre_ouverte`, with its expiry):
+that window keeps the secrets of whoever held the account before the level 3 that opened it — possibly the thief of
+a sheet — and would only be extended; the arbitrator accepts without return once it has expired, or been closed
+after a return. The library still cannot tell who held the account rightfully: the gesture moves that judgement onto
+the arbitrator, and an arbitrator deceived into using it takes from the real holder their only return — and, the
+window being born expired, lets the escrow of the archive born of that level 3 be read at once
+(`lecture_admin_permise`). Without the gesture, the bounds above hold per window, as before.
 
 **The requester holds a batch of codes, and 0.13.0 counted it with the holder's.** `reEnroler()`
 hands the requester ten new codes. In 0.13.0 a failure with one of them and a failure with an old

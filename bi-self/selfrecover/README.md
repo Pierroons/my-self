@@ -473,7 +473,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.13.2 (April → October 2026)
+### Shipped — v0.1.0 to v0.13.3 (April → November 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -501,7 +501,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **A passphrase is consumed once, even under concurrency**, and **no vault write driven by a recovery happens without its ticket** — two requests carrying the same passphrase no longer both succeed, and SelfDataGuard refuses a re-enrolment or an archive reinstatement that no recovery decided (v0.13.0)
 - [x] **The holder who comes back with their old codes is no longer stopped by the requester** — the requester's new batch no longer counts against the holder's old codes and their own gestures no longer rearm that counter, the salt route serves the old salt for an old code, and `Recovery::estCodeDeRetour()` lets an integrator's service-wide cap step aside for a return (v0.13.1)
 - [x] **The return keeps what it was meant to take back** — the passphrase brought on return can be neither the one from before nor the requester's, and a second level 3 no longer replaces a window its holder has taken back until the arbitrator closes it; the threat model says the symmetric price holds per window — each level 3 reopens a return to whoever held the account just before (v0.13.2)
-- [x] **The arbitrator can accept a level 3 without return** — after a fraud noticed too late or a stolen sheet, the recovery no longer opens a window to whoever took the account; judging who held it rightfully is then the arbitrator's
+- [x] **The arbitrator can accept a level 3 without return (v0.13.3)** — while no window is open, after a fraud noticed too late or a stolen sheet, the recovery no longer opens a window to whoever took the account; judging who held it rightfully is then the arbitrator's
 
 ### Next
 
