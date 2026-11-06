@@ -64,7 +64,10 @@ final class Conformance
     /** The columns of the escrow row the rewrite of escrow-unreadable-row-named makes unreadable, one account each. */
     private const UNPARSED_COLUMNS = ['wrap_admin', 'wrap_user', 'created_at', 'updated_at', 'revision'];
 
-    /** The date columns, which a rewrite may decline: a typed date column holds nothing but a date. */
+    /**
+     * The date columns, which a rewrite may decline when its typed date column holds only values PHP reads; one that
+     * also holds a value PHP does not read (PostgreSQL's 'infinity') writes that value instead.
+     */
     private const DECLINABLE_COLUMNS = ['created_at', 'updated_at'];
 
     /** Argon2id profile written by the cases: not the constants, so a storage that substitutes them shows. */
@@ -501,6 +504,11 @@ final class Conformance
                     StaleEscrowException::class,
                     fn () => $this->storage->replaceEscrow($vault->generation(), $before),
                     'replaceEscrow() over a row whose revision was rewritten (it must test the row is there without parsing it)'
+                );
+                $this->expect(
+                    StaleEscrowException::class,
+                    fn () => $this->storage->rotateEscrow($vault->generation(), $before, []),
+                    'rotateEscrow() over a row whose revision was rewritten (it must test the row is there without parsing it)'
                 );
             }
         }

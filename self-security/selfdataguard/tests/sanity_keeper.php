@@ -1635,12 +1635,14 @@ try {
     ko('EscrowRecord::parse(): a ValueError in the build comes out bare');
 }
 try {
-    EscrowRecord::parse('tess', static fn () => throw new ArgumentCountError('a call written wrong'));
+    EscrowRecord::parse('tess', static fn () => throw new ArgumentCountError('a key missing from a spread row'));
     ko('EscrowRecord::parse(): an ArgumentCountError in the build came out as a record');
-} catch (UnreadableEscrowException) {
-    ko('EscrowRecord::parse(): an ArgumentCountError — a bug — reads as a row rewritten');
+} catch (UnreadableEscrowException $e) {
+    str_contains($e->getMessage(), 'ArgumentCountError')
+        ? ok('EscrowRecord::parse(): an ArgumentCountError — a key missing from a spread row — comes out as UnreadableEscrowException, its class named')
+        : ko('EscrowRecord::parse(): an ArgumentCountError is not named as the cause', $e->getMessage());
 } catch (ArgumentCountError) {
-    ok('EscrowRecord::parse(): an ArgumentCountError — a call written wrong, never a value — comes out as it is');
+    ko('EscrowRecord::parse(): an ArgumentCountError comes out bare: the holder loses the view and the objection');
 }
 
 /** createEscrow() always finds an escrow there, as a trigger could make it; past a bound it fails, so that a deposit that does not stop fails the bench instead of hanging it. */

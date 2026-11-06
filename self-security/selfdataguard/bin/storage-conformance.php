@@ -41,11 +41,14 @@ declare(strict_types=1);
  * colonne — wrap_admin, wrap_user, created_at, updated_at, revision — et
  * réécrit, dans la base à éprouver, cette colonne de sa ligne de séquestre pour
  * qu'elle ne se lise plus, puis rend true. Il peut rendre false pour une colonne
- * de date (created_at, updated_at), quand son type n'y laisse tenir qu'une date.
- * Toute autre colonne peut tenir une valeur illisible — pour la révision,
- * PHP_INT_MAX, que l'écriture suivante ne peut plus monter : la refuser fait
- * échouer le cas, comme tout retour qui n'est ni true ni false. Par exemple,
- * pour une base où les dates sont typées :
+ * de date (created_at, updated_at), quand son type n'y laisse tenir que des
+ * dates que PHP lit ; s'il y admet une valeur que PHP ne lit pas ('infinity'
+ * sous PostgreSQL), il l'y écrit. Toute autre colonne peut tenir une valeur
+ * illisible — pour la révision, le plus grand entier que la colonne tient
+ * (PHP_INT_MAX sur 64 bits), que l'écriture suivante ne peut plus monter :
+ * l'adaptateur doit le refuser, et décliner la colonne fait échouer le cas,
+ * comme tout retour qui n'est ni true ni false. Par exemple, pour une base où
+ * les dates sont typées :
  *
  *   <?php
  *   return static function (string $userId, string $colonne): bool {

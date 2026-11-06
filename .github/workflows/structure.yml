@@ -3669,7 +3669,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=94 [sanity_escrow]=66
+            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=95 [sanity_escrow]=66
             [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
@@ -4462,14 +4462,13 @@ jobs:
             $K "forgetFormerKeeper() forgot the database's keeper"
           canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception|TypeError|ValueError \$e) {" "        } catch (Exception \$e) {" \
             $K 'EscrowRecord::parse(): a TypeError in the build comes out bare'
-          canari $D/src/Escrow/EscrowRecord.php "        } catch (UnreadableEscrowException|ArgumentCountError \$e) {
+          canari $D/src/Escrow/EscrowRecord.php "        } catch (UnreadableEscrowException \$e) {
                       throw \$e;
-                  } catch (Exception|TypeError|ValueError" "        } catch (ArgumentCountError \$e) {
-                      throw \$e;
-                  } catch (Exception|TypeError|ValueError" \
+                  } catch (Exception|TypeError|ValueError" "        } catch (Exception|TypeError|ValueError" \
             $K 'EscrowRecord::parse(): an UnreadableEscrowException the build raises is wrapped again'
-          canari $D/src/Escrow/EscrowRecord.php "        } catch (UnreadableEscrowException|ArgumentCountError \$e) {" "        } catch (UnreadableEscrowException \$e) {" \
-            $K 'EscrowRecord::parse(): an ArgumentCountError — a bug — reads as a row rewritten'
+          canari $D/src/Escrow/EscrowRecord.php "        } catch (UnreadableEscrowException \$e) {
+                      throw \$e;" "        } catch (UnreadableEscrowException|\\ArgumentCountError \$e) {
+                      throw \$e;" $K 'EscrowRecord::parse(): an ArgumentCountError comes out bare'
           canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception|TypeError|ValueError \$e) {" "        } catch (Exception|TypeError \$e) {" \
             $K 'EscrowRecord::parse(): a ValueError in the build comes out bare'
           canari $SDG "            } catch (StaleEscrowException \$e) {
@@ -4566,6 +4565,8 @@ jobs:
             $SC 'a rewrite that declines wrap_user was taken'
           canari $C "            if (\$column === 'revision') {" "            if (false) {" \
             $SC 'ParseInReplaceStorage passed a case it breaks'
+          canari $C "                    fn () => \$this->storage->rotateEscrow(\$vault->generation(), \$before, [])," \
+            "                    fn () => throw new StaleEscrowException('planted')," $SC 'ParseInRotateStorage passed a case it breaks'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

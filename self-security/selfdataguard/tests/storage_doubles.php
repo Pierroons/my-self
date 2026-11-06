@@ -787,3 +787,17 @@ final class ParseInReplaceStorage extends DelegatingStorage
         }
     }
 }
+
+/** rotateEscrow() that reads the row again after a failed compare: on a row that no longer parses, the read raises UnreadableEscrowException instead of StaleEscrowException. */
+final class ParseInRotateStorage extends DelegatingStorage
+{
+    public function rotateEscrow(VaultGeneration $generation, EscrowRecord $record, array $fields): void
+    {
+        try {
+            $this->inner->rotateEscrow($generation, $record, $fields);
+        } catch (StaleEscrowException $e) {
+            $this->inner->loadEscrow($record->userId);
+            throw $e;
+        }
+    }
+}

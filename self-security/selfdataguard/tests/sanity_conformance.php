@@ -194,6 +194,7 @@ $broken = [
     BareParseErrorStorage::class       => ['escrow-unreadable-row-named'],
     WrapAdminOnlyStorage::class        => ['escrow-unreadable-row-named'],
     ParseInReplaceStorage::class       => ['escrow-unreadable-row-named'],
+    ParseInRotateStorage::class        => ['escrow-unreadable-row-named'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file, $withCaller, , $unparse] = connection($work, $class);
