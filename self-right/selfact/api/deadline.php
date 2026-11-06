@@ -31,10 +31,10 @@
  * écrite : le fondement rendu à l'appelant la reprend de là.
  *
  * ⚠️ **Ce que ce calcul ne fait pas.** Il applique une durée à une date. Il ne
- * dit pas quelle durée s'applique à votre cas, ni à partir de quel événement
+ * dit pas quelle durée s'applique à ton cas, ni à partir de quel événement
  * elle court — ce sont précisément les deux questions qui font perdre les
  * dossiers, et elles relèvent de la qualification juridique. L'article 643 n'est
- * appliqué que si vous le demandez, parce qu'il ne vise que certains recours
+ * appliqué que si tu le demandes, parce qu'il ne vise que certains recours
  * limitativement énumérés.
  */
 
@@ -263,7 +263,7 @@ if ($start === '') {
     selfact_repondre(400, [
         'ok'    => false,
         'error' => 'missing_start',
-        'hint'  => 'Indiquez la date de départ : ?start=AAAA-MM-JJ&days=15',
+        'hint'  => 'Indique la date de départ : ?start=AAAA-MM-JJ&days=15',
     ]);
 }
 $d = DateTimeImmutable::createFromFormat('!Y-m-d', $start);
@@ -284,7 +284,7 @@ if ($jours + $mois + $annees === 0) {
     selfact_repondre(400, [
         'ok'    => false,
         'error' => 'missing_duration',
-        'hint'  => 'Indiquez au moins une durée : &days=15, &months=2 ou &years=1.',
+        'hint'  => 'Indique au moins une durée : &days=15, &months=2 ou &years=1.',
     ]);
 }
 // Bornes de bon sens : au-delà, c'est une faute de frappe, pas un délai.
@@ -338,7 +338,7 @@ if (strtolower((string) ($_GET['format'] ?? '')) === 'ics') {
                  . " courant a compter du " . $d->format('d/m/Y') . ".\n"
                  . "Calcul selon les articles 640 a 642 du code de procedure civile.\n"
                  . "Le delai expire le " . $res['echeance'] . " a 24h00.\n"
-                 . "Verifiez que ce delai est bien celui qui s'applique a votre situation.";
+                 . "Verifie que ce delai est bien celui qui s'applique a ta situation.";
     header('Content-Type: text/calendar; charset=utf-8');
     header('Content-Disposition: attachment; filename="echeance-' . $res['echeance'] . '.ics"');
     header('X-Content-Type-Options: nosniff');
@@ -377,9 +377,9 @@ selfact_repondre(200, [
                    . "sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder.",
     ],
     'avertissement' => 'Ce calcul applique une durée à une date. Il ne dit ni quelle '
-                     . 'durée s\'applique à votre situation, ni à partir de quel '
+                     . 'durée s\'applique à ta situation, ni à partir de quel '
                      . 'événement elle court — ces deux questions relèvent de la '
-                     . 'qualification juridique. Vérifiez-les avant de vous fier à '
+                     . 'qualification juridique. Vérifie-les avant de te fier à '
                      . 'cette échéance.',
     'ics' => '?' . http_build_query($parametres + ['format' => 'ics']),
 ]);

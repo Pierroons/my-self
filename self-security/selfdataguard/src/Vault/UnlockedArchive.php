@@ -52,6 +52,18 @@ final class UnlockedArchive
         return $this->session->openEscrow($record);
     }
 
+    /** The escrowId of this archive's escrow under a keeper, computed from the archived vault's master key. */
+    public function escrowId(): string
+    {
+        return $this->session->escrowId();
+    }
+
+    /** The holder's objection to the read of this archive's escrow for $caseRef. */
+    public function signEscrowObjection(string $caseRef): string
+    {
+        return $this->session->signEscrowObjection($caseRef);
+    }
+
     public function lock(): void
     {
         $this->session->lock();

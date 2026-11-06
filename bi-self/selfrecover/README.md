@@ -113,8 +113,10 @@ A list of 7776 words — exactly 6⁵: five dice point to one word.
 
 The passphrase has two sources, at the user's choice:
 
-- **the library draws it**: six words from the English list, through `random_int`, PHP's
-  cryptographic generator (`src/Diceware/Wordlist.php`);
+- **the library draws it**: six words from the list of the language the deployment gives
+  `Recovery`, English or French, through `random_int`, PHP's cryptographic generator
+  (`src/Diceware/Wordlist.php`). Called without a language, `Recovery::engendrerPassphrase()`
+  draws from the English list;
 - **the user brings it**, rolled with dice from the English or the French list, at
   registration and at every recovery. `Recovery::validerPassphraseApportee()` requires six
   words or more, all from one of the two lists, none repeated, and stores it lowercased,

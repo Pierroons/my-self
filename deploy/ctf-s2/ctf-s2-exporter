@@ -1,0 +1,30 @@
+#!/bin/sh
+# Sort la derniere sauvegarde quotidienne du CTF, CHIFFREE, sur la sortie standard.
+#
+# Appele uniquement par la cle du NAS, bornee par command= dans authorized_keys :
+# cette cle n'ouvre pas de shell et ne sait rien faire d'autre. Le lab ne pousse
+# rien et ne connait aucun chemin vers le NAS — c'est le NAS qui tire.
+#
+# Le chiffrement a lieu ICI, pas a l'arrivee : la destination ne stocke que du
+# chiffre qu'elle ne peut pas ouvrir. La passphrase vit sur cette machine et
+# dans le gestionnaire de mots de passe de l'administrateur, jamais sur le NAS.
+#
+# Restauration :  gpg --decrypt ctf-s2-AAAAMMJJ.tar.gz.gpg | tar xz
+set -eu
+
+Q=/root/lab-backups/quotidien
+P=/root/.config/ctf-s2-export.passphrase
+
+[ -r "$P" ] || { echo "ctf-s2-exporter : passphrase illisible ($P)" >&2; exit 1; }
+
+# shellcheck disable=SC2012
+A=$(ls -1t "$Q"/ctf-s2-*.tar.gz 2>/dev/null | head -n 1)
+[ -n "${A:-}" ] || { echo "ctf-s2-exporter : aucune archive dans $Q" >&2; exit 1; }
+
+# Une archive du jour meme est la regle ; une archive plus vieille signale que la
+# sauvegarde quotidienne a cesse. On la sort quand meme — mieux vaut une copie
+# datee que rien — mais le NAS doit pouvoir le dire, d'ou le message sur stderr.
+AGE=$(( ( $(date +%s) - $(stat -c %Y "$A") ) / 86400 ))
+[ "$AGE" -le 1 ] || echo "ctf-s2-exporter : ATTENTION, l'archive la plus recente a $AGE jours" >&2
+
+gpg --batch --quiet --symmetric --cipher-algo AES256 --passphrase-file "$P" -o - "$A"

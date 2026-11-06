@@ -52,6 +52,7 @@ To use a different port: `PORT=9000 ./run.sh`.
   DATAGUARD_AUDIT_SECRET="$(openssl rand -hex 32)" \
   DATAGUARD_ARBITER_FILE=arbitre-essai.php \
   DATAGUARD_WITNESS_FILE=temoin-essai.php \
+  DATAGUARD_KEEPER_FILE=gardien-essai.php \
   php ../../self-security/selfdataguard/bin/escrow-ceremony.php unlock <user> essai-local
   ```
 
@@ -61,10 +62,10 @@ To use a different port: `PORT=9000 ./run.sh`.
   differs from its neighbours is never caught by a test, because a floor that is too low
   does not fail: it accepts.
 
-  The arbiter and the witness belong to whoever runs the ceremony: SelfDataGuard ships
-  neither. Each is a PHP file that returns the object. For a try on your own demo base,
-  outside `storage/`, an arbiter that opens the one case you name, and no witness, chosen
-  by name — never what a deployment runs:
+  The arbiter, the witness and the keeper belong to whoever runs the ceremony: SelfDataGuard
+  ships none of them. Each is a PHP file that returns the object. For a try on your own demo
+  base, outside `storage/`, an arbiter that opens the one case you name, and no witness and
+  no keeper, each chosen by name — never what a deployment runs:
 
   ```php
   <?php // arbitre-essai.php
@@ -82,6 +83,12 @@ To use a different port: `PORT=9000 ./run.sh`.
   <?php // temoin-essai.php
   require __DIR__ . '/../../self-security/selfdataguard/src/autoload.php';
   return new Pierroons\SelfDataGuard\Escrow\NoHeadWitness();
+  ```
+
+  ```php
+  <?php // gardien-essai.php
+  require __DIR__ . '/../../self-security/selfdataguard/src/autoload.php';
+  return new Pierroons\SelfDataGuard\Escrow\NoKeeper();
   ```
 
   A witness of your own takes each head out of the machine and gives back the last one

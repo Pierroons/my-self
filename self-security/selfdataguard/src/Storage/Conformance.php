@@ -11,6 +11,7 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultExistsException;
@@ -60,6 +61,15 @@ final class Conformance
      */
     private const ROUNDS = 10;
 
+    /** The columns of the escrow row the rewrite of escrow-unreadable-row-named makes unreadable, one account each. */
+    private const UNPARSED_COLUMNS = ['wrap_admin', 'wrap_user', 'created_at', 'updated_at', 'revision'];
+
+    /**
+     * The date columns, which a rewrite may decline when its typed date column holds only values PHP reads; one that
+     * also holds a value PHP does not read (PostgreSQL's 'infinity') writes that value instead.
+     */
+    private const DECLINABLE_COLUMNS = ['created_at', 'updated_at'];
+
     /** Argon2id profile written by the cases: not the constants, so a storage that substitutes them shows. */
     private const OPSLIMIT = 7;
     private const MEMLIMIT = 12_345_678;
@@ -76,15 +86,23 @@ final class Conformance
 
     private ?EncryptedBlob $escrowWrap = null;
 
-    /**
-     * @param callable(): StorageInterface $connect a new connection to the database under test
-     */
     /** @var (callable(callable(StorageInterface): void): void)|null */
     private $withCallerTransaction;
 
-    private function __construct(callable $connect, private readonly ?string $connectFile, ?callable $withCallerTransaction)
-    {
+    /** @var (callable(string, string): bool)|null */
+    private $unparseEscrow;
+
+    /**
+     * @param callable(): StorageInterface $connect a new connection to the database under test
+     */
+    private function __construct(
+        callable $connect,
+        private readonly ?string $connectFile,
+        ?callable $withCallerTransaction,
+        ?callable $unparseEscrow
+    ) {
         $this->withCallerTransaction = $withCallerTransaction;
+        $this->unparseEscrow = $unparseEscrow;
         $this->connect = $connect;
         $this->storage = $connect();
         $this->prefix  = 'conformance-' . bin2hex(random_bytes(6));
@@ -98,11 +116,20 @@ final class Conformance
      *        opens a transaction on a new connection to the database under test, hands the storage
      *        built on that connection to its argument, then rolls the transaction back. Without it,
      *        the case that needs it is reported skipped.
+     * @param (callable(string, string): bool)|null $unparseEscrow rewrites, in the database under
+     *        test, the column it is given — one of UNPARSED_COLUMNS — of the escrow row of the userId
+     *        it is given, so that the row no longer parses, and returns true; it may return false for a
+     *        column of DECLINABLE_COLUMNS, which the case leaves out. Any other return fails the case.
+     *        Without it, the case that needs it is reported skipped.
      * @return list<array{case: string, outcome: string, detail: string}> outcome is pass, fail or skip
      */
-    public static function run(callable $connect, ?string $connectFile = null, ?callable $withCallerTransaction = null): array
-    {
-        $suite = new self($connect, $connectFile, $withCallerTransaction);
+    public static function run(
+        callable $connect,
+        ?string $connectFile = null,
+        ?callable $withCallerTransaction = null,
+        ?callable $unparseEscrow = null
+    ): array {
+        $suite = new self($connect, $connectFile, $withCallerTransaction, $unparseEscrow);
         $results = [];
         foreach (self::cases() as $case => $method) {
             try {
@@ -141,6 +168,9 @@ final class Conformance
             'fields-round-trip'             => 'fieldsRoundTrip',
             'blind-index-unique'            => 'blindIndexUnique',
             'escrow-round-trip'             => 'escrowRoundTrip',
+            'escrow-compare-and-swap'       => 'escrowCompareAndSwap',
+            'rotate-escrow'                 => 'rotateEscrowCase',
+            'escrow-unreadable-row-named'   => 'unreadableEscrowNamed',
             'delete-vault'                  => 'deleteVault',
             'replace-with-archive'          => 'replaceWithArchive',
             'delete-archive'                => 'deleteArchive',
@@ -148,18 +178,22 @@ final class Conformance
             'joins-callers-transaction'     => 'joinsCallersTransaction',
             'swap-with-archive'             => 'swapWithArchive',
             'restore-archive'               => 'restoreArchive',
+            'replace-archive-escrow'        => 'replaceArchiveEscrowCase',
             'freeze-refuses-writes'         => 'freezeRefusesWrites',
             'tickets-applied-once'          => 'ticketsAppliedOnce',
             'concurrent-updates'            => 'concurrentUpdates',
             'concurrent-re-enrolments'      => 'concurrentReEnrolments',
             'concurrent-unique-index'       => 'concurrentUniqueIndex',
             'concurrent-escrow-creations'   => 'concurrentEscrowCreations',
+            'concurrent-escrow-rotations'   => 'concurrentEscrowRotations',
             'concurrent-writes-and-re-enrolment' => 'concurrentWritesAndReEnrolment',
             'concurrent-archive-swaps'      => 'concurrentArchiveSwaps',
             'setting-claimed-once'          => 'settingClaimedOnce',
+            'setting-replaced-over-expected' => 'settingReplacedOverExpected',
             'has-vaults'                    => 'hasVaultsCase',
             'indexed-fields'                => 'indexedFieldsCase',
             'concurrent-setting-claims'     => 'concurrentSettingClaims',
+            'concurrent-setting-replacements' => 'concurrentSettingReplacements',
         ];
     }
 
@@ -279,7 +313,11 @@ final class Conformance
         $fields = ['note' => ['ciphertext' => 'c-note', 'blindIndex' => null]];
         $this->storage->createEscrow($generation, $escrow);
         for ($i = 0; $i < 2; $i++) {
-            $this->storage->replaceEscrow($generation, $escrow);
+            // Read again each time: the revision is what a rewrite must name.
+            $this->storage->replaceEscrow(
+                $generation,
+                $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow it was given')
+            );
             $this->storage->saveFields($generation, $fields);
             $this->storage->saveEscrowFields($generation, ['contact' => 'c-contact']);
         }
@@ -416,6 +454,135 @@ final class Conformance
         $all = $this->storage->loadEscrowFields($vault->userId);
         ksort($all);
         $this->assert($all === ['contact' => 'c-3', 'hint' => 'c-2'], 'saving an escrow field again did not replace it');
+        return null;
+    }
+
+    private function unreadableEscrowNamed(): ?string
+    {
+        if ($this->unparseEscrow === null) {
+            return 'no rewrite of the escrow row given';
+        }
+        foreach (self::UNPARSED_COLUMNS as $column) {
+            $vault = $this->newVault("escrow-unreadable-{$column}");
+            $this->storage->saveVault($vault);
+            $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+            $before = $this->storage->loadEscrow($vault->userId)
+                ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
+            $done = ($this->unparseEscrow)($vault->userId, $column);
+            if ($done === false) {
+                if (!in_array($column, self::DECLINABLE_COLUMNS, true)) {
+                    throw new RuntimeException(
+                        "the rewrite declined {$column}, which any storage can make unreadable: only a date column may be declined"
+                    );
+                }
+                continue;
+            }
+            if ($done !== true) {
+                throw new RuntimeException(
+                    'the rewrite of the escrow row returned ' . get_debug_type($done) . ', not true or false: it must '
+                    . 'rewrite the column it is given, and say so'
+                );
+            }
+            try {
+                $read = $this->storage->loadEscrow($vault->userId);
+            } catch (UnreadableEscrowException) {
+                $read = false;
+            } catch (Throwable $e) {
+                throw new RuntimeException(
+                    "loadEscrow() of a row whose {$column} does not parse raised " . $this->short($e::class)
+                    . ', not UnreadableEscrowException: the library takes it for an outage, and the holder loses the '
+                    . 'view and the objection'
+                );
+            }
+            if ($read !== false) {
+                throw new RuntimeException($read === null
+                    ? "the rewrite of {$column} deleted the escrow row instead of making it unreadable"
+                    : "loadEscrow() read the row whose {$column} was rewritten as a record");
+            }
+            if ($column === 'revision') {
+                $this->expect(
+                    StaleEscrowException::class,
+                    fn () => $this->storage->replaceEscrow($vault->generation(), $before),
+                    'replaceEscrow() over a row whose revision was rewritten (it must test the row is there without parsing it)'
+                );
+                $this->expect(
+                    StaleEscrowException::class,
+                    fn () => $this->storage->rotateEscrow($vault->generation(), $before, []),
+                    'rotateEscrow() over a row whose revision was rewritten (it must test the row is there without parsing it)'
+                );
+            }
+        }
+        return null;
+    }
+
+    private function escrowCompareAndSwap(): ?string
+    {
+        $vault = $this->newVault('escrow-cas');
+        $this->storage->saveVault($vault);
+        $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+        $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
+        $this->assert($read->revision === 0, "a new escrow is read at revision {$read->revision}, not 0");
+
+        $this->storage->replaceEscrow($vault->generation(), $this->escrowLike($read, 'sealed-to-admin:first'));
+        $stored = $this->storage->loadEscrow($vault->userId);
+        $this->assert(
+            $stored?->revision === 1 && $stored->wrapAdmin === 'sealed-to-admin:first',
+            'replaceEscrow() did not store the envelope at revision 1'
+        );
+        $this->expect(
+            StaleEscrowException::class,
+            fn () => $this->storage->replaceEscrow($vault->generation(), $this->escrowLike($read, 'sealed-to-admin:lost')),
+            'a replacement from a record read before the last one'
+        );
+        $this->assert(
+            $this->storage->loadEscrow($vault->userId)?->wrapAdmin === 'sealed-to-admin:first',
+            'a refused replacement still replaced the envelope: the revision is not compared'
+        );
+        return null;
+    }
+
+    private function rotateEscrowCase(): ?string
+    {
+        $vault = $this->newVault('rotate');
+        $this->storage->saveVault($vault);
+        $this->expect(
+            EscrowNotFoundException::class,
+            fn () => $this->storage->rotateEscrow($vault->generation(), $this->escrow($vault->userId), ['a' => 'c-a']),
+            'rotateEscrow() of an account without escrow'
+        );
+        $this->assert($this->storage->loadEscrowFields($vault->userId) === [], 'a refused rotateEscrow() wrote escrow fields');
+
+        $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+        $this->storage->saveEscrowFields($vault->generation(), ['kept' => 'c-old', 'dropped' => 'c-old-2']);
+        $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
+        $rotated = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:rotated', $read->createdAt, new DateTimeImmutable(), $read->revision);
+        $this->storage->rotateEscrow($vault->generation(), $rotated, ['kept' => 'c-new', 'added' => 'c-added']);
+
+        $stored = $this->storage->loadEscrow($vault->userId);
+        $this->assert(
+            $stored?->revision === 1 && $stored->wrapAdmin === 'sealed-to-admin:rotated'
+                && $stored->wrapUser->toBase64() === $rotated->wrapUser->toBase64(),
+            'rotateEscrow() did not store the new envelope at revision 1'
+        );
+        $fields = $this->storage->loadEscrowFields($vault->userId);
+        ksort($fields);
+        $this->assert(
+            $fields === ['added' => 'c-added', 'kept' => 'c-new'],
+            'after rotateEscrow(), the escrow fields are not exactly the ones given: one it does not name was kept under the replaced key, or one was lost'
+        );
+
+        $stale = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:stale', $read->createdAt, new DateTimeImmutable(), $read->revision);
+        $this->expect(
+            StaleEscrowException::class,
+            fn () => $this->storage->rotateEscrow($vault->generation(), $stale, ['stale' => 'c-stale']),
+            'a rotation from a record read before the last one'
+        );
+        $after = $this->storage->loadEscrowFields($vault->userId);
+        ksort($after);
+        $this->assert(
+            $after === $fields && $this->storage->loadEscrow($vault->userId)?->wrapAdmin === 'sealed-to-admin:rotated',
+            'a refused rotation still changed the escrow: its fields were written before the revision was compared, or outside its transaction'
+        );
         return null;
     }
 
@@ -652,6 +819,71 @@ final class Conformance
         return null;
     }
 
+    private function replaceArchiveEscrowCase(): ?string
+    {
+        $vault = $this->newVault('archive-escrow');
+        $this->storage->saveVault($vault);
+        $this->fill($vault);
+        $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
+        $this->storage->replaceEscrow($vault->generation(), $this->escrowLike($read, 'sealed-to-admin:live-1'));
+        $live = $this->newVault('archive-escrow');
+        $archiveId = $this->storage->replaceWithArchive($vault->generation(), $live);
+
+        $archived = $this->storage->loadArchive($vault->userId, $archiveId);
+        $this->assert(
+            $archived?->escrow?->revision === 1 && $archived->escrow->wrapAdmin === 'sealed-to-admin:live-1',
+            'the archive did not keep the revision of its escrow: a column of the escrow row was lost on the way into the archive'
+        );
+        $this->storage->replaceArchiveEscrow($vault->userId, $archiveId, $this->escrowLike($archived->escrow, 'sealed-to-admin:resealed'));
+        $after = $this->storage->loadArchive($vault->userId, $archiveId);
+        $this->assert(
+            $after?->escrow?->wrapAdmin === 'sealed-to-admin:resealed' && $after->escrow->revision === 2,
+            'replaceArchiveEscrow() did not store the envelope at the next revision'
+        );
+        $this->assert(
+            $after->escrowFields === $archived->escrowFields && $after->privateFields === $archived->privateFields
+                && $after->record->wrapPwd->toBase64() === $archived->record->wrapPwd->toBase64()
+                && $after->escrow->wrapUser->toBase64() === $archived->escrow->wrapUser->toBase64(),
+            'replaceArchiveEscrow() changed more of the archive than its escrow envelope'
+        );
+        $this->expect(
+            StaleEscrowException::class,
+            fn () => $this->storage->replaceArchiveEscrow($vault->userId, $archiveId, $this->escrowLike($archived->escrow, 'sealed-to-admin:lost')),
+            'a re-sealing of an archive from a record read before the last one'
+        );
+        $this->assert(
+            $this->storage->loadArchive($vault->userId, $archiveId)?->escrow?->wrapAdmin === 'sealed-to-admin:resealed',
+            'a refused re-sealing of an archive still replaced its envelope: the revision is not compared'
+        );
+        $this->expect(
+            VaultNotFoundException::class,
+            fn () => $this->storage->replaceArchiveEscrow($vault->userId, 'no-such-archive', $this->escrowLike($archived->escrow, 'x')),
+            'replaceArchiveEscrow() of an archive that does not exist'
+        );
+        $stranger = $this->id('archive-escrow-stranger');
+        $this->expect(
+            VaultNotFoundException::class,
+            fn () => $this->storage->replaceArchiveEscrow($stranger, $archiveId, $this->escrow($stranger)),
+            "replaceArchiveEscrow() of another account's archive"
+        );
+        $bare = $this->newVault('archive-bare');
+        $this->storage->saveVault($bare);
+        $bareId = $this->storage->replaceWithArchive($bare->generation(), $this->newVault('archive-bare'));
+        $this->expect(
+            EscrowNotFoundException::class,
+            fn () => $this->storage->replaceArchiveEscrow($bare->userId, $bareId, $this->escrow($bare->userId)),
+            'replaceArchiveEscrow() of an archive that holds no escrow'
+        );
+
+        $this->storage->swapWithArchive($live->generation(), $archiveId);
+        $back = $this->storage->loadEscrow($vault->userId);
+        $this->assert(
+            $back?->revision === 2 && $back->wrapAdmin === 'sealed-to-admin:resealed',
+            'an archive brought back live lost the revision or the envelope of its escrow'
+        );
+        return null;
+    }
+
     private function freezeRefusesWrites(): ?string
     {
         $vault = $this->newVault('freeze');
@@ -834,6 +1066,33 @@ final class Conformance
         return null;
     }
 
+    private function settingReplacedOverExpected(): ?string
+    {
+        $name = $this->setting('replaced');
+        $this->storage->claimSetting($name, 'first');
+        $this->assert(!$this->storage->replaceSetting($name, 'not-held', 'second'), 'replaceSetting() over a value the database does not hold returned true');
+        $this->assert(
+            $this->storage->loadSetting($name) === 'first',
+            'replaceSetting() over a value the database does not hold replaced it: the expected value is not compared'
+        );
+        $this->assert($this->storage->replaceSetting($name, 'first', 'second'), 'replaceSetting() over the value held returned false');
+        $this->assert($this->storage->loadSetting($name) === 'second', 'replaceSetting() over the value held did not replace it');
+        $this->assert(
+            $this->storage->replaceSetting($name, 'second', 'second'),
+            'replaceSetting() with the value already held returned false: the storage counts changed rows, not matched ones'
+        );
+        $this->assert(
+            !$this->storage->replaceSetting($name, 'first', 'first') && $this->storage->loadSetting($name) === 'second',
+            'replaceSetting() with an equal value the name does not hold returned true: the expected value is not compared'
+        );
+        $never = $this->setting('never-replaced');
+        $this->assert(
+            !$this->storage->replaceSetting($never, 'x', 'y') && $this->storage->loadSetting($never) === null,
+            'replaceSetting() of a name never claimed wrote a value'
+        );
+        return null;
+    }
+
     private function settingClaimedOnce(): ?string
     {
         $name  = $this->setting('once');
@@ -945,6 +1204,54 @@ final class Conformance
         return null;
     }
 
+    private function concurrentEscrowRotations(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $vault = $this->newVault('race-rotate');
+        $this->storage->saveVault($vault);
+        $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
+        $this->storage->saveEscrowFields($vault->generation(), ['before' => 'c-before']);
+        $outcomes = $this->race(<<<'PHP'
+            $r = $s->loadVault($uid);
+            $e = $s->loadEscrow($uid);
+            $rotated = new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $e->wrapUser, "rotated-by-{$me}", $e->createdAt, new DateTimeImmutable(), $e->revision);
+            $ready();
+            $s->rotateEscrow($r->generation(), $rotated, ["by-{$me}" => "c-{$me}"]);
+            PHP, $vault->userId);
+        $this->assertOneWinner($outcomes, 'rotateEscrow() of one escrow from the same read');
+        $winner = array_search('ok', $outcomes, true);
+        $this->assert(
+            $this->storage->loadEscrow($vault->userId)?->wrapAdmin === "rotated-by-{$winner}"
+                && $this->storage->loadEscrowFields($vault->userId) === ["by-{$winner}" => "c-{$winner}"],
+            'the escrow stored is not exactly the winning rotation: a refused one left its envelope or its fields'
+        );
+        return null;
+    }
+
+    private function concurrentSettingReplacements(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $name = $this->setting('race-replace-' . bin2hex(random_bytes(3)));
+        $this->storage->claimSetting($name, 'start');
+        $outcomes = $this->race(<<<'PHP'
+            $ready();
+            echo $s->replaceSetting($uid, 'start', "replaced-by-{$me}") ? 'won ' : 'lost ';
+            PHP, $name);
+        $counts = array_count_values($outcomes);
+        $winner = array_search('won ok', $outcomes, true);
+        $this->assert(
+            ($counts['won ok'] ?? 0) === 1 && ($counts['lost ok'] ?? 0) === self::RACERS - 1
+                && $this->storage->loadSetting($name) === "replaced-by-{$winner}",
+            sprintf('%d processes replaced one setting over the same value at once: exactly one must succeed — got %s',
+                self::RACERS, implode(' | ', $outcomes))
+        );
+        return null;
+    }
+
     /**
      * A re-enrolment and writes that name the generation it replaces, at the
      * same instant. Each write lands in the old vault, archived with it, or is
@@ -1037,7 +1344,8 @@ final class Conformance
             . ' try { %s echo "ok"; }'
             . ' catch (Pierroons\SelfDataGuard\Vault\StaleVaultException'
             . ' | Pierroons\SelfDataGuard\Storage\DuplicateIndexException'
-            . ' | Pierroons\SelfDataGuard\Escrow\EscrowExistsException) { echo "refused"; }'
+            . ' | Pierroons\SelfDataGuard\Escrow\EscrowExistsException'
+            . ' | Pierroons\SelfDataGuard\Escrow\StaleEscrowException) { echo "refused"; }'
             . ' catch (Throwable $e) { echo get_class($e), ": ", $e->getMessage(); }',
             var_export($this->connectFile, true),
             var_export($userId, true),
@@ -1152,6 +1460,12 @@ final class Conformance
         return new EscrowRecord($userId, $this->escrowWrap, 'sealed-to-admin:' . $userId, $now, $now);
     }
 
+    /** $read again, with another wrap_admin, at the revision it was read at. */
+    private function escrowLike(EscrowRecord $read, string $wrapAdmin): EscrowRecord
+    {
+        return new EscrowRecord($read->userId, $read->wrapUser, $wrapAdmin, $read->createdAt, new DateTimeImmutable(), $read->revision);
+    }
+
     private function indexOf(string $userId): string
     {
         return base64_encode(hash('sha256', $userId, true));
@@ -1175,6 +1489,7 @@ final class Conformance
             'saveFields'         => fn () => $this->storage->saveFields($generation, ['f' => ['ciphertext' => 'c']]),
             'createEscrow'       => fn () => $this->storage->createEscrow($generation, $this->escrow($generation->userId)),
             'replaceEscrow'      => fn () => $this->storage->replaceEscrow($generation, $this->escrow($generation->userId)),
+            'rotateEscrow'       => fn () => $this->storage->rotateEscrow($generation, $this->escrow($generation->userId), ['e' => 'c']),
             'saveEscrowFields'   => fn () => $this->storage->saveEscrowFields($generation, ['e' => 'c']),
             'deleteVault'        => fn () => $this->storage->deleteVault($generation),
             'deleteArchive'      => fn () => $this->storage->deleteArchive($generation, $archiveId),

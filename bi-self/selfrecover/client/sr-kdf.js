@@ -30,9 +30,9 @@
  *
  * `crypto.subtle` n'expose ni Argon2id ni aucune KDF mémoire-dure. `argon2id.js`,
  * dans ce même répertoire, la fournit — écrite ici, lisible, et confrontée aux
- * vecteurs de libsodium. Chargez-la par une balise `<script>` avant ce fichier.
+ * vecteurs de libsodium. Charge-la par une balise `<script>` avant ce fichier.
  *
- * `srKdfPoserImplementation(fn)` accepte la vôtre à la place — native, WebAssembly,
+ * `srKdfPoserImplementation(fn)` accepte la tienne à la place — native, WebAssembly,
  * autre — à la seule condition qu'elle reproduise `tests/vecteurs-argon2.json`.
  *
  * ── Le blob porte sa KDF ───────────────────────────────────────────────────
@@ -197,8 +197,8 @@
     }
 
     throw new Error(
-      "srKdf : aucune implémentation d'Argon2id. Chargez `argon2id.js` avant " +
-      'ce fichier, ou posez la vôtre avec srKdfPoserImplementation(fn) — elle ' +
+      "srKdf : aucune implémentation d'Argon2id. Charge `argon2id.js` avant " +
+      'ce fichier, ou pose la tienne avec srKdfPoserImplementation(fn) — elle ' +
       'doit reproduire tests/vecteurs-argon2.json.',
     );
   }

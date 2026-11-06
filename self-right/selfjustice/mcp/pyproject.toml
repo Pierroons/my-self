@@ -1,6 +1,6 @@
 [project]
 name = "selfright-mcp"
-version = "0.4.6"
+version = "0.4.7"
 description = "Serveur MCP de consultation du droit français (LEGI), de conventionnalité (UE, CEDH, RGPD, règlement IA), de jurisprudence (Judilibre, JADE) et des ressources administratives officielles"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -8,19 +8,47 @@ license = "AGPL-3.0-or-later"
 # 🔑 Déclarer la licence ne suffit pas : l'AGPL demande qu'une copie de son
 # texte accompagne le programme. Sans cette ligne, le paquet publié portait
 # l'identifiant SPDX dans ses métadonnées et aucun texte de licence.
-# Le fichier est un lien vers celui du dépôt — une seconde copie divergerait.
+# Le fichier est une copie de celui du dépôt, pas un lien ; c'est
+# `scripts/check-paths.sh` qui vérifie en continu qu'elle reste identique.
 license-files = ["LICENSE"]
+# L'adresse est celle du COPYRIGHT du dépôt, déjà publique. Elle vaut mieux
+# qu'un paquet sans auteur : sur un index public, un éditeur qu'on ne peut pas
+# joindre est un paquet qu'on n'a aucune raison d'installer.
+authors = [{ name = "Pierroons", email = "contact@my-self.fr" }]
 keywords = ["mcp", "droit", "legifrance", "legi", "rgpd", "ai-act"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    # Le module qu'il sert est déclaré « bêta » dans modules.json : annoncer
+    # « alpha » ici ferait dire deux choses à deux surfaces publiques.
+    # ⚠️ Cette ligne n'est PAS outillée par check-versions.sh, et ne peut pas
+    # l'être : dans ce dépôt un porteur est une ligne qui porte la version, et le
+    # statut se lit sur cette même ligne. Éprouvé le 12/10/2026 en déclarant le
+    # statut et cette ligne comme porteur — deux écarts, dans les deux sens
+    # (« y est en aucune version » ici, « n'y est pas dit beta » sur la ligne de
+    # version). Elle se relit donc à la main au changement de maturité.
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Legal Industry",
+    # Le serveur sert le droit français à un public francophone, et son README
+    # — qui est le corps de la page publique — est en français. Le déclarer
+    # évite qu'un lecteur arrive sur une page qu'il ne peut pas lire.
+    "Natural Language :: French",
     "Programming Language :: Python :: 3",
-    "Topic :: Sociology :: History",
+    "Topic :: Utilities",
 ]
+
 dependencies = [
     "mcp>=2.0.0",
     "httpx>=0.27",
 ]
+
+# Sans ces liens, la page du paquet ne mène nulle part — ni au code qu'elle
+# distribue, ni à l'endroit où en signaler un défaut.
+# ⚠️ Cette table vient APRÈS les clés de `[project]` : placée avant, elle
+# absorbe celles qui la suivent, et `dependencies` y devient une URL. La
+# construction l'a refusé, la lecture ne l'avait pas vu.
+[project.urls]
+Homepage = "https://my-self.fr"
+Repository = "https://github.com/Pierroons/my-self"
+Issues = "https://github.com/Pierroons/my-self/issues"
 
 [project.scripts]
 selfright-mcp = "selfright_mcp.server:main"
@@ -31,3 +59,20 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["selfright_mcp"]
+
+# 🔑 Une liste blanche, parce que `hatchling` **ne lit pas** le `.gitignore` de
+# la racine du dépôt : il s'arrête au premier qu'il trouve en remontant, donc
+# celui de ce dossier, qui ne déclare que `build/` et `dist/`. Les règles de la
+# racine — `__pycache__/`, `.venv/`, `.env` — lui sont invisibles. Un journal, un
+# fichier d'état ou une base qui atterrirait ici partirait donc dans l'archive
+# publiée, qui ne se remplace jamais — et, s'il est git-ignoré, sans que
+# `audit-opsec.sh` ni la CI le voient, puisqu'ils mesurent l'index.
+#
+# Éprouvé le 12/10/2026 en plantant les quatre cas redoutés dans ce dossier
+# (`.env`, `collecte.log`, `base-test.sqlite`, `etat/dernier.json`) : zéro part,
+# dont `collecte.log` que git ignorait. Mesuré aussi, pour ne pas promettre plus
+# que ce qui est tenu : `hatchling` ajoute de lui-même `.gitignore` et le
+# `PKG-INFO` qu'il génère. Cette liste garantit donc qu'aucun AUTRE fichier du
+# dossier ne part, pas qu'elle énumère tout le contenu de l'archive.
+[tool.hatch.build.targets.sdist]
+only-include = ["selfright_mcp", "README.md", "LICENSE", "pyproject.toml"]

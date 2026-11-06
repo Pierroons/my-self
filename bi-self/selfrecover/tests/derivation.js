@@ -80,7 +80,7 @@ const verdict = (quoi, ok, detail = '') => {
     console.log('\n── Le mode hostname LIT le navigateur, il ne le reçoit pas ─');
     // 🔑 Le cœur de l'anti-hameçonnage, et le défaut exact trouvé dans une des
     // intégrations : un matériel que le serveur fournit est un matériel que
-    // N'IMPORTE QUEL serveur peut fournir — celui d'une page qui vous imite
+    // N'IMPORTE QUEL serveur peut fournir — celui d'une page qui t'imite
     // compris. On vérifie donc qu'aucune option ne permet de l'imposer.
     globalThis.location.hostname = 'vrai.test';
     const attendu = await srDerive('mot', SEL, { mode: 'hostname' });

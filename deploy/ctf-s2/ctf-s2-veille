@@ -1,0 +1,377 @@
+#!/bin/bash
+# Ce qui sort du perimetre annonce aux chercheurs, porte sur le canal d'alerte.
+#
+# La page /redteam.php annonce un perimetre : le lab, par HTTP, sans deni de
+# service, sans toucher au port 22 ni aux autres noms d'hote. Ce controle cherche
+# ce qui en sort — pas pour l'empecher, pour le SAVOIR. Personne n'est banni
+# ici : sur ce serveur, scanner est le jeu.
+#
+# 🔑 Trois signaux, et un seul fait vraiment peur. Le premier ne depend pas
+# du journal nginx, d'ou sa place avant la lecture :
+#   - un autre nom d'hote : le vhost est `default_server` sur le port 80, donc il
+#     recoit tout ce qui arrive sur l'adresse. Quelqu'un qui cherche autre chose
+#     que le lab sur cette machine se voit ici, et nulle part ailleurs ;
+#   - un debit anormal : annonce interdit. L'alerte dit si l'origine a touche
+#     les routes du lab ou seulement balaye, et sa priorite le suit ;
+#   - une IP que CrowdSec vient de couper : le bouncer coupe TOUS les ports,
+#     443 compris — un chercheur banni pour SSH perd aussi le site sans
+#     comprendre pourquoi. Le savoir permet de le lui dire. On lit les
+#     DECISIONS, pas les echecs : seul `ssh-slow-bf` bannit, les scenarios
+#     `ssh-time-based-bf` alertent sans remediation (yaml du hub, 24/10).
+#
+# ⚠️ Un signal ne se repete pas avant SILENCE secondes : une alerte qui se repete
+# toutes les cinq minutes cesse d'etre lue, et c'est alors qu'elle compte.
+set -uo pipefail
+# nginx ecrit ses mois en anglais quoi qu'il arrive ; `date +%b` suit la locale
+# et rend « oct. » en francais. Les motifs ne correspondraient alors a aucune
+# ligne, et ce controle annoncerait « rien dans la fenetre » — un silence qui ne
+# se distingue pas d'un serveur calme. Mesure du 04/10 sur six journaux fabriques.
+export LC_ALL=C
+
+LOG=${CTF_VEILLE_LOG:-/var/log/ctf-s2-veille.log}
+# Surchargeable pour eprouver le controle sur un journal fabrique, comme
+# CTF_DATA l'est pour la sauvegarde. Pointe ailleurs, il mesure ailleurs.
+ACCES=${CTF_VEILLE_ACCES:-/var/log/nginx/access.log}
+# Les refus du filtre des secrets (snippets/lab-deny-backups.conf) sont journalises
+# a part : sans ce fichier, un scan de secrets n'est vu qu'a moitie.
+SONDES=${CTF_VEILLE_SONDES:-/var/log/nginx/lab-sondes.log}
+# La racine en service : ses pages PHP sont les routes du lab (section 3).
+RACINE=${CTF_VEILLE_RACINE:-/var/www/ctf-s2/demo/lab/public}
+ETAT=${CTF_VEILLE_ETAT:-/var/lib/ctf-s2-veille}
+N=${CTF_VEILLE_NOTIFY:-/etc/myself-lab/notify.conf}
+NOTRE_NOM=ctf.my-self.fr
+# 🔑 Les noms que l'hebergeur attache a l'adresse designent CETTE machine, pas
+# un autre hote. Un scanner de masse resout l'adresse avant de requeter, donc il
+# frappe ces noms-la : 398 requetes le 05/10, toutes a la recherche de portes
+# derobees WordPress. Sans cette ligne, le signal a crie 7 fois pour du bruit de
+# fond les 4 et 5/10 — et c'est ainsi qu'on cesse de lire une alerte.
+# Le second est le nom inverse (`dig -x`), absent des journaux a ce jour : il est
+# la par precaution, pas sur mesure.
+NOTRE_PLAGE='<nom-de-l-adresse>'
+NOTRE_PTR='<ptr-du-vps>'
+FENETRE=5          # minutes relues a chaque passage
+SILENCE=1800       # 30 min entre deux alertes de meme nature
+SEUIL_DEBIT=600    # requetes d'une meme origine sur la fenetre
+# Un autre nom d'hote arrive seul tout le temps : des bots testent le serveur
+# comme proxy ouvert (CONNECT www.google.com, azenv.net). Mesure du 04/10 sur
+# les onze semaines de journal : 141 requetes de cette famille, jamais le meme
+# nom trois fois dans la meme fenetre. Sous ce seuil, on inscrit sans notifier.
+SEUIL_HOTE=3
+# Passages consecutifs sans AUCUNE ligne avant de crier — soixante, a trois
+# minutes l'un, font trois heures.
+#
+# 🔑 Calibre sur le trafic reel, pas sur une intuition. Mesure du 05/10 sur huit
+# heures d'archive (19:42 -> 03:36) : 64 minutes distinctes portent du trafic, et
+# le plus long silence naturel est de **36 minutes**. Un seuil d'une heure — le
+# premier que j'avais pose — laissait donc une marge de vingt-quatre minutes :
+# une nuit plus calme ou un week-end aurait suffi a le franchir. Une sonde qui
+# crie pour rien finit par etre ignoree, et c'est ainsi qu'on perd la vraie
+# alerte. Trois heures restent largement utiles : la panne du 05/10 a dure cinq
+# heures sans que rien ne la signale.
+#
+# A revoir pendant la saison : le trafic des chercheurs raccourcira ces silences,
+# et le seuil pourra redescendre.
+# Passages consecutifs sans AUCUNE ligne avant de crier. 36 x 5 min = 3 h.
+#
+# 🔑 Le chiffre se lit AVEC sa cadence, jamais seul. La version precedente
+# disait 60 passages « a trois minutes l'un, font trois heures » alors que le
+# timer passe toutes les CINQ minutes : le garde-fou criait au bout de 5 h, soit
+# la duree exacte de la panne qu'il existe pour raccourcir (05/10). Une valeur
+# derivee d'une cadence supposee au lieu d'etre lue.
+#
+# Calibre sur le trafic reel, et RESSERRE le 10/10/2026 sur une mesure neuve.
+#
+# Mesure du 05/10, huit heures d'archive : plus long silence naturel 36 min, d'ou
+# un seuil de 36 passages (3 h) — une marge de 5x, posee quand le lab n'avait
+# aucun visiteur et qu'une sonde qui crie pour rien coutait plus qu'une alerte
+# tardive.
+#
+# Mesure du 10/10, seize heures de journal (01:08 -> 17:18, 850 lignes,
+# 147 minutes distinctes avec trafic) :
+#   les six plus longs silences : 42, 41, 34, 27, 26, 25 min   ·   mediane 4 min
+# Le plus long a donc GRANDI (36 -> 42), et la marge de 3 h montait a 4,3x.
+#
+# 🔑 18 passages = 90 min, soit 2,1x le plus long silence observe. La campagne
+# commence : des chercheurs produisent du trafic en continu, donc les silences
+# vont RACCOURCIR et cette marge grandira d'elle-meme. Un seuil calibre sur un
+# lab vide n'a plus de sens quand il cesse de l'etre — et la panne que ce
+# garde-fou existe pour raccourcir a dure cinq heures.
+#
+# ⚠️ Le chiffre se lit AVEC sa cadence, jamais seul : 18 x 5 min. Si quelqu'un
+# change le timer, CADENCE_ATTENDUE ci-dessous le dit dans le journal.
+SEUIL_MUET=18
+# Ce que le timer doit dire. Si quelqu'un change la cadence, le seuil ci-dessus
+# ne vaut plus 3 h : on ne devine pas, on le dit dans le journal.
+CADENCE_ATTENDUE=5min
+
+mkdir -p "$ETAT"
+# Deux passages a la fois (le timer et un lancement a la main) ecriraient le meme
+# etat et pourraient annoncer deux fois le meme ban.
+exec 9> "$ETAT/verrou"
+flock -n 9 || { echo "$(date -Is) un passage est deja en cours : celui-ci s'arrete" >> "$LOG"; exit 0; }
+
+# La cadence du timer, comparee a ce que le seuil suppose. `TimersMonotonic`
+# porte `OnUnitActiveUSec=<duree>` en texte ; on compare la chaine plutot que de
+# parser des unites. Lecture absente (lancement a la main, hors systemd) : on se
+# tait, ce n'est pas une anomalie.
+cadence=$(systemctl show -p TimersMonotonic --value ctf-s2-veille.timer 2>/dev/null \
+          | grep -o 'OnUnitActiveUSec=[^ ]*' | cut -d= -f2 | head -1)
+if [ -n "${cadence:-}" ] && [ "$cadence" != "$CADENCE_ATTENDUE" ]; then
+  echo "$(date -Is) ⚠️ cadence du timer = $cadence, seuil calibre pour $CADENCE_ATTENDUE :" \
+       "$SEUIL_MUET passages ne font plus 3 h" >> "$LOG"
+fi
+
+pousser() {  # $1 = titre · $2 = corps · [$3 = priorite, high par defaut] — l'envoi seul, sans regle de silence.
+  # Present mais vide ou tronque : on se tait, on ne lance pas un curl sans URL
+  # qui ecrirait son propre reproche dans le journal du service.
+  [ -r "$N" ] || return 0
+  url=$(sed -n 1p "$N"); [ -n "$url" ] || { echo "$(date -Is) canal illisible ($N)" >> "$LOG"; return 0; }
+  printf 'user = "%s"\n' "$(sed -n 2p "$N")" | curl -s -m 10 -K - \
+    -H "Title: $1" -H "Priority: ${3:-high}" -H 'Tags: warning,eyes' \
+    -d "$2" "$url" >/dev/null || true
+}
+
+crier() {   # $1 = cle de silence · $2 = titre · $3 = corps · [$4 = priorite]
+  # Pour un ETAT qui reste vrai d'un passage a l'autre. Un EVENEMENT ponctuel —
+  # un ban qui vient d'etre pose — appelle `pousser` directement : le silence
+  # ferait taire le deuxieme ban de la demi-heure.
+  f="$ETAT/$1"
+  if [ -r "$f" ] && [ $(( $(date +%s) - $(cat "$f") )) -lt "$SILENCE" ]; then
+    echo "$(date -Is) $1 : encore vrai, deja signale — silence" >> "$LOG"
+    return 0
+  fi
+  echo "$(date -Is) ALERTE $1 : $3" >> "$LOG"
+  date +%s > "$f"
+  pousser "$2" "$3" "${4:-high}"
+}
+
+# ⚠️ CE BLOC PASSE EN PREMIER, ET L'ORDRE EST LA PROPRIETE, PAS UN STYLE.
+# Tout ce qui suit depend du journal nginx, et le bloc « passage muet » sort
+# du script (`exit 0`) quand la fenetre est vide. Un ban ne depend pas du
+# trafic web : place apres, il n'etait lu qu'aux passages ou le lab recevait
+# des requetes. Mesure du 24/10 sur la machine : le trafic tombe a zero
+# plusieurs passages d'affilee, donc un ban pose et expire entre deux
+# passages avec trafic n'aurait jamais ete annonce. Trouve APRES la pose, en
+# mesurant chez le destinataire — le banc fournissait toujours un journal
+# non vide, et ne pouvait pas le voir. C'est le cas 9 du banc.
+
+# ── 1. Qui vient de perdre le site ───────────────────────────────────────────
+# Ce signal annoncait un ban en comptant des ECHECS. Les deux ne se recouvrent
+# pas, et la mesure du 24/10 dit de combien : sur 24 h, 1 421 echecs et
+# 17 alertes CrowdSec, dont 12 SANS aucune decision. L'IP la plus bruyante —
+# 580 echecs a elle seule — n'a jamais ete bannie.
+#
+# 🔑 Ce n'est pas un reglage a corriger, c'est le contrat des scenarios du hub,
+# lu dans leurs yaml le 24/10 :
+#   ssh-slow-bf        labels.remediation: true    confidence: 3   -> bannit
+#   ssh-time-based-bf  labels.remediation: false   confidence: 1   -> alerte seule
+# Les `time-based` detectent un motif lent qui evite le rate-limiting ; leur
+# confiance est faible, donc le hub ne leur fait pas couper une IP. Sur CE
+# serveur, ou scanner est le jeu et ou SSH n'accepte que les cles
+# (PasswordAuthentication no, PermitRootLogin no), c'est le bon choix : un
+# enumerateur n'obtient rien, et le bannir couterait des chercheurs.
+#
+# On lit donc les DECISIONS, pas le journal. Une alerte ne part que si une IP
+# vient d'etre coupee, et elle dit laquelle et pour combien de temps.
+#
+# ⚠️ Un ban est un EVENEMENT, pas un etat : il ne passe pas par `crier`, dont le
+# silence de 30 min ferait taire le deuxieme ban de la demi-heure. C'est la
+# liste des IP deja annoncees qui evite la repetition.
+CSCLI=${CTF_VEILLE_CSCLI:-cscli}
+VUS=$ETAT/bans-annonces
+
+# 🔑 Un echec de `cscli` ne doit pas ressembler a « aucun ban » : ce signal
+# existe pour dire qu'on a coupe quelqu'un, et se taire serait le pire des
+# deux. `-o json` rend `null` quand il n'y a rien, et c'est une sortie VALIDE.
+BANS=$("$CSCLI" decisions list -o json 2>/dev/null); RC=$?
+if [ "$RC" -ne 0 ]; then
+  crier cscli-muet "CTF — la veille ne voit plus les bans" \
+    "\`cscli decisions list\` a rendu $RC. Tant que ca dure, personne ne saura qu'un chercheur a ete coupe : le bouncer continue de bannir sans que ce signal puisse le dire. Verifier le service crowdsec."
+else
+  # Une entree de ce JSON est une ALERTE, qui porte `source` et un tableau
+  # `decisions`. L'IP n'est donc pas a la racine : mesure du 24/10, un
+  # `.[].value` aurait rendu du vide — un silence qu'on aurait lu comme un calme.
+  COUPES=$(printf '%s' "$BANS" | python3 -I -c '
+import sys, json
+t = sys.stdin.read().strip()
+# Une entree vide, "null" ou "[]" sont des reponses VALIDES qui veulent dire
+# "aucune decision". Seul un JSON illisible doit lever, et donc rendre != 0.
+# Le "or []" compte : json.loads("null") rend None, et iterer sur None leve.
+data = json.loads(t) if t else []
+for a in (data or []):
+    s = a.get("source") or {}
+    ou = " ".join(x for x in (s.get("cn"), s.get("as_name")) if x)
+    for d in a.get("decisions") or []:
+        if d.get("simulated"):
+            continue
+        print("\t".join([str(d.get("value")), str(d.get("type")),
+                         str(d.get("duration")), str(d.get("scenario")), ou]))
+' 2>/dev/null)
+  RC_PARSE=$?
+
+  # 🔑 C'EST LE CODE DE RETOUR DU PARSEUR QUI DIT SI LE FORMAT EST BON, jamais la
+  # forme du texte. La premiere version comparait "$BANS" a "null" et criait des
+  # que la sortie n'etait ni vide ni "null" sans qu'aucune decision n'en sorte.
+  # Or cscli rend "[]" quand il n'y a aucun ban : l'alerte partait a chaque
+  # passage calme, plusieurs fois par jour (mesure du 27/10, signalee par
+  # Pierroons). Enumerer les formes attendues — "null", puis "[]", puis la
+  # suivante — refait l'erreur un cran plus loin. Python, lui, sait lire du JSON :
+  # s'il ne leve pas, le format est bon, qu'il y ait zero ou dix decisions.
+  if [ "$RC_PARSE" -ne 0 ]; then
+    crier bans-illisibles "CTF — les decisions ne se lisent plus" \
+      "\`cscli decisions list -o json\` a rendu une sortie que le lecteur JSON refuse (rc=$RC_PARSE). Le format a probablement change : ce signal est aveugle jusqu'a ce qu'on le relise."
+  fi
+
+  IPS=$(printf '%s' "$COUPES" | cut -f1 | grep -v '^$' | sort -u || true)
+
+  # ⚠️ `grep -vxF -f` rend 1 quand il ne reste AUCUNE ligne, c'est-a-dire quand
+  # toutes les IP sont deja connues — le cas le plus frequent. Confondre ce 1
+  # avec « le fichier des IP connues est absent » reannoncerait chaque ban a
+  # chaque passage, toutes les cinq minutes. Les deux cas se distinguent donc
+  # AVANT l'appel, pas sur son code de retour. (Attrape au banc, cas 3.)
+  if [ -s "$VUS" ]; then
+    NOUVELLES=$(printf '%s\n' "$IPS" | grep -vxF -f "$VUS" || true)
+  else
+    NOUVELLES=$IPS
+  fi
+  NOUVELLES=$(printf '%s' "$NOUVELLES" | grep -v '^$' || true)
+
+  if [ -n "$NOUVELLES" ]; then
+    DETAIL=$(printf '%s\n' "$NOUVELLES" | while read -r ip; do
+      printf '%s\n' "$COUPES" | awk -F'\t' -v i="$ip" '$1==i {printf "%s (%s) %s pour %s\n", $1, $5, $2, $3; exit}'
+    done | sed ':a;N;$!ba;s/\n/ · /g')
+    N_NOUV=$(printf '%s\n' "$NOUVELLES" | grep -c .)
+    echo "$(date -Is) ALERTE ban : $DETAIL" >> "$LOG"
+    pousser "CTF — $N_NOUV IP coupee(s), le site avec" \
+      "$DETAIL — le bouncer coupe TOUS les ports, 443 compris : si c'est un chercheur, il a perdu le site sans comprendre pourquoi. Le port 22 est hors perimetre et la page /redteam.php l'annonce."
+  fi
+
+  # On garde la liste des IP en cours, et seulement elles : une IP dont le ban
+  # a expire doit pouvoir etre reannoncee si elle revient.
+  printf '%s\n' "$IPS" > "$VUS"
+fi
+
+
+# Les lignes de la fenetre, reperees par leur horodatage nginx ([04/Oct/2026:14:28:12 …]).
+# Pas de curseur de position : logrotate le ferait mentir sans rien dire.
+# Le decalage, relu dans le journal plutot que suppose : nginx horodate dans le
+# fuseau du systeme, et des motifs construits dans un autre ne correspondraient
+# a aucune ligne — meme silence trompeur que pour la locale.
+if tail -1 "$ACCES" 2>/dev/null | grep -q '[+-]0000\]'; then Z=(-u); else Z=(); fi
+# « Maintenant » se surcharge pour rejouer une fenetre passee sur de vrais
+# journaux (CTF_VEILLE_MAINTENANT="2026-10-29 14:54 UTC") ; par defaut, l'heure
+# du passage.
+T0=$(date -d "${CTF_VEILLE_MAINTENANT:-now}" +%s)
+depuis=$(date "${Z[@]}" -d "@$(( T0 - FENETRE * 60 ))" '+%d/%b/%Y:%H:%M')
+motifs=$(for i in $(seq 0 "$FENETRE"); do date "${Z[@]}" -d "@$(( T0 - i * 60 ))" '+%d/%b/%Y:%H:%M'; done)
+LIGNES=$(grep -F "$(printf '%s\n' "$motifs")" "$ACCES" 2>/dev/null || true)
+NB=$(printf '%s' "$LIGNES" | grep -c . || true)
+LIGNES_SONDES=$(grep -F "$(printf '%s\n' "$motifs")" "$SONDES" 2>/dev/null || true)
+NB_SONDES=$(printf '%s' "$LIGNES_SONDES" | grep -c . || true)
+# 🔑 « Rien dans la fenetre » se lit comme un serveur calme. C'est pourtant ce
+# que cette veille a ecrit toutes les trois minutes pendant cinq heures le
+# 05/10, alors qu'elle lisait un fichier que nginx avait cesse d'alimenter : une
+# rotation avait renomme le journal, et les workers — qui ne peuvent plus
+# traverser /var/log/nginx depuis qu'il est en 750 — avaient garde leur ancien
+# descripteur. La sonde ne voyait plus rien et le disait exactement comme un
+# serveur au repos. Un lab publie recoit du balayage en permanence : un silence
+# total prolonge n'est pas une bonne nouvelle, c'est le signe qu'on ne mesure
+# plus. On le compte, et au-dela du seuil on le dit.
+# Les deux journaux comptent : un passage ou nginx n'a ecrit que des refus du
+# filtre des secrets n'est pas un passage muet.
+MUET=$ETAT/passages-muets
+if [ $(( NB + NB_SONDES )) -gt 0 ]; then
+  echo 0 > "$MUET"
+else
+  m=$(( $(cat "$MUET" 2>/dev/null || echo 0) + 1 ))
+  echo "$m" > "$MUET"
+  echo "$(date -Is) rien dans la fenetre (depuis $depuis) — $m passage(s) de suite" >> "$LOG"
+  [ "$m" -lt "$SEUIL_MUET" ] || [ $((m % SEUIL_MUET)) -ne 0 ] || crier muet \
+    "CTF - la veille ne lit plus rien" \
+    "Aucune ligne dans $ACCES ni dans $SONDES sur $m passages consecutifs. Soit le trafic a cesse, soit nginx n'ecrit plus la ou cette veille lit : verifier vers quel fichier pointent les descripteurs des workers (ls -l /proc/<pid>/fd)."
+  exit 0
+fi
+
+# ── 2. Un autre nom d'hote ───────────────────────────────────────────────────
+# Le nom est le QUATRIEME et dernier champ entre guillemets de lab_anon. Une
+# ligne qui n'en porte que trois precede l'ajout du champ (04/10) : son dernier
+# champ est alors le navigateur, et le lire ici fait crier sur un User-Agent —
+# ce qui est arrive au premier passage. D'ou le compte de guillemets, apres
+# retrait de ceux que nginx echappe en \" : sans ce retrait, un agent forge
+# suffirait a se faire passer pour le bon format, et a nommer l'hote qu'il veut.
+# (`printf '%s'` sans fin de ligne : une fenetre ou seuls des refus sont arrives
+# laisse LIGNES vide, et une ligne vide serait comptee « format anterieur ».)
+CHAMPS=$(printf '%s' "$LIGNES" | awk '
+  { l = $0; gsub(/\\"/, "", l)
+    if (gsub(/"/, "&", l) != 8) { print "vieux"; next }
+    if (match(l, /"[^"]*"$/)) print "nom " substr(l, RSTART + 1, RLENGTH - 2) }')
+VIEUX=$(printf '%s\n' "$CHAMPS" | grep -cx vieux || true)
+[ "${VIEUX:-0}" -eq 0 ] || echo "$(date -Is) $VIEUX ligne(s) d'un format anterieur, nom d'hote non lisible" >> "$LOG"
+
+# Une IP litterale n'est pas un nom devine : c'est le balayage de masse, qui
+# frappe l'adresse sans rien savoir. Le signal cherche l'inverse — quelqu'un
+# qui connait un nom qu'on ne sert pas ici. ($host de nginx est sans port,
+# donc un ':' restant ne peut venir que d'une adresse IPv6.)
+AUTRES=$(printf '%s\n' "$CHAMPS" | sed -n 's/^nom //p' \
+         | grep -vxF -e "$NOTRE_NOM" -e "$NOTRE_PLAGE" -e "$NOTRE_PTR" \
+         | grep -vxE -e '([0-9]{1,3}\.){3}[0-9]{1,3}' -e '-' | grep -v ':' \
+         | sort | uniq -c | sort -rn | head -5 || true)
+if [ -n "$AUTRES" ]; then
+  RESUME=$(printf '%s' "$AUTRES" | tr '\n' ' ')
+  echo "$(date -Is) autres noms vus : $RESUME" >> "$LOG"
+  if [ "$(printf '%s' "$AUTRES" | head -1 | awk '{print $1}')" -ge "$SEUIL_HOTE" ]; then
+    crier "autre-hote" "CTF — on cherche autre chose que le lab" \
+      "Requetes visant un autre nom d'hote sur cette machine (fenetre $FENETRE min) : $RESUME"
+  fi
+fi
+
+# ── 3. Un debit qui ressemble a un deni de service ───────────────────────────
+# Les deux journaux comptent : le 29/10, un scanner a fait 936 requetes servies
+# et 98 refusees par le filtre des secrets — ces 98 disent ce qu'il cherchait.
+#
+# 🔑 Le volume ne dit pas s'il faut ouvrir le telephone ; le profil, si. Un
+# balayage de masse ne touche aucune route du lab (aucune sur les 1 034 du 29/10),
+# quelqu'un qui visite le lab ne fait que ca. Le corps le dit, et la priorite le
+# suit : `default` pour un balayage, `high` des qu'une route est servie. Chaque
+# profil a sa cle de silence : un balayage annonce ne fait pas taire une visite.
+GROS=$( { printf '%s\n' "$LIGNES"; printf '%s\n' "$LIGNES_SONDES"; } | awk 'NF {print $1}' \
+        | sort | uniq -c | sort -rn | head -1)
+NB_GROS=$(printf '%s' "$GROS" | awk '{print $1}')
+if [ -n "${NB_GROS:-}" ] && [ "$NB_GROS" -ge "$SEUIL_DEBIT" ]; then
+  IP_GROS=$(printf '%s' "$GROS" | awk '{print $2}')
+  N_FILTRE=$(printf '%s\n' "$LIGNES_SONDES" | awk -v ip="$IP_GROS" '$1 == ip {n++} END {print n+0}')
+  # Les routes du lab : ses pages PHP, lues dans la racine en service plutot que
+  # recopiees ici. L'accueil n'en est pas : tout le monde le touche.
+  ROUTES=$(cd "$RACINE" 2>/dev/null && find . -name '*.php' ! -path './index.php' | sed 's|^\.||')
+  # Decoupe sur les guillemets de lab_anon : $2 = la requete, $3 = « statut taille ».
+  # Ligne 1 : servies 2xx 4xx 429 ; puis une ligne « compte route » par route servie.
+  PROFIL=$(awk -F'"' -v ip="$IP_GROS" '
+    FNR == NR { if ($0 != "") route[$0] = 1; next }
+    { split($1, a, " "); if (a[1] != ip) next
+      n++; split($3, s, " "); st = s[1]
+      if (st ~ /^2/) c2++; else if (st == 429) c429++; else if (st ~ /^4/) c4++
+      split($2, q, " "); p = q[2]; sub(/[?#].*/, "", p)
+      if (st ~ /^2/ && (p in route)) vu[p]++ }
+    END { printf "%d %d %d %d\n", n, c2, c4, c429; for (p in vu) printf "%d %s\n", vu[p], p }
+  ' <(printf '%s\n' "$ROUTES") <(printf '%s\n' "$LIGNES"))
+  read -r N_SERVI S2 S4 S429 <<< "$(printf '%s\n' "$PROFIL" | head -n 1)"
+  VUES=$(printf '%s\n' "$PROFIL" | tail -n +2 | grep . | sort -rn || true)
+  N_ROUTES=$(printf '%s' "$VUES" | grep -c . || true)
+  if [ -z "$ROUTES" ]; then
+    # Sans la liste des routes, tout ressemblerait a un balayage : on ne juge pas.
+    CLE=debit-visite; PRIO=high; TITRE="CTF — debit anormal, profil non juge"
+    VERDICT="Routes du lab illisibles ($RACINE) : profil non juge."
+  elif [ "$N_ROUTES" -eq 0 ]; then
+    CLE=debit-balayage; PRIO=default; TITRE="CTF — debit anormal : balayage"
+    VERDICT="Aucune route du lab servie en 2xx : profil de balayage de masse."
+  else
+    CLE=debit-visite; PRIO=high; TITRE="CTF — debit anormal : visite du lab"
+    VERDICT="$N_ROUTES route(s) du lab servie(s) : $(printf '%s\n' "$VUES" | head -n 5 \
+      | awk '{printf "%s%s x%d", (NR > 1 ? ", " : ""), $2, $1}') — quelqu'un visite le lab."
+  fi
+  crier "$CLE" "$TITRE" \
+    "Une origine ($IP_GROS) a fait $NB_GROS requetes en $FENETRE min : $N_SERVI servies par le lab ($S2 en 2xx, $S4 en 4xx, $S429 en 429) et $N_FILTRE refusees par le filtre des secrets. $VERDICT Le deni de service est hors perimetre." \
+    "$PRIO"
+fi
+
+echo "$(date -Is) ok $NB ligne(s) examinee(s), $NB_SONDES refus du filtre" >> "$LOG"

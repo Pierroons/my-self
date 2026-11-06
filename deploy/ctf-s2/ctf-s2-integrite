@@ -1,0 +1,56 @@
+#!/bin/bash
+# L'arbre servi est-il encore celui qu'on a deploye ?
+#
+# 🔑 Ce que ce controle etablit, et lui seul : le docroot est `root:root` 755/644,
+# donc `www-data` — l'utilisateur qui execute le lab — NE PEUT PAS y ecrire. Une
+# seule difference signifie que quelqu'un ecrit en root. Ce n'est plus du jeu.
+#
+# La reference n'est pas recalculee ici : `maj-code.sh` l'ecrit a chaque
+# deploiement (`/root/ctf-s2-empreintes-<revision>.txt`), au moment ou l'arbre est
+# neuf et ou personne n'a encore eu le temps d'y toucher. Un controle qui se
+# donnerait sa propre reference ne mesurerait que sa derniere execution.
+#
+# ⚠️ Sa limite, a connaitre avant de s'y fier : qui est root peut aussi arreter ce
+# timer. Il attrape un attaquant qui ne couvre pas ses traces — la plupart —, pas
+# un adversaire methodique. C'est utile, ce n'est pas une barriere.
+set -uo pipefail
+
+C=/var/www/ctf-s2
+DATA=demo/lab/data
+LOG=/var/log/ctf-s2-integrite.log
+N=${CTF_NOTIFY:-/etc/myself-lab/notify.conf}
+
+alerter() {   # $1 = titre · $2 = corps
+  echo "$(date -Is) ALERTE : $1 — $2" >> "$LOG"
+  [ -r "$N" ] || return 0
+  printf 'user = "%s"\n' "$(sed -n 2p "$N")" | curl -s -m 10 -K - \
+    -H "Title: $1" -H 'Priority: urgent' -H 'Tags: rotating_light' \
+    -d "$2" "$(sed -n 1p "$N")" >/dev/null || true
+}
+
+REV=$(cat "$C/REVISION" 2>/dev/null) || { alerter "CTF - REVISION illisible" "Impossible de lire $C/REVISION."; exit 1; }
+REF=/root/ctf-s2-empreintes-$REV.txt
+
+# Une reference absente n'est pas un vert : c'est un controle qui ne mesure rien.
+[ -r "$REF" ] || { alerter "CTF - reference d'integrite absente" "Pas de $REF pour la revision servie. Le controle ne mesure plus rien."; exit 1; }
+
+# shellcheck disable=SC2015  # le || true vise grep ; $C est prouvé lisible par REVISION
+ECART=$(cd "$C" && find . -path "./$DATA" -prune -o -type f -print0 \
+        | sort -z | xargs -0 sha256sum 2>/dev/null \
+        | diff - "$REF" | grep -E '^[<>]' || true)
+
+if [ -z "$ECART" ]; then
+  echo "$(date -Is) ok $(wc -l < "$REF") fichier(s) conformes" >> "$LOG"
+  exit 0
+fi
+
+# On compte les deux sens separement : un fichier EN PLUS est le signe le plus
+# parlant (un depot), un fichier modifie ou disparu l'est tout autant.
+N_PLUS=$(printf '%s\n' "$ECART" | grep -c '^<' || true)
+N_MOINS=$(printf '%s\n' "$ECART" | grep -c '^>' || true)
+CHEMINS=$(printf '%s\n' "$ECART" | sed -E 's/^[<>] [0-9a-f]+ +//' | sort -u | head -8 | tr '\n' ' ')
+
+echo "$(date -Is) ECART : +$N_PLUS / -$N_MOINS — $CHEMINS" >> "$LOG"
+alerter "CTF - l'arbre servi a change" \
+  "L'arbre ne correspond plus au deploiement $REV : $N_PLUS ligne(s) en plus, $N_MOINS en moins. www-data ne peut pas ecrire la : $CHEMINS"
+exit 1

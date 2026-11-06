@@ -17,7 +17,7 @@
  *   GET /api/legi/search?q={query}&limit={n}
  *   GET /api/eu/article/{source}/{num}
  *   GET /api/eu/search?q={query}&source={src}&limit={n}
- *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca}&date={AAAA-MM-JJ}
+ *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca|tj|tcom|…}&date={AAAA-MM-JJ}
  *   GET /api/jurisprudence/search?q={query}&champ={summary|text|...}&jurisdiction={cc|ca}
  *   GET /api/jurisprudence/decision/{id}
  *   GET /api/status
@@ -47,6 +47,20 @@ const JURIDICTIONS_SANS_INDEX = ['cc', 'ca'];
 // 10/09/2026 : « Value of the jurisdiction parameter must be in [cc,ca,tj,tcom] ».
 // La justice administrative de l'index vient de JADE, pas de lui.
 const JURIDICTIONS_AMONT = ['cc', 'ca', 'tj', 'tcom'];
+// Ce que le fonds administratif ne porte pas. Deux routes le disent : celle qui
+// sert un texte et celle qui juge une absence.
+const JADE_SELECTION = "Le fonds JADE ne porte qu'une sélection : les décisions "
+    . "publiées au recueil Lebon et une part des inédites. Une absence ici ne dit "
+    . "pas que la décision n'existe pas.";
+// Au-delà de ce silence, un fonds ne reçoit plus rien : la Cour de discipline
+// budgétaire et financière s'arrête en 2000, les tribunaux administratifs en
+// 2009. Même règle et même seuil que `_SILENCE_MAX_JOURS` du client MCP.
+const JURIS_SILENCE_MAX_JOURS = 365;
+// Avant ce délai, une absence de la base amont ne vaut pas pour la Cour de
+// cassation : une décision rendue peut ne pas y être encore publiée. Mesuré le
+// 04/11/2026 sur l'index servi (décisions `cc` de 2026, date de décision contre
+// `update_date`) : 90,8 % publiées sous 15 jours, 96,4 % sous 30, 97,8 % sous 60.
+const CC_DELAI_PUBLICATION_JOURS = 60;
 
 // Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
 // « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
@@ -86,9 +100,17 @@ function json_indetermine(string $raison, array $extra = []): void {
     ), 503);
 }
 
-function open_db(string $path): SQLite3 {
+/**
+ * Une base ouverte en lecture, ou null si elle manque ou ne s'ouvre pas.
+ *
+ * 🔑 Elle ne termine pas la requête, là où `open_db()` appelle `json_error()`,
+ * qui sort du script : un `try` qui l'entoure ne le voit jamais. `/status`, qui
+ * décrit plusieurs bases, passe par elle pour qu'une base absente n'éteigne pas
+ * les autres.
+ */
+function open_db_ou_null(string $path): ?SQLite3 {
     if (!file_exists($path)) {
-        json_error("Base introuvable : " . basename($path), 503);
+        return null;
     }
     try {
         $db = new SQLite3($path, SQLITE3_OPEN_READONLY);
@@ -96,8 +118,17 @@ function open_db(string $path): SQLite3 {
         $db->busyTimeout(1000);
         return $db;
     } catch (Exception $e) {
-        json_error("Erreur d'ouverture de la base", 503);
+        return null;
     }
+}
+
+function open_db(string $path): SQLite3 {
+    $db = open_db_ou_null($path);
+    if ($db === null) {
+        json_error(file_exists($path) ? "Erreur d'ouverture de la base"
+                                      : "Base introuvable : " . basename($path), 503);
+    }
+    return $db;
 }
 
 /**
@@ -190,6 +221,124 @@ function legi_a_nature(SQLite3 $db): bool {
     return $present;
 }
 
+// 🔑 L'état LEGI nomme le dernier événement subi par une version — une
+// abrogation, une péremption, une annulation —, pas son applicabilité. Seuls ces
+// trois-là désignent une position dans le cycle de vie : ce sont les états sans
+// contrepartie dans la table des liens de `legi.py` (TYPELIEN_MAP), et sa règle
+// d'anomalie exempte ABROGE_DIFF nommément. Tout autre état, y compris un état
+// que la DILA ajouterait demain, tombe du côté « non applicable » au lieu de
+// casser une table.
+const LEGI_ETATS_VIVANTS = ['VIGUEUR', 'VIGUEUR_DIFF', 'ABROGE_DIFF'];
+
+/** Le jour auquel l'applicabilité se juge : aujourd'hui, sauf pour un banc.
+ *
+ * `SELFJUSTICE_JOUR` fige la date. Un témoin adossé au jour courant se périme —
+ * l'art. 8 du CPP cesse d'être applicable le 1er janvier 2029 — et un banc
+ * rougirait alors sans qu'aucun défaut soit revenu. Une valeur mal formée est
+ * ignorée plutôt que crue.
+ *
+ * Calculé une fois par requête : appelé à chaque expression, il pouvait changer de
+ * valeur en cours de route, et une requête à cheval sur minuit aurait jugé deux
+ * jours à la fois. La forme et l'existence du jour sont jugées par date_iso_valide(). */
+function legi_jour(): string {
+    static $jour = null;
+    if ($jour !== null) return $jour;
+    $fige = getenv('SELFJUSTICE_JOUR') ?: '';
+    return $jour = date_iso_valide($fige) ? $fige : date('Y-m-d');
+}
+
+/** L'expression SQL « cette version s'applique au jour J ».
+ *
+ * 🔑 Une seule définition, pour tout ce qui juge la vigueur : le sélecteur de
+ * version, la recherche par numéro, le détecteur de numéros recyclés, le compte
+ * de /status. Recopiée en quinze endroits du dépôt sous la forme `etat = 'VIGUEUR'`,
+ * elle annonçait morts quelque dix mille articles applicables — mesuré le
+ * 12/10/2026 sur la base servie : 683 080 tenus pour en vigueur, 693 141 qui le
+ * sont réellement.
+ *
+ * La période décide ; la liste des états écarte les versions mortes. Sans elle,
+ * la sentinelle `2999-01-01` d'un article périmé ou annulé se lirait comme une
+ * perpétuité : 583 faux « en vigueur ».
+ *
+ * ⚠️ L'état vide est NULL (241 785 lignes au 12/10/2026), et `etat IN (…)` vaut alors NULL.
+ * Dans un WHERE, ce NULL exclut la ligne — ce qui est juste : une version sans
+ * état n'est pas applicable. Sa NÉGATION, en revanche, vaut NULL aussi et
+ * exclurait la même ligne de « l'ancien droit », qui deviendrait aveugle à 13 %
+ * de la base. D'où deux fonctions, une seule définition : la négation passe
+ * TOUJOURS par `legi_sql_non_applicable()`, jamais par un `NOT` écrit à la main.
+ *
+ * `etat IN (…)` est laissé nu plutôt qu'enveloppé dans `ifnull()` parce qu'il
+ * garde ainsi l'index sur `etat`. Mesuré le 14/10/2026 sur la base servie, pour
+ * le compte de /status : 312 ms ainsi, 501 ms enveloppé, 34 ms pour l'ancien
+ * `etat = 'VIGUEUR'` — qui était rapide parce qu'il était faux.
+ *
+ * La date est interpolée, échappée, après validation de sa forme — comme ce
+ * fichier le fait déjà pour un identifiant. Un paramètre lié par chaque appelant
+ * est un paramètre qu'on finit par oublier de lier, et un `:jour` non lié vaut
+ * NULL : tout tomberait du côté « non applicable », sans une erreur. */
+function legi_sql_applicable(string $alias = ''): string {
+    $a = $alias !== '' ? "$alias." : '';
+    $jour = SQLite3::escapeString(legi_jour());
+    $vivants = implode(',', array_map(
+        fn(string $e): string => "'" . SQLite3::escapeString($e) . "'", LEGI_ETATS_VIVANTS));
+    return "({$a}etat IN ($vivants)"
+         . " AND ifnull({$a}date_debut, '') <= '$jour'"
+         . " AND (ifnull({$a}date_fin, '') = '' OR {$a}date_fin > '$jour'))";
+}
+
+/** L'ordre dans lequel les versions d'un même article se départagent.
+ *
+ * 🔑 Une seule définition, pour le sélecteur de /legi/article, les alternatives de
+ * codes et l'ancien droit de la recherche. Trois ordres y coexistaient le 14/10/2026,
+ * et chacun se trompait différemment : l'un rangeait une version sans état SOUS les
+ * versions mortes — `applicable` y vaut NULL, plus petite valeur de SQLite —, et
+ * servait l'abrogée de 2017 à la place de la version de 2023 ; un autre, trié sur
+ * `date_fin`, faisait passer une sentinelle 2999 devant la version abrogée qu'elle
+ * masquait.
+ *
+ * Ce qui s'applique d'abord. À défaut, ce qui a commencé — le plus récent — plutôt
+ * que ce qui commencera ; et parmi ce qui commencera, le plus proche, si bien que
+ * la sentinelle 2999 → 2999 vient en dernier. `ifnull(…, 0)` met une version sans
+ * état au rang des non applicables, pas sous elles. */
+function legi_sql_ordre_version(string $alias = ''): string {
+    $a = $alias !== '' ? "$alias." : '';
+    $jour = SQLite3::escapeString(legi_jour());
+    $commence = "(ifnull({$a}date_debut, '') <= '$jour')";
+    return "ifnull(" . legi_sql_applicable($alias) . ", 0) DESC, "
+         . "$commence DESC, "
+         . "CASE WHEN $commence THEN {$a}date_debut END DESC, "
+         . "{$a}date_debut ASC";
+}
+
+/** La négation de `legi_sql_applicable()`, sûre face à un état NULL.
+ *
+ * `NOT (NULL)` vaut NULL, et une ligne sans état disparaîtrait de « l'ancien
+ * droit » comme de « l'en vigueur ». `ifnull(…, 0)` ramène ce NULL à faux avant
+ * la négation : la ligne tombe du côté non applicable, où elle doit être. */
+function legi_sql_non_applicable(string $alias = ''): string {
+    return "(NOT ifnull(" . legi_sql_applicable($alias) . ", 0))";
+}
+
+/** Ce qu'une version est au jour J, en un mot que le client sait présenter.
+ *
+ * `en_vigueur` ne distingue pas un article qui ne s'applique plus d'un article
+ * qui ne s'applique pas encore — le second étant le plus récent, donc le plus
+ * consulté. Et un état NULL n'est ni l'un ni l'autre : la DILA n'en a pas
+ * déclaré, ce qui ne dit pas que la version est morte. Le dire « plus en
+ * vigueur » affirmait une abrogation que la source n'affirme pas.
+ *
+ * `$row['applicable']` vient de `legi_sql_applicable()` : cette fonction ne
+ * rejuge pas l'applicabilité, elle ne fait que nommer le cas. */
+function legi_applicabilite(array $row): string {
+    if (!empty($row['applicable'])) return 'en_vigueur';
+    $etat = $row['etat'] ?? null;
+    if ($etat === null || $etat === '') return 'sans_etat';
+    if (in_array($etat, LEGI_ETATS_VIVANTS, true) && ($row['date_debut'] ?? '') > legi_jour()) {
+        return 'pas_encore';
+    }
+    return 'plus_en_vigueur';
+}
+
 /** Cherche des articles par numéro, en trois marches.
  *
  * 🔑 `num LIKE '%q%'` ne peut utiliser aucun index : c'est un balayage de toute
@@ -240,14 +389,23 @@ function legi_par_numero(SQLite3 $db, string $q, int $limit, bool $en_vigueur): 
     // et payait quand même le balayage, deux fois, pour 1,2 s et rien à trouver.
     $marches = ($mots === 1) ? [$q, $q . '%', '%' . $q . '%'] : [$q, $q . '%'];
     $nat   = legi_a_nature($db);
-    $cols  = "num, etat, code_id, code_titre, date_debut, date_fin" . ($nat ? ", nature" : "");
-    $etat  = $en_vigueur ? "etat = 'VIGUEUR'" : "etat <> 'VIGUEUR'";
+    // `applicable` voyage avec chaque ligne : la recherche le rend à
+    // l'appelant au lieu de le laisser déduire « vivant » de l'état.
+    $cols  = "num, etat, code_id, code_titre, date_debut, date_fin, "
+           . legi_sql_applicable() . " AS applicable" . ($nat ? ", nature" : "");
+    // L'ancien droit est la NÉGATION de l'applicable, écrite par sa fonction :
+    // `etat <> 'VIGUEUR'` excluait les versions sans état — 241 785 au 12/10/2026 —, et ce
+    // `<>` écrit à la main excluait de même tout ce que `NULL` touche.
+    $etat  = $en_vigueur ? legi_sql_applicable() : legi_sql_non_applicable();
     // Les codes d'abord. Un numéro peu discriminant est porté par des dizaines
     // de textes — « 100 » vit dans 118 textes en vigueur, dont 3 codes — et
     // `ORDER BY num` seul est une égalité totale : l'ordre rendu était celui du
     // plan de requête, c'est-à-dire aucun.
     $rang  = $nat ? "(nature = 'CODE') DESC, " : "";
-    $ordre = $en_vigueur ? $rang . "num" : $rang . "date_fin DESC, num";
+    // L'ancien droit est ensuite dédoublonné par numéro et code : sa PREMIÈRE
+    // ligne de chaque groupe est celle que l'appelant garde. `date_fin DESC` y
+    // plaçait une sentinelle 2999 devant la version abrogée qu'elle masquait.
+    $ordre = $en_vigueur ? $rang . "num" : $rang . legi_sql_ordre_version() . ", num";
     foreach ($marches as $i => $valeur) {
         $operateur = ($i === 0) ? '=' : 'LIKE';
         $stmt = $db->prepare("SELECT $cols
@@ -461,6 +619,15 @@ function chercher_conventionnalite(SQLite3 $db, string $q, ?string $source, int 
  * Une fonction plutôt qu'un test en ligne : la règle vit alors à un seul
  * endroit, et un garde-fou peut l'interroger au lieu de la réécrire.
  */
+/**
+ * Une date `AAAA-MM-JJ` qui existe. Le format seul laissait passer `2026-02-30`,
+ * jugé ensuite comme une date couverte ; un tableau en paramètre levait un 500.
+ */
+function date_iso_valide(mixed $v): bool {
+    return is_string($v) && preg_match('/^(\d{4})-(\d{2})-(\d{2})\z/', $v, $m) === 1
+        && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+}
+
 function juridiction_valide(string $brute): ?string {
     $j = strtolower(trim($brute));
     return in_array($j, juridictions_servies(), true) ? $j : null;
@@ -512,7 +679,8 @@ function juridictions_servies(): array {
     $cache = JURIDICTIONS_SANS_INDEX;
     if (file_exists(JURIS_DB)) {
         try {
-            $servies = array_keys(juris_couverture(open_db(JURIS_DB)));
+            $db = open_db_ou_null(JURIS_DB);
+            $servies = $db ? array_keys(juris_couverture($db)) : [];
             if ($servies) $cache = $servies;
         } catch (Throwable $e) {
             // Une base illisible ne doit pas fermer le guichet : on garde le repli.
@@ -689,19 +857,20 @@ function article_renvoi(SQLite3 $db, array $row): ?array {
     // Deux questions selon l'état de l'article rendu, une seule requête : le
     // texte cherché est celui des autres versions du numéro quand l'article
     // rendu est vivant, et le sien propre quand il est mort.
-    $vivant = $row['etat'] === 'VIGUEUR';
+    // « Vivant » au sens du jour : la ligne vient du sélecteur, qui l'a calculé.
+    $vivant = !empty($row['applicable']);
 
     $sql = $vivant
         ? "SELECT anc.date_fin AS bascule, v.num AS ailleurs
              FROM articles anc
-             JOIN articles v ON v.code_id = anc.code_id AND v.etat = 'VIGUEUR'
+             JOIN articles v ON v.code_id = anc.code_id AND " . legi_sql_applicable('v') . "
                             AND v.texte = anc.texte AND v.num <> anc.num
             WHERE anc.num = :ref AND anc.code_id = :code
-              AND anc.etat <> 'VIGUEUR' AND anc.texte <> :texte
+              AND " . legi_sql_non_applicable('anc') . " AND anc.texte <> :texte
             ORDER BY anc.date_fin DESC LIMIT 1"
         : "SELECT :date_fin AS bascule, v.num AS ailleurs
              FROM articles v
-            WHERE v.code_id = :code AND v.etat = 'VIGUEUR'
+            WHERE v.code_id = :code AND " . legi_sql_applicable('v') . "
               AND v.texte = :texte AND v.num <> :ref
             LIMIT 1";
 
@@ -775,14 +944,14 @@ function article_texte_precedent(SQLite3 $db, array $row): ?array {
     $stmt = $db->prepare(
         "SELECT anc.date_fin AS bascule, anc.texte AS avant,
                 (SELECT COUNT(*) FROM articles v2
-                  WHERE v2.etat = 'VIGUEUR' AND v2.code_id = anc.code_id
+                  WHERE " . legi_sql_applicable('v2') . " AND v2.code_id = anc.code_id
                     AND v2.date_debut = anc.date_fin
                     AND EXISTS (SELECT 1 FROM articles x
                                  WHERE x.num = v2.num AND x.code_id = v2.code_id
-                                   AND x.etat <> 'VIGUEUR' AND x.texte <> v2.texte
+                                   AND " . legi_sql_non_applicable('x') . " AND x.texte <> v2.texte
                                    AND x.date_fin = v2.date_debut)) AS ampleur
            FROM articles anc
-          WHERE anc.num = :ref AND anc.code_id = :code AND anc.etat <> 'VIGUEUR'
+          WHERE anc.num = :ref AND anc.code_id = :code AND " . legi_sql_non_applicable('anc') . "
             AND anc.date_fin = :debut AND anc.texte <> :texte
           LIMIT 1"
     );
@@ -820,6 +989,23 @@ function article_texte_precedent(SQLite3 $db, array $row): ?array {
 }
 
 /**
+ * Les fonds de la couverture qui reçoivent encore des décisions.
+ *
+ * 🔑 Un fonds arrêté ne borne pas l'index. Pris dans le `min()` des fins, il
+ * ramène la borne de toute vérification sans juridiction à sa date d'arrêt, et
+ * toute date postérieure passe pour « au-delà de l'index ».
+ */
+function juris_fonds_vivants(array $couverture): array {
+    $fins = array_filter(array_column($couverture, 'fin'));
+    if (!$fins) {
+        return $couverture;
+    }
+    $front = new DateTimeImmutable(max($fins));
+    return array_filter($couverture, fn(array $b): bool => !empty($b['fin'])
+        && $front->diff(new DateTimeImmutable($b['fin']))->days <= JURIS_SILENCE_MAX_JOURS);
+}
+
+/**
  * Bornes réelles des données par juridiction.
  *
  * On ne lit pas `intervalles_faits` : cette table enregistre les intervalles
@@ -829,11 +1015,16 @@ function article_texte_precedent(SQLite3 $db, array $row): ?array {
  */
 function juris_couverture(SQLite3 $db): array {
     $couverture = [];
-    $res = $db->query(
+    // Une décision datée après aujourd'hui est une erreur de l'amont : prise comme
+    // fin, elle annoncerait une couverture que l'index n'a pas.
+    $stmt = $db->prepare(
         "SELECT jurisdiction, MIN(decision_date) AS debut, MAX(decision_date) AS fin,
                 COUNT(*) AS total
-         FROM decisions WHERE date_suspecte = 0 GROUP BY jurisdiction"
+         FROM decisions WHERE date_suspecte = 0 AND decision_date <= :jour
+         GROUP BY jurisdiction"
     );
+    $stmt->bindValue(':jour', legi_jour(), SQLITE3_TEXT);
+    $res = $stmt->execute();
     while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
         $couverture[$row['jurisdiction']] = [
             'debut'     => $row['debut'],
@@ -857,7 +1048,7 @@ function judilibre_tenter(string $chemin, array $params, int $timeout = 15): arr
     if ($cle === '') {
         return "Clé Judilibre absente de cette instance : la recherche par thème et "
             . "le texte intégral sont indisponibles. La vérification d'une "
-            . "référence dans l'index local reste possible.";
+            . "référence reste possible pour les juridictions que l'index local moissonne.";
     }
 
     $url = JUDILIBRE_BASE . $chemin . '?' . http_build_query($params);
@@ -912,7 +1103,7 @@ if (empty($segments)) {
             'GET /api/legi/search?q={query}'           => 'Recherche plein texte LEGI',
             'GET /api/eu/article/{source}/{num}'       => 'Article européen (CEDH, CHARTE_UE, TUE, TFUE, RGPD, AI_ACT)',
             'GET /api/eu/search?q={query}'             => 'Recherche dans conventionnalité',
-            'GET /api/jurisprudence/verifier/{ref}'     => 'Cette référence existe-t-elle ? (ex: 25-10.377, ?jurisdiction=cc|ca)',
+            'GET /api/jurisprudence/verifier/{ref}'     => 'Cette référence existe-t-elle ? (ex: 25-10.377, ?jurisdiction=cc|ca|tj|tcom…)',
             'GET /api/jurisprudence/search?q={query}'   => 'Recherche de jurisprudence par thème',
             'GET /api/jurisprudence/decision/{id}'      => 'Texte intégral d\'une décision',
             'GET /api/status'                          => 'État des bases : volumétrie, date du contenu (last_update) et de la dernière synchronisation (last_sync)',
@@ -956,10 +1147,21 @@ if ($segments[0] === 'status') {
     $result = ['legi' => null, 'eu' => null, 'jurisprudence' => null];
 
     try {
-        $db = open_db(LEGI_DB);
+        $db = open_db_ou_null(LEGI_DB);
+        if ($db === null) { throw new Exception('base LEGI absente'); }
         $result['legi'] = [
             'articles' => (int) $db->querySingle('SELECT COUNT(*) FROM articles'),
-            'vigueur'  => (int) $db->querySingle("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'"),
+            // Il valait COUNT(etat = 'VIGUEUR') — 683 080 le 12/10/2026, pour
+            // 693 141 articles réellement applicables : sa hausse est une
+            // correction, pas une croissance de la base.
+            //
+            // ⚠️ Il dépend désormais du CALENDRIER : il bouge le jour où une
+            // version entre en vigueur ou cesse de s'appliquer, sans que la base
+            // ait changé d'un octet. Son lecteur est la sonde de fraîcheur
+            // (tools/check_fraicheur.sh), qui l'exclut de l'empreinte par laquelle
+            // elle juge qu'une base a été refaite — sinon un tel jour ferait taire
+            // l'alarme du marqueur qui avance sur une base inchangée.
+            'vigueur'  => (int) $db->querySingle("SELECT COUNT(*) FROM articles WHERE " . legi_sql_applicable()),
         ];
         // Le chemin du marqueur reste ici : une réponse publique renseigne sur
         // l'arborescence du serveur sans rien apporter à celui qui la lit.
@@ -969,7 +1171,8 @@ if ($segments[0] === 'status') {
     } catch (Exception $e) {}
 
     try {
-        $db = open_db(EU_DB);
+        $db = open_db_ou_null(EU_DB);
+        if ($db === null) { throw new Exception('base UE absente'); }
         $sources = [];
         $stmt = $db->query('SELECT source, COUNT(*) as n FROM articles GROUP BY source');
         while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
@@ -1018,7 +1221,8 @@ if ($segments[0] === 'status') {
     // jusqu'où l'index permet de conclure à une absence.
     if (file_exists(JURIS_DB)) {
         try {
-            $db = open_db(JURIS_DB);
+            $db = open_db_ou_null(JURIS_DB);
+            if ($db === null) { throw new Exception('index de jurisprudence illisible'); }
             $couverture = juris_couverture($db);
             $result['jurisprudence'] = [
                 'decisions'   => array_sum(array_column($couverture, 'decisions')),
@@ -1073,6 +1277,12 @@ if ($segments[0] === 'legi') {
         // bis » — et l'URL les transporte encodés. Sans ce décodage, la
         // référence arrive en « GN%2013 » et échoue à la validation ci-dessous.
         $ref = rawurldecode($segments[2]);
+        // Un « / » non encodé coupe la référence : « 8/2 » arrivait en « 8 », et
+        // l'article 8 était servi sous l'en-tête demandé.
+        if (count($segments) > 3) {
+            json_error("Référence « " . rawurldecode(implode('/', array_slice($segments, 2)))
+                . " » : un « / » dans une référence s'encode %2F.", 400);
+        }
 
         // 🔑 Tous les numéros d'articles ne ressemblent pas à « L1152-1 ».
         //
@@ -1163,7 +1373,7 @@ if ($segments[0] === 'legi') {
                 json_error(
                     "Code « $code_filter » inconnu. "
                     . ($proches
-                        ? "Vouliez-vous : " . implode(', ', array_slice($proches, 0, 5)) . " ? "
+                        ? "Voulais-tu : " . implode(', ', array_slice($proches, 0, 5)) . " ? "
                         : "")
                     . count($connus) . " codes sont servis, nommables par leur titre sans "
                     . "le mot « code » (artisanat, travail, procedure_civile…), ou par un "
@@ -1188,26 +1398,27 @@ if ($segments[0] === 'legi') {
         // texte rend à côté de chaque résultat.
         $aux_codes = ($code_filter || !legi_a_nature($db)) ? '' : " AND nature = 'CODE'";
 
-        // Chercher d'abord la version en VIGUEUR
-        $sql = "SELECT $columns FROM articles WHERE num = :ref AND etat = 'VIGUEUR'";
+        // 🔑 Une seule passe, ordonnée par l'applicabilité. Les deux passes
+        // d'avant cherchaient `etat = 'VIGUEUR'` puis, à défaut, la
+        // `date_debut` la plus récente — qui peut être dans le futur. Mesuré le
+        // 12/10/2026 : l'art. 10 du CPP servait sa version de 2027 en
+        // l'annonçant morte, et l'art. 13 d'un arrêté de 2012 servait sa ligne
+        // sentinelle `2999-01-01` — un article modificateur, « A abrogé les
+        // dispositions suivantes… » — à la place du texte en vigueur que la
+        // base possédait. Sur les codes seuls, 2 303 groupes recevaient ainsi
+        // la mauvaise version ET le mauvais libellé (mesuré le 12/10/2026).
+        //
+        // L'ordre est celui de `legi_sql_ordre_version()`, partagé avec les
+        // alternatives de codes et l'ancien droit de la recherche.
+        $sql = "SELECT $columns, " . legi_sql_applicable() . " AS applicable
+                  FROM articles WHERE num = :ref";
         if ($code_filter) $sql .= " AND code_id = :code";
-        $sql .= $aux_codes . " ORDER BY date_debut DESC LIMIT 1";
+        $sql .= $aux_codes . " ORDER BY " . legi_sql_ordre_version() . " LIMIT 1";
 
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':ref', $ref);
         if ($code_filter) $stmt->bindValue(':code', $code_filter);
         $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-
-        if (!$row) {
-            // Fallback : toutes les versions
-            $sql2 = "SELECT $columns FROM articles WHERE num = :ref";
-            if ($code_filter) $sql2 .= " AND code_id = :code";
-            $sql2 .= $aux_codes . " ORDER BY date_debut DESC LIMIT 1";
-            $stmt = $db->prepare($sql2);
-            $stmt->bindValue(':ref', $ref);
-            if ($code_filter) $stmt->bindValue(':code', $code_filter);
-            $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-        }
 
         if (!$row) {
             // Introuvable dans les codes ne veut pas dire introuvable. Le dire,
@@ -1257,10 +1468,11 @@ if ($segments[0] === 'legi') {
                     // codes sans savoir lequel est encore applicable n'est pas
                     // un choix.
                     $alt_stmt = $db->prepare(
-                        "SELECT SUBSTR(texte, 1, 150) AS apercu, etat, code_titre, date_fin
+                        "SELECT SUBSTR(texte, 1, 150) AS apercu, etat, code_titre, date_debut, date_fin,
+                                " . legi_sql_applicable() . " AS applicable
                            FROM articles
                           WHERE num = :ref AND code_id = :cid
-                       ORDER BY (etat = 'VIGUEUR') DESC
+                       ORDER BY " . legi_sql_ordre_version() . "
                           LIMIT 1"
                     );
                     $alt_stmt->bindValue(':ref', $ref);
@@ -1270,6 +1482,8 @@ if ($segments[0] === 'legi') {
                         'code_id' => $cid,
                         'code'    => $alt_row['code_titre'] ?? '',
                         'etat'    => $alt_row['etat'] ?? '',
+                        'en_vigueur' => !empty($alt_row['applicable']),
+                        'applicabilite' => legi_applicabilite($alt_row),
                         'date_fin' => $alt_row['date_fin'] ?? null,
                         'apercu'  => $alt_row['apercu'] ?? '',
                         // SERVER_NAME, que nginx fixe, jamais l'en-tête Host, que le client choisit : cette URL part dans une réponse mise en cache.
@@ -1279,7 +1493,7 @@ if ($segments[0] === 'legi') {
                 json_response([
                     'reference' => $ref,
                     'ambiguous' => true,
-                    'message'   => "L'article $ref existe dans plusieurs codes. Précisez le code via ?code=XXX — le titre du code sans le mot « code » (travail, artisanat, procedure_civile…) ou l'identifiant LEGITEXT rendu ci-dessous.",
+                    'message'   => "L'article $ref existe dans plusieurs codes. Précise le code via ?code=XXX — le titre du code sans le mot « code » (travail, artisanat, procedure_civile…) ou l'identifiant LEGITEXT rendu ci-dessous.",
                     'alternatives' => $alternatives,
                 ]);
             }
@@ -1296,7 +1510,10 @@ if ($segments[0] === 'legi') {
             'reference'  => $row['num'],
             'etat'       => $row['etat'],
             'renvoi'     => $has_texte ? article_renvoi($db, $row) : null,
-            'en_vigueur' => $row['etat'] === 'VIGUEUR',
+            // Le SENS de ce champ a changé le 14/10/2026 : il valait
+            // `etat === 'VIGUEUR'`, et disait faux pour ~10 000 articles (mesuré le 12/10/2026).
+            'en_vigueur'    => (bool) $row['applicable'],
+            'applicabilite' => legi_applicabilite($row),
             'date_debut' => $row['date_debut'],
             'date_fin'   => $row['date_fin'],
             'code_id'    => $row['code_id'],
@@ -1379,6 +1596,8 @@ if ($segments[0] === 'legi') {
                 $results[] = [
                     'reference'  => $row['num'],
                     'etat'       => $row['etat'],
+                    'en_vigueur' => !empty($row['applicable']),
+                    'applicabilite' => legi_applicabilite($row),
                     'code_id'    => $row['code_id'],
                     'code'       => $row['code_titre'],
                     'nature'     => $row['nature'] ?? null,
@@ -1395,6 +1614,7 @@ if ($segments[0] === 'legi') {
             $col_nature = legi_a_nature($db) ? ", a.nature" : "";
             $stmt = $db->prepare(
                 "SELECT a.num, a.etat, a.code_id, a.date_debut, a.code_titre$col_nature,
+                        " . legi_sql_applicable('a') . " AS applicable,
                         snippet(articles_fts, 0, '', '', '…', 12) AS extrait
                  FROM articles_fts f
                  JOIN articles a ON a.rowid = f.rowid
@@ -1411,15 +1631,18 @@ if ($segments[0] === 'legi') {
             $stmt->bindValue(':limit', $reste + count($results), SQLITE3_INTEGER);
 
             $res = $stmt->execute();
+            // 🔑 Plusieurs versions d'un même article peuvent répondre ; le
+            // classement les ordonne par score, pas par applicabilité. La version
+            // applicable prend la place de la mieux classée — sinon un article en
+            // vigueur ressortait sous sa version morte ou sans état.
+            $rang_texte = [];
             while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
                 $cle = $row['num'] . '|' . $row['code_id'];
-                if (isset($vus[$cle])) {
-                    continue;
-                }
-                $vus[$cle] = true;
-                $results[] = [
+                $entree = [
                     'reference'  => $row['num'],
                     'etat'       => $row['etat'],
+                    'en_vigueur' => !empty($row['applicable']),
+                    'applicabilite' => legi_applicabilite($row),
                     'code_id'    => $row['code_id'],
                     'date_debut' => $row['date_debut'],
                     'code'       => $row['code_titre'],
@@ -1427,8 +1650,75 @@ if ($segments[0] === 'legi') {
                     'extrait'    => trim($row['extrait']),
                     'match'      => 'texte',
                 ];
+                if (isset($vus[$cle])) {
+                    $i = $rang_texte[$cle] ?? null;
+                    if ($i !== null && !$results[$i]['en_vigueur'] && $entree['en_vigueur']) {
+                        $results[$i] = $entree;
+                    }
+                    continue;
+                }
+                $vus[$cle] = true;
+                $rang_texte[$cle] = count($results);
+                $results[] = $entree;
                 if (count($results) >= $limit) {
                     break;
+                }
+            }
+        }
+
+        // 🔑 La fenêtre lue ne contient pas toujours la version applicable d'un
+        // article dont une autre version a répondu : elle se cherche alors par son
+        // numéro. Elle ne prend la place de la version trouvée que si elle porte
+        // aussi les mots cherchés, et avec son propre extrait. Sinon les mots ne
+        // sont que dans une version qui ne s'applique pas : celle-ci reste ce
+        // qu'elle est, et nomme la version applicable. Fusionner les deux
+        // présenterait un texte abrogé sous l'état « en vigueur ».
+        if (!empty($rang_texte)) {
+            $col_nature = legi_a_nature($db) ? ", a.nature" : "";
+            $version_applicable = $db->prepare(
+                "SELECT a.rowid AS rid, a.num, a.etat, a.code_id, a.date_debut, a.code_titre$col_nature,
+                        " . legi_sql_applicable('a') . " AS applicable
+                 FROM articles a
+                 WHERE a.num = :num AND a.code_id = :code AND " . legi_sql_applicable('a') . "
+                 ORDER BY " . legi_sql_ordre_version('a') . "
+                 LIMIT 1"
+            );
+            $repond_aussi = $db->prepare(
+                "SELECT snippet(articles_fts, 0, '', '', '…', 12) AS extrait
+                 FROM articles_fts f
+                 WHERE f.articles_fts MATCH :q AND f.rowid = :rid"
+            );
+            foreach ($rang_texte as $i) {
+                if ($results[$i]['en_vigueur']) {
+                    continue;
+                }
+                $version_applicable->bindValue(':num', $results[$i]['reference'], SQLITE3_TEXT);
+                $version_applicable->bindValue(':code', $results[$i]['code_id'], SQLITE3_TEXT);
+                $row = $version_applicable->execute()->fetchArray(SQLITE3_ASSOC);
+                $version_applicable->reset();
+                if (!$row) {
+                    continue;
+                }
+                $repond_aussi->bindValue(':q', fts5_requete($q));
+                $repond_aussi->bindValue(':rid', $row['rid'], SQLITE3_INTEGER);
+                $extrait = $repond_aussi->execute()->fetchArray(SQLITE3_ASSOC);
+                $repond_aussi->reset();
+                if ($extrait) {
+                    $results[$i] = array_merge($results[$i], [
+                        'etat'          => $row['etat'],
+                        'en_vigueur'    => true,
+                        'applicabilite' => legi_applicabilite($row),
+                        'date_debut'    => $row['date_debut'],
+                        'code'          => $row['code_titre'],
+                        'nature'        => $row['nature'] ?? null,
+                        'extrait'       => trim($extrait['extrait']),
+                    ]);
+                } else {
+                    $results[$i]['version_applicable'] = [
+                        'etat'          => $row['etat'],
+                        'applicabilite' => legi_applicabilite($row),
+                        'date_debut'    => $row['date_debut'],
+                    ];
                 }
             }
         }
@@ -1460,6 +1750,8 @@ if ($segments[0] === 'legi') {
                 $results[] = [
                     'reference'  => $row['num'],
                     'etat'       => $row['etat'],
+                    'en_vigueur' => !empty($row['applicable']),
+                    'applicabilite' => legi_applicabilite($row),
                     'code_id'    => $row['code_id'],
                     'code'       => $row['code_titre'],
                     'nature'     => $row['nature'] ?? null,
@@ -1489,8 +1781,14 @@ if ($segments[0] === 'eu') {
 
     // /api/eu/article/{source}/{num}
     if (count($segments) >= 4 && $segments[1] === 'article') {
-        $source = strtoupper($segments[2]);
-        $num = $segments[3];
+        // Décodés comme la référence LEGI : un client qui encode ses segments
+        // — c'est ce qui empêche « ../ » de changer de route — doit être lu.
+        if (count($segments) > 4) {
+            json_error("Référence « " . rawurldecode(implode('/', array_slice($segments, 3)))
+                . " » : un « / » dans une référence s'encode %2F.", 400);
+        }
+        $source = strtoupper(rawurldecode($segments[2]));
+        $num = rawurldecode($segments[3]);
 
         $allowed = ['CEDH', 'CHARTE_UE', 'TUE', 'TFUE', 'RGPD', 'AI_ACT'];
         if (!in_array($source, $allowed, true)) {
@@ -1604,7 +1902,7 @@ if ($segments[0] === 'eu') {
 // ============================================================
 if ($segments[0] === 'jurisprudence') {
 
-    // /api/jurisprudence/verifier/{ref}?jurisdiction=cc|ca
+    // /api/jurisprudence/verifier/{ref}?jurisdiction=cc|ca|tj|tcom…
     //
     // Trois états, jamais deux : « trouvee », « absente », « indeterminee ».
     // Confondre les deux derniers reviendrait à affirmer une absence sans
@@ -1633,17 +1931,27 @@ if ($segments[0] === 'jurisprudence') {
 
         $db          = open_db(JURIS_DB);
         $couverture  = juris_couverture($db);
-        $juridiction = isset($_GET['jurisdiction']) ? strtolower($_GET['jurisdiction']) : null;
+        $juridiction = strtolower(trim($_GET['jurisdiction'] ?? '')) ?: null;
 
         // Date à laquelle l'appelant situe la décision. Facultative, mais c'est
         // elle qui rend l'absence opposable — voir la réserve, plus bas.
-        $date_annoncee = isset($_GET['date']) ? trim($_GET['date']) : null;
-        if ($date_annoncee !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_annoncee)) {
-            json_error("Date « $date_annoncee » invalide. Format attendu : 2024-03-12.");
+        $date_annoncee = isset($_GET['date']) ? trim(is_string($_GET['date']) ? $_GET['date'] : '') : null;
+        if ($date_annoncee !== null && !date_iso_valide($date_annoncee)) {
+            json_error("Date « $date_annoncee » invalide. Format attendu : 2024-03-12, une date qui existe.");
         }
 
-        if ($juridiction !== null && !isset($couverture[$juridiction])) {
+        // Les tribunaux judiciaires et de commerce ne sont pas moissonnés, mais
+        // l'amont les sert : la vérification passe par lui, l'index n'y a rien.
+        $hors_index_amont = $juridiction !== null && !isset($couverture[$juridiction])
+            && in_array($juridiction, JURIDICTIONS_AMONT, true);
+        if ($juridiction !== null && !isset($couverture[$juridiction]) && !$hors_index_amont) {
             $db->close();
+            // Une faute de frappe n'est pas une vérification impossible : elle se
+            // refuse en 400, comme dans `search`. Seul un code que la table des
+            // libellés connaît relève de « hors de l'index ».
+            if (juridiction_libelle($juridiction) === $juridiction) {
+                json_error(message_juridiction_inconnue($juridiction), 400);
+            }
             json_indetermine(
                 "Juridiction « $juridiction » hors de l'index (couvertes : "
                 . implode(', ', array_keys($couverture)) . ")."
@@ -1721,15 +2029,18 @@ if ($segments[0] === 'jurisprudence') {
         $db->close();
 
         // Borne prudente : la plus ancienne des fins de couverture retenues.
-        // Sans juridiction précisée, c'est celle qui s'arrête le plus tôt qui
-        // commande — une décision plus récente échapperait à l'index.
+        // Sans juridiction précisée, c'est le fonds VIVANT qui s'arrête le plus
+        // tôt qui commande — une décision plus récente échapperait à l'index.
         $retenues = $juridiction !== null
-            ? [$couverture[$juridiction]]
-            : array_values($couverture);
+            ? ($hors_index_amont ? [] : [$couverture[$juridiction]])
+            : array_values(juris_fonds_vivants($couverture));
         $fins   = array_column($retenues, 'fin');
         $debuts = array_column($retenues, 'debut');
         $arret  = $fins ? min($fins) : null;
         $ouvre  = $debuts ? max($debuts) : null;
+        // Avant le premier fonds, rien ne prouve rien ; entre le premier et le
+        // dernier, la sonde et les réserves par juridiction disent le reste.
+        $ouvre_tot = $debuts ? min($debuts) : null;
 
         // 🔑 **Deux corpus portent le même nom, et ils ne s'arrêtent pas au même
         // jour.** Cette route lit l'index local ; `search` et `decision` servent
@@ -1741,9 +2052,10 @@ if ($segments[0] === 'jurisprudence') {
         //
         // L'index local n'est pas fautif — il s'arrête où il s'arrête et il le
         // dit. Ce qui manquait, c'était d'aller regarder ailleurs quand on sait
-        // qu'on regarde trop court. La sonde ne part donc que là : rien
-        // localement, une date annoncée, et cette date au-delà de la borne.
-        // Partout ailleurs l'index local suffit et rien ne change.
+        // qu'on regarde trop court. La sonde part donc dès que rien ne correspond
+        // localement à une date annoncée : un passage de moisson n'est pas
+        // exhaustif — une décision publiée tard lui échappe —, et l'amont sert des
+        // juridictions que l'index ne moissonne pas.
         $amont       = null;   // liste filtrée, ou null si la sonde n'a pas eu lieu
         $amont_echec = null;   // raison, si elle a eu lieu sans aboutir
 
@@ -1771,16 +2083,40 @@ if ($segments[0] === 'jurisprudence') {
         $nb_homonymes = $date_annoncee === null ? 0 : $total - count($a_la_date);
         $correspond = (bool) $a_la_date;
 
-        if (!$correspond && $date_annoncee !== null && $arret !== null && $date_annoncee > $arret) {
+        // L'amont Judilibre ne porte que l'ordre judiciaire : il n'est interrogé
+        // que sans juridiction ou pour une juridiction judiciaire.
+        $amont_competent = $juridiction === null || in_array($juridiction, JURIDICTIONS_AMONT, true);
+        // Une absence dans un fonds administratif ne prouve rien : JADE n'en
+        // porte qu'une sélection. Sans juridiction, la décision peut en relever.
+        $jade_concerne = $juridiction !== null
+            ? !in_array($juridiction, JURIDICTIONS_AMONT, true)
+            : administratif_servi();
+        $jade_aussi = ($jade_concerne && $juridiction === null)
+            ? " Pour une décision administrative : " . lcfirst(JADE_SELECTION)
+            : "";
+        // Sans juridiction, une absence ne vaut pas la même chose partout : ferme
+        // pour ce que l'index local moissonne, bornée à ce que l'amont diffuse pour
+        // le reste de l'ordre judiciaire.
+        $moissonnees = array_values(array_intersect(JURIDICTIONS_AMONT, array_keys($couverture)));
+        // Sans juridiction, la sonde interroge toujours la Cour de cassation : elle n'est
+        // jamais de celles que l'amont n'interroge « que si la juridiction est précisée ».
+        $hors_locales = $juridiction === null ? array_values(array_diff(JURIDICTIONS_AMONT, $moissonnees, ['cc'])) : [];
+        $noms = fn(array $codes): string => $codes
+            ? implode(', ', array_map('juridiction_libelle', $codes))
+            : "aucune juridiction judiciaire";
+
+        $borne_depassee = $date_annoncee !== null && $arret !== null && $date_annoncee > $arret;
+        if (!$correspond && $amont_competent && $date_annoncee !== null) {
             // `search` refuse une requête qui ressemble à un numéro : en plein
             // texte il rendrait des milliers de faux positifs. Ici le numéro ne
             // décide de rien — il borne la requête à un seul jour, et c'est la
             // normalisation qui tranche, sur la règle exacte de l'index.
             $sonde = ['query' => $ref, 'date_start' => $date_annoncee,
                       'date_end' => $date_annoncee, 'page_size' => 50];
-            if ($juridiction !== null) {
-                $sonde['jurisdiction'] = $juridiction;
-            }
+            // 🔑 Sans filtre, Judilibre ne cherche que dans la Cour de cassation :
+            // le filtre est donc toujours écrit, et la réserve ne conclut que pour
+            // la juridiction effectivement interrogée.
+            $sonde['jurisdiction'] = $juridiction ?? 'cc';
             // Huit secondes, pas quinze : la réponse locale est déjà acquise et
             // l'appelant attend. Un amont lent rend la réserve prudente, pas une
             // page blanche.
@@ -1820,6 +2156,13 @@ if ($segments[0] === 'jurisprudence') {
                         continue 2;
                     }
                 }
+                // Une page de résultats ne prouve pas l'absence quand l'amont en
+                // annonce davantage à cette date.
+                if (!$amont && count($reponse['results'] ?? []) < (int) ($reponse['total'] ?? 0)) {
+                    $amont = null;
+                    $amont_echec = "la base amont rend plus de décisions à cette date qu'une "
+                        . "page n'en montre : la correspondance n'a pas pu être établie";
+                }
             }
         }
 
@@ -1832,25 +2175,115 @@ if ($segments[0] === 'jurisprudence') {
         // 🔑 `$a_la_date`, pas `$decisions` : des homonymes à d'autres dates ne
         // valent pas trouvaille. C'est ce raccourci qui rendait « trouvée » sur
         // huit décisions dont aucune n'était la bonne.
+        // 🔑 L'ordre des cas est celui de ce qu'ils prouvent : une absence avant le
+        // premier fonds de l'index ne prouve rien, quoi que l'amont réponde. Et une
+        // réserve ne conclut que pour la juridiction que la sonde a interrogée :
+        // « opposable » ne se dit que de la Cour de cassation, que l'amont diffuse
+        // en entier — des autres, il ne diffuse qu'une partie.
+        $libelle_j = $juridiction !== null ? juridiction_libelle($juridiction) : null;
+        $autres = ($juridiction === null && in_array('ca', $moissonnees, true)
+                ? " Cours d'appel : l'index local ne porte que ce que Judilibre en diffuse, "
+                  . "et l'absence n'y prouve rien." : "")
+            . ($hors_locales ? " " . ucfirst($noms($hors_locales)) . " : la base amont ne "
+                  . "les interroge que si la juridiction est précisée." : "")
+            . $jade_aussi;
+        $echec = $amont_echec !== null ? rtrim($amont_echec, " .") : '';
+        // « Opposable » ne se dit que de la Cour de cassation : il se juge sur SA
+        // couverture et sur SON délai de publication, pas sur ceux des autres fonds.
+        $ouvre_cc = $couverture['cc']['debut'] ?? null;
+        // Une date à venir ne peut porter aucune décision, quelle que soit la source.
+        // Un jour de marge : le serveur compte en UTC, et une juridiction d'outre-mer
+        // (Nouméa, UTC+11) a déjà changé de jour quand lui ne l'a pas encore fait.
+        $date_a_venir = $date_annoncee !== null && $date_annoncee > (new DateTimeImmutable(legi_jour()))
+            ->modify('+1 day')->format('Y-m-d');
+        $cc_trop_recente = $date_annoncee !== null && $date_annoncee > (new DateTimeImmutable(legi_jour()))
+            ->modify('-' . CC_DELAI_PUBLICATION_JOURS . ' days')->format('Y-m-d');
+
+        // Une juridiction que l'index ne porte pas n'a qu'une source, la sonde
+        // amont. Sans date elle n'a pas lieu, et elle peut échouer : dans les deux
+        // cas rien n'a été consulté, et « absente » affirmerait une absence que
+        // personne n'a vérifiée.
+        if ($hors_index_amont && $amont === null && !$date_a_venir) {
+            $db->close();
+            json_indetermine(
+                "Non vérifiable : l'index local ne porte pas les $libelle_j, et la base "
+                . "amont, seule à les servir, "
+                . ($date_annoncee === null
+                    ? "n'est interrogée qu'avec la date de la décision."
+                    : "ne l'a pas pu — $echec."),
+                ['reference' => $ref, 'juridiction' => $juridiction]
+            );
+        }
+
         $reserve_borne = ($a_la_date || $amont) ? null : match (true) {
-            $amont === [] => "Introuvable dans l'index local, arrêté au $arret. La base "
-                . "amont Judilibre, interrogée directement au $date_annoncee, ne rend "
-                . "rien non plus sous ce numéro : l'absence ne tient pas au retard de "
-                . "l'index, elle est opposable.",
-            $amont_echec !== null => "Introuvable, et la date annoncée ($date_annoncee) "
-                . "est postérieure à l'arrêt de l'index local ($arret) : cette absence "
-                . "ne prouve rien. La base amont, qui aurait tranché, n'a pas répondu — "
-                . "$amont_echec",
-            $arret === null => "Introuvable, et cet index ne déclare aucune couverture : "
-                . "rien ne peut se conclure de cette absence.",
+            $arret === null && !$hors_index_amont => "Introuvable, et cet index ne déclare "
+                . "aucune couverture : rien ne peut se conclure de cette absence.",
             $date_annoncee === null   => "Introuvable dans un index arrêté au $arret : "
-                . "une décision postérieure ne peut pas être exclue.",
-            $ouvre !== null && $date_annoncee < $ouvre => "Introuvable, mais la date "
-                . "annoncée ($date_annoncee) précède le début de l'index ($ouvre) : "
+                . "une décision postérieure ne peut pas être exclue."
+                . ($juridiction === null && $hors_locales ? " " . ucfirst($noms($hors_locales))
+                    . " ne sont pas dans l'index : avec la juridiction et la date de la "
+                    . "décision, la base amont est interrogée." : "")
+                . ($jade_concerne ? " " . JADE_SELECTION : ""),
+            // L'absence y est ferme, quoi que l'amont réponde, et même sans lui : c'est
+            // le cas d'une référence inventée et datée.
+            $date_a_venir => "Introuvable, et la date annoncée "
+                . "($date_annoncee) est postérieure à aujourd'hui : aucune décision ne peut "
+                . "porter cette date.",
+            $ouvre_tot !== null && $date_annoncee < $ouvre_tot => "Introuvable, mais la date "
+                . "annoncée ($date_annoncee) précède le début de l'index ($ouvre_tot) : "
                 . "cette absence ne prouve rien.",
-            default => "Introuvable, et la date annoncée ($date_annoncee) est couverte "
-                . "par l'index ($ouvre → $arret) : si cette décision existait à cette "
-                . "date, elle y figurerait.",
+            $amont === [] && ($juridiction === null || $juridiction === 'cc')
+                && $ouvre_cc === null => "Introuvable dans la base amont Judilibre "
+                . "interrogée au $date_annoncee pour la Cour de cassation, mais cet index "
+                . "ne déclare pas de couverture pour elle : rien ne se conclut de cette "
+                . "absence." . ($juridiction === null ? $autres : ""),
+            $amont === [] && $juridiction === null && $ouvre_cc !== null
+                && $date_annoncee < $ouvre_cc => "Introuvable, mais la date annoncée "
+                . "($date_annoncee) précède le début de l'index pour la Cour de cassation "
+                . "($ouvre_cc) : pour elle, cette absence ne prouve rien." . $autres,
+            $amont === [] && ($juridiction === null || $juridiction === 'cc')
+                && $cc_trop_recente => "Introuvable dans l'index local et dans la base amont "
+                . "Judilibre interrogée au $date_annoncee pour la Cour de cassation, mais une "
+                . "décision de moins de " . CC_DELAI_PUBLICATION_JOURS . " jours peut ne pas y "
+                . "être encore publiée : l'absence n'est pas encore opposable."
+                . ($juridiction === null ? $autres : ""),
+            $amont === [] && $juridiction === null => "Introuvable dans l'index local, "
+                . "arrêté au $arret, et dans la base amont Judilibre interrogée au "
+                . "$date_annoncee pour la Cour de cassation : pour elle, l'absence est "
+                . "opposable." . $autres,
+            $amont === [] && $juridiction === 'cc' => "Introuvable dans l'index local, "
+                . "arrêté au $arret. La base amont Judilibre, interrogée directement au "
+                . "$date_annoncee, ne rend rien non plus sous ce numéro : l'absence ne tient "
+                . "pas au retard de l'index, elle est opposable.",
+            $amont === [] => "Introuvable"
+                . ($hors_index_amont ? " — l'index local ne porte pas les $libelle_j —"
+                    : " dans l'index local, arrêté au $arret,")
+                . " et dans la base amont Judilibre interrogée au $date_annoncee pour les "
+                . "$libelle_j : l'absence ne vaut que dans les limites de ce que Judilibre "
+                . "diffuse de ces juridictions.",
+            $amont_echec !== null && $borne_depassee => "Introuvable, et la date annoncée "
+                . "($date_annoncee) est postérieure à l'arrêt de l'index local ($arret) : "
+                . "cette absence ne prouve rien. La base amont, qui aurait tranché, ne "
+                . "l'a pas pu — $echec.",
+            $amont_echec !== null && ($ouvre === null || $date_annoncee >= $ouvre) => "Introuvable dans l'index local, qui couvre cette "
+                . "date ($ouvre → $arret) : l'absence y est probable sans être établie, car "
+                . "une décision publiée tard peut manquer à la moisson, et la base amont, "
+                . "qui l'aurait tranché, ne l'a pas pu — $echec." . $autres,
+            $amont_echec !== null => "Introuvable dans l'index local, dont tous les fonds "
+                . "ne commencent pas avant cette date (le dernier ouvert commence le $ouvre) : "
+                . "l'absence n'y est pas établie, et la base amont, qui l'aurait tranché, ne "
+                . "l'a pas pu — $echec." . $autres,
+            $date_annoncee > $arret => "Introuvable, et la date annoncée ($date_annoncee) "
+                . "est postérieure à l'arrêt de l'index pour cette juridiction ($arret) : "
+                . "cette absence ne prouve rien, et aucune base amont ne la tranche ici.",
+            $jade_concerne && $juridiction !== null => "Introuvable, alors que la date "
+                . "annoncée ($date_annoncee) est couverte par l'index ($ouvre → $arret). "
+                . JADE_SELECTION,
+            // Aucun chemin connu n'arrive ici : chaque juridiction datée passe par la
+            // sonde ou par JADE. Le bras reste, parce qu'un `match` sans issue rendrait
+            // un 500, et il ne conclut rien de ce qu'il n'a pas vérifié.
+            default => "Introuvable, et ce cas n'est pas prévu par la réserve : ne rien "
+                . "conclure de cette absence.",
         };
 
         // Ce qui est rendu vient de l'index local, ou de la sonde amont quand
@@ -1895,10 +2328,16 @@ if ($segments[0] === 'jurisprudence') {
             // « absente » sans le dire serait trompeur.
             'homonymes'   => $homonymes,
             'reserve'     => $depuis_amont
-                ? "Cette décision ne figure pas encore dans l'index local, arrêté "
-                . "au $arret : elle a été retrouvée dans la base amont Judilibre à "
-                . "la date annoncée ($date_annoncee). Son existence est établie — "
-                . "c'est l'index qui est en retard, pas la référence qui est fausse."
+                ? (array_intersect(array_keys($juridictions), $moissonnees)
+                    ? "Cette décision ne figure pas encore dans l'index local, arrêté "
+                    . "au $arret : elle a été retrouvée dans la base amont Judilibre à "
+                    . "la date annoncée ($date_annoncee). Son existence est établie — "
+                    . "c'est l'index qui est en retard, pas la référence qui est fausse."
+                    : "Cette décision ne figure pas dans l'index local, qui ne moissonne "
+                    . ($moissonnees ? "que " . $noms($moissonnees) : "aucune juridiction judiciaire")
+                    . " : elle a été retrouvée dans la base "
+                    . "amont Judilibre à la date annoncée ($date_annoncee). Son existence "
+                    . "est établie.")
                 : ($issues
                 ? ($nb_homonymes ? "Les " . $nb_homonymes . " autre(s) décision(s) "
                     . "portant ce numéro à d'autres dates ne sont pas celle-ci : un "
@@ -1989,6 +2428,14 @@ if ($segments[0] === 'jurisprudence') {
                 $params[$option] = $_GET[$option];
             }
         }
+        // Une date mal formée se refuse ici : l'amont la refuserait en 503, qui se
+        // lirait comme une absence de décision. Même format que `verifier`.
+        foreach (['date_start', 'date_end'] as $option) {
+            if (isset($params[$option]) && !date_iso_valide($params[$option])) {
+                $lue = is_string($params[$option]) ? $params[$option] : '(non textuelle)';
+                json_error("Date « $lue » invalide. Format attendu : 2024-03-12, une date qui existe.", 400);
+            }
+        }
 
         // 🔑 **Un argument refusé ne doit jamais ressembler à une réponse.**
         // `jurisdiction` partait tel quel vers l'amont, qui rendait un 400 — et
@@ -2066,13 +2513,7 @@ if ($segments[0] === 'jurisprudence') {
             $req->bindValue(':id', strtoupper($id), SQLITE3_TEXT);
             $ligne = $req->execute()->fetchArray(SQLITE3_ASSOC);
             if (!$ligne) {
-                json_error(
-                    "Décision « $id » absente de l'index administratif. Le fonds "
-                    . "JADE ne porte qu'une sélection : les décisions publiées au "
-                    . "recueil Lebon et une part des inédites. Une absence ici ne "
-                    . "dit pas que la décision n'existe pas.",
-                    404
-                );
+                json_error("Décision « $id » absente de l'index administratif. " . JADE_SELECTION, 404);
             }
             $ligne['juridiction_libelle'] = juridiction_libelle($ligne['jurisdiction']);
             $ligne['texte'] = texte_propre($ligne['texte']);

@@ -59,7 +59,7 @@ function syncLoginLabel() {
     loginInput.placeholder = 'le(s) mot(s) de récupération choisi(s) à l\'inscription';
   } else {
     loginLabel.firstChild.textContent = 'Mot de passe ';
-    loginInput.placeholder = 'votre mot de passe ≥12 caractères';
+    loginInput.placeholder = 'ton mot de passe ≥12 caractères';
   }
   loginInput.value = '';
 }

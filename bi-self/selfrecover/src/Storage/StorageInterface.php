@@ -29,14 +29,14 @@ use Pierroons\SelfRecover\Recovery\Litige;
  *
  * Le dire ici n'est pas une politesse. `int` ne distingue pas les secondes des
  * millisecondes, et surtout il ne distingue pas un instant d'un nombre qui n'en
- * est pas : si la colonne de votre base est restée en `TEXT`, le cast rend le
+ * est pas : si la colonne de ta base est restée en `TEXT`, le cast rend le
  * millésime — `(int) '2026-07-12 08:00:00'` vaut `2026`. Le typage est satisfait,
  * aucune ligne n'échoue, et un dossier se retrouve daté de janvier 1970.
  *
  * `Litige` refuse désormais ces valeurs à la construction
  * (`Litige::PLANCHER_EPOQUE`). Les autres paramètres ne sont pas gardés : ils
- * traversent votre adaptateur sans repasser par un objet de valeur. **Vérifiez
- * donc le TYPE DÉCLARÉ de vos colonnes de date**, pas seulement ce qu'elles
+ * traversent ton adaptateur sans repasser par un objet de valeur. **Vérifie
+ * donc le TYPE DÉCLARÉ de tes colonnes de date**, pas seulement ce qu'elles
  * contiennent aujourd'hui — une colonne `TEXT` qui reçoit des entiers depuis
  * l'origine se comporte correctement jusqu'au jour où quelque chose y écrit une
  * date lisible.
@@ -56,9 +56,9 @@ interface StorageInterface
     /**
      * Échecs récents attribués à cette IP, pour freiner l'énumération.
      *
-     * ⚠️ **Ne comptez que les lignes dont l'étiquette commence par l'un de
-     * `$prefixes`.** La table ne nous appartient pas : votre page de connexion y
-     * range ses propres échecs, sous l'étiquette que vous avez choisie. Les
+     * ⚠️ **Ne compte que les lignes dont l'étiquette commence par l'un de
+     * `$prefixes`.** La table ne nous appartient pas : ta page de connexion y
+     * range ses propres échecs, sous l'étiquette que tu as choisie. Les
      * compter ici ferme la récupération de qui vient d'oublier son mot de passe
      * — il l'a tapé faux cinq fois, il arrive avec la bonne passphrase, et le
      * frein la refuse. Ce n'est pas une attaque, c'est le chemin pour lequel
@@ -188,7 +188,7 @@ interface StorageInterface
 
     /**
      * Le ticket, s'il a été émis : son compte sous sa forme rangée, son genre,
-     * sa date. Ne écrit rien.
+     * sa date. N'écrit rien.
      *
      * @return array{compte_id: int, nom_compte: string, genre: string, emis_le: int}|null
      */
@@ -469,7 +469,7 @@ interface StorageInterface
      * rend le gel déclenchable par qui n'a aucun droit sur le compte, puisque
      * tous ces compteurs se remplissent avec un nom public.
      *
-     * ⚠️ **Rangez `$par`, et ne touchez pas à la trace du dégel.** Le geste qui
+     * ⚠️ **Range `$par`, et ne touche pas à la trace du dégel.** Le geste qui
      * ferme une porte doit nommer son auteur autant que celui qui l'ouvre —
      * `leverGel()` le faisait seul. Et un gel reposé n'efface pas `degele_par` :
      * la décision de l'arbitre qui avait levé le précédent reste lisible, comme
@@ -541,22 +541,22 @@ interface StorageInterface
      *
      * 🔑 **Chaque préfixe a un propriétaire, et c'est lui qui le purge.**
      * `login_attempts` est un espace d'étiquettes partagé : cette bibliothèque y
-     * écrit sous les préfixes d'`Etiquette::PREFIXES`, votre page de connexion
-     * y écrit sous les siens. Une purge qui viderait la table effacerait vos
+     * écrit sous les préfixes d'`Etiquette::PREFIXES`, ta page de connexion
+     * y écrit sous les siens. Une purge qui viderait la table effacerait tes
      * lignes, et une clé étrangère vers les comptes y est **structurellement
      * impossible** — la colonne ne porte pas un identifiant de compte.
      * `$prefixes` est donc
-     * toujours `Etiquette::PREFIXES`, et vos propres lignes restent à vous.
+     * toujours `Etiquette::PREFIXES`, et tes propres lignes restent à toi.
      *
      * 🔴 **Rien dans cette bibliothèque ne l'appelle** : elle n'a pas d'horloge.
      * Sans une tâche planifiée — l'outil `bi-self/selfrecover/tools/purger.php`,
-     * l'unité `systemd` de `deploy/bi-self/`, ou votre planificateur — la table
+     * l'unité `systemd` de `deploy/bi-self/`, ou ton planificateur — la table
      * ne fait que croître sous son index `(username, attempted_at)`. Les freins
      * ne lisent qu'une fenêtre, donc rien ne rougit en attendant.
      *
      * ⚠️ Effacer une ligne d'échec **réarme ce qu'elle freinait**. Les freins ne
      * lisent qu'une fenêtre — un quart d'heure par défaut : une rétention plus
-     * courte rouvrirait la porte que le frein venait de fermer. Gardez-la
+     * courte rouvrirait la porte que le frein venait de fermer. Garde-la
      * largement au-dessus de `fenetreEchecs`.
      *
      * 🔑 **Les RÉUSSITES ne se purgent pas**, et ce n'est pas un oubli : la
@@ -565,7 +565,7 @@ interface StorageInterface
      * donc une suspension que le titulaire avait levée, sans qu'aucun frein ne
      * change de comportement entre-temps. Elles sont rares — une par
      * récupération réussie — et elles portent un fait qu'aucune autre ligne ne
-     * dit. Filtrez sur l'échec, comme le nom de cette méthode le dit.
+     * dit. Filtre sur l'échec, comme le nom de cette méthode le dit.
      */
     public function purgerEchecs(int $avant, array $prefixes): int;
 

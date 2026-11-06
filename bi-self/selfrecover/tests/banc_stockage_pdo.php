@@ -618,7 +618,7 @@ $stE = new StockagePdo($pdoE, HOTE);
 $stE->ouvrirLitige($idE, 'LIT-FIL', hash('sha256', 'sesame'), $T0, $T0 + 86400);
 $litige = $stE->trouverLitigeParNumero('LIT-FIL');
 $stE->ajouterMessageLitige($litige->id, 'user', 'bonjour', $T0);
-$stE->ajouterMessageLitige($litige->id, 'admin', 'bonjour à vous', $T0 + 1);
+$stE->ajouterMessageLitige($litige->id, 'admin', 'bonjour à toi', $T0 + 1);
 $stE->cloreLitige($litige->id, $T0 + 2);
 verifier('le fil reste lisible après clôture', count($stE->messagesDuLitige($litige->id)) === 2);
 $clos = $stE->trouverLitigeParNumero('LIT-FIL');

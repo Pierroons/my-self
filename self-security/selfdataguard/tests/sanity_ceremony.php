@@ -84,6 +84,11 @@ file_put_contents($witnessFile, sprintf(
     "<?php\nrequire %s;\nreturn new Pierroons\\SelfDataGuard\\Escrow\\NoHeadWitness();\n",
     var_export(__DIR__ . '/../src/autoload.php', true)
 ));
+$keeperFile = "{$ws}/gardien.php";
+file_put_contents($keeperFile, sprintf(
+    "<?php\nrequire %s;\nreturn new Pierroons\\SelfDataGuard\\Escrow\\NoKeeper();\n",
+    var_export(__DIR__ . '/../src/autoload.php', true)
+));
 
 // ── Harnais subprocess ───────────────────────────────────────────────────────
 $env = [
@@ -94,6 +99,7 @@ $env = [
     'DATAGUARD_AUDIT_LOG'         => $auditLog,
     'DATAGUARD_ARBITER_FILE'      => $arbiterFile,
     'DATAGUARD_WITNESS_FILE'      => $witnessFile,
+    'DATAGUARD_KEEPER_FILE'       => $keeperFile,
     'DATAGUARD_AUDIT_SECRET'      => $auditSecret,
     'DATAGUARD_OPERATOR'          => 'operator@testhost',
 ];
@@ -183,7 +189,7 @@ section('Anti-curieux — unknown litige is refused');
 $r = run(['unlock', 'alice', 'L3-does-not-exist'], ADMIN_PASS . "\n", $env);
 $r['code'] === 2 ? ok('unknown litige → exit 2') : ko('should refuse unknown litige');
 
-foreach (['DATAGUARD_ARBITER_FILE' => "{$ws}/absent.php", 'DATAGUARD_WITNESS_FILE' => $arbiterFile] as $key => $wrong) {
+foreach (['DATAGUARD_ARBITER_FILE' => "{$ws}/absent.php", 'DATAGUARD_WITNESS_FILE' => $arbiterFile, 'DATAGUARD_KEEPER_FILE' => $witnessFile] as $key => $wrong) {
     $r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", [$key => $wrong] + $env);
     $r['code'] === 3 && str_contains($r['err'], $key)
         ? ok("{$key} that does not return its object → exit 3, nothing attempted")
@@ -270,6 +276,76 @@ $r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
 $r['code'] === 0 && str_contains($r['out'], CONTACT)
     ? ok('the seeded witness serves the next ceremony')
     : ko('the seeded witness did not serve the next ceremony', $r['code'] . ' ' . trim($r['err']));
+
+// -----------------------------------------------------------------------------
+
+section('Under a keeper — a read announced, read once due, and the operator\'s pass');
+
+require_once __DIR__ . '/keeper_fixture.php';
+$keeperState = "{$ws}/gardien-etat.json";
+$fileKeeper  = new FileBenchKeeper($keeperState, 3600);
+$keeperBench = "{$ws}/gardien-banc.php";
+file_put_contents($keeperBench, sprintf(
+    "<?php\nrequire %s;\nrequire_once %s;\nreturn new FileBenchKeeper(%s, 3600);\n",
+    var_export(__DIR__ . '/../src/autoload.php', true),
+    var_export(__DIR__ . '/keeper_fixture.php', true),
+    var_export($keeperState, true)
+));
+$kdb    = "{$ws}/escrow-keeper.sqlite";
+$kstore = new SqliteAdapter("sqlite:{$kdb}");
+$kblind = random_bytes(32);
+$kplain = new SelfDataGuard($kstore, $kblind);
+$frank  = $kplain->register('frank', 'motdepasse-frank-fort');
+$kplain->setEscrowFields($frank, $admin['publicKey'], ['contact_secours' => 'frank-secours@example.org']);
+$kdg  = new SelfDataGuard($kstore, $kblind, keeper: $fileKeeper);
+$erin = $kdg->register('erin', 'motdepasse-erin-fort');
+$kdg->setEscrowFields($erin, $admin['publicKey'], ['contact_secours' => 'erin-secours@example.org']);
+$pdo->exec("INSERT INTO litiges VALUES ('K-erin','erin','open')");
+$kenv = ['DATAGUARD_DB' => $kdb, 'DATAGUARD_KEEPER_FILE' => $keeperBench, 'DATAGUARD_AUDIT_LOG' => "{$ws}/audit-k.log"] + $env;
+
+$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", $kenv);
+$r['code'] === 4 && str_contains($r['err'], 'Lecture annoncée') && !str_contains($r['out'], 'erin-secours@example.org')
+    ? ok('a read under a delay exits 4: nothing unsealed, and the command says when to run it again')
+    : ko('a read under a delay did not exit 4 as announced', $r['code'] . ' ' . trim($r['err']));
+$state = json_decode((string) file_get_contents($keeperState), true);
+foreach ($state['pending'] as $k => $held) {
+    $state['pending'][$k]['due'] = time() - 1;
+}
+file_put_contents($keeperState, json_encode($state));
+$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", $kenv);
+$r['code'] === 0 && str_contains($r['out'], 'erin-secours@example.org')
+    ? ok('the same command, run again once due, reads: the keeper released the box')
+    : ko('a due read did not go through the command', $r['code'] . ' ' . trim($r['err']));
+
+$r = run(['seal-to-keeper'], '', $kenv);
+$r['code'] === 0 && str_contains($r['out'], 'frank : coffre vivant scellé au gardien')
+    && Pierroons\SelfDataGuard\Escrow\EscrowVault::isKeeperSealed($kstore->loadEscrow('frank'))
+    ? ok("seal-to-keeper: the escrow the administrator alone still opened is sealed to the keeper, without any secret in hand")
+    : ko('seal-to-keeper did not seal the escrow sealed before the keeper', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['seal-to-keeper'], '', $kenv);
+$r['code'] === 0 && str_contains($r['out'], 'frank : coffre vivant sans changement')
+    ? ok('a second pass changes nothing')
+    : ko('a second pass sealed again', trim($r['out']));
+$kdg->getEscrowFieldsAsUser($frank) === ['contact_secours' => 'frank-secours@example.org']
+    ? ok('its holder still reads it')
+    : ko('the operator\'s pass took the escrow from its holder');
+foreach (['gus', 'hugo'] as $name) {
+    $kplain->setEscrowFields($kplain->register($name, "motdepasse-{$name}-fort"), $admin['publicKey'], ['contact_secours' => "{$name}@example.org"]);
+}
+$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", ['DATAGUARD_FORMER_KEEPER_FILES' => "{$ws}/absent-gardien.php"] + $kenv);
+$r['code'] === 3 && str_contains($r['err'], 'DATAGUARD_FORMER_KEEPER_FILES')
+    ? ok('a former keeper file that returns no keeper exits 3, naming the variable')
+    : ko('a former keeper file that returns no keeper did not exit 3', $r['code'] . ' ' . trim($r['err']));
+(new PDO("sqlite:{$kdb}"))->exec("UPDATE selfdataguard_escrow SET wrap_admin = '%%%' WHERE user_id = 'gus'");
+$r = run(['seal-to-keeper', 'gus', 'hugo'], '', $kenv);
+$failed = array_values(array_filter(
+    array_map(static fn (string $l): array => json_decode($l, true), array_filter(explode("\n", (string) file_get_contents("{$ws}/audit-k.log")))),
+    static fn (array $e): bool => ($e['event']['action'] ?? '') === 'seal-to-keeper-failed'
+));
+$r['code'] === 2 && str_contains($r['out'], 'hugo : coffre vivant scellé au gardien') && str_contains($r['err'], 'à relancer : gus')
+    && ($failed[0]['event']['target'] ?? null) === 'gus'
+    ? ok('an account that fails is named and logged, the pass goes on to the next, and exits 2')
+    : ko('the pass stopped at the account that failed, or did not name it', $r['code'] . ' ' . trim($r['out'] . $r['err']));
 
 // -----------------------------------------------------------------------------
 

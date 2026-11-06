@@ -5,7 +5,7 @@
 **Le droit français et européen, lisible par ton IA : une API publique gratuite pour les textes, une page de directives pour la méthode.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.4.2 bêta](https://img.shields.io/badge/statut-v0.4.2%20b%C3%AAta-green.svg)](#statut)
+[![Statut : v0.4.4 bêta](https://img.shields.io/badge/statut-v0.4.4%20b%C3%AAta-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -124,7 +124,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 | Couche | Technologie |
 |-------|-----------|
 | Serveur web | nginx, CSP qui n'admet que les scripts du site, rate limiting, headers de sécurité |
-| Backend | PHP-FPM 8.2 (lecture seule) |
+| Backend | PHP-FPM 8.4 (lecture seule) |
 | Base de données | SQLite 3 (dump LEGI parsé en `legi_selfjustice.sqlite`) + SQLite (UE/CEDH) |
 | TLS | Let's Encrypt, auto-renouvellement |
 | Hôte | serveur auto-hébergé (x86 ou ARM) |
@@ -185,7 +185,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Statut
 
-**v0.4.2 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
+**En production sur [justice.my-self.fr](https://justice.my-self.fr) — v0.4.4 bêta**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
 - [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)
@@ -226,8 +226,15 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - **v0.4.1** — Les décisions administratives se vérifient par leur numéro, et
   `/verifier` ne nie plus une décision présente derrière des homonymes plus récents. La recherche
   par thème dit qu'elle ne couvre que l'ordre judiciaire, au lieu de rendre l'erreur de l'amont
-- **v0.4.2 (actuelle)** — L'accueil n'a plus de script inline : le bouton de copie, le formulaire
+- **v0.4.2** — L'accueil n'a plus de script inline : le bouton de copie, le formulaire
   de retours et la grille des consultations par IA fonctionnent sous la CSP du site
+- **v0.4.3** — L'applicabilité d'un article se calcule sur sa période d'application, et non plus
+  sur son seul état LEGI : un article dont l'abrogation est programmée reste applicable jusqu'à
+  cette date, un article dont l'entrée en vigueur est programmée ne l'est pas encore. Les routes
+  d'article et de recherche le disent dans un champ `applicabilite`
+- **v0.4.4** — « Opposable » ne se dit plus pour la Cour de cassation avant le début de sa couverture,
+  ni pour une décision de moins de 60 jours, qui peut ne pas être encore publiée ; une date à venir
+  reçoit une réponse ferme. La sonde de fraîcheur juge la jurisprudence sur Judilibre seul
 - **v1.0.0** — Directives relues par un avocat praticien (l'intégration SelfAct est livrée depuis la v0.2.0)
 
 ---

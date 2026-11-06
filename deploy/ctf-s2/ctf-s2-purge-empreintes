@@ -1,0 +1,97 @@
+#!/bin/bash
+# Efface les empreintes d'adresse passé leur fenêtre, sans attendre un visiteur.
+#
+# L'application le fait déjà (`lib/redteam.php`), mais depuis le chemin de
+# SOUMISSION : la purge n'a lieu qu'au rapport suivant. Un seul rapport déposé
+# puis plus rien, et l'empreinte reste. Mesuré le 05/10 : celle du rapport de
+# test du 27/09 était encore en base **202 heures** après, et elle partait
+# chaque jour dans la copie hors site. Une rétention annoncée que rien
+# n'applique n'est pas une rétention.
+#
+# 🔑 Tourne en `www-data`, JAMAIS en root. SQLite crée ses journaux (`-wal`,
+# `-journal`) avec le propriétaire du processus : une écriture en root les
+# rendrait inaccessibles à PHP-FPM, et le site cesserait d'écrire. C'est aussi
+# pourquoi ce n'est pas une ligne de plus dans un des contrôles existants : les
+# trois portent `NoNewPrivileges`, donc `sudo -u www-data` y est impossible.
+set -uo pipefail
+export LC_ALL=C
+
+BASE=${CTF_PURGE_BASE:-/var/www/ctf-s2/demo/lab/data/lab.db}
+CODE=${CTF_PURGE_CODE:-/var/www/ctf-s2/demo/lab/lib/redteam.php}
+LOG=${CTF_PURGE_LOG:-/var/log/ctf-s2-purge-empreintes.log}
+
+journal() { echo "$(date -Is) $*" >> "$LOG"; }
+
+# 🔑 La fenêtre se LIT dans le code qui la définit, elle ne se recopie pas. Un
+# script qui porterait son propre 3600 continuerait d'effacer à une heure le
+# jour où l'application passerait à dix minutes — et personne ne le verrait.
+# Repli sur 3600 si la lecture échoue, avec un avertissement : se taire ici
+# reviendrait à ne purger qu'au hasard.
+FENETRE=$(grep -oE 'RL_WINDOW *= *[0-9]+' "$CODE" 2>/dev/null | grep -oE '[0-9]+$' | head -1)
+if [ -z "${FENETRE:-}" ] || [ "$FENETRE" -le 0 ]; then
+  journal "⚠️ RL_WINDOW illisible dans $CODE — repli sur 3600 s"
+  FENETRE=3600
+fi
+
+[ -r "$BASE" ] || { journal "ÉCHEC : $BASE illisible"; exit 1; }
+
+DEPUIS=$(( $(date +%s) - FENETRE ))
+EFFACEES=0
+ECHEC=0
+TRAITEES=0
+
+# 🔑 Les tables ne sont pas écrites en dur, elles se DÉCOUVRENT : toute table
+# qui porte une colonne `ip_hash` est concernée, y compris une table ajoutée
+# plus tard. Un premier jet nommait `redteam_reports` et `flag_captures` avec
+# une colonne `created_at` supposée commune — `flag_captures` l'appelle
+# `captured_at`, et le script a échoué sur cette moitié. Deviner un schéma
+# qu'on peut lire est le défaut qui a produit l'échec qu'on corrige ici.
+TABLES=$(sqlite3 -readonly "$BASE" "
+  SELECT m.name FROM sqlite_master m
+   WHERE m.type = 'table'
+     AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name = 'ip_hash')
+   ORDER BY m.name;" 2>/dev/null)
+
+[ -n "${TABLES:-}" ] || { journal "ÉCHEC : aucune table ne porte ip_hash — schéma inattendu"; exit 1; }
+
+for table in $TABLES; do
+  # La colonne d'horodatage, elle aussi lue : une colonne entière dont le nom
+  # finit par `_at`. Zéro ou plusieurs candidates = ambiguïté, donc refus bruyant
+  # plutôt qu'un choix arbitraire qui effacerait la mauvaise ligne.
+  cols=$(sqlite3 -readonly "$BASE" "
+    SELECT name FROM pragma_table_info('$table')
+     WHERE name LIKE '%\\_at' ESCAPE '\\' AND UPPER(type) = 'INTEGER';" 2>/dev/null)
+  n_cols=$(printf '%s\n' "$cols" | grep -c .)
+  if [ "$n_cols" -ne 1 ]; then
+    journal "ÉCHEC sur $table : $n_cols colonne(s) d'horodatage candidate(s) ($(printf '%s' "$cols" | tr '\n' ' ')), 1 attendue"
+    ECHEC=1
+    continue
+  fi
+  quand=$cols
+
+  # `changes()` dit combien de lignes l'UPDATE a touchées : sans lui, on ne
+  # distingue pas « rien à purger » de « la requête n'a rien fait ».
+  n=$(sqlite3 "$BASE" "
+        UPDATE $table SET ip_hash = NULL
+         WHERE $quand < $DEPUIS AND ip_hash IS NOT NULL;
+        SELECT changes();" 2>&1)
+  if ! printf '%s' "$n" | grep -qE '^[0-9]+$'; then
+    journal "ÉCHEC sur $table : $n"
+    ECHEC=1
+    continue
+  fi
+  EFFACEES=$(( EFFACEES + n ))
+  TRAITEES=$(( TRAITEES + 1 ))
+
+  # Ce qui reste hors fenêtre après la purge ne devrait pas exister : c'est le
+  # contrôle qui rend ce script vérifiable au lieu de le croire.
+  r=$(sqlite3 -readonly "$BASE" \
+      "SELECT COUNT(*) FROM $table WHERE $quand < $DEPUIS AND ip_hash IS NOT NULL;" 2>/dev/null || echo 0)
+  if [ "${r:-0}" -ne 0 ]; then
+    journal "⚠️ $table : $r empreinte(s) hors fenêtre SUBSISTENT après purge"
+    ECHEC=1
+  fi
+done
+
+journal "ok $EFFACEES effacée(s) sur $TRAITEES table(s), fenêtre ${FENETRE}s"
+exit "$ECHEC"

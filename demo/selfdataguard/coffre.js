@@ -68,9 +68,12 @@ function renderPrivate(fields) {
   }
 }
 
-function renderEscrow(escrow, hasEscrow) {
+function renderEscrow(escrow, hasEscrow, escrowError) {
   const badge = $('#escrow-badge');
-  if (hasEscrow) {
+  if (escrowError) {
+    badge.textContent = 'illisible : ' + escrowError;
+    badge.className = 'badge badge-off';
+  } else if (hasEscrow) {
     badge.textContent = 'configurée';
     badge.className = 'badge badge-on';
   } else {
@@ -82,10 +85,51 @@ function renderEscrow(escrow, hasEscrow) {
   $('#escrow-form').indice_recup.value = (escrow && escrow.indice_recup) || '';
 }
 
+// « Non établi » n'est jamais « aucune remise » : une attestation absente ou fausse
+// se dit comme telle. Une remise est la boîte rendue par le gardien : la lecture qui
+// suit peut encore échouer, elle compte quand même.
+const MOTIFS = {
+  'not-keeper-sealed': "pas de gardien : l'administrateur peut lire ce séquestre seul, et aucune remise ne t'est attestée",
+  'not-pinned': "scellé au gardien par l'exploitant, pas encore par toi : ton prochain dépôt le lie à ton gardien",
+  'keeper-changed': "le service a changé de gardien : ce que l'ancien a remis reste chez lui",
+  'keeper-mismatch': "le gardien donné à ce service n'est pas celui que sa base a inscrit",
+  'no-keeper': 'aucun gardien joignable par ce service',
+  'keeper-unreachable': "un gardien ne répond pas : une lecture qu'il tiendrait annoncée ne t'est pas montrée ; ce que les autres attestent suit",
+  'retired': "ce séquestre est retiré du gardien qu'il désigne, qui ne le remettra plus : ton prochain dépôt le scelle au gardien de ce service, quand chaque ancien gardien répond",
+  'retired-here': "ce séquestre est retiré du gardien de ce service lui-même : aucun dépôt ne le rend lisible, seul un changement de gardien par l'exploitant le fait",
+  'escrow-replaced': "la ligne de ton séquestre en base n'est pas celle que ta clé désigne — remise d'une sauvegarde, réécrite ou supprimée ; voici ce que le gardien tient pour ton séquestre",
+};
+
+function listeDesRemises(reads) {
+  const remises = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
+  const annoncees = reads.pending.map((r) => `${r.case} ${r.objected ? 'refusée par toi' : 'annoncée pour le ' + new Date(r.due * 1000).toLocaleString()}`);
+  return [...remises, ...annoncees].join(' · ');
+}
+
+function renderReads(reads) {
+  const p = $('#escrow-reads');
+  if (!reads) { p.textContent = ''; return; }
+  if (!reads.established) {
+    const vues = listeDesRemises(reads);
+    const motif = reads.reason === 'retired' && !reads.reseal ? 'retired-here' : reads.reason;
+    const muets = (reads.unanswered || []).map((u) => `${u.keeper.slice(0, 12)}… (${u.reason})`).join(', ');
+    p.textContent = '🔎 Remises non établies — ' + (MOTIFS[motif] || `attestation refusée (${reads.reason})`) + '.'
+      + (muets ? ' Sans attestation valable : ' + muets + '.' : '')
+      + (vues ? ' Les gardiens attestent : ' + vues + '.' : '');
+    return;
+  }
+  if (reads.keeper === null) {
+    p.textContent = '🔎 Aucun séquestre déposé : rien à remettre.';
+    return;
+  }
+  p.textContent = '🔎 Remises attestées par le gardien : ' + (listeDesRemises(reads) || 'aucune') + '.';
+}
+
 function renderCoffre(data) {
   $('#who').textContent = data.userId;
   renderPrivate(data.private);
-  renderEscrow(data.escrow, data.hasEscrow);
+  renderEscrow(data.escrow, data.hasEscrow, data.escrowError);
+  renderReads(data.escrowReads);
   $('#profile-section').classList.remove('hidden');
 }
 

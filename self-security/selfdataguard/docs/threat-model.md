@@ -13,7 +13,7 @@ of the user's secrets, any one of which opens it. The module holds the envelope,
 encryption, a blind index for lookups, an administrative escrow compartment and its ceremony. It
 holds no HTTP route, no session and no client-side code: the application calls it.
 
-Untrusted input enters at six places:
+Untrusted input enters at eight places:
 
 1. **The user's secrets** — password, memorized word, passphrase. Arbitrary byte strings, no upper
    bound on length, supplied by the application's forms.
@@ -27,11 +27,29 @@ Untrusted input enters at six places:
 4. **The audit log on disk**, and the anchor (`seq:hmac`) an operator types back in. A crash, a cut
    write, an altered line and a truncated tail are four different inputs here, and the log
    distinguishes them.
-5. **The ceremony's operator files** (`DATAGUARD_ARBITER_FILE`, `DATAGUARD_WITNESS_FILE`) and the
+5. **The ceremony's operator files** (`DATAGUARD_ARBITER_FILE`, `DATAGUARD_WITNESS_FILE`, `DATAGUARD_KEEPER_FILE`) and the
    `Verdict` returned by an arbiter the integrator writes. No arbiter ships: one that did would say
    yes to every deployment.
 6. **The `userId`.** It comes from the application, never from the module, and it is the key under
    which everything else is found.
+7. **A recovery ticket**, and the kind that a `RecoveryTickets` source written by the integrator returns
+   for it. Given a source, the ticket is what lets the gestures that take no secret through —
+   `reEnroll()`, `reinstateArchive()`, `freeze()`, `unfreeze()`; without one, they take none.
+8. **What a keeper answers** (`EscrowKeeper`, written by the integrator): the inner box it hands back, the deadline it
+   announces, and the attestation a holder's session verifies. The attestation is checked under the key the holder's
+   own deposit named, for the escrowId the session computes from the master key — not the one the row names — and
+   the nonce of the request, and it says whether the escrow is retired; the inner box is opened as any `wrap_admin` is,
+   and must name its account. A keeper that hands back another box opens nothing; one that does not answer leaves
+   the releases "not established", and one whose public keys do not come leaves the vaults open and takes no deposit.
+   The ceremony and every façade refuse a keeper other than the one the database recorded, and an unreadable record of
+   former keepers. The ceremony refuses a former keeper the database does not record; a façade asks every former
+   keeper it was given, writes it into the record, and retires the escrow from each at every deposit — emptying the
+   record hides none from it, and `changeKeeper()` never promotes a keeper written there — unless a deposit writes it
+   during the change, a race the CHANGELOG declares, which leaves every deposit refused until a second change, or, if
+   the operator forgets that keeper at the same instant, leaves it both the keeper and forgotten. A box is
+   input too — anyone can seal one to the keeper's public key: the keeper refuses one whose objection key is not the
+   one the escrowId is the fingerprint of, checks an objection against the escrowId alone, and a retirement against the
+   escrowId and its own fingerprint.
 
 ## Components that matter most, and least
 
@@ -46,13 +64,15 @@ Untrusted input enters at six places:
 - `src/Fields/BlindIndex.php` — derived under a **server-side secret shared by every account**. That
   key is the one piece whose loss locks everything and whose leak makes enumerable indexed values
   findable by dictionary across all accounts.
-- `src/Escrow/` — the compartment with its own permanent key, the ceremony, and the signed log.
+- `src/Escrow/` — the compartment with its own permanent key, the ceremony, and the signed log; and, since 0.9.0,
+  `KeeperSeal` — the outer box, the `k1:` marker, the attestation, the objection and the retirement — and the ceremony's path
+  through the keeper. A defect there gives the administrator alone back what the keeper was for.
 
 **Secondary** — `src/SelfDataGuard.php` (orchestration), the exception hierarchy, the in-place
 migrations from 0.4.x–0.6.x.
 
 **Out of scope, deliberately** — libsodium and OpenSSL; PDO and the database engine; the integrator's
-own code, including its session handling and its arbiter; `demo/selfdataguard/`, which is a reference
+own code, including its session handling, its arbiter, its ticket source and its keeper; `demo/selfdataguard/`, which is a reference
 integration and not hardened for production; and `demo/lab/`, which uses only `Primitives` under a
 server key and promises nothing per user.
 
@@ -116,8 +136,10 @@ promise instead.
   decrypt" is the mode, not a defect.
 - **The escrow key is permanent, by design.** Whoever coerces the holder of its passphrase obtains,
   ceremony after ceremony, the escrow compartment of every account that has one — never the private
-  vault. Against the administrator holding the sealed key file and its passphrase, the ceremony holds
-  nothing: they open the escrow outside the library.
+  vault. Without a keeper, against the administrator holding the sealed key file and its passphrase,
+  the ceremony holds nothing: they open the escrow outside the library. Under one, whoever reaches the
+  keeper is handed, once due, a box the admin key opens outside the ceremony: the delay, the objection
+  and the record the holder sees are what holds.
 - **The admin seal does not authenticate the escrow's content.** Whoever writes to the database can,
   with the public key alone, seal and fill a new compartment. The seal names its account and is
   refused in another's row; that is all it claims.

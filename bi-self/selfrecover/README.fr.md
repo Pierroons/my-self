@@ -113,8 +113,10 @@ Une liste de 7776 mots — soit exactement 6⁵ : cinq dés désignent un mot.
 
 La passphrase a deux sources, au choix de l'utilisateur :
 
-- **la bibliothèque la tire** : six mots de la liste anglaise, par `random_int`, le
-  générateur cryptographique de PHP (`src/Diceware/Wordlist.php`) ;
+- **la bibliothèque la tire** : six mots de la liste de la langue que le déploiement
+  donne à `Recovery`, anglaise ou française, par `random_int`, le générateur
+  cryptographique de PHP (`src/Diceware/Wordlist.php`). Appelée sans langue,
+  `Recovery::engendrerPassphrase()` tire dans la liste anglaise ;
 - **l'utilisateur l'apporte**, tirée aux dés dans la liste anglaise ou française, à
   l'inscription comme à chaque récupération. `Recovery::validerPassphraseApportee()` exige
   six mots au moins, tous dans l'une des deux listes, aucun répété, et la range en

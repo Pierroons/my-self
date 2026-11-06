@@ -68,8 +68,9 @@ final class Etiquette
     public const PREFIXE_SUSPICION   = 'l1-liste:';
 
     /**
-     * Ouverture d'un dossier de niveau 3 : comptée, jamais attribuée — aucun nom
-     * de compte n'entre dans cette étiquette.
+     * Ouverture d'un dossier de niveau 3 : comptée pour tout le service, par nom
+     * tapé et par adresse, chacun sous HMAC ; la ligne ne porte aucune adresse
+     * dans sa colonne. `Escalade::etiquette()` dit pourquoi.
      */
     public const PREFIXE_L3_OUVRIR = 'l3:ouvrir:';
 

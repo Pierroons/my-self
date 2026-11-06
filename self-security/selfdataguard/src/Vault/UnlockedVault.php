@@ -11,6 +11,7 @@ use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use RuntimeException;
@@ -42,6 +43,8 @@ use RuntimeException;
  */
 final class UnlockedVault
 {
+    private const OBJECTION_SEED_TAG = "selfdataguard/objection-seed/v1\0";
+
     private string $masterKey;
     private bool $locked = false;
 
@@ -103,23 +106,58 @@ final class UnlockedVault
      * A new escrow compartment: its key drawn here, wrapped under the master key
      * for the user, sealed to the administrator's public key.
      *
+     * Given a keeper's public keys, wrap_user also carries the objection seed,
+     * derived from the master key — the same at every deposit of this vault —,
+     * the escrowId, which is the fingerprint of its public key, and those keys;
+     * wrap_admin is sealed again to the keeper (KeeperSeal). What the holder
+     * sealed under the master key, the administrator cannot rewrite: the keeper
+     * a session asks is the one named at the deposit, not the one the database
+     * names today, and the escrowId is computed, not read from the database.
+     *
+     * $createdAt and $revision carry over from the compartment a new key
+     * replaces; the storage compares the revision when it writes.
+     *
+     * @param array{sign: string, box: string}|null $keeperPublicKeys
      * @return array{record: EscrowRecord, unlocked: UnlockedEscrow}
      */
-    public function createEscrow(string $adminPublicKeyB64, DateTimeImmutable $now): array
-    {
+    public function createEscrow(
+        string $adminPublicKeyB64,
+        DateTimeImmutable $now,
+        ?array $keeperPublicKeys = null,
+        ?DateTimeImmutable $createdAt = null,
+        int $revision = 0
+    ): array {
         $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);
+        $seed      = null;
+        $escrowId  = null;
+        $plain     = $escrowKey;
         try {
-            $wrapUser = Primitives::encrypt($escrowKey, $this->key(), EscrowVault::wrapAad($this->userId));
-            $unlocked = new UnlockedEscrow(userId: $this->userId, escrowKey: $escrowKey);
+            if ($keeperPublicKeys !== null) {
+                $keeperPublicKeys = KeeperSeal::checkKeys($keeperPublicKeys);
+                $seed     = $this->objectionSeed();
+                $escrowId = $this->escrowId();
+                $plain = $escrowKey . $escrowId . $keeperPublicKeys['sign'] . $keeperPublicKeys['box'] . $seed;
+            }
+            $wrapUser = Primitives::encrypt($plain, $this->key(), EscrowVault::wrapAad($this->userId));
+            $unlocked = $keeperPublicKeys === null
+                ? new UnlockedEscrow(userId: $this->userId, escrowKey: $escrowKey)
+                : new UnlockedEscrow($this->userId, $escrowKey, $escrowId, $keeperPublicKeys, $seed);
         } finally {
             Primitives::zeroize($escrowKey);
+            Primitives::zeroize($plain);
+            if ($seed !== null) {
+                Primitives::zeroize($seed);
+            }
         }
         $record = new EscrowRecord(
             userId:    $this->userId,
             wrapUser:  $wrapUser,
-            wrapAdmin: $unlocked->sealToAdmin($adminPublicKeyB64),
-            createdAt: $now,
-            updatedAt: $now
+            wrapAdmin: $keeperPublicKeys === null
+                ? $unlocked->sealToAdmin($adminPublicKeyB64)
+                : $unlocked->sealToKeeper($adminPublicKeyB64),
+            createdAt: $createdAt ?? $now,
+            updatedAt: $now,
+            revision:  $revision
         );
         return ['record' => $record, 'unlocked' => $unlocked];
     }
@@ -148,10 +186,55 @@ final class UnlockedVault
             throw new RuntimeException('Could not unwrap escrow with user master key', previous: $e);
         }
         try {
-            return new UnlockedEscrow(userId: $record->userId, escrowKey: $escrowKey);
+            return EscrowVault::unwrapUserPlain($record->userId, $escrowKey);
         } finally {
             Primitives::zeroize($escrowKey);
         }
+    }
+
+    /**
+     * The escrowId of this vault's escrow under a keeper: the fingerprint of
+     * its objection key, computed from the master key — what the holder asks
+     * the keeper about, whatever the database holds.
+     */
+    public function escrowId(): string
+    {
+        $pair = sodium_crypto_sign_seed_keypair($this->objectionSeed());
+        try {
+            return KeeperSeal::escrowIdFor(sodium_crypto_sign_publickey($pair));
+        } finally {
+            Primitives::zeroize($pair);
+        }
+    }
+
+    /** The holder's objection to the read of this vault's escrow for $caseRef (KeeperSeal::verifyObjection()). */
+    public function signEscrowObjection(string $caseRef): string
+    {
+        return $this->signEscrowToken(KeeperSeal::objectionMessage($this->escrowId(), $caseRef));
+    }
+
+    /** The holder's retirement of this vault's escrow from the keeper whose fingerprint is $keeperPrint. */
+    public function signEscrowRetirement(string $keeperPrint): string
+    {
+        return $this->signEscrowToken(KeeperSeal::retirementMessage($this->escrowId(), $keeperPrint));
+    }
+
+    private function signEscrowToken(string $message): string
+    {
+        $pair   = sodium_crypto_sign_seed_keypair($this->objectionSeed());
+        $secret = sodium_crypto_sign_secretkey($pair);
+        try {
+            return KeeperSeal::token($message, $secret);
+        } finally {
+            Primitives::zeroize($secret);
+            Primitives::zeroize($pair);
+        }
+    }
+
+    /** The same seed at every deposit and under every keeper: the holder objects to any box of the escrow. */
+    private function objectionSeed(): string
+    {
+        return hash_hmac('sha256', self::OBJECTION_SEED_TAG . $this->userId, $this->key(), true);
     }
 
     private function key(): string

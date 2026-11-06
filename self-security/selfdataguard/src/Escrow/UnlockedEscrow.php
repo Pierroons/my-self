@@ -23,18 +23,44 @@ use RuntimeException;
 final class UnlockedEscrow
 {
     private string $escrowKey;
+    private ?string $objectionSeed;
     private bool $locked = false;
 
+    /**
+     * Sealed to a keeper, an escrow also holds what wrap_user carries beside its
+     * key: the escrowId, the keeper's two public keys, and the seed of the key
+     * its holder objects with. The escrowId and the keeper's keys are public;
+     * the seed is not, and stays here like the key.
+     *
+     * @param array{sign: string, box: string}|null $keeper the keeper's public keys
+     */
     public function __construct(
         public readonly string $userId,
-        #[\SensitiveParameter] string $escrowKey
+        #[\SensitiveParameter] string $escrowKey,
+        public readonly ?string $escrowId = null,
+        public readonly ?array $keeper = null,
+        #[\SensitiveParameter] ?string $objectionSeed = null
     ) {
         if (strlen($escrowKey) !== Primitives::KEY_LEN) {
             throw new RuntimeException(
                 'escrowKey must be exactly ' . Primitives::KEY_LEN . ' bytes'
             );
         }
-        $this->escrowKey = $escrowKey;
+        if (($escrowId === null) !== ($keeper === null) || ($keeper === null) !== ($objectionSeed === null)) {
+            throw new RuntimeException('An escrow sealed to a keeper names its escrowId, its keeper and its objection seed');
+        }
+        if ($keeper !== null) {
+            KeeperSeal::checkKeys($keeper);
+            if (strlen((string) $escrowId) !== KeeperSeal::ESCROW_ID_LEN || strlen((string) $objectionSeed) !== SODIUM_CRYPTO_SIGN_SEEDBYTES) {
+                throw new RuntimeException('Malformed keeper binding: escrowId or objection seed of the wrong length');
+            }
+        }
+        $this->escrowKey     = $escrowKey;
+        $this->objectionSeed = $objectionSeed;
+        if ($keeper !== null && !hash_equals(KeeperSeal::escrowIdFor($this->objectionPublic()), (string) $escrowId)) {
+            $this->lock();
+            throw new RuntimeException('This escrowId is not the fingerprint of the objection key wrap_user carries');
+        }
     }
 
     /** An escrow field, bound to this account and to its name. */
@@ -67,6 +93,38 @@ final class UnlockedEscrow
         }
     }
 
+    /**
+     * wrap_admin under this escrow's keeper: the account-bound wrap of
+     * sealToAdmin(), sealed again to the keeper, with the public half of the
+     * objection key inside.
+     */
+    public function sealToKeeper(string $adminPublicKeyB64): string
+    {
+        if ($this->keeper === null) {
+            throw new RuntimeException('This escrow is not bound to a keeper');
+        }
+        $inner = $this->sealToAdmin($adminPublicKeyB64);
+        return KeeperSeal::wrap((string) $this->escrowId, $this->userId, $this->objectionPublic(), $inner, $this->keeper['box']);
+    }
+
+    private function objectionPublic(): string
+    {
+        $pair = sodium_crypto_sign_seed_keypair($this->seed());
+        try {
+            return sodium_crypto_sign_publickey($pair);
+        } finally {
+            Primitives::zeroize($pair);
+        }
+    }
+
+    private function seed(): string
+    {
+        if ($this->locked) {
+            throw new RuntimeException('Escrow is locked — re-unlock to access again');
+        }
+        return (string) $this->objectionSeed;
+    }
+
     private function key(): string
     {
         if ($this->locked) {
@@ -86,6 +144,9 @@ final class UnlockedEscrow
             return;
         }
         Primitives::zeroize($this->escrowKey);
+        if ($this->objectionSeed !== null) {
+            Primitives::zeroize($this->objectionSeed);
+        }
         $this->locked = true;
     }
 
@@ -107,7 +168,10 @@ final class UnlockedEscrow
     /** Keep the key out of var_dump() and print_r(), as UnlockedVault does. */
     public function __debugInfo(): array
     {
-        return ['userId' => $this->userId, 'locked' => $this->locked, 'escrowKey' => '[redacted]'];
+        return ['userId' => $this->userId, 'locked' => $this->locked, 'escrowKey' => '[redacted]',
+                'escrowId' => $this->escrowId === null ? null : bin2hex($this->escrowId),
+                'keeper' => $this->keeper === null ? null : KeeperSeal::fingerprint($this->keeper),
+                'objectionSeed' => $this->objectionSeed === null ? null : '[redacted]'];
     }
 
     /**

@@ -10,9 +10,11 @@ namespace Pierroons\SelfDataGuard;
  *
  * The recovery library issues a ticket in the transaction that accepts the
  * recovery, and keeps it; this answers which kind of acceptance a ticket is,
- * and for which userId. SelfRecover's arrives with its bridge
- * (`Pierroons\SelfRecover\Pont`). Without one given to the façade, those
- * gestures take no ticket, as before 0.8.0.
+ * and for which userId. SelfRecover ships no implementation: the integrator
+ * writes one over SelfRecover's `StorageInterface::ticketEmis()`, which gives
+ * the account and the kind of a ticket it stored, and maps that account to the
+ * vault's userId. Without one given to the façade, those gestures take no
+ * ticket, as before 0.8.0.
  *
  * The kinds are SelfRecover's words: `sanity_couplage_dataguard.php` keeps the
  * two libraries in agreement.

@@ -58,7 +58,9 @@ alerter() {
         -d "$message" "$NTFY_URL" > /dev/null 2>&1 || true
 }
 
-trap 'alerter "SelfJustice — index Judilibre en echec" "Arret ligne $LINENO. Index precedent restaure, voir $LOG_FILE."' ERR
+# Ce piège ne restaure rien : il dit où le script s'est arrêté, et que l'index est
+# laissé en l'état. Seuls les chemins qui restaurent le disent, plus bas.
+trap 'alerter "SelfJustice — index Judilibre en echec" "Arret ligne $LINENO, index laisse en l etat (sauvegarde : $SAUVEGARDE si presente). Voir $LOG_FILE."' ERR
 
 journal "=== Début rafraîchissement Judilibre ==="
 
@@ -74,7 +76,26 @@ if [ -f "$JUDILIBRE_DB" ]; then
     journal "Sauvegarde : $SAUVEGARDE"
 fi
 
-avant=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions" 2>/dev/null || echo 0)
+# Ce que Judilibre a écrit, et lui seul. La table est partagée avec JADE, qui peut
+# tourner pendant ce passage : leurs deux timers sont `Persistent=true` et se
+# rattrapent au même démarrage. Comptée entière, un ajout de JADE masquerait un
+# rafraîchissement qui n'a rien apporté. Même expression que `par_source` dans
+# `/status` ; une base d'avant JADE n'a pas la colonne et se compte entière.
+compter_judilibre() {
+    # Une erreur de la base ne se confond pas avec « pas de colonne » : elle sort
+    # en échec, au lieu de basculer en silence sur le compte de toute la table.
+    local colonne
+    colonne=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM pragma_table_info('decisions') WHERE name='source'") || return 1
+    if [ "$colonne" = "1" ]; then
+        sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions WHERE COALESCE(source,'judilibre')='judilibre'"
+    else
+        sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions"
+    fi
+}
+
+# Zéro seulement pour une base qui n'existe pas encore : une erreur de lecture sort
+# en échec, au lieu de devenir un zéro qui ferait passer toute la table pour neuve.
+if [ -f "$JUDILIBRE_DB" ]; then avant=$(compter_judilibre); else avant=0; fi
 
 # 🔑 **Trois issues, pas deux.** Le 16/09/2026, cinq tranches refusées sur
 # quatre-vingt-douze ont fait restaurer un index qui venait de gagner 4 190
@@ -83,6 +104,8 @@ avant=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions" 2>/dev/null || 
 #
 #   0  moisson entière                 → on garde, le marqueur a avancé
 #   3  incomplète, base saine          → on GARDE, le marqueur n'a pas avancé
+#   4  juridiction absente de l'index  → on GARDE, et l'alerte demande une
+#                                        moisson complète : rien ne se reprendra seul
 #   *  échec, base peut-être à moitié  → on restaure
 #
 # `|| rc=$?` est nécessaire : `set -e` et le `trap ERR` tueraient le script sur
@@ -91,12 +114,20 @@ rc=0
 python3 "$SCRIPT" --depuis auto >> "$LOG_FILE" 2>&1 || rc=$?
 
 if [ "$rc" = "3" ]; then
-    apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
+    apres=$(compter_judilibre)
     journal "Moisson partielle — index CONSERVÉ : $avant → $apres (+$((apres - avant)))."
     journal "Fraîcheur NON avancée ; les tranches refusées seront reprises au passage suivant."
     rm -f "$SAUVEGARDE"
     alerter "SelfJustice — moisson Judilibre partielle" \
             "Index conserve et enrichi ($avant -> $apres), mais incomplet : la fraicheur n'avance pas. Voir $LOG_FILE."
+    exit 1
+elif [ "$rc" = "4" ]; then
+    apres=$(compter_judilibre)
+    journal "Juridiction absente de l'index — index CONSERVÉ : $avant → $apres (+$((apres - avant)))."
+    journal "Fraîcheur NON avancée ; une moisson complète (build_judilibre_index.py sans --depuis) est nécessaire."
+    rm -f "$SAUVEGARDE"
+    alerter "SelfJustice — Judilibre : juridiction absente de l'index" \
+            "Le rafraichissement ne la remplit pas : lancer une moisson complete (build_judilibre_index.py sans --depuis). Index conserve ($avant -> $apres). Voir $LOG_FILE."
     exit 1
 elif [ "$rc" != "0" ]; then
     if [ -f "$SAUVEGARDE" ]; then
@@ -108,8 +139,8 @@ elif [ "$rc" != "0" ]; then
     exit 1
 fi
 
-apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
-journal "Décisions : $avant → $apres (+$((apres - avant)))"
+apres=$(compter_judilibre)
+journal "Décisions Judilibre : $avant → $apres (+$((apres - avant)))"
 
 # Un rafraîchissement qui n'apporte rien n'est pas une réussite : soit la source
 # est muette, soit la fenêtre est mal calculée. Dans les deux cas ça se signale,

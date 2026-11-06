@@ -1,0 +1,17 @@
+[Unit]
+Description=CTF Saison 2 — l'arbre servi est-il celui qu'on a deploye
+Documentation=file:/usr/local/sbin/ctf-s2-integrite
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ctf-s2-integrite
+# Lecture seule, sauf son journal et le canal d'alerte.
+ProtectSystem=strict
+ReadWritePaths=/var/log
+# read-only, et non true : la reference d integrite vit dans /root/, que
+# `true` masque ENTIEREMENT — le service criait alors son absence pendant
+# que le fichier etait bien la, et un lancement a la main reussissait.
+# Mesure du 05/10 : ExecMainStatus=1 avec true, 0 avec read-only.
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true

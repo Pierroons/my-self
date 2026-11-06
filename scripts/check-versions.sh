@@ -11,8 +11,9 @@
 # Usage : bash scripts/check-versions.sh                        les porteurs disent la version de modules.json,
 #                                                               et le statut quand le module en déclare un
 #         bash scripts/check-versions.sh --tags                 chaque version a son tag <id>-v<version>
-#         bash scripts/check-versions.sh --publications         chaque version est publiée, et ce qui est
-#                                                               déclaré retiré ne sert plus (aucun secret dédié)
+#         bash scripts/check-versions.sh --publications         chaque version est publiée — release, image,
+#                                                               paquet — et ce qui est déclaré retiré ne sert
+#                                                               plus (aucun secret dédié)
 #         bash scripts/check-versions.sh --artefacts-orphelins  aucun paquet du compte n'est publié au nom
 #                                                               de ce dépôt sans être déclaré (gh authentifié)
 # Sortie : 0 si tout concorde, 1 sinon, 2 si modules.json est illisible ou si un point n'a pas pu être établi.
@@ -21,6 +22,9 @@
 # du 28/07 au 28/09/2026 : le rangement du 18/08 avait supprimé le Dockerfile et le workflow qui la
 # construisaient, et quatre tags sont passés ensuite sans que rien ne le dise. Les porteurs de version
 # vivant hors du dépôt échappent au grep : ces deux modes vont les demander au registre.
+#
+# Un index de paquets est le même angle mort qu'un registre d'images : une version publiée sur PyPI est
+# un porteur que le dépôt ne contient pas. Un module le déclare par une clé « pypi », nom du paquet.
 #
 # En mode --tags, une version sans tag est signalée en jaune, puis en rouge au bout de
 # VERSIONS_DELAI_JOURS jours (7 par défaut), comptés depuis le jour où modules.json porte cette version.
@@ -253,6 +257,36 @@ def interroger_ghcr(reference):
         return "inconnu", []
 
 
+FORME_PAQUET = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\Z")
+
+
+def interroger_pypi(nom):
+    """(« sert » | « absent » | « inconnu » | « malformée », versions installables) — ce que l'index
+    donne à un anonyme, sans secret, comme pour le registre d'images.
+
+    🔑 L'appel va à l'API JSON, jamais à la page du projet : `pypi.org/project/<nom>/` rend 200 pour
+    un paquet qui n'existe pas, et un contrôle bâti sur elle serait vert d'avance.
+
+    Une version *yanked* reste listée par l'index alors que `pip` ne l'installe plus : elle ne compte
+    donc pas comme servie, et un paquet dont tout est retiré rend « absent ». C'est ce qui permet au
+    même appel de mesurer une version annoncée et un artefact déclaré retiré."""
+    if not FORME_PAQUET.match(nom):
+        return "malformée", []
+    code, corps = http(f"https://pypi.org/pypi/{urllib.parse.quote(nom, safe='')}/json",
+                       {"Accept": "application/json", "User-Agent": "check-versions"})
+    if code == 404:
+        return "absent", []
+    if code != 200:
+        return "inconnu", []
+    try:
+        publiees = json.loads(corps).get("releases") or {}
+    except ValueError:
+        return "inconnu", []
+    servies = [v for v, fichiers in publiees.items()
+               if fichiers and not all(f.get("yanked") for f in fichiers)]
+    return ("sert", servies) if servies else ("absent", [])
+
+
 # --publications
 if os.environ["MODE"] == "--publications":
     print("▸ Publications — ce que ce dépôt publie hors de lui")
@@ -293,22 +327,44 @@ if os.environ["MODE"] == "--publications":
                      f"annoncée depuis {jours} jour(s)")
             (rouges if jours >= delai else jaunes).append(ligne)
 
-    # Un artefact déclaré retiré ne répond plus. Sans délai : une résurrection n'est pas un retard.
-    for a in retires:
-        if a.get("canal") != "ghcr":
-            muets.append(f"{a.get('canal')} {a.get('reference')} : canal que ce contrôle ne sait pas interroger")
-            continue
-        etat, _ = interroger_ghcr(a["reference"])
+    # Un paquet déclaré sert la version annoncée. L'index ne préfixe pas les versions d'un « v ».
+    for m in (m for m in versionnes if m.get("pypi")):
+        etat, servies = interroger_pypi(m["pypi"])
         if etat == "malformée":
-            muets.append(f"ghcr {a['reference']} : référence de forme inattendue, pas interrogée")
+            muets.append(f"pypi {m['pypi']} : nom de paquet de forme inattendue, pas interrogé")
+        elif etat == "inconnu":
+            muets.append(f"pypi {m['pypi']} : l'index n'a pas répondu")
+        elif etat == "sert" and m["version"] in servies:
+            conformes += 1
+        else:
+            jours = int((maintenant - depuis_quand(m["id"], m["version"])) // 86400)
+            porte = ", ".join(sorted(servies)) if servies else "n'est pas installable au public"
+            ligne = (f"{m['nom']} v{m['version']} : pypi {m['pypi']} — {porte}, "
+                     f"annoncée depuis {jours} jour(s)")
+            (rouges if jours >= delai else jaunes).append(ligne)
+
+    # Un artefact déclaré retiré ne répond plus. Sans délai : une résurrection n'est pas un retard.
+    INTERROGEABLES = {"ghcr": interroger_ghcr, "pypi": interroger_pypi}
+    for a in retires:
+        canal, reference = a.get("canal"), a.get("reference")
+        interroger = INTERROGEABLES.get(canal)
+        if interroger is None:
+            muets.append(f"{canal} {reference} : canal que ce contrôle ne sait pas interroger")
+            continue
+        etat, _ = interroger(reference)
+        if etat == "malformée":
+            muets.append(f"{canal} {reference} : référence de forme inattendue, pas interrogée")
         elif etat == "sert":
-            rouges.append(f"ghcr {a['reference']} : déclaré retiré le {a['date']}, sert encore le public")
+            rouges.append(f"{canal} {reference} : déclaré retiré le {a['date']}, sert encore le public")
         elif etat == "absent":
             conformes += 1
         else:
-            muets.append(f"ghcr {a['reference']} : le registre n'a pas répondu")
+            muets.append(f"{canal} {reference} : le registre n'a pas répondu")
 
-    attendus = len(versionnes) + sum(1 for m in versionnes if m.get("ghcr")) + len(retires)
+    attendus = (len(versionnes)
+                + sum(1 for m in versionnes if m.get("ghcr"))
+                + sum(1 for m in versionnes if m.get("pypi"))
+                + len(retires))
     print(f"  ✓ {conformes} publication(s) conforme(s) sur {attendus}")
     for j in jaunes:
         print(f"  • {j} — à publier avant {delai} jours")

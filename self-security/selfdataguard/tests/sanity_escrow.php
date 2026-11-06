@@ -31,10 +31,12 @@ use Pierroons\SelfDataGuard\Escrow\NoHeadWitness;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 
 $failures = 0;
 $passes = 0;
@@ -122,10 +124,12 @@ $asUser['indice_recup'] === ESCROW_PLAINTEXT['indice_recup'] ? ok('user reads ow
 
 section('Two first deposits at once: the one that loses the creation writes under the escrow that won');
 
-// Hides the escrow from one read, as when another request creates it between
-// this one's read and its own creation.
+// Hides the escrow — its row, then its fields — from one read each, as when
+// another request creates it between this one's reads and its own creation.
 $raced = new class ($storage) extends DelegatingStorage {
     public bool $hide = true;
+
+    public bool $hideFields = true;
 
     public function loadEscrow(string $u): ?EscrowRecord
     {
@@ -134,6 +138,15 @@ $raced = new class ($storage) extends DelegatingStorage {
             return null;
         }
         return $this->inner->loadEscrow($u);
+    }
+
+    public function loadEscrowFields(string $u, array $n = []): array
+    {
+        if ($this->hideFields) {
+            $this->hideFields = false;
+            return [];
+        }
+        return $this->inner->loadEscrowFields($u, $n);
     }
 };
 $twice = $dg->register('deux-depots', 'motdepasse-deux-depots');
@@ -150,6 +163,21 @@ try {
         : ko('the escrow does not hold both deposits', json_encode($both));
 } catch (RuntimeException $e) {
     ko('the escrow no longer reads in full: a deposit was sealed under a key that was replaced', $e->getMessage());
+}
+$rowOnly = clone $raced;
+$rowOnly->hide = true;
+$rowOnly->hideFields = false;
+$twiceBis = $dg->register('deux-depots-bis', 'motdepasse-deux-depots-bis');
+$dg->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
+try {
+    (new SelfDataGuard($rowOnly, $blindKey))->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+    $both = $dg->getEscrowFieldsAsUser($twiceBis);
+    ksort($both);
+    $both === ['contact_a' => 'premier dépôt', 'contact_b' => 'second dépôt']
+        ? ok('the second deposit finds the fields of the first before its row: it reads again, and both deposits hold')
+        : ko('the second deposit, finding the fields before the row, lost a deposit', json_encode($both));
+} catch (Throwable $e) {
+    ko('the second deposit, finding the fields before the row, was refused', get_class($e));
 }
 
 // -----------------------------------------------------------------------------
@@ -276,7 +304,7 @@ $failing = new class implements EscrowArbiter {
     }
 };
 try {
-    (new EscrowCeremony($storage, new AuditLog($cLog, str_repeat('s', 32)), $failing, new NoHeadWitness(), 'bench'))
+    (new EscrowCeremony($storage, new AuditLog($cLog, str_repeat('s', 32)), $failing, new NoHeadWitness(), new Pierroons\SelfDataGuard\Escrow\NoKeeper(), 'bench'))
         ->readEscrow('alice', 'case-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
     ko('an arbiter that throws let the escrow be unsealed');
 } catch (EscrowRefusedException $e) {
@@ -629,20 +657,55 @@ heldKey(openWrapAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'
     : ko('a pre-0.6.0 wrap_admin opened to another key');
 
 $autreAdmin = SelfDataGuard::generateAdminRecoveryKey('une autre passphrase admin assez longue');
-$dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
-!EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
-    ? ok('an escrow write leaves an existing wrap_admin as it is, whatever public key it is given')
-    : ko('an escrow write re-sealed or lost the existing wrap_admin');
+$carolAvant = $storage->loadEscrow('carol')->wrapAdmin;
+try {
+    $dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+    ko('a deposit given another administrator key than the database recorded went through');
+} catch (InvalidArgumentException) {
+    $storage->loadEscrow('carol')->wrapAdmin === $carolAvant
+        ? ok('a deposit given another administrator key is refused, and the wrap_admin stays: each deposit re-seals, so another key would take the compartment')
+        : ko('a refused deposit still changed the wrap_admin');
+}
 $dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     && EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
-    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account, and the admin still reads it')
-    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens');
-!$dg->rebindEscrowAdmin($carol, $autreAdmin['publicKey'])
-    && $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account')
+    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin');
+!$dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
     : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
+$dg->setEscrowFields($carol, $admin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+$ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('a deposit with the recorded key re-seals the compartment, and the administrator still reads it')
+    : ko('after a deposit, the administrator no longer reads the escrow');
+
+// Two re-sealings from one read: the storage lets the other request's land first.
+$dave     = $dg->register('dave', 'motdepasse-dave-01', 'dave-memorized');
+$neufDave = $ev->create($dave, $admin['publicKey']);
+$storage->createEscrow($dave->generation(), new EscrowRecord(
+    userId: 'dave', wrapUser: $neufDave['record']->wrapUser,
+    wrapAdmin: sodium_crypto_box_seal(heldKey($neufDave['unlocked']), base64_decode($admin['publicKey'])),
+    createdAt: $neufDave['record']->createdAt, updatedAt: $neufDave['record']->updatedAt
+));
+$interleaved = new class ($storage) extends DelegatingStorage {
+    public bool $other = true;
+
+    public function replaceEscrow(VaultGeneration $g, EscrowRecord $r): void
+    {
+        if ($this->other) {
+            $this->other = false;
+            $this->inner->replaceEscrow($g, $r);
+        }
+        $this->inner->replaceEscrow($g, $r);
+    }
+};
+try {
+    (new SelfDataGuard($interleaved, $blindKey))->rebindEscrowAdmin($dave, $admin['publicKey']);
+    ko('a re-sealing from a read another one already replaced succeeded: the first is lost without an error');
+} catch (StaleEscrowException) {
+    !$interleaved->other
+        ? ok('rebindEscrowAdmin() from a read another re-sealing already replaced throws StaleEscrowException')
+        : ko('precondition: the other re-sealing never ran — the check measures nothing');
+}
 sodium_memzero($skLien);
 
 section('Delete cascade removes escrow');

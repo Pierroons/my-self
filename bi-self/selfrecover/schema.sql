@@ -23,7 +23,7 @@
 -- écrit, un échec non rattaché à un compte compris. La colonne reste nullable
 -- parce que rien n'oblige un intégrateur à étiqueter les lignes de SA page de
 -- connexion. Une base sous l'ancien `NOT NULL` n'a donc plus de migration à
--- faire de ce côté. Si vous voulez quand même rendre la colonne facultative,
+-- faire de ce côté. Si tu veux quand même rendre la colonne facultative,
 -- SQLite ne sait pas retirer un `NOT NULL` — la table se reconstruit, et
 -- `demo/lab/lib/db.php` porte ce modèle-là aussi.
 --

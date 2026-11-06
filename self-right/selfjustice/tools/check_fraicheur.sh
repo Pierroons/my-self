@@ -81,8 +81,23 @@ def volume(bloc):
     return None
 
 
+# Les compteurs qui bougent avec le CALENDRIER, pas avec la base. Depuis le
+# 14/10/2026, `legi.vigueur` compte les versions applicables AU JOUR : il change le
+# jour où une version entre en vigueur ou cesse de s'appliquer, sans que la base ait
+# changé d'un octet — 16 jours de bascule entre le 01/10 et le 31/12/2026, dont le
+# 1er novembre, jour de synchronisation. Dans l'empreinte, un tel jour ferait croire
+# la base refaite et réduirait au silence la règle du trompe-l'œil, celle qui voit
+# une date avancer sur une base inchangée.
+#
+# NOMMÉS, pas devinés : une heuristique sur les noms de clés rendrait un vert dont
+# personne ne connaît la portée. Un compteur ajouté à /status qui dépendrait de la
+# date doit être inscrit ici, et tests/test_fraicheur.sh le fait rougir sinon.
+HORS_EMPREINTE = {"vigueur"}
+
+
 def empreinte(bloc, prefixe=""):
-    """Tous les compteurs entiers du bloc, sous-comptes compris.
+    """Tous les compteurs entiers du bloc, sous-comptes compris — sauf ceux du
+    calendrier (HORS_EMPREINTE), qui bougent sans que la base bouge.
 
     🔑 Le total seul ne suffit pas à dire qu'une base n'a pas bougé. Le
     21/08/2026, le catalogue SelfAct a été resynchronisé et a rendu 1 895
@@ -95,7 +110,7 @@ def empreinte(bloc, prefixe=""):
     plat = {}
     for cle, val in (bloc or {}).items():
         chemin = f"{prefixe}{cle}"
-        if isinstance(val, bool):
+        if isinstance(val, bool) or chemin in HORS_EMPREINTE:
             continue
         if isinstance(val, int):
             plat[chemin] = val
@@ -133,6 +148,15 @@ try:
         volumes[nom] = volume(bloc)
         empreintes[nom] = empreinte(bloc)
         provenances[nom] = bloc.get("provenance") or {}
+    # 🔑 **La date de la jurisprudence est celle de Judilibre : son empreinte
+    # aussi.** La table est partagée avec JADE, qui avance chaque soir. Prise
+    # entière, l'empreinte bougeait avec JADE et masquait un Judilibre figé
+    # derrière une date avancée — exactement le trompe-l'œil que la règle doit
+    # voir. Le volume reste le total, dont la baisse nette se signale ; celle de
+    # Judilibre seul se juge plus bas, sur cette empreinte.
+    par_source = (st.get("jurisprudence") or {}).get("par_source") or {}
+    if isinstance(par_source.get("judilibre"), int):
+        empreintes["jurisprudence"] = {"par_source.judilibre": par_source["judilibre"]}
     # 🔑 **JADE se suit à part.** La date de la jurisprudence est celle de
     # Judilibre, qui avance : le fonds administratif est resté figé au 10/09/2026
     # trois semaines durant sans qu'elle bouge d'un jour. Sa date est celle du
@@ -267,6 +291,16 @@ for nom, courant in etat_courant.items():
 # catalogue précédent reste servi. Ici, sa baisse se lit sans se crier.
 SUIT_UN_SITE = {"catalogue SelfAct"}
 
+def compte_juge(etat):
+    """Le compteur sur lequel la base est jugée, et son nom : Judilibre seul
+    quand l'empreinte de la jurisprudence lui a été réduite, le volume sinon.
+    Citer le total des deux collecteurs dans une alerte sur Judilibre donnerait
+    à l'exploitant un chiffre qui a bougé, et il classerait l'alerte fausse."""
+    e = etat.get("empreinte") or {}
+    if "par_source.judilibre" in e:
+        return e["par_source.judilibre"], "décisions Judilibre"
+    return etat.get("volume"), "volume"
+
 for nom, courant in etat_courant.items():
     veille = etat_precedent.get(nom)
     if not veille or courant["volume"] is None or veille.get("volume") is None:
@@ -304,11 +338,12 @@ for nom, courant in etat_courant.items():
                 f"{len(provenances[nom])} sources déclarées, voir leur provenance"
             )
         else:
+            n, quoi = compte_juge(courant)
             retards.append(
                 f"{nom} : date avancée au {d_now.isoformat()} sans aucun ajout "
-                f"({courant['volume']} inchangé) — synchronisation en trompe-l'œil"
+                f"({quoi} : {n}, inchangé) — synchronisation en trompe-l'œil"
             )
-            lignes.append(f"  ✗ {nom:20} date +1 · volume figé à {courant['volume']}")
+            lignes.append(f"  ✗ {nom:20} date +1 · {quoi} figé à {n}")
     elif courant["volume"] < veille["volume"] and nom in SUIT_UN_SITE:
         lignes.append(
             f"  · {nom:20} volume {veille['volume']} → {courant['volume']} — retraits à la source"
@@ -318,6 +353,14 @@ for nom, courant in etat_courant.items():
             f"{nom} : volume en BAISSE, {veille['volume']} → {courant['volume']}"
         )
         lignes.append(f"  ✗ {nom:20} volume en baisse ({veille['volume']} → {courant['volume']})")
+    # Le total peut tenir pendant que Judilibre perd des décisions, si JADE en
+    # ajoute autant : la baisse se juge aussi sur le compteur de Judilibre seul.
+    elif ((e_now or {}).get("par_source.judilibre") is not None
+          and (e_old or {}).get("par_source.judilibre") is not None
+          and e_now["par_source.judilibre"] < e_old["par_source.judilibre"]):
+        a_old, a_now = e_old["par_source.judilibre"], e_now["par_source.judilibre"]
+        retards.append(f"{nom} : décisions Judilibre en BAISSE, {a_old} → {a_now}")
+        lignes.append(f"  ✗ {nom:20} décisions Judilibre en baisse ({a_old} → {a_now})")
 
 # 🔑 **Une copie locale est un pansement, et un pansement s'oublie.** Depuis le
 # 20/08/2026, le Conseil de l'Europe rend 403 à tout client HTTP : la CEDH est

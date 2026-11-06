@@ -31,7 +31,12 @@ BASE=""
 trap '[ -n "$SERVEUR" ] && kill "$SERVEUR" 2>/dev/null' EXIT
 
 for _ in 1 2 3; do
-    port=$(( 8100 + RANDOM % 900 ))
+    # Un port que le système donne libre. Tiré au hasard, il pouvait être déjà pris
+    # (Tor écoute sur 9050, ou un autre serveur du même banc), et la sonde de
+    # démarrage acceptait alors celui qui répondait à sa place.
+    port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+    # Déjà servi par un autre : on en prend un autre, avant de lancer le nôtre.
+    if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then continue; fi
     php -S "127.0.0.1:$port" -t "$API" >/dev/null 2>&1 &
     candidat=$!
     essai="http://127.0.0.1:$port/deadline.php"
@@ -39,7 +44,7 @@ for _ in 1 2 3; do
         curl -sf -o /dev/null "$essai?start=2026-01-15&months=1" && break
         sleep 0.1
     done
-    if curl -sf -o /dev/null "$essai?start=2026-01-15&months=1"; then
+    if kill -0 "$candidat" 2>/dev/null && curl -sf -o /dev/null "$essai?start=2026-01-15&months=1"; then
         SERVEUR=$candidat
         BASE=$essai
         break

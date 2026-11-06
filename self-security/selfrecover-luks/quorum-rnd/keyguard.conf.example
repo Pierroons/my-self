@@ -3,7 +3,7 @@
 # Toutes ces valeurs sont aussi surchargeables par variable d'environnement du même nom.
 
 # Témoins du quorum : endpoints HTTP "/part", séparés par des virgules.
-# (adresses d'exemple — remplacer par les vôtres)
+# (adresses d'exemple — remplace-les par les tiennes)
 WITNESSES=http://192.0.2.2:9876/part,http://192.0.2.3:9876/part,http://192.0.2.4:9877/part
 
 # Répertoire des secrets locaux : auth_key.bin (clé HMAC des témoins) et selfrecover_salt.

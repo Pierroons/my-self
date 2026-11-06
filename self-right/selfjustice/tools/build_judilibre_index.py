@@ -487,33 +487,59 @@ def moissonner(conn, juri):
 RECOUVREMENT_JOURS = 30
 
 
-def depuis_auto(conn):
-    """Date de reprise : la plus récente décision connue, moins le recouvrement."""
-    borne = conn.execute(
-        "SELECT MIN(m) FROM (SELECT MAX(decision_date) AS m FROM decisions "
-        "WHERE date_suspecte = 0 GROUP BY jurisdiction)"
-    ).fetchone()[0]
-    if not borne:
-        return DATE_DEBUT
-    depart = datetime.strptime(borne, "%Y-%m-%d").date() - timedelta(days=RECOUVREMENT_JOURS)
-    return depart.isoformat()
+def depuis_auto(conn, jour):
+    """Date de reprise, et juridictions moissonnées absentes de l'index.
+
+    La date est la plus récente décision connue, moins le recouvrement.
+
+    🔑 Seules les juridictions de `JURIDICTIONS` comptent. La table `decisions`
+    est partagée avec le collecteur JADE, qui y range des fonds éteints : la
+    Cour de discipline budgétaire s'arrête en 2000. Prise dans le calcul, elle
+    fait repartir chaque rafraîchissement de l'an 2000.
+
+    Une décision datée après `jour` est une erreur de l'amont, écartée comme
+    dans `juris_couverture()` d'api.php : prise pour la plus récente, elle
+    placerait la reprise après un trou qui ne serait jamais repris.
+
+    Une juridiction absente de l'index n'a pas de date de reprise : elle est
+    rendue à part, parce que seule une moisson complète la remplit. La fondre
+    dans la fenêtre ramènerait celle-ci à `DATE_DEBUT` pour toutes.
+    """
+    plus_recentes = {}
+    for juri in JURIDICTIONS:
+        plus_recentes[juri] = conn.execute(
+            "SELECT MAX(decision_date) FROM decisions "
+            "WHERE date_suspecte = 0 AND decision_date <= ? AND jurisdiction = ?",
+            (jour, juri),
+        ).fetchone()[0]
+    presentes = [d for d in plus_recentes.values() if d]
+    absentes = [j for j, d in plus_recentes.items() if not d]
+    if not presentes:
+        return DATE_DEBUT, absentes
+    depart = (datetime.strptime(min(presentes), "%Y-%m-%d").date()
+              - timedelta(days=RECOUVREMENT_JOURS))
+    return depart.isoformat(), absentes
 
 
-def rafraichir(conn, depuis, jusqua):
+def rafraichir(conn, depuis, jusqua, juridictions):
     """Remoissonne la fenêtre récente, tranches déjà faites comprises.
 
     `moissonner_intervalle` saute ce qui figure dans `intervalles_faits` : sans
     cet effacement préalable, un rafraîchissement ne rapporterait jamais rien.
+    L'effacement se borne aux juridictions remoissonnées : celui d'une autre
+    est sa mémoire de reprise.
     """
+    marques = ",".join("?" * len(juridictions))
     efface = conn.execute(
-        "DELETE FROM intervalles_faits WHERE date_fin >= ? AND date_debut <= ?",
-        (depuis, jusqua),
+        f"DELETE FROM intervalles_faits WHERE jurisdiction IN ({marques}) "
+        "AND date_fin >= ? AND date_debut <= ?",
+        (*juridictions, depuis, jusqua),
     ).rowcount
     conn.commit()
     journal(f"fenêtre {depuis} → {jusqua} : {efface} tranche(s) à refaire")
 
     complet = True
-    for juri in JURIDICTIONS:
+    for juri in juridictions:
         etat = {"recus": 0, "tranches": 0, "total": 0}
         if not moissonner_intervalle(conn, juri, depuis, jusqua, etat):
             complet = False
@@ -533,11 +559,19 @@ def main():
     # sur les juridictions suivantes masquerait la cause derrière un décompte
     # rassurant. Ce qui est déjà en base reste écrit — les commits sont par
     # tranche, pas en fin de course.
+    absentes = []
     try:
         if incremental:
-            depuis = depuis_auto(conn) if valeur == "auto" else valeur
             jusqua = datetime.now(timezone.utc).date().isoformat()
-            complet = rafraichir(conn, depuis, jusqua)
+            if valeur == "auto":
+                depuis, absentes = depuis_auto(conn, jusqua)
+            else:
+                depuis = valeur
+            for juri in absentes:
+                journal(f"⚠️ {juri} : absente de l'index — le rafraîchissement ne la "
+                        f"moissonne pas ; une moisson complète (sans --depuis) la remplit")
+            presentes = [j for j in JURIDICTIONS if j not in absentes]
+            complet = rafraichir(conn, depuis, jusqua, presentes) if presentes else True
         else:
             complet = True
             for juri in JURIDICTIONS:
@@ -578,9 +612,22 @@ def main():
     # elles étaient traitées comme une seule.
     #
     # Le code 3 est lu par `update_judilibre.sh`, qui restaure sur tout autre
-    # code non nul. Une exception non attrapée sort en 1 et fait donc toujours
-    # restaurer — c'est le cas du 15/09/2026, où la base pouvait être à moitié
-    # écrite.
+    # code non nul que 4. Une exception non attrapée sort en 1 et fait donc
+    # toujours restaurer — c'est le cas du 15/09/2026, où la base pouvait être à
+    # moitié écrite.
+    #
+    # 🔑 **Le code 4 dit autre chose : rien ne se reprendra seul.** Une juridiction
+    # absente de l'index n'est pas remplie par un rafraîchissement ; il faut une
+    # moisson complète, lancée à la main. Les données écrites valent comme en 3,
+    # mais l'alerte doit appeler ce geste, pas promettre un rattrapage. Il passe
+    # avant le 3 : une tranche refusée se reprendra, l'absence non.
+    if absentes:
+        journal(f"Juridiction(s) absente(s) de l'index : {', '.join(absentes)} — index "
+                "CONSERVÉ, marqueur de fraîcheur non avancé ; une moisson complète "
+                "(sans --depuis) est nécessaire.")
+        if not complet:
+            journal("Des tranches ont aussi été refusées : elles seront reprises.")
+        sys.exit(4)
     if not complet:
         journal("Moisson incomplète — index CONSERVÉ, marqueur de fraîcheur "
                 "non avancé ; les tranches refusées seront reprises.")

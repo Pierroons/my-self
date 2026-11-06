@@ -352,6 +352,29 @@ foreach ([
     }
 }
 
+section('The escrow row comes back whole: a column the package carries is kept, one the database lacks refuses');
+
+$col = $dg->register('user-col', 'user-col-password-1', 'user-col-memorized', PHRASE);
+$dg->setEscrowFields($col, $admin['publicKey'], ['contact' => 'contact col']);
+$pdo->exec('ALTER TABLE selfdataguard_escrow ADD COLUMN bench_extra TEXT');
+$pdo->exec("UPDATE selfdataguard_escrow SET bench_extra = 'kept' WHERE user_id = 'user-col'");
+$colRe = $dg->reEnroll($storage->loadVault('user-col')->generation(), 'user-col-password-2');
+$storage->swapWithArchive($storage->loadVault('user-col')->generation(), $colRe['archiveId']);
+$pdo->query("SELECT bench_extra FROM selfdataguard_escrow WHERE user_id = 'user-col'")->fetchColumn() === 'kept'
+    ? ok('a column of the escrow row comes back with it, as the package kept it')
+    : ko('a column of the escrow row was lost on its way back: the restoration names its columns');
+$colRe2 = $dg->reEnroll($storage->loadVault('user-col')->generation(), 'user-col-password-3');
+$pdo->prepare('UPDATE selfdataguard_archives SET package = json_set(package, \'$.escrow.from_a_newer_version\', \'x\') WHERE archive_id = :id')
+    ->execute([':id' => $colRe2['archiveId']]);
+try {
+    $storage->swapWithArchive($storage->loadVault('user-col')->generation(), $colRe2['archiveId']);
+    ko('an escrow column the database does not have was dropped on the way back');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'from_a_newer_version') && count($storage->listArchives('user-col')) === 2
+        ? ok('an escrow column the database lacks refuses the swap, naming it — nothing changed')
+        : ko('refused, but without naming the column, or something changed', $e->getMessage());
+}
+
 section('A value another account took since the archive was made refuses the swap');
 
 $dup = reEnrolled($dg, $storage, 'user-dup', 'dup@example.org', $admin);

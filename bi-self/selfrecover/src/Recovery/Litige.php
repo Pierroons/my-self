@@ -105,7 +105,7 @@ final class Litige
     {
         return sprintf(
             'Litige::%s = %d — ce n\'est pas un instant UNIX (plancher %d, soit 2001). '
-            . 'Cause la plus fréquente : la colonne de votre base est en TEXT, et le '
+            . 'Cause la plus fréquente : la colonne de ta base est en TEXT, et le '
             . 'cast en rend le millésime — (int) "2026-07-12 08:00:00" vaut 2026. '
             . 'Le contrat attend des SECONDES depuis le 1er janvier 1970 UTC.',
             $champ,

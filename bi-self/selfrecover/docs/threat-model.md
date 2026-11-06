@@ -206,7 +206,10 @@ which account is targeted, so anyone fills it with random names or codes, and wh
 holder cannot come back before the window expires. The section on level-1 load already advises a
 queue rather than a cap. A deployment that keeps one should let returns through it. At level 2,
 `Recovery::estCodeDeRetour()` answers before the cap from an old code alone: one HMAC and two indexed
-reads, no Argon2id, and nothing learned by whoever holds no old code. At level 1 the name comes with
+reads, no Argon2id, and nothing learned by whoever holds no old code. Whoever holds one does learn
+something: while the cap refuses other codes, theirs reaches `parCode()` and gets its answer instead
+of the cap's refusal, so they learn it is an old code in an open window. It opens nothing without the
+memorised word. At level 1 the name comes with
 the request and `Escalade::fenetre()` answers; the price is that while the cap refuses, a different
 answer tells anyone who knows the name that the account is in a window.
 

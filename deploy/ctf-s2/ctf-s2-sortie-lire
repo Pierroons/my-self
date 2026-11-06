@@ -1,0 +1,16 @@
+#!/bin/sh
+# Commande forcee de la cle du NAS : rend l'archive deposee, et rien d'autre.
+# La commande que demande le client (SSH_ORIGINAL_COMMAND) n'est jamais lue.
+#
+# Le fichier porte la date de la sauvegarde qu'il contient. Plus de 23 h, il
+# n'est pas rendu : la sauvegarde ou le depot a cesse, et le NAS doit echouer
+# au lieu de ranger une vieille archive sous la date du jour. La sauvegarde a
+# lieu a 04:17 UTC, le NAS tire a 05:00 ou 06:00 UTC : une sauvegarde manquee a
+# deja plus de 24 h au tirage suivant.
+F='/var/lib/<compte-sortie>/sortie/ctf-s2.tar.gz.gpg'
+
+if [ -z "$(find "$F" -mmin -1380 2>/dev/null)" ]; then
+    echo "ECHEC : pas d'archive de moins de 23 h dans la boite de sortie" >&2
+    exit 1
+fi
+exec cat "$F"

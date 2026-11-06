@@ -1,0 +1,11 @@
+[Unit]
+Description=Depot quotidien de la sauvegarde du lab pour le NAS
+
+[Timer]
+# La sauvegarde locale tourne a 04:17 UTC (cron) ; le NAS tire a 07:00 heure
+# de Paris, soit 05:00 ou 06:00 UTC selon la saison.
+OnCalendar=*-*-* 04:45:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

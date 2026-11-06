@@ -234,7 +234,7 @@ async function envoyerRapport(){
   const box=document.getElementById('rtmsg');
   const btn=document.getElementById('btn-rtsend');
   // Ce qui décrit la faille est chiffré DANS CE NAVIGATEUR vers la clé du
-  // programme : le serveur qu'on vous invite à compromettre ne peut pas le lire.
+  // programme : le serveur qu'on t'invite à compromettre ne peut pas le lire.
   const contenu={
     titre:document.getElementById('titre').value,
     description:document.getElementById('description').value,

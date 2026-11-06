@@ -69,16 +69,33 @@ def negatif() -> list[str]:
     # rougirait pour une couverture ÉLARGIE — un garde-fou ne défend pas l'état
     # d'hier. On demande donc à l'instance ce qu'elle couvre, et on interroge un
     # code qui n'y est pas.
+    #
+    # Les candidats sont des juridictions que l'API connaît et que l'amont ne
+    # sert pas. `tj` et `tcom` n'en sont pas : l'amont les vérifie, et leur
+    # absence de l'index passe par un autre chemin, éprouvé juste après. Quand
+    # l'instance couvre déjà toutes les autres, ce chemin n'y est pas atteignable :
+    # le contrôle le dit au lieu d'en mesurer un voisin. `test_sonde_amont.sh`
+    # l'éprouve sur une base qui ne les porte pas toutes.
     _, etat = appeler("/api/status")
     couverts = set((etat.get("jurisprudence") or {}).get("couverture") or {})
-    absente = next((j for j in ("ce", "caa", "ta", "tj", "zzz") if j not in couverts), None)
+    absente = next((j for j in ("ce", "caa", "ta", "tc", "cdbf") if j not in couverts), None)
     if absente is None:
-        echecs.append("aucune juridiction hors index à éprouver — le contrôle négatif est muet")
+        print("  · juridiction hors index : non atteignable sur cette instance, qui les "
+              "couvre toutes — éprouvée par test_sonde_amont.sh")
     else:
         statut, hors = appeler(f"/api/jurisprudence/verifier/470123?jurisdiction={absente}")
         if hors.get("etat") != "indeterminee" or statut != 503:
             echecs.append(f"juridiction hors index « {absente} » → {statut} "
                           f"{hors.get('etat')} (attendu 503 indeterminee)")
+
+    # Un tribunal judiciaire sans date : l'index ne le porte pas et l'amont n'est
+    # pas interrogé, donc rien n'a été vérifié.
+    if "tj" in couverts:
+        print("  · « tj » est dans l'index de cette instance : ce contrôle ne s'y applique pas")
+    else:
+        statut, tj = appeler("/api/jurisprudence/verifier/21%2F04567?jurisdiction=tj")
+        if tj.get("etat") != "indeterminee" or statut != 503:
+            echecs.append(f"« tj » sans date → {statut} {tj.get('etat')} (attendu 503 indeterminee)")
 
     statut, numero = appeler("/api/jurisprudence/search?q=" + urllib.parse.quote("25/01234"))
     if statut != 400:
@@ -91,8 +108,8 @@ if __name__ == "__main__":
     echecs = positif() + negatif()
     total = len(json.loads(JEU.read_text()))
     if echecs:
-        print(f"ÉCHEC — {len(echecs)} problème(s) sur {total} références + 3 contrôles négatifs")
+        print(f"ÉCHEC — {len(echecs)} problème(s) sur {total} références + les contrôles négatifs")
         for e in echecs:
             print("  ·", e)
         sys.exit(1)
-    print(f"OK — {total}/{total} références retrouvées, 3 contrôles négatifs passés")
+    print(f"OK — {total}/{total} références retrouvées, contrôles négatifs passés")
