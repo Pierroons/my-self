@@ -764,10 +764,11 @@ jobs:
       # L'accord sans retour (0.13.3) : la fenêtre d'un niveau 3 range les secrets de qui
       # tient le compte, et après une fraude vue trop tard ou un papier volé, c'est
       # l'attaquant qu'elle laisserait revenir. Chaque canari retire une garde du geste et
-      # exige le rouge sur son cas : la fenêtre née échue, la marque écrite avec l'accord,
-      # la marque reconnue pour son seul dossier, la relecture d'une reprise dans la
-      # transaction de la décision, et le geste refusé sur un refus. Cinq rejeux du banc,
-      # à part des deux étapes du retour, sous le plafond de 900 s de `check-canaris.sh`.
+      # exige le rouge sur son cas : la fenêtre née échue, le refus sur une fenêtre encore
+      # ouverte, la marque relue après son écriture, la marque reconnue pour son seul
+      # dossier, la relecture d'une reprise dans la transaction de la décision, et le geste
+      # refusé sur un refus. Six rejeux du banc, à part des deux étapes du retour, sous le
+      # plafond de 900 s de `check-canaris.sh`.
       - name: Canaris — l'accord sans retour du niveau 3
         run: |
           # @plante
@@ -790,9 +791,12 @@ jobs:
             '            $fin = $maintenant + $this->fenetreDuree;' \
             $R/tests/sanity_escalade.php "❌ ⭐ accordé sans retour, la passphrase de A ne le rend plus à A"
           canari $R/src/Recovery/Escalade.php \
-            '                $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant,' \
-            '                (static fn () => null)($litige->compteId, $maintenant, $maintenant,' \
-            $R/tests/sanity_escalade.php "❌ ⭐ l'accord sans retour est dit à l'arbitre et à qui reprend"
+            "                    && \$ouverte['ferme_le'] > \$maintenant) {" '                    && false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ fenêtre ouverte : l'accord sans retour est refusé"
+          canari $R/src/Recovery/Escalade.php \
+            "                if (!hash_equals(\$marque, (string) (\$this->stockage->fenetreDuCompte(\$litige->compteId)['ticket_niveau3'] ?? ''))) {" \
+            '                if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un stockage qui ne range pas la marque fait lever la décision"
           canari $R/src/Recovery/Escalade.php \
             "                && hash_equals(self::marqueSansRetour(\$litige->numero), (string) (\$avant['ticket_niveau3'] ?? ''));" \
             "                && str_starts_with((string) (\$avant['ticket_niveau3'] ?? ''), 'sans-retour:');" \
@@ -1220,8 +1224,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 285 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 285 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 287 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 287 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

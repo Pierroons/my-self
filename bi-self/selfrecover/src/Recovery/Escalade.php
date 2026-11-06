@@ -805,11 +805,12 @@ final class Escalade
      * Le choix tient jusqu'à l'exécution par une fenêtre de durée nulle, écrite
      * avec l'accord, dont le ticket est la marque du dossier
      * (`marqueSansRetour()`) : elle remplace dès la décision la fenêtre close ou
-     * échue d'avant. Une fenêtre ouverte et non reprise n'est que prolongée, et
-     * garde les secrets de qui tenait le compte avant son premier niveau 3 : le
-     * titulaire actuel n'y a pas de retour.
+     * échue d'avant. Sur une fenêtre encore ouverte et non reprise, le geste est
+     * refusé (`fenetre_ouverte`, avec son échéance) : elle garde les secrets de
+     * qui tenait le compte avant le niveau 3 qui l'a ouverte, et ne serait que
+     * prolongée. Un stockage qui ne range pas la marque fait lever `LogicException`.
      *
-     * @return array{ok: bool, message: string, statut?: string, sans_retour?: bool, refus_dans_la_fenetre?: int, gele?: bool, gel_suggere?: bool, error?: string}
+     * @return array{ok: bool, message: string, statut?: string, sans_retour?: bool, ferme_le?: int, refus_dans_la_fenetre?: int, gele?: bool, gel_suggere?: bool, error?: string}
      */
     public function trancher(
         string $numero,
@@ -862,8 +863,25 @@ final class Escalade
                     return ['ok' => false, 'error' => 'reprise_en_cours',
                             'message' => Messages::dire($this->langue(), 'l3.reprise_en_cours')];
                 }
-                $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant,
-                    self::marqueSansRetour($litige->numero));
+                // Une fenêtre ouverte garde les secrets de qui tenait le compte avant
+                // le niveau 3 qui l'a ouverte — le voleur d'un papier, peut-être —, et
+                // la marque n'y serait que prolongation : refusé jusqu'à son échéance.
+                $ouverte = $this->stockage->fenetreDuCompte($litige->compteId);
+                if ($ouverte !== null && $ouverte['reprise_le'] === null && $ouverte['close_le'] === null
+                    && $ouverte['ferme_le'] > $maintenant) {
+                    $this->stockage->annulerTransaction();
+
+                    return ['ok' => false, 'error' => 'fenetre_ouverte', 'ferme_le' => $ouverte['ferme_le'],
+                            'message' => Messages::dire($this->langue(), 'l3.sans_retour_fenetre_ouverte',
+                                [Duree::enClair($ouverte['ferme_le'] - $maintenant, $this->langue())])];
+                }
+                $marque = self::marqueSansRetour($litige->numero);
+                $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant, $marque);
+                if (!hash_equals($marque, (string) ($this->stockage->fenetreDuCompte($litige->compteId)['ticket_niveau3'] ?? ''))) {
+                    throw new \LogicException(
+                        "Le stockage n'a pas rangé la fenêtre de l'accord sans retour : ouvrirFenetre() ne suit pas son contrat."
+                    );
+                }
             }
             $this->stockage->validerTransaction();
         } catch (LitigeDejaTranche) {
@@ -1246,7 +1264,6 @@ final class Escalade
         return $this->stockage->purgerFenetresEchues($maintenant ?? time());
     }
 
-    /** La fenêtre de ce compte est-elle reprise par son titulaire, en attente de sa clôture ? */
     /**
      * Le ticket de la fenêtre de durée nulle qu'un accord sans retour écrit, et
      * que sa reprise reconnaît. Il ne peut pas valoir un ticket, fait de 32
@@ -1257,6 +1274,7 @@ final class Escalade
         return 'sans-retour:' . hash('sha256', $numero);
     }
 
+    /** La fenêtre de ce compte est-elle reprise par son titulaire, en attente de sa clôture ? */
     private function repriseEnAttente(int $compteId): bool
     {
         $f = $this->stockage->fenetreDuCompte($compteId);
