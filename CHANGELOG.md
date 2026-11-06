@@ -92,35 +92,6 @@ Corrections de la relecture du lot, avant sa publication.
   précédent. Le cas qui exigeait l'état « en vigueur » pour des mots absents de la version applicable
   est inversé.
 
-### SelfDataGuard 0.9.0 — un séquestre que l'administrateur seul n'ouvre plus — 2 novembre 2026
-
-Sous un **gardien** — un second détenteur que l'intégrateur fait tourner hors de la machine qui sert —, le séquestre
-est scellé deux fois : l'administrateur n'ouvre la boîte intérieure qu'une fois le gardien la lui a rendue, après avoir
-inscrit la remise, et le gardien signe pour le titulaire ce qu'il a remis pour l'escrowId que la session calcule depuis
-la clé maîtresse (`escrowReads()` : établi, ou « non établi » avec son motif, jamais « aucune remise ») : une ligne de
-séquestre supprimée, remise d'une sauvegarde, réécrite ou illisible n'ôte au titulaire ni la vue ni l'objection, et un
-gardien qui ne répond pas ne cache que lui-même. Chaque dépôt tire une clé de séquestre neuve. Un délai, réglé par le
-gardien, change toute lecture, d'archive comprise, en annonce à laquelle le titulaire seul peut s'opposer, sous la clé
-d'objection du séquestre — l'escrowId en est l'empreinte ; qui joint le gardien hors de la cérémonie attend aussi. La
-base inscrit le gardien et la clé d'administration ; un gardien remplacé (`changeKeeper()`) n'est jamais repris et
-reste donné aux façades et à la cérémonie : chaque dépôt y retire le séquestre (`retire()`, un jeton qui nomme le
-gardien visé), et la cérémonie lit encore ce qui lui reste scellé. Vider le registre des anciens n'en cache aucun à
-une façade qui les a reçus : elle les y réinscrit, et `changeKeeper()` refuse de prendre comme nouveau gardien un
-gardien qui a pris des retraits. Un ancien disparu pour de bon s'oublie par `forgetFormerKeeper()`, l'exploitant
-cessant de le donner aux façades comme à la cérémonie. La passe de
-l'exploitant (`seal-to-keeper`) scelle au gardien les séquestres d'avant, sans aucun secret en main ;
-`bin/keeper-conformance.php` éprouve un gardien.
-
-Rupture pour un stockage à soi (une colonne de révision, trois méthodes, le record du séquestre bâti par
-`EscrowRecord::parse()`, un troisième fichier pour `bin/storage-conformance.php`) et pour la cérémonie (un gardien,
-nommé ; `DATAGUARD_KEEPER_FILE`). Corrige quatre défauts du code publié, dont deux re-scellements d'une même lecture qui
-réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire un séquestre déposé sous gardien. Le
-détail, la migration et les limites déclarées :
-[`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
-
-Mesuré : 942 cas sur 14 suites (le gardien 208, la conformité du stockage 95) ; cinq étapes de canaris neuves (9,
-147, et trois de 3), chacun vu rouge sur son cas.
-
 ### SelfRecover et SelfDataGuard : la doc rejoint le code publié — 1er novembre 2026
 
 Aucune version ne monte : rien ne change dans ce que le code décide.
@@ -853,6 +824,37 @@ même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le mê
 ayant renoncé aux contrôles qui touchent au système.
 
 ---
+
+## [SelfDataGuard v0.9.0] — 6 novembre 2026
+
+### SelfDataGuard 0.9.0 — un séquestre que l'administrateur seul n'ouvre plus — 2 novembre 2026
+
+Sous un **gardien** — un second détenteur que l'intégrateur fait tourner hors de la machine qui sert —, le séquestre
+est scellé deux fois : l'administrateur n'ouvre la boîte intérieure qu'une fois le gardien la lui a rendue, après avoir
+inscrit la remise, et le gardien signe pour le titulaire ce qu'il a remis pour l'escrowId que la session calcule depuis
+la clé maîtresse (`escrowReads()` : établi, ou « non établi » avec son motif, jamais « aucune remise ») : une ligne de
+séquestre supprimée, remise d'une sauvegarde, réécrite ou illisible n'ôte au titulaire ni la vue ni l'objection, et un
+gardien qui ne répond pas ne cache que lui-même. Chaque dépôt tire une clé de séquestre neuve. Un délai, réglé par le
+gardien, change toute lecture, d'archive comprise, en annonce à laquelle le titulaire seul peut s'opposer, sous la clé
+d'objection du séquestre — l'escrowId en est l'empreinte ; qui joint le gardien hors de la cérémonie attend aussi. La
+base inscrit le gardien et la clé d'administration ; un gardien remplacé (`changeKeeper()`) n'est jamais repris et
+reste donné aux façades et à la cérémonie : chaque dépôt y retire le séquestre (`retire()`, un jeton qui nomme le
+gardien visé), et la cérémonie lit encore ce qui lui reste scellé. Vider le registre des anciens n'en cache aucun à
+une façade qui les a reçus : elle les y réinscrit, et `changeKeeper()` refuse de prendre comme nouveau gardien un
+gardien qui a pris des retraits. Un ancien disparu pour de bon s'oublie par `forgetFormerKeeper()`, l'exploitant
+cessant de le donner aux façades comme à la cérémonie. La passe de
+l'exploitant (`seal-to-keeper`) scelle au gardien les séquestres d'avant, sans aucun secret en main ;
+`bin/keeper-conformance.php` éprouve un gardien.
+
+Rupture pour un stockage à soi (une colonne de révision, trois méthodes, le record du séquestre bâti par
+`EscrowRecord::parse()`, un troisième fichier pour `bin/storage-conformance.php`) et pour la cérémonie (un gardien,
+nommé ; `DATAGUARD_KEEPER_FILE`). Corrige quatre défauts du code publié, dont deux re-scellements d'une même lecture qui
+réussissaient tous les deux. Un retour à la 0.8.0, mesuré, ferme au titulaire un séquestre déposé sous gardien. Le
+détail, la migration et les limites déclarées :
+[`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
+
+Mesuré : 942 cas sur 14 suites (le gardien 208, la conformité du stockage 95) ; cinq étapes de canaris neuves (9,
+147, et trois de 3), chacun vu rouge sur son cas.
 
 ## [SelfModerate v0.7.1] — 1er novembre 2026
 
