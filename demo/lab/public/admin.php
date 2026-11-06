@@ -73,6 +73,9 @@ $causes = [
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
     'levee_en_attente' => 'meute reconnue, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',
+    'ban_en_attente'  => 'réputation à zéro, ban automatique non inscrit : le journal l\'a refusé — le vote négatif suivant le retente',
+    'droit_de_vote_perdu' => 'droit de vote perdu : réputation sous le seuil du vote',
+    'ban_sans_fin'    => 'ban d\'arbitre sans fin en cours',
     'ban_auto'        => 'ban automatique en cours',
     'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
 ];
@@ -198,7 +201,9 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= h(Moderate::dureeEnClair($b['reste'])) ?></td>
           <td><?= $b['plancher'] === null ? '—' : ($b['plancher'] <= time() ? 'passé' : $dt($b['plancher'])) ?></td>
           <td style="white-space:nowrap">
-            <button class="btn mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="pardon">✅ lever</button>
+            <button class="btn mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="lever">⏹ lever</button>
+            <?php if ($b['origine'] === 'admin'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="prolonger">⏩ rallonger</button><?php endif; ?>
+            <button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="pardon">✅ gracier</button>
             <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir" data-signal="<?= (int) $b['revue']['signal'] ?>" data-det="<?= (int) $b['revue']['detections'] ?>">⏳ maintenir</button><?php endif; ?>
           </td></tr>
     <?php endforeach; ?>
@@ -439,13 +444,22 @@ function statutRapport(id,status){
 function modAction(id,op,vu){
   const invites={
     ban:'Motif du ban — une phrase de 40 caractères au moins, que le membre pourra lire :',
-    pardon:'Motif de la grâce — exigé avant le plancher de la peine, facultatif ensuite :',
+    lever:'Motif de la levée — exigé avant le plancher de la peine, facultatif ensuite. La peine s\'arrête, la récidive reste comptée :',
+    pardon:'Motif de la grâce — exigé avant le plancher de la peine, facultatif ensuite. La grâce remet le compte au départ, récidive comprise :',
+    prolonger:'Motif du rallongement — pourquoi la peine s\'allonge :',
     maintenir:'Motif du maintien — pourquoi la peine continue :',
     classer:'Motif du classement — pourquoi ce signalement n\'appelle aucun geste :'
   };
+  // Le moteur juge la durée : une saisie illisible part à 0, et il la refuse.
+  let secondes=0;
+  if(op==='prolonger'){
+    const minutes=prompt('Durée à ajouter à la peine, en minutes :','10');
+    if(minutes===null) return;
+    secondes=Math.round(parseFloat(minutes)*60)||0;
+  }
   const motif=prompt(invites[op]||'Motif :','');
   if(motif===null) return;
-  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op,motif:motif,vu:vu}).then(d=>{
+  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op,motif:motif,vu:vu,secondes:secondes}).then(d=>{
     if(d.ok){ location.reload(); } else { alert(d.message||'Erreur'); }
   });
 }

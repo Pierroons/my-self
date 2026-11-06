@@ -246,6 +246,12 @@ return [
         => 'Vote recorded but neutralised: too many repeated downvotes towards this member (anti-farming).',
     'Compte trop récent : publie au moins un message ou attends encore %s pour pouvoir voter (anti-Sybil).'
         => 'Account too new: post at least once, or wait another %s, before you can vote (anti-Sybil).',
+    'Compte trop récent : attends encore %s pour pouvoir voter (anti-Sybil).'
+        => 'Account too new: wait another %s before you can vote (anti-Sybil).',
+    'Compte trop récent : publie au moins %1$d messages ou attends encore %2$s pour pouvoir voter (anti-Sybil).'
+        => 'Account too new: post at least %1$d messages, or wait another %2$s, before you can vote (anti-Sybil).',
+    'Date de création du compte illisible : le vote attend un horodatage en secondes.'
+        => 'Unreadable account creation date: voting expects a timestamp in seconds.',
     'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',
     'minute' => 'minute', 'minutes' => 'minutes',
     'Compte banni jusqu\'au %s.' => 'Account banned until %s.',
@@ -282,6 +288,22 @@ return [
     'Réputation remise au point de départ.' => 'Reputation reset to its starting point.',
     'Aucun ban en cours sur ce compte.' => 'No ban in progress on this account.',
     'Compte introuvable.' => 'Account not found.',
+    'Compte banni sans fin.' => 'Account banned with no end.',
+    'Déjà banni sans fin : lève ce ban avant d\'en poser un autre.'
+        => 'Already banned with no end: lift this ban before setting another.',
+    'Aucun ban en cours à lever.' => 'No current ban to lift.',
+    'Ban levé : la peine s\'arrête ici, la récidive reste comptée.'
+        => 'Ban lifted: the penalty stops here, and the repeat offence still counts.',
+    'Durée de prolongation invalide.' => 'Invalid extension length.',
+    'Aucun ban en cours à rallonger.' => 'No current ban to extend.',
+    'Ce ban est déjà sans fin.' => 'This ban already has no end.',
+    'Seul un ban d\'arbitre se rallonge : lève celui-ci — la récidive reste comptée —, puis pose le tien.'
+        => 'Only an arbiter ban is extended: lift this one — the repeat offence still counts —, then set your own.',
+    'Durée trop longue : un ban qui ne doit pas finir se pose sans fin.'
+        => 'Duration too long: a ban that must not end is set with no end.',
+    'Ban prolongé sans fin.' => 'Ban extended with no end.',
+    'Ban prolongé jusqu\'au %s.' => 'Ban extended until %s.',
+    'Un ban sans fin ne se lève qu\'avec un motif écrit.' => 'An endless ban is only lifted with a written reason.',
     'La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.' => 'The end of your penalty is waiting for the journal to record it: you can vote again as soon as it is.',
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
     'Ce ban n\'attend aucune revue : un signalement se classe.'

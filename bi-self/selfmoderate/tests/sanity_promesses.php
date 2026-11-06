@@ -158,6 +158,12 @@ $porteurs = [
         fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
     ['README.md', '/for at most \*\*(\d+)\*\* accounts \(`balayageFiletMax`\)/u',
         fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
+    ['README.fr.md', '/\(`banAutomatique`, \*\*(actif|éteint)\*\* par défaut.*?\(`signalPerteDuVote`, \*\*(actif|éteint)\*\* par défaut.*?\(`messagesPourVoterAvantAge`, \*\*(\d+)\*\* par défaut.*?\(`motifsVotantsMin`, \*\*(\d+)\*\* par défaut/u',
+        fn ($m) => [...deuxJeux('banAutomatique', $m[1] === 'actif'), ...deuxJeux('signalPerteDuVote', $m[2] === 'actif'),
+                    ...deuxJeux('messagesPourVoterAvantAge', (int) $m[3]), ...deuxJeux('motifsVotantsMin', (int) $m[4])]],
+    ['README.md', '/\(`banAutomatique`, \*\*(on|off)\*\* by default.*?\(`signalPerteDuVote`, \*\*(on|off)\*\* by default.*?\(`messagesPourVoterAvantAge`, \*\*(\d+)\*\* by default.*?\(`motifsVotantsMin`, \*\*(\d+)\*\* by default/u',
+        fn ($m) => [...deuxJeux('banAutomatique', $m[1] === 'on'), ...deuxJeux('signalPerteDuVote', $m[2] === 'on'),
+                    ...deuxJeux('messagesPourVoterAvantAge', (int) $m[3]), ...deuxJeux('motifsVotantsMin', (int) $m[4])]],
 ];
 
 // Les champs dont le README parle sans en donner la valeur, et la phrase qui

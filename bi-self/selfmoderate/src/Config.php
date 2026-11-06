@@ -18,6 +18,9 @@ use InvalidArgumentException;
 final class Config
 {
     /**
+     * @param int      $banA                  Plancher de la réputation ET seuil du ban automatique :
+     *                                        aucun vote ne la descend plus bas, et l'atteindre
+     *                                        bannit (voir `banAutomatique`).
      * @param int      $fenetreSalveSecondes  Salve rapide : plusieurs downvotes groupés
      *                                        dans ce délai, SANS lien entre les votants.
      *                                        Le plus souvent une réaction spontanée au
@@ -46,7 +49,8 @@ final class Config
      * @param int[]    $dureesBan             Paliers de bannissement automatique, du premier
      *                                        épisode au dernier. Le dernier palier se répète :
      *                                        un quatrième épisode ne rend pas la peine infinie,
-     *                                        il la reconduit, et l'arbitre décide au-delà.
+     *                                        il la reconduit, et l'arbitre décide au-delà. Un
+     *                                        palier qui atteindrait `Moderate::SANS_FIN` est refusé.
      * @param int      $intervalleConvalescenceSecondes Convalescence : +1 point par
      *                                        intervalle. La réputation remonte avec le
      *                                        temps, pas avec le mérite.
@@ -60,6 +64,18 @@ final class Config
      *                                        desquels l'enchaînement est signalé à
      *                                        l'arbitre : chacun alourdit le ban
      *                                        automatique suivant.
+     * @param bool     $banAutomatique        La réputation au plancher bannit, journal branché et
+     *                                        hors de la transaction de l'hôte. Faux : elle est
+     *                                        signalée à l'arbitre, sans ban — la machine signale,
+     *                                        l'arbitre décide.
+     * @param bool     $signalPerteDuVote     Signale à l'arbitre le compte qui perd son droit de
+     *                                        vote sous `perteDroitDeVoteSous` ; le signal tombe
+     *                                        quand le droit revient.
+     * @param int      $messagesPourVoterAvantAge Messages publiés qui dispensent de
+     *                                        `ageMinPourVoterSecondes` ; 0 n'en dispense personne.
+     * @param int      $motifsVotantsMin      `reasonsFor()` ne rend les motifs reçus qu'à partir
+     *                                        de ce nombre de votants distincts : sous lui, un motif
+     *                                        peut désigner son auteur. 1 les rend toujours.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -84,14 +100,27 @@ final class Config
         public readonly float $plancherFraction = 1 / 3,
         public readonly int $bansArbitreSignal = 2,
         public readonly int $balayageFiletMax = 50,
+        public readonly bool $banAutomatique = true,
+        public readonly bool $signalPerteDuVote = true,
+        public readonly int $messagesPourVoterAvantAge = 1,
+        public readonly int $motifsVotantsMin = 1,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
         }
+        // `PHP_INT_MAX` dit « infini » à qui ne lit pas le moteur : l'échéance
+        // déborderait en flottant, et le banni ne serait plus lu comme banni.
+        $finie = Moderate::SANS_FIN - time();
         foreach ($this->dureesBan as $duree) {
             if (!is_int($duree) || $duree <= 0) {
                 throw new InvalidArgumentException('dureesBan n\'accepte que des durées entières et strictement positives.');
             }
+            if ($duree >= $finie) {
+                throw new InvalidArgumentException('dureesBan : un palier qui atteindrait Moderate::SANS_FIN ferait un ban sans fin, que la machine ne prononce pas.');
+            }
+        }
+        if ($this->dureeBanAdminSecondes !== null && ($this->dureeBanAdminSecondes <= 0 || $this->dureeBanAdminSecondes >= $finie)) {
+            throw new InvalidArgumentException('dureeBanAdminSecondes est une durée finie : strictement positive, et sous Moderate::SANS_FIN.');
         }
         if ($this->plancherFraction < 0 || $this->plancherFraction > 1) {
             throw new InvalidArgumentException('plancherFraction est une part de la peine : entre 0 et 1.');
@@ -101,6 +130,12 @@ final class Config
         }
         if ($this->balayageFiletMax < 0) {
             throw new InvalidArgumentException('balayageFiletMax compte des comptes : 0 ou plus, et 0 éteint le filet.');
+        }
+        if ($this->messagesPourVoterAvantAge < 0) {
+            throw new InvalidArgumentException('messagesPourVoterAvantAge compte des messages : 0 ou plus, et 0 ne dispense personne.');
+        }
+        if ($this->motifsVotantsMin < 1) {
+            throw new InvalidArgumentException('motifsVotantsMin compte des votants : 1 ou plus.');
         }
     }
 

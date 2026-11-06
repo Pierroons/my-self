@@ -36,7 +36,8 @@ interface Journal
     /**
      * Inscrit un acte. Le moteur passe un tableau dont les clés sont stables :
      *
-     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_maintenu` | `grace` | `revue_classee`
+     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_prolonge` | `ban_maintenu` | `grace` |
+     *              `revue_classee`
      *   compte     identifiant numérique du membre visé
      *   origine    `auto` (réputation à zéro) | `admin` (arbitre) ; null pour un ban
      *              posé avant que l'origine ne soit enregistrée
@@ -48,14 +49,20 @@ interface Journal
      *   dont_arbitre  combien de ces épisodes sont des bans     ban_debut
      *              d'arbitre : le palier d'un ban automatique en dépend aussi.
      *              Compté depuis la 0.7.0 : une base migrée part de zéro
-     *   duree      durée de la peine en secondes               ban_debut
+     *   duree      durée de la peine en secondes ; null pour   ban_debut
+     *              un ban sans fin
      *   debut      horodatage du début de la peine             ban_debut, ban_fin
-     *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu
+     *   jusqu_a    horodatage de fin prévue ; `Moderate::SANS_FIN`  ban_debut, ban_fin, ban_maintenu,
+     *              pour un ban sans fin                        ban_prolonge
+     *   sans_fin   le ban n'a pas d'échéance                   ban_debut, ban_leve, ban_prolonge
+     *   de         l'échéance que la prolongation repousse     ban_prolonge
      *   observe_a  instant où la fin s'est inscrite : la       ban_fin
      *              première écriture qui a touché le compte, ou le balayage
-     *   cause      `grace` | `meute_detectee`                  ban_leve
+     *   cause      `grace` | `levee` | `meute_detectee`        ban_leve ; `levee` arrête la peine sans
+     *              effacer la récidive, `grace` remet tout au départ
      *   anticipee  levée avant le plancher de la peine         ban_leve
-     *   reste      secondes de peine qui restaient             ban_leve
+     *   reste      secondes de peine qui restaient ; null      ban_leve
+     *              pour un ban sans fin
      *   plancher   horodatage du plancher, ou null             ban_leve
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
@@ -78,18 +85,20 @@ interface Journal
      * elle ne doit pas en retirer.
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
-     * qui échoue en silence vaut l'absence de journal. Deux exceptions à la
-     * règle, et aucune n'est muette. Quand un vote, un geste ou le balayage
+     * qui échoue en silence vaut l'absence de journal. Des exceptions à la
+     * règle, aucune muette. Quand un vote, un geste ou le balayage
      * constate une peine échue, le refus est consigné et signalé
      * (`journal_en_panne`), et la peine reste à refermer à l'écriture suivante.
      * Une lecture ne constate rien. Le balayage n'appelle plus le journal après
      * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
-     * le fait remonter aussitôt. Et quand le balayage du site, celui d'un vote ou
-     * du planificateur, lève pour meute le ban d'un compte autre que la cible du
-     * vote, le refus ne défait pas le vote :
-     * la levée attend le balayage suivant, le compte est signalé
+     * d'arbitre le fait remonter aussitôt. Au début d'un ban automatique, le
+     * refus ne défait pas le vote qui l'a causé : la chute est signalée avec le
+     * ban dû (`ban_en_attente`), et le vote négatif suivant le retente. Et quand
+     * le balayage du site, celui d'un vote ou du planificateur, lève pour meute
+     * le ban d'un compte autre que la cible du vote, le refus ne défait pas le
+     * vote : la levée attend le balayage suivant, le compte est signalé
      * (`levee_en_attente`), et `detectPackVoting()` le nomme. Un refus se lève par
-     * n'importe quelle exception ; sur ce second chemin, une `\Error` est un
+     * n'importe quelle exception ; sur le chemin du balayage, une `\Error` est un
      * défaut, et remonte.
      *
      * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
