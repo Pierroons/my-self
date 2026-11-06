@@ -5308,6 +5308,14 @@ foreach ([Moderate::SANS_FIN - (int) $apres139['banned_until'], PHP_INT_MAX] as 
 }
 $borne139 = (int) etatBan($pdo, $prolonge139)['banned_until'];
 $acte139  = $journal139->de($prolonge139, 'ban_prolonge');
+// Juste sous la borne, la prolongation passe : la borne refuse la fin des temps, pas moins.
+$juste139 = Moderate::adminProlonger($pdo, $prolonge139, 'arbitre-banc', motif(), Moderate::SANS_FIN - $borne139 - 10);
+$inconnue139 = membre($pdo, 'origine-inconnue-139');
+poserReputation($pdo, $inconnue139, 15);
+Moderate::adminBan($pdo, $inconnue139, 'arbitre-banc', motif());
+$pdo->prepare('UPDATE member_moderation SET ban_origine = NULL WHERE account_id = ?')->execute([$inconnue139]);
+$inconnueAvant139 = (int) etatBan($pdo, $inconnue139)['banned_until'];
+$inconnuePlus139  = Moderate::adminProlonger($pdo, $inconnue139, 'arbitre-banc', motif(), 600);
 $libre139 = Moderate::adminProlonger($pdo, membre($pdo, 'libre-139'), 'arbitre-banc', motif(), 3600);
 $auto139 = membre($pdo, 'auto-139');
 poserReputation($pdo, $auto139, 1);
@@ -5321,11 +5329,13 @@ $plus139['ok'] && (int) $apres139['banned_until'] === (int) $avant139['banned_un
     && count($acte139) === 1 && $acte139[0]['de'] === (int) $avant139['banned_until'] && $acte139[0]['sans_fin'] === false
     && !$zero139['ok'] && !$libre139['ok'] && $libre139['message'] === 'Aucun ban en cours à rallonger.'
     && $bornes139 === [[false, true], [false, true]] && $borne139 === (int) $apres139['banned_until']
-    && !$autoSansFin139['ok'] && str_contains($autoSansFin139['message'], 'automatique')
-    && !$autoPlus139['ok'] && str_contains($autoPlus139['message'], 'automatique')
+    && $juste139['ok']
+    && !$autoSansFin139['ok'] && str_contains($autoSansFin139['message'], 'Seul un ban d\'arbitre')
+    && !$autoPlus139['ok'] && str_contains($autoPlus139['message'], 'Seul un ban d\'arbitre')
     && (int) etatBan($pdo, $auto139)['banned_until'] === $autoAvant139
-    ? ok('la prolongation repousse l\'échéance d\'un ban d\'arbitre sans strike, l\'inscrit, refuse sans ban, sans durée ou jusqu\'à l\'échéance sans fin, et laisse un ban automatique tel quel')
-    : nok('la prolongation rate : ' . json_encode([$plus139, $avant139, $apres139, $acte139, $zero139, $bornes139, $libre139, $autoSansFin139, $autoPlus139]));
+    && !$inconnuePlus139['ok'] && (int) etatBan($pdo, $inconnue139)['banned_until'] === $inconnueAvant139
+    ? ok('la prolongation repousse l\'échéance d\'un ban d\'arbitre sans strike, l\'inscrit, refuse sans ban, sans durée ou jusqu\'à l\'échéance sans fin, et laisse tel quel un ban automatique ou d\'origine inconnue')
+    : nok('la prolongation rate : ' . json_encode([$plus139, $avant139, $apres139, $acte139, $zero139, $bornes139, $juste139, $libre139, $autoSansFin139, $autoPlus139, $inconnuePlus139]));
 
 // ── 140. ⭐ Un ban d'arbitre sans fin : une échéance qui n'arrive pas, un motif pour en sortir ─
 $journal140 = new JournalDeBanc();
@@ -5373,6 +5383,9 @@ Moderate::setJournal(new JournalDeBanc());
 $cible141 = membre($pdo, 'console-141');
 poserReputation($pdo, $cible141, 15);
 Moderate::adminBan($pdo, $cible141, 'arbitre-banc', motif());
+$auto141 = membre($pdo, 'console-auto-141');
+poserReputation($pdo, $auto141, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-141'), 'member', $auto141, -1, motif(), 'agressif');
 Moderate::setJournal($journalAvant141);
 $avant141   = etatBan($pdo, $cible141);
 $session141 = sessionArbitre($pdo, 'arbitre-141');
@@ -5391,8 +5404,10 @@ arreterLab($serveur141);
 $boutons141 = [
     'lever'     => str_contains($page141, 'data-id="' . $cible141 . '" data-op="lever"'),
     'rallonger' => str_contains($page141, 'data-id="' . $cible141 . '" data-op="prolonger"'),
+    'auto_lever' => str_contains($page141, 'data-id="' . $auto141 . '" data-op="lever"'),
+    'auto_rallonger' => str_contains($page141, 'data-id="' . $auto141 . '" data-op="prolonger"'),
 ];
-$boutons141 === ['lever' => true, 'rallonger' => true]
+$boutons141 === ['lever' => true, 'rallonger' => true, 'auto_lever' => true, 'auto_rallonger' => false]
     && $plus141['code'] === 200 && (int) $rallonge141['banned_until'] === (int) $avant141['banned_until'] + 600
     && $leve141['code'] === 200 && (int) $apres141['banned_until'] === 0
     && (int) $apres141['strikes_admin'] === (int) $avant141['strikes_admin'] && (int) $avant141['strikes_admin'] >= 1
@@ -5480,6 +5495,9 @@ foreach ([Moderate::SANS_FIN - time(), PHP_INT_MAX] as $duree143) {
 }
 $bornesActes143 = count($journal143->de($long143, 'ban_debut'));
 $bornesBanni143 = Moderate::estBanni($pdo, $long143);
+// Juste sous la borne, le ban passe : la borne refuse la fin des temps, pas moins.
+$juste143 = Moderate::adminBan($pdo, $long143, 'arbitre-banc', motif(), Moderate::SANS_FIN - time() - 10);
+Moderate::adminLever($pdo, $long143, 'arbitre-banc', motif());
 $sansMotif143 = sousConfig(new Config(plancherFraction: 0.0), static function () use ($pdo): array {
     $r = [];
     foreach (['lever', 'gracier'] as $geste) {
@@ -5499,12 +5517,41 @@ $sansMotif143 = sousConfig(new Config(plancherFraction: 0.0), static function ()
     return $r;
 });
 Moderate::setJournal($journalAvant143);
-$bornes143 === [[false, true], [false, true]] && $bornesActes143 === 0 && !$bornesBanni143
+$bornes143 === [[false, true], [false, true]] && $bornesActes143 === 0 && !$bornesBanni143 && $juste143['ok']
     && $sansMotif143 === array_fill_keys(['lever/plancher-nul', 'lever/sans-debut', 'gracier/plancher-nul', 'gracier/sans-debut'], [false, true])
     ? ok('⭐ une durée qui atteindrait la fin des temps est refusée sans rien inscrire, et un ban sans fin ne sort qu\'avec un motif, même sous un plancher nul')
     : nok('⭐ une durée fait un ban sans fin, ou un ban sans fin sort sans motif : ' . json_encode([
-        'bornes' => $bornes143, 'actes' => $bornesActes143, 'banni' => $bornesBanni143, 'sans_motif' => $sansMotif143,
+        'bornes' => $bornes143, 'actes' => $bornesActes143, 'banni' => $bornesBanni143, 'juste' => $juste143, 'sans_motif' => $sansMotif143,
     ], JSON_UNESCAPED_UNICODE));
+
+// ── 144. ⭐ La configuration refuse une durée qui ferait un ban sans fin ─────────
+// `PHP_INT_MAX` dit « infini » à qui ne lit pas le moteur : comme palier, l'échéance
+// débordait en flottant, `estBanni()` répondait non, et le lab laissait publier un
+// banni ; un palier qui atteignait `SANS_FIN` faisait prononcer à la machine un ban
+// sans fin, au journal `sans_fin: false`.
+$refus144 = [];
+foreach ([
+    'palier PHP_INT_MAX'   => static fn (): Config => new Config(dureesBan: [120, PHP_INT_MAX]),
+    'palier SANS_FIN'      => static fn (): Config => new Config(dureesBan: [Moderate::SANS_FIN - time()]),
+    'arbitre PHP_INT_MAX'  => static fn (): Config => new Config(dureeBanAdminSecondes: PHP_INT_MAX),
+    'arbitre nul'          => static fn (): Config => new Config(dureeBanAdminSecondes: 0),
+] as $nom144 => $faire144) {
+    try {
+        $faire144();
+        $refus144[$nom144] = 'accepté';
+    } catch (InvalidArgumentException) {
+        $refus144[$nom144] = 'refusé';
+    }
+}
+try {
+    new Config(dureesBan: [120, 600, 100 * 365 * 86400], dureeBanAdminSecondes: 100 * 365 * 86400);
+    $siecle144 = 'accepté';
+} catch (InvalidArgumentException $e144) {
+    $siecle144 = $e144->getMessage();
+}
+$refus144 === array_fill_keys(array_keys($refus144), 'refusé') && count($refus144) === 4 && $siecle144 === 'accepté'
+    ? ok('⭐ la configuration refuse une durée qui ferait un ban sans fin, et accepte un siècle')
+    : nok('⭐ la configuration accepte une durée qui fait un ban sans fin : ' . json_encode(['refus' => $refus144, 'siecle' => $siecle144], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

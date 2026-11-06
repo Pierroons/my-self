@@ -180,6 +180,8 @@ cause of `ban_leve` and the `sans_fin` key; `duree` and `reste` are `null` there
 console names the causes `ban_en_attente`, `droit_de_vote_perdu` and `ban_sans_fin`, and a page that dates a due time
 checks `Moderate::estSansFin()` first. The flag on losing the right to vote is on by default, and adds flags to the
 arbiter's queue: `signalPerteDuVote: false` keeps the 0.7.1 queue.
+`Config` now refuses a `dureesBan` tier, or a `dureeBanAdminSecondes`, that would reach `Moderate::SANS_FIN`: a
+configuration that wrote `PHP_INT_MAX` to mean "infinite" throws when it is built.
 
 0.7.1 fixes what an audit of 0.7.0 found, with no schema change:
 - **a forgotten migration is told to the arbiter**: `bansEnCours()`, `flaggedForReview()` and `signauxOuverts()` raise

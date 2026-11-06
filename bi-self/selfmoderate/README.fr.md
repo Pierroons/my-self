@@ -180,6 +180,8 @@ La 0.8.0 répond aux demandes d'un deuxième hôte, sans changer de schéma :
 d'arbitre nomme les causes `ban_en_attente`, `droit_de_vote_perdu` et `ban_sans_fin`, et une page qui date une
 échéance teste d'abord `Moderate::estSansFin()`. Le signal de perte du droit de vote est actif par
 défaut, et ajoute des signalements à la file de l'arbitre : `signalPerteDuVote: false` garde celle de la 0.7.1.
+`Config` refuse désormais un palier `dureesBan`, ou un `dureeBanAdminSecondes`, qui atteindrait `Moderate::SANS_FIN` :
+une configuration qui écrivait `PHP_INT_MAX` pour dire « infini » lève à sa construction.
 
 La 0.7.1 corrige ce qu'un audit de la 0.7.0 a relevé, sans changer de schéma :
 - **une reprise oubliée se dit à l'arbitre** : `bansEnCours()`, `flaggedForReview()` et `signauxOuverts()` lèvent

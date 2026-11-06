@@ -39,8 +39,10 @@ schéma.
 
 **Pour un intégrateur** : un `Journal` qui filtre les actes accepte `ban_prolonge`, la cause `levee` de `ban_leve` et la
 clé `sans_fin` ; `duree` et `reste` y valent `null` pour un ban sans fin. Une console d'arbitre nomme `ban_en_attente`,
-`droit_de_vote_perdu` et `ban_sans_fin`, et une page qui date une échéance teste d'abord `Moderate::estSansFin()`. Le
-détail : la section « Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+`droit_de_vote_perdu` et `ban_sans_fin`, et une page qui date une échéance teste d'abord `Moderate::estSansFin()`.
+`Config` refuse un palier `dureesBan`, ou un `dureeBanAdminSecondes`, qui atteindrait `SANS_FIN` : une configuration
+qui écrivait `PHP_INT_MAX` pour dire « infini » lève à sa construction — l'échéance débordait, et le banni ne se lisait
+plus banni. Le détail : la section « Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
 
 ### SelfRecover 0.13.2 — le retour garde ce qu'il devait reprendre — 31 octobre 2026
 

@@ -297,8 +297,8 @@ return [
     'Durée de prolongation invalide.' => 'Invalid extension length.',
     'Aucun ban en cours à rallonger.' => 'No current ban to extend.',
     'Ce ban est déjà sans fin.' => 'This ban already has no end.',
-    'Un ban automatique ne se rallonge pas : lève-le — la récidive reste comptée —, puis pose un ban d\'arbitre.'
-        => 'An automatic ban is not extended: lift it — the repeat offence still counts —, then set an arbiter ban.',
+    'Seul un ban d\'arbitre se rallonge : lève celui-ci — la récidive reste comptée —, puis pose le tien.'
+        => 'Only an arbiter ban is extended: lift this one — the repeat offence still counts —, then set your own.',
     'Durée trop longue : un ban qui ne doit pas finir se pose sans fin.'
         => 'Duration too long: a ban that must not end is set with no end.',
     'Ban prolongé sans fin.' => 'Ban extended with no end.',

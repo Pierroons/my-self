@@ -202,7 +202,7 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= $b['plancher'] === null ? '—' : ($b['plancher'] <= time() ? 'passé' : $dt($b['plancher'])) ?></td>
           <td style="white-space:nowrap">
             <button class="btn mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="lever">⏹ lever</button>
-            <?php if ($b['origine'] !== 'auto'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="prolonger">⏩ rallonger</button><?php endif; ?>
+            <?php if ($b['origine'] === 'admin'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="prolonger">⏩ rallonger</button><?php endif; ?>
             <button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="pardon">✅ gracier</button>
             <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir" data-signal="<?= (int) $b['revue']['signal'] ?>" data-det="<?= (int) $b['revue']['detections'] ?>">⏳ maintenir</button><?php endif; ?>
           </td></tr>

@@ -2324,7 +2324,7 @@ class Moderate
                 'duree'   => $duree,
                 'debut'   => $maintenant,
                 'jusqu_a' => $jusqua,
-                'sans_fin' => false,
+                'sans_fin' => self::estSansFin($jusqua),
                 'motif'   => 'reputation_zero',
                 'arbitre' => null,
                 'ouverts' => self::causesEnTexte($signaux),
@@ -2589,8 +2589,8 @@ class Moderate
      * Elle ferme ce qu'elle défait : les signaux d'état, dont l'état est remis
      * au départ, et la récidive de meute quand elle en efface le rang. Une
      * salve, une troncature, un votant étendu restent à classer : une grâce
-     * passe sans motif une fois le plancher franchi, et un comportement ne se
-     * ferme pas sans motif écrit. L'acte dit ce qui était ouvert et ce qu'elle
+     * passe sans motif une fois le plancher franchi — jamais sur un ban sans
+     * fin —, et un comportement ne se ferme pas sans motif écrit. L'acte dit ce qui était ouvert et ce qu'elle
      * a fermé.
      *
      * 🔑 **Le plancher.** Avant `plancherFraction` de la peine en cours, la grâce
@@ -2709,7 +2709,7 @@ class Moderate
      * comptée (`strikes`, `strikes_admin`). La grâce, elle, remet tout au départ.
      *
      * Avant le plancher de la peine, le motif est exigé, comme pour la grâce ; un
-     * ban sans fin ne l'atteint jamais, et ne se lève qu'avec un motif écrit.
+     * ban sans fin ne se lève qu'avec un motif écrit, quel que soit son plancher.
      *
      * @return array{ok: bool, message: string, anticipee?: bool}
      */
@@ -2843,9 +2843,10 @@ class Moderate
                 return ['ok' => false, 'message' => static::t('Ce ban est déjà sans fin.')];
             }
             // Une meute reconnue ne lève jamais un ban d'arbitre : la rallonge d'un ban
-            // automatique serait levée avec lui, sans que l'arbitre le sache.
-            if ($etat['ban_origine'] === 'auto') {
-                return ['ok' => false, 'message' => static::t('Un ban automatique ne se rallonge pas : lève-le — la récidive reste comptée —, puis pose un ban d\'arbitre.')];
+            // automatique serait levée avec lui, sans que l'arbitre le sache. Un ban
+            // d'origine inconnue, posé avant qu'elle ne s'enregistre, peut en être un.
+            if ($etat['ban_origine'] !== 'admin') {
+                return ['ok' => false, 'message' => static::t('Seul un ban d\'arbitre se rallonge : lève celui-ci — la récidive reste comptée —, puis pose le tien.')];
             }
             if (!$sansFin && $secondes >= self::SANS_FIN - $etat['banned_until']) {
                 return ['ok' => false, 'message' => static::t('Durée trop longue : un ban qui ne doit pas finir se pose sans fin.')];
@@ -2885,7 +2886,7 @@ class Moderate
         self::retirerDeLaFile($pdo, $accountId, self::deCause(self::signauxDe($pdo, $accountId), 'ban_sans_fin'));
     }
 
-    /** Le refus d'une levée sans motif avant le plancher ; un ban sans fin n'en a pas. */
+    /** Le refus d'une levée sans motif : avant le plancher, ou à tout moment pour un ban sans fin. */
     private static function refusLeveeSansMotif(bool $sansFin, ?int $plancher): string
     {
         return $sansFin

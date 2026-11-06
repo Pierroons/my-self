@@ -2391,8 +2391,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 206/206 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 206 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 207/207 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 207 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2490,7 +2490,7 @@ jobs:
               'gracie': ("            self::designaler($pdo, $accountId, ...$tombent);\n",
                          "            $pdo->prepare('UPDATE member_moderation SET strikes = 0, strikes_admin = 0 WHERE account_id = ?')->execute([$accountId]);\n"
                          "            self::designaler($pdo, $accountId, ...$tombent);\n"),
-              'auto':   ("            if ($etat['ban_origine'] === 'auto') {", "            if (false) {"),
+              'auto':   ("            if ($etat['ban_origine'] !== 'admin') {", "            if (false) {"),
               'borne':  ("            if (!$sansFin && $seconds >= self::SANS_FIN - $maintenant) {", "            if (false) {"),
               'motif':  ("            if (($anticipee || $sansFin) && $motif === '') {", "            if ($anticipee && $motif === '') {"),
               'vu':     ("        self::retirerDeLaFile($pdo, $accountId, self::deCause(self::signauxDe($pdo, $accountId), 'ban_sans_fin'));\n", ""),

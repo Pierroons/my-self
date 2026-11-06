@@ -49,7 +49,8 @@ final class Config
      * @param int[]    $dureesBan             Paliers de bannissement automatique, du premier
      *                                        épisode au dernier. Le dernier palier se répète :
      *                                        un quatrième épisode ne rend pas la peine infinie,
-     *                                        il la reconduit, et l'arbitre décide au-delà.
+     *                                        il la reconduit, et l'arbitre décide au-delà. Un
+     *                                        palier qui atteindrait `Moderate::SANS_FIN` est refusé.
      * @param int      $intervalleConvalescenceSecondes Convalescence : +1 point par
      *                                        intervalle. La réputation remonte avec le
      *                                        temps, pas avec le mérite.
@@ -107,10 +108,19 @@ final class Config
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
         }
+        // `PHP_INT_MAX` dit « infini » à qui ne lit pas le moteur : l'échéance
+        // déborderait en flottant, et le banni ne serait plus lu comme banni.
+        $finie = Moderate::SANS_FIN - time();
         foreach ($this->dureesBan as $duree) {
             if (!is_int($duree) || $duree <= 0) {
                 throw new InvalidArgumentException('dureesBan n\'accepte que des durées entières et strictement positives.');
             }
+            if ($duree >= $finie) {
+                throw new InvalidArgumentException('dureesBan : un palier qui atteindrait Moderate::SANS_FIN ferait un ban sans fin, que la machine ne prononce pas.');
+            }
+        }
+        if ($this->dureeBanAdminSecondes !== null && ($this->dureeBanAdminSecondes <= 0 || $this->dureeBanAdminSecondes >= $finie)) {
+            throw new InvalidArgumentException('dureeBanAdminSecondes est une durée finie : strictement positive, et sous Moderate::SANS_FIN.');
         }
         if ($this->plancherFraction < 0 || $this->plancherFraction > 1) {
             throw new InvalidArgumentException('plancherFraction est une part de la peine : entre 0 et 1.');
