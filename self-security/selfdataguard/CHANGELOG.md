@@ -89,8 +89,8 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   parse — a column rewritten, a revision that the next write cannot bump (`PHP_INT_MAX`) or that is not an integer. It
   is raised by **`EscrowRecord::parse()`**: the storage builds its record in the closure it hands to `parse()`, from the
   row it has already fetched. Any `Exception`, `TypeError` or `ValueError` the closure raises comes out as
-  `UnreadableEscrowException`, whose message names the class of the cause; an `ArgumentCountError` — a call written
-  wrong — comes out as it is. The façade reads it as a row rewritten (`escrow-replaced`,
+  `UnreadableEscrowException`, whose message names the class of the cause; a key missing from a row spread into a
+  constructor (`ArgumentCountError`) is one of them. The façade reads it as a row rewritten (`escrow-replaced`,
   `EscrowEnvelopeMismatchException`); for an archive, and in the ceremony, it comes out as it is. Any other exception of
   `loadEscrow()` is an outage of the storage, and comes out as it is — from the view, the deposits and the objection
   alike.
@@ -98,8 +98,8 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   `bin/storage-conformance.php`, one column at a time — `wrap_admin`, `wrap_user`, `created_at`, `updated_at`,
   `revision` —, and requires `UnreadableEscrowException` for each column rewritten; the file may decline only the date
   columns, `created_at` and `updated_at`, in which a typed storage cannot hold anything but a date. For the revision, it
-  also requires `replaceEscrow()` over the record read before the rewrite to raise `StaleEscrowException`: the storage
-  must test that the row is there without parsing it.
+  also requires `replaceEscrow()` and `rotateEscrow()` over the record read before the rewrite to raise
+  `StaleEscrowException`: the storage must test that the row is there without parsing it.
 - **The ceremony goes through the keeper**, after the intention, the witness's head and the passphrase checked — the
   admin key unsealed and erased, so that a typo reaches no keeper —, before the admin key is unsealed again to open
   the box; the intention names the keeper by its fingerprint. Given the former keepers the database recorded, it

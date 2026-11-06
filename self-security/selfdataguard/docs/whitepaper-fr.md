@@ -436,4 +436,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 4 novembre 2026, alignée sur SelfDataGuard v0.9.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.9.0 (941 contrôles sur 14 suites, comptés sous PHP 8.4 le 4 novembre 2026 ; la CI les lance aussi sous PHP 8.1 et 8.2, où quatre contrôles de trace deviennent des limites déclarées). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 4 novembre 2026, alignée sur SelfDataGuard v0.9.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.9.0 (942 contrôles sur 14 suites, comptés sous PHP 8.4 le 6 novembre 2026 ; la CI les lance aussi sous PHP 8.1 et 8.2, où quatre contrôles de trace deviennent des limites déclarées). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
