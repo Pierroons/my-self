@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.2](https://img.shields.io/badge/status-v0.13.2-green.svg)](#statut)
+[![Status: v0.13.3](https://img.shields.io/badge/status-v0.13.3-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -424,7 +424,7 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 **Bibliothèque de référence + implémentation déployée, auto-auditée**
 
 Ce dépôt contient :
-- La **spécification du protocole** (whitepapers v1.5)
+- La **spécification du protocole** (whitepapers v1.6)
 - Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base — ou, s'il part de zéro, son implémentation fournie (`schema.sql` + `StockagePdo`)
 - Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas ; et `client/sr-kdf.js`, qui chiffre un secret local en Argon2id avec sa version et ses paramètres dans le blob
 - **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
@@ -475,7 +475,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.13.2 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.13.3 (avril → novembre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -503,6 +503,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Une passphrase est consommée une seule fois, même sous concurrence**, et **aucune écriture de coffre décidée par une récupération ne passe sans son ticket** — deux requêtes portant la même passphrase ne réussissent plus toutes les deux, et SelfDataGuard refuse un réenrôlement ou une remise en service d'archive qu'aucune récupération n'a décidés (v0.13.0)
 - [x] **Le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur** — le lot neuf du demandeur ne compte plus contre les codes d'avant et ses gestes ne réarment plus ce compteur, la route du sel rend l'ancien sel pour un code d'avant, et `Recovery::estCodeDeRetour()` permet au plafond de service d'un intégrateur de laisser passer un retour (v0.13.1)
 - [x] **Le retour garde ce qu'il devait reprendre** — la passphrase apportée au retour ne peut être ni celle d'avant ni celle du demandeur, et un second niveau 3 ne remplace plus une fenêtre que son titulaire a reprise, tant que l'arbitre ne l'a pas close ; le modèle de menace dit que le prix du cas symétrique vaut par fenêtre — chaque niveau 3 rouvre un retour à qui tenait le compte juste avant (v0.13.2)
+- [x] **L'arbitre peut accorder un niveau 3 sans retour (v0.13.3)** — tant qu'aucune fenêtre n'est ouverte, après une fraude vue trop tard ou un papier volé, la reprise n'ouvre plus de fenêtre à qui a pris le compte ; juger qui le tenait à bon droit est alors à l'arbitre
 
 ### Ensuite
 

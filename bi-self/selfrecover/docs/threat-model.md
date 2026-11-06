@@ -151,8 +151,19 @@ arbitrator closes; the holder wins a new level 3; the thief comes back again wit
 previous return handed them, as many times as the cycle repeats (measured over three). And a fraudulent
 level 3 noticed after its window expired leaves the holder no clean way back: the holder's own level 3
 opens a window that keeps the fraudster's secrets, and the fraudster comes back as the holder. The
-arbitrator has no gesture that grants a level 3 without opening a return to whoever held the account
-just before. Present since 0.13.0; no release answers it yet.
+arbitrator had no gesture that grants a level 3 without opening a return to whoever held the account
+just before. Present since 0.13.0.
+
+**Since 0.13.3 the arbitrator has that gesture**: `Escalade::trancher($numero, 'accepte', $par, sansRetour: true)`
+accepts a level 3 whose recovery opens a window already expired, so whoever holds the account when it runs has no
+return. The choice is written with the decision, as a window of zero length that only this dossier's recovery
+recognises. On a window still open and not taken back the gesture is refused (`fenetre_ouverte`, with its expiry):
+that window keeps the secrets of whoever held the account before the level 3 that opened it — possibly the thief of
+a sheet — and would only be extended; the arbitrator accepts without return once it has expired, or been closed
+after a return. The library still cannot tell who held the account rightfully: the gesture moves that judgement onto
+the arbitrator, and an arbitrator deceived into using it takes from the real holder their only return — and, the
+window being born expired, lets the escrow of the archive born of that level 3 be read at once
+(`lecture_admin_permise`). Without the gesture, the bounds above hold per window, as before.
 
 **The requester holds a batch of codes, and 0.13.0 counted it with the holder's.** `reEnroler()`
 hands the requester ten new codes. In 0.13.0 a failure with one of them and a failure with an old
@@ -413,7 +424,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Holding an L3 slot with a name alone | ✗ — open, by design of the level | Nobody can prove a link to an account they have lost everything of, so no automatic check can tell squatter from holder. The arbitrator is the answer: `abandonner()` frees the slot, and since 0.12.0 the collision count they read is reliable |
 | A third party freezing the holder's level-3 procedure | ✓ since 0.12.0 | No counter poses a freeze; refusals inform, an administrator decides and can lift it. Taking the slot is the row above |
-| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Since 0.13.1 the requester's own codes cannot close the return by code. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft — and the bounds hold per window, each level 3 reopening a return to whoever held the account just before |
+| A fraudulent level 3 | ~ since 0.13.0, within a window | A secret from before, served within 14 days, gives the account back; the vault stays read-only until the arbitrator closes. Since 0.13.1 the requester's own codes cannot close the return by code. Symmetric price: a stolen sheet takes back a level 3 its holder made because of the theft — and the bounds hold per window, each level 3 reopening a return to whoever held the account just before, unless the arbitrator accepts it without return (since 0.13.3), judging who held it rightfully |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |

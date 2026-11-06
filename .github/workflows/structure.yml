@@ -761,6 +761,54 @@ jobs:
             '            $perime = $this->accordPerime($litige, $maintenant);' '            $perime = null;' \
             $R/tests/sanity_escalade.php "❌ ⭐ un retour validé juste avant la transaction de la reprise est vu par elle"
 
+      # L'accord sans retour (0.13.3) : la fenêtre d'un niveau 3 range les secrets de qui
+      # tient le compte, et après une fraude vue trop tard ou un papier volé, c'est
+      # l'attaquant qu'elle laisserait revenir. Chaque canari retire une garde du geste et
+      # exige le rouge sur son cas : la fenêtre née échue, le refus sur une fenêtre encore
+      # ouverte, la marque relue après son écriture, la marque reconnue pour son seul
+      # dossier, la relecture d'une reprise dans la transaction de la décision, et le geste
+      # refusé sur un refus. Six rejeux du banc, à part des deux étapes du retour, sous le
+      # plafond de 900 s de `check-canaris.sh`.
+      - name: Canaris — l'accord sans retour du niveau 3
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover
+          canari $R/src/Recovery/Escalade.php \
+            '            $fin = $sansRetour ? $maintenant : $maintenant + $this->fenetreDuree;' \
+            '            $fin = $maintenant + $this->fenetreDuree;' \
+            $R/tests/sanity_escalade.php "❌ ⭐ accordé sans retour, la passphrase de A ne le rend plus à A"
+          canari $R/src/Recovery/Escalade.php \
+            "                    && \$ouverte['ferme_le'] > \$maintenant) {" '                    && false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ fenêtre ouverte : l'accord sans retour est refusé"
+          canari $R/src/Recovery/Escalade.php \
+            "                if (!hash_equals(\$marque, (string) (\$this->stockage->fenetreDuCompte(\$litige->compteId)['ticket_niveau3'] ?? ''))) {" \
+            '                if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un stockage qui ne range pas la marque fait lever la décision"
+          canari $R/src/Recovery/Escalade.php \
+            "                && hash_equals(self::marqueSansRetour(\$litige->numero), (string) (\$avant['ticket_niveau3'] ?? ''));" \
+            "                && str_starts_with((string) (\$avant['ticket_niveau3'] ?? ''), 'sans-retour:');" \
+            $R/tests/sanity_escalade.php "❌ ⭐ la marque d'un autre dossier n'ouvre pas une fenêtre échue"
+          canari $R/src/Recovery/Escalade.php \
+            '                if ($this->repriseEnAttente($litige->compteId)) {' '                if (false) {' \
+            $R/tests/sanity_escalade.php "❌ ⭐ un retour validé juste avant la décision est vu par elle"
+          canari $R/src/Recovery/Escalade.php \
+            "        if ((\$decision !== 'accepte' && \$decision !== 'refuse') || (\$sansRetour && \$decision !== 'accepte')) {" \
+            "        if (\$decision !== 'accepte' && \$decision !== 'refuse') {" \
+            $R/tests/sanity_escalade.php "❌ « sans retour » ne se joint qu'à un accord"
+
       # La passphrase qu'un utilisateur apporte, tirée aux dés, au lieu d'en recevoir
       # une du serveur. Le banc se joue sous les deux profils et compte ses cas. Chaque
       # canari retire une garde et exige le rouge sur son cas : le contrôle de liste,
@@ -1044,7 +1092,7 @@ jobs:
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ l'épreuve tirée pour un nom ne vaut pas pour un autre"
           canari $E '&& !$this->stockage->consommerEpreuve(' '&& false && !$this->stockage->consommerEpreuve(' \
             bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ une épreuve ne sert qu'une fois"
-          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree, $ticket);' '' \
+          canari $E '            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $fin, $ticket);' '' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ la reprise par un niveau 3 ouvre une fenêtre de 14 jours'
           canari $R "                (string) \$fenetre['empreinte_mot'], (string) \$fenetre['sel']);" \
             "                Hashing::hash('mot du demandeur'), (string) \$fenetre['sel']);" \
@@ -1176,8 +1224,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 271 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 271 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 287 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 287 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

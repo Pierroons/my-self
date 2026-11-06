@@ -300,6 +300,24 @@ final class Messages
                   . 'was created here. They have %s to come back with their claim secret; '
                   . 'after that the agreement lapses and the procedure must be done again.',
         ],
+        'l3.sans_retour_fenetre_ouverte' => [
+            'fr' => "Accord sans retour refusé : une fenêtre de retour est encore ouverte sur ce compte, pour %s. "
+                  . "Elle garde les secrets de qui tenait le compte avant le niveau 3 qui l'a ouverte. Accorde "
+                  . "sans retour une fois qu'elle est échue, ou close après un retour ; ou accorde avec retour.",
+            'en' => 'Agreement without return refused: a return window is still open on this account, for %s. '
+                  . 'It keeps the secrets of whoever held the account before the level 3 that opened it. Accept '
+                  . 'without return once it has expired, or been closed after a return; or accept with return.',
+        ],
+        'l3.accepte_sans_retour' => [
+            'fr' => 'Litige accepté, sans retour. Le titulaire repose lui-même ses secrets ; aucun secret '
+                  . "n'a été fabriqué ici. Il a %s pour revenir avec son sésame. Sa reprise n'ouvrira "
+                  . "aucune fenêtre : qui tient le compte aujourd'hui ne pourra pas revenir avec ses "
+                  . "secrets. Passé ce délai, l'accord tombe et la procédure est à refaire.",
+            'en' => 'Dispute accepted, without return. The account holder re-posts their own secrets; no '
+                  . 'secret was created here. They have %s to come back with their claim secret. Their '
+                  . 'recovery will open no window: whoever holds the account today will not be able to come '
+                  . 'back with their secrets. After that the agreement lapses and the procedure must be done again.',
+        ],
         'l3.refuse_acharnement' => [
             'fr' => "Dossier refusé. Ce compte porte %d refus sur les %s écoulés : si tu juges qu'il "
                   . "y a acharnement, c'est à toi de geler l'ouverture. Aucun gel n'a été posé.",

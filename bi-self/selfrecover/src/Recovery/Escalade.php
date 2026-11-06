@@ -793,17 +793,35 @@ final class Escalade
      * du sésame est choisie par l'appelant — un tiers qui connaît un nom affiché
      * le remplit donc à volonté.
      *
-     * @return array{ok: bool, message: string, statut?: string, refus_dans_la_fenetre?: int, gele?: bool, gel_suggere?: bool, error?: string}
+     * 🔑 **`$sansRetour` : un accord qui n'ouvre aucun retour.** La fenêtre d'un
+     * niveau 3 range les secrets de qui tient le compte à l'exécution, quel qu'il
+     * soit : après un niveau 3 frauduleux vu trop tard, ou un papier volé, c'est
+     * l'attaquant qu'elle laisserait revenir, à chaque cycle. Avec `$sansRetour`,
+     * la reprise de ce dossier ouvre une fenêtre déjà échue. La bibliothèque ne
+     * sait pas qui est le vrai titulaire : ce jugement est celui de l'arbitre, et
+     * un arbitre trompé retire au vrai titulaire son seul retour. Le geste se
+     * réserve à un dossier qui montre que le compte a été pris.
+     *
+     * Le choix tient jusqu'à l'exécution par une fenêtre de durée nulle, écrite
+     * avec l'accord, dont le ticket est la marque du dossier
+     * (`marqueSansRetour()`) : elle remplace dès la décision la fenêtre close ou
+     * échue d'avant. Sur une fenêtre encore ouverte et non reprise, le geste est
+     * refusé (`fenetre_ouverte`, avec son échéance) : elle garde les secrets de
+     * qui tenait le compte avant le niveau 3 qui l'a ouverte, et ne serait que
+     * prolongée. Un stockage qui ne range pas la marque fait lever `LogicException`.
+     *
+     * @return array{ok: bool, message: string, statut?: string, sans_retour?: bool, ferme_le?: int, refus_dans_la_fenetre?: int, gele?: bool, gel_suggere?: bool, error?: string}
      */
     public function trancher(
         string $numero,
         string $decision,
         string $par,
         ?int $maintenant = null,
+        bool $sansRetour = false,
     ): array {
         $maintenant = $maintenant ?? time();
 
-        if ($decision !== 'accepte' && $decision !== 'refuse') {
+        if (($decision !== 'accepte' && $decision !== 'refuse') || ($sansRetour && $decision !== 'accepte')) {
             return ['ok' => false, 'error' => 'decision_inconnue',
                     'message' => Messages::dire($this->langue(), 'l3.decision_invalide')];
         }
@@ -832,16 +850,52 @@ final class Escalade
         // 🔑 `enCours()` porte sur une lecture, et un second arbitre a pu trancher
         // depuis. L'écriture conditionnelle du stockage décide : le perdant
         // l'apprend, et sa décision n'écrase rien.
+        $this->stockage->commencerTransaction();
         try {
             $this->stockage->trancherLitige($litige->id,
                 $decision === 'accepte' ? Litige::ACCEPTE : Litige::REFUSE, $par, $maintenant);
+            if ($sansRetour) {
+                // Relue dans la transaction : un retour validé depuis la lecture du
+                // haut ferait remplacer par la marque une fenêtre reprise.
+                if ($this->repriseEnAttente($litige->compteId)) {
+                    $this->stockage->annulerTransaction();
+
+                    return ['ok' => false, 'error' => 'reprise_en_cours',
+                            'message' => Messages::dire($this->langue(), 'l3.reprise_en_cours')];
+                }
+                // Une fenêtre ouverte garde les secrets de qui tenait le compte avant
+                // le niveau 3 qui l'a ouverte — le voleur d'un papier, peut-être —, et
+                // la marque n'y serait que prolongation : refusé jusqu'à son échéance.
+                $ouverte = $this->stockage->fenetreDuCompte($litige->compteId);
+                if ($ouverte !== null && $ouverte['reprise_le'] === null && $ouverte['close_le'] === null
+                    && $ouverte['ferme_le'] > $maintenant) {
+                    $this->stockage->annulerTransaction();
+
+                    return ['ok' => false, 'error' => 'fenetre_ouverte', 'ferme_le' => $ouverte['ferme_le'],
+                            'message' => Messages::dire($this->langue(), 'l3.sans_retour_fenetre_ouverte',
+                                [Duree::enClair($ouverte['ferme_le'] - $maintenant, $this->langue())])];
+                }
+                $marque = self::marqueSansRetour($litige->numero);
+                $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant, $marque);
+                if (!hash_equals($marque, (string) ($this->stockage->fenetreDuCompte($litige->compteId)['ticket_niveau3'] ?? ''))) {
+                    throw new \LogicException(
+                        "Le stockage n'a pas rangé la fenêtre de l'accord sans retour : ouvrirFenetre() ne suit pas son contrat."
+                    );
+                }
+            }
+            $this->stockage->validerTransaction();
         } catch (LitigeDejaTranche) {
+            $this->stockage->annulerTransaction();
+
             return ['ok' => false, 'error' => 'deja_tranche', 'message' => Messages::dire($this->langue(), 'l3.deja_tranche')];
+        } catch (\Throwable $e) {
+            $this->stockage->annulerTransaction();
+            throw $e;
         }
 
         if ($decision === 'accepte') {
-            return ['ok' => true, 'statut' => Litige::ACCEPTE,
-                    'message' => Messages::dire($this->langue(), 'l3.accepte',
+            return ['ok' => true, 'statut' => Litige::ACCEPTE, 'sans_retour' => $sansRetour,
+                    'message' => Messages::dire($this->langue(), $sansRetour ? 'l3.accepte_sans_retour' : 'l3.accepte',
                         [Duree::enClair($this->ttlAccepte, $this->langue())])];
         }
 
@@ -987,7 +1041,7 @@ final class Escalade
      * `Recovery::validerPassphraseApportee()`) ; elle est rendue sous la forme
      * rangée, celle qu'il doit noter.
      *
-     * @return array{ok: bool, message: string, passphrase?: string, codes?: array, error?: string, motif?: string}
+     * @return array{ok: bool, message: string, passphrase?: string, codes?: array, fenetre_jusqua?: int, sans_retour?: bool, error?: string, motif?: string}
      */
     public function reEnroler(
         string $numero,
@@ -1075,10 +1129,16 @@ final class Escalade
             // sort ici, avant d'avoir rien écrit.
             $this->stockage->cloreLitige($litige->id, $maintenant);
             // Les secrets du titulaire, rangés avant d'être remplacés : il a la
-            // fenêtre pour revenir avec l'un d'eux et l'emporter.
+            // fenêtre pour revenir avec l'un d'eux et l'emporter — sauf si
+            // l'arbitre a accordé ce dossier sans retour (`trancher()`) : la
+            // fenêtre naît échue.
+            $avant      = $this->stockage->fenetreDuCompte($litige->compteId);
+            $sansRetour = $avant !== null && $avant['reprise_le'] === null && $avant['close_le'] === null
+                && hash_equals(self::marqueSansRetour($litige->numero), (string) ($avant['ticket_niveau3'] ?? ''));
             $ticket = bin2hex(random_bytes(16));
             $this->stockage->emettreTicket($ticket, $litige->compteId, Reprise::NIVEAU_3, $maintenant);
-            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $maintenant + $this->fenetreDuree, $ticket);
+            $fin = $sansRetour ? $maintenant : $maintenant + $this->fenetreDuree;
+            $this->stockage->ouvrirFenetre($litige->compteId, $maintenant, $fin, $ticket);
             $this->stockage->reposerSecrets(
                 $litige->compteId,
                 $empreinteMotDePasse,
@@ -1123,7 +1183,8 @@ final class Escalade
                 'compte' => $litige->nomCompte,
                 'suite' => $suite,
                 'appareils_retires' => $appareilsRetires,
-                'fenetre_jusqua' => $maintenant + $this->fenetreDuree,
+                'fenetre_jusqua' => $fin,
+                'sans_retour' => $sansRetour,
                 'message' => Messages::dire($this->langue(), 'l3.compte_repris', [$avis])];
     }
 
@@ -1203,6 +1264,16 @@ final class Escalade
         return $this->stockage->purgerFenetresEchues($maintenant ?? time());
     }
 
+    /**
+     * Le ticket de la fenêtre de durée nulle qu'un accord sans retour écrit, et
+     * que sa reprise reconnaît. Il ne peut pas valoir un ticket, fait de 32
+     * caractères hexadécimaux.
+     */
+    private static function marqueSansRetour(string $numero): string
+    {
+        return 'sans-retour:' . hash('sha256', $numero);
+    }
+
     /** La fenêtre de ce compte est-elle reprise par son titulaire, en attente de sa clôture ? */
     private function repriseEnAttente(int $compteId): bool
     {
@@ -1224,12 +1295,15 @@ final class Escalade
      * - `close` : l'arbitre a clos la fenêtre reprise ;
      * - `echue` : la fenêtre s'est fermée sans qu'aucun ancien secret serve.
      *
+     * `sans_retour` : la fenêtre est née échue, d'un accord sans retour
+     * (`trancher()`) ; son `etat` est `echue`.
+     *
      * 🔑 `lecture_admin_permise` dit si l'arbitre peut lire le séquestre de
      * l'archive née du niveau 3 : pas tant que le titulaire peut encore revenir,
      * ni tant que l'arbitre n'a pas clos la fenêtre qu'il a reprise.
      *
      * @return array{etat: string, ferme_le: ?int, reprise_le: ?int, close_le: ?int, close_par: ?string,
-     *               lecture_seule: bool, lecture_admin_permise: bool}
+     *               sans_retour: bool, lecture_seule: bool, lecture_admin_permise: bool}
      */
     public function fenetre(string $nomCompte, ?int $maintenant = null): array
     {
@@ -1249,6 +1323,7 @@ final class Escalade
             'reprise_le'            => $f['reprise_le'] ?? null,
             'close_le'              => $f['close_le'] ?? null,
             'close_par'             => $f['close_par'] ?? null,
+            'sans_retour'           => $f !== null && $f['ouverte_le'] === $f['ferme_le'],
             'lecture_seule'         => $etat === 'reprise',
             'lecture_admin_permise' => in_array($etat, ['aucune', 'close', 'echue'], true),
         ];

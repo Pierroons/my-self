@@ -1710,6 +1710,151 @@ $durees = ['avec' => $chrono($avecFenetre, $now + 100), 'sans' => $chrono($sansF
 verifier('⭐ un refus au niveau 1 prend le même temps, fenêtre ouverte ou non, à 20 ms près, au moins le délai',
     min($durees) >= 400 && abs($durees['avec'] - $durees['sans']) < 20, json_encode($durees));
 
+echo "\n→ L'accord sans retour : qui a pris le compte ne revient pas à chaque niveau 3\n";
+
+$MOT_H = str_repeat('a7', 32);
+$SEL_H = str_repeat('b8', 16);
+/** Le niveau 3 de qui a perdu le compte, à `$t` : rend [la décision, la reprise]. */
+$reprendre = static function (Escalade $esc, int $t, bool $sansRetour, int $ip) use ($MOT_H, $SEL_H): array {
+    $sesame  = bin2hex(random_bytes(32));
+    $dossier = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), "198.51.100.$ip", $t);
+    $numero  = (string) ($dossier['numero'] ?? '');
+    $d = $esc->trancher($numero, 'accepte', 'arbitre', $t + 10, $sansRetour);
+
+    return [$d, $esc->reEnroler($numero, $sesame, 'le mot de passe de qui reprend', $MOT_H, $SEL_H, $t + 20)];
+};
+
+// Une fraude vue trop tard : A a pris le compte par un niveau 3, la fenêtre du titulaire
+// est échue au 20e jour, et le titulaire gagne son propre niveau 3.
+$jour20 = $now + 20 * 86400;
+[$stA, $escA, $recA, , $rA] = $repris($now);
+$reprendre($escA, $jour20, false, 1);
+verifier('sans le geste, la fenêtre range les secrets de qui tient le compte : A revient en titulaire (la limite déclarée)',
+    ($recA->parPassphrase('alice', (string) $rA['passphrase'], '203.0.113.1', $jour20 + 100)['titulaire_reprend'] ?? false) === true);
+
+[$stA2, $escA2, $recA2, , $rA2] = $repris($now);
+[$dA2, $kA2] = $reprendre($escA2, $jour20, true, 2);
+verifier('⭐ l\'accord sans retour est dit à l\'arbitre et à qui reprend',
+    ($dA2['ok'] ?? false) === true && ($dA2['sans_retour'] ?? false) === true
+    && str_contains((string) $dA2['message'], 'sans retour')
+    && ($kA2['ok'] ?? false) === true && ($kA2['sans_retour'] ?? false) === true
+    && ($kA2['fenetre_jusqua'] ?? 0) === $jour20 + 20, json_encode([$dA2['error'] ?? null, $kA2['error'] ?? null]));
+verifier('⭐ accordé sans retour, la passphrase de A ne le rend plus à A',
+    ($recA2->parPassphrase('alice', (string) $rA2['passphrase'], '203.0.113.2', $jour20 + 100)['ok'] ?? true) === false);
+verifier('⭐ ni ses codes, jugés comme des codes inconnus',
+    ($recA2->parCode((string) $rA2['codes'][0], $MOT_L3, '203.0.113.3', $jour20 + 110)['ok'] ?? true) === false
+    && !$recA2->estCodeDeRetour((string) $rA2['codes'][0], $jour20 + 110));
+verifier('et le titulaire garde le compte : ses secrets du niveau 3 restent en place',
+    Hashing::verify($MOT_H, $stA2->comptes['alice']['empreinte_mot']) && $stA2->sels[1] === $SEL_H);
+$fA2 = $escA2->fenetre('alice', $jour20 + 120);
+verifier('⭐ la fenêtre est née échue, et le dit ; l\'arbitre peut lire le séquestre de l\'archive',
+    $fA2['etat'] === 'echue' && $fA2['sans_retour'] === true && $fA2['ferme_le'] === $jour20 + 20
+    && $fA2['lecture_admin_permise'] === true, json_encode($fA2));
+verifier('⭐ la fenêtre porte un ticket de reprise, pas la marque de l\'accord : la suite du coffre le reçoit',
+    preg_match('/^[0-9a-f]{32}$/', (string) $stA2->fenetres[1]['ticket_niveau3']) === 1
+    && isset($stA2->tickets[$stA2->fenetres[1]['ticket_niveau3']]), (string) $stA2->fenetres[1]['ticket_niveau3']);
+
+// Un papier volé : T tient les secrets d'avant. Sans le geste, T revient à chaque cycle ;
+// accordé sans retour, le second niveau 3 du titulaire l'écarte.
+foreach ([false, true] as $geste) {
+    [, $escT, $recT] = $repris($now);
+    $retourT = $recT->parPassphrase('alice', $PHRASE_AVANT, '192.0.2.1', $now + 100);
+    $escT->cloreFenetre('alice', 'arbitre', $now + 200);
+    $reprendre($escT, $now + 300, $geste, $geste ? 4 : 3);
+    $encore = $recT->parPassphrase('alice', (string) ($retourT['passphrase'] ?? ''), '192.0.2.2', $now + 400);
+    if ($geste) {
+        verifier('⭐ papier volé : accordé sans retour, le second niveau 3 du titulaire écarte T pour de bon',
+            ($retourT['titulaire_reprend'] ?? false) === true && ($encore['ok'] ?? true) === false);
+    } else {
+        verifier('papier volé : sans le geste, T revient encore au second cycle (la limite déclarée)',
+            ($retourT['titulaire_reprend'] ?? false) === true && ($encore['titulaire_reprend'] ?? false) === true);
+    }
+}
+
+// La marque n'est reconnue que pour son dossier : celle d'un autre, échue, est remplacée
+// par une fenêtre ordinaire.
+[$stM, $escM] = $repris($now);
+$stM->ouvrirFenetre(1, $jour20, $jour20, 'sans-retour:' . hash('sha256', 'un autre dossier'));
+[, $kM] = $reprendre($escM, $jour20 + 5, false, 5);
+verifier('⭐ la marque d\'un autre dossier n\'ouvre pas une fenêtre échue',
+    ($kM['sans_retour'] ?? true) === false && $escM->fenetre('alice', $jour20 + 100)['etat'] === 'ouverte');
+
+$dossierRefus = $escM->ouvrir('alice', Escalade::empreinteSesame(bin2hex(random_bytes(32))), '198.51.100.6', $jour20 + 50);
+$refusSans = $escM->trancher((string) ($dossierRefus['numero'] ?? ''), 'refuse', 'arbitre', $jour20 + 60, true);
+verifier('« sans retour » ne se joint qu\'à un accord : avec un refus, la décision est refusée et rien n\'est tranché',
+    ($refusSans['error'] ?? '') === 'decision_inconnue'
+    && ($stM->trouverLitigeParNumero((string) $dossierRefus['numero'])?->enCours() ?? false) === true);
+
+// Une fenêtre encore ouverte garde les secrets de qui tenait le compte avant le niveau 3
+// qui l'a ouverte — le voleur d'un papier, peut-être : le geste y est refusé, sans rien
+// trancher ni toucher, et rendu une fois la fenêtre échue.
+[$stO, $escO, $recO, , $rO] = $repris($now);
+$fermeO   = $stO->fenetres[1]['ferme_le'];
+$sesameO  = bin2hex(random_bytes(32));
+$dossierO = $escO->ouvrir('alice', Escalade::empreinteSesame($sesameO), '198.51.100.7', $now + 1000);
+try {
+    $dO = $escO->trancher((string) ($dossierO['numero'] ?? ''), 'accepte', 'arbitre', $now + 1010, true);
+} catch (LogicException $e) {
+    $dO = ['error' => 'leve : ' . $e->getMessage()];
+}
+verifier('⭐ fenêtre ouverte : l\'accord sans retour est refusé, avec son échéance, et rien n\'est tranché ni touché',
+    ($dO['error'] ?? '') === 'fenetre_ouverte' && ($dO['ferme_le'] ?? 0) === $fermeO
+    && ($stO->trouverLitigeParNumero((string) $dossierO['numero'])?->enCours() ?? false) === true
+    && $stO->fenetres[1]['ferme_le'] === $fermeO && preg_match('/^[0-9a-f]{32}$/', (string) $stO->fenetres[1]['ticket_niveau3']) === 1,
+    (string) ($dO['error'] ?? 'accordé'));
+$sesameO2  = bin2hex(random_bytes(32));
+$dossierO2 = $escO->ouvrir('alice', Escalade::empreinteSesame($sesameO2), '198.51.100.11', $fermeO + 5);
+$dO2 = $escO->trancher((string) ($dossierO2['numero'] ?? ''), 'accepte', 'arbitre', $fermeO + 10, true);
+$escO->reEnroler((string) ($dossierO2['numero'] ?? ''), $sesameO2, 'le mot de passe de qui reprend', $MOT_H, $SEL_H, $fermeO + 2 * 86400);
+verifier('⭐ la fenêtre échue, un dossier s\'accorde sans retour, et A ne revient pas, même repris deux jours après',
+    ($dO2['sans_retour'] ?? false) === true
+    && ($recO->parPassphrase('alice', (string) $rO['passphrase'], '203.0.113.7', $fermeO + 2 * 86400 + 100)['ok'] ?? true) === false);
+
+// Un stockage qui ne range pas la marque : la décision lève, et rien n'est tranché.
+final class StockageQuiPerdLaMarque extends StockageMemoire
+{
+    public function ouvrirFenetre(int $compteId, int $ouverteLe, int $fermeLe, string $ticketNiveau3): void
+    {
+        if (!str_starts_with($ticketNiveau3, 'sans-retour:')) {
+            parent::ouvrirFenetre($compteId, $ouverteLe, $fermeLe, $ticketNiveau3);
+        }
+    }
+}
+$stP = new StockageQuiPerdLaMarque();
+[, $escP2] = $repris($now, 14 * 86400, null, $stP);
+$dossierP2 = $escP2->ouvrir('alice', Escalade::empreinteSesame(bin2hex(random_bytes(32))), '198.51.100.10', $jour20);
+try {
+    $escP2->trancher((string) ($dossierP2['numero'] ?? ''), 'accepte', 'arbitre', $jour20 + 10, true);
+    $leve = false;
+} catch (LogicException) {
+    $leve = true;
+}
+verifier('⭐ un stockage qui ne range pas la marque fait lever la décision, et rien n\'est tranché',
+    $leve && ($stP->trouverLitigeParNumero((string) $dossierP2['numero'])?->enCours() ?? false) === true);
+
+// Décision et reprise dans la même seconde : la fenêtre est déjà échue à cette seconde.
+[, $escS, $recS, , $rS] = $repris($now);
+$sesameS  = bin2hex(random_bytes(32));
+$dossierS = $escS->ouvrir('alice', Escalade::empreinteSesame($sesameS), '198.51.100.8', $jour20);
+$escS->trancher((string) $dossierS['numero'], 'accepte', 'arbitre', $jour20 + 10, true);
+$escS->reEnroler((string) $dossierS['numero'], $sesameS, 'le mot de passe de qui reprend', $MOT_H, $SEL_H, $jour20 + 10);
+verifier('dans la même seconde que l\'accord, la reprise n\'ouvre aucun retour à A',
+    ($recS->parPassphrase('alice', (string) $rS['passphrase'], '203.0.113.9', $jour20 + 10)['ok'] ?? true) === false);
+
+// Un retour validé juste avant la transaction de la décision : la marque ne remplace pas
+// la fenêtre reprise, et la décision est défaite.
+$stQ = new StockageQuiReprend();
+[, $escQ] = $repris($now, 14 * 86400, null, $stQ);
+$dossierQ = $escQ->ouvrir('alice', Escalade::empreinteSesame(bin2hex(random_bytes(32))), '198.51.100.9', $now + 40);
+$stQ->auDebut = static function () use ($stQ, $now): void {
+    $stQ->reprendreFenetre(1, $now + 45);
+};
+$dQ = $escQ->trancher((string) ($dossierQ['numero'] ?? ''), 'accepte', 'arbitre', $now + 50, true);
+verifier('⭐ un retour validé juste avant la décision est vu par elle : la fenêtre reprise reste, rien n\'est tranché',
+    ($dQ['error'] ?? '') === 'reprise_en_cours' && $escQ->fenetre('alice', $now + 60)['reprise_le'] === $now + 45
+    && ($stQ->trouverLitigeParNumero((string) $dossierQ['numero'])?->enCours() ?? false) === true,
+    (string) ($dQ['error'] ?? 'tranché'));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Escalade SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";
