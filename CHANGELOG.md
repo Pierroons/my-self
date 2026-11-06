@@ -96,6 +96,11 @@ registre des textes.
   commence après elle. Le bras par défaut de la réserve, qu'aucun chemin connu n'atteint, ne conclut plus, et le
   banc vérifie qu'il ne sort pas.
 - **Un jour figé mal formé** (`SELFJUSTICE_JOUR`) retombe sur le jour réel au lieu de lever une erreur.
+- **La consultation d'article** ne s'effondre plus sur les grands codes : depuis la 0.4.3, la recherche d'un numéro
+  recyclé reparcourait tout le code du travail pour chaque version de chaque article, et la route rendait 502 après 30 s
+  (06/11, sur L1152-1, R6323-10, L1234-1). L'ordre de la jointure est imposé (`CROSS JOIN`), et la construction de la
+  base pose ses statistiques d'index (`ANALYZE`), qui manquaient. Un banc lit la forme du plan sur une base sans
+  statistiques.
 - **La sentinelle** juge la jurisprudence sur le compteur de Judilibre seul (`par_source.judilibre`), le cite dans
   ses alertes, et signale sa baisse même quand JADE la compense. JADE, qui partage la table et avance chaque soir,
   masquait un Judilibre figé derrière une date avancée.

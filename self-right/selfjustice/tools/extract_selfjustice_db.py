@@ -275,6 +275,13 @@ def main() -> int:
         dst.execute(sql)
     dst.commit()
 
+    # Les statistiques d'index, sans lesquelles SQLite choisit ses plans à
+    # l'aveugle. La base servie en a manqué jusqu'au 06/11/2026 : la route
+    # d'article y rendait 502 sur le code du travail, et un ANALYZE à la main
+    # l'a rétablie. Une base reconstruite sans elles les perdrait au passage.
+    dst.execute("ANALYZE")
+    dst.commit()
+
     # 🔑 Ce compte vient de la table source, pas de `articles_fts`.
     #
     # L'index est déclaré `content=articles` : il ne stocke pas les documents,
