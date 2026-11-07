@@ -109,7 +109,8 @@ tiennent en intégration continue.
 
 | script | ce qu'il mesure |
 |---|---|
-| `scripts/check-paths.sh` | un chemin cité quelque part a-t-il encore sa cible — liens Markdown, code inline, blocs de code, règles d'exclusion, chemins de workflow |
+| `scripts/check-paths.sh` | un chemin cité quelque part a-t-il encore sa cible — liens Markdown, code inline, blocs de code, règles d'exclusion, chemins de workflow et d'action locale |
+| `scripts/ci-modules.sh` | quels groupes de `structure.yml` un envoi doit jouer, d'après les chemins qu'il touche et les dépendances entre modules (sa table) ; avec `--verifier`, chaque job du workflow suit-il cette table |
 | `scripts/check-profil-unique.sh` | le profil de hachage est-il défini à un seul endroit ; ⚠️ son périmètre est l'index git, pas le disque |
 | `scripts/ecart-instance.sh` | ce qui est versionné et ce qui est servi disent-ils la même chose, sur chaque destination |
 | `self-right/selfjustice/tools/check_fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il — c'est la copie que l'instance exécute, et celle que la CI éprouve |
@@ -148,12 +149,13 @@ une **erreur nommée** qui ne doit pas revenir, et une **liste explicite** de
 porteurs à garder. Une heuristique sur la prose mesure le style ; une liste mesure
 une propriété.
 
-**Neuf d'entre eux tournent en intégration continue** (`structure.yml`) : les
-chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
-dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
+**Dix d'entre eux tournent en intégration continue** (`structure.yml`, job `transverse`,
+à chaque envoi) : les chemins cités, l'unicité du profil de hachage, les gabarits de
+vhost — ce dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
 le plancher de secret, la source du profil du navigateur, les porteurs de version,
-les portes de comptage, et le périmètre déclaré des canaris — ce dernier par son
-volet `--statique`, qui ne lance rien et n'a donc aucun prérequis. **Chaque matin, `suivi.yml`
+les portes de comptage, le périmètre déclaré des canaris — ce dernier par son
+volet `--statique`, qui ne lance rien et n'a donc aucun prérequis —, et la table des
+modules, qui choisit les bancs que joue chaque envoi. **Chaque matin, `suivi.yml`
 lance trois contrôles de plus**, parce que ce qui les fait rougir n'arrive pas
 par un envoi ici : le tag qu'une version annoncée attend, sa release publiée, et
 le dépôt voisin. Ils signalent sans bloquer `main`. Les autres ne le peuvent pas,

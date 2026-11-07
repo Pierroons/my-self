@@ -1,0 +1,42 @@
+# La préparation PHP des jobs de `structure.yml`, définie une seule fois : la version,
+# les extensions et le plafond mémoire ne divergent pas d'un job à l'autre.
+name: Préparer PHP
+description: PHP épinglé, ses extensions et son plafond mémoire, puis l'autoload du lab si demandé.
+
+inputs:
+  php-version:
+    description: Version de PHP.
+    default: '8.4'
+  lab:
+    description: "Installer l'autoload du lab (`demo/lab/vendor/`) : 'true' ou 'false'."
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Installer PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2 au 19/08/2026
+      with:
+        php-version: ${{ inputs.php-version }}
+        extensions: sodium, pdo_sqlite, mbstring, json
+        coverage: none
+        # Les bancs tiennent sous 8 Mio de pic réel (`memory_get_peak_usage(true)`,
+        # mesuré le 09/10/2026). 256M les couvre largement tout en restant assez bas
+        # pour qu'une récursion atteigne la limite et nomme sa ligne, au lieu de
+        # geler le runner jusqu'au timeout.
+        ini-values: memory_limit=256M
+
+    - name: Le plafond mémoire est en place
+      shell: bash
+      run: |
+        # Sans lui, une récursion infinie gèle le job jusqu'au timeout sans
+        # jamais nommer sa ligne. Un `ini-values` retiré doit se voir ici.
+        lu=$(php -r 'echo ini_get("memory_limit");')
+        [ "$lu" = "256M" ] || { echo "::error::plafond mémoire à '$lu', attendu 256M"; exit 1; }
+        echo "memory_limit = $lu"
+
+    - name: Préparer l'autoload du lab
+      if: inputs.lab == 'true'
+      shell: bash
+      working-directory: demo/lab
+      run: composer install --no-interaction --no-progress

@@ -10,6 +10,27 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La CI `structure` ne joue plus que les modules qu'un envoi touche — 7 novembre 2026
+
+Chaque envoi rejouait les 188 étapes de tout le dépôt dans un seul job : 4 h 54 et 5 h 30 aux deux derniers passages
+verts, alors qu'une tâche sur une machine de GitHub s'arrête au bout de 6 h.
+
+- `scripts/ci-modules.sh` porte la table : quels chemins appartiennent à quel module, et de quels modules dépend
+  chaque groupe. Le lab charge SelfDataGuard, SelfRecover et SelfModerate et porte les bancs de SelfModerate ; deux
+  bancs de SelfRecover chargent SelfDataGuard. Le job `modules` lit le diff de l'envoi et en tire les groupes à
+  jouer. Un push sur `main` suit la même règle. Un chemin que la table ne range nulle part, ou un changement de la
+  CI elle-même, joue tout ; `workflow_dispatch` accepte des groupes nommés, ou `tout`.
+- `transverse` tourne à chaque envoi. Les groupes `selfdataguard`, `selfrecover`, `couplage`, `lab` et `selfright`
+  ne tournent que si l'envoi touche un module dont ils dépendent ; les plus longs se découpent en lots parallèles.
+  Aucune étape n'est retirée ni modifiée.
+- Le job final `structure`, contrôle exigé sur `main`, rend vert si chaque groupe choisi a rendu `success` et
+  chaque groupe écarté `skipped`. Un garde du transverse vérifie que chaque job du workflow suit la table.
+- La préparation PHP (version, extensions, plafond de 256M, autoload du lab) ne s'écrit plus qu'à un endroit,
+  `.github/actions/preparer-php/`, que `scripts/check-paths.sh` lit désormais avec les workflows.
+- `demo/selfdataguard/tests/sanity_sessions.php` arrête ses deux serveurs `php -S` à toute sortie, et plus
+  seulement à sa fin normale : un banc tombé en route les laissait tourner. Un canari fait tomber le banc et exige
+  qu'aucun serveur ne reste.
+
 ### SelfRecover 0.13.3 — l'arbitre peut accorder un niveau 3 sans retour — 6 novembre 2026
 
 Correctif d'un défaut critique au barème, préexistant depuis la 0.13.0 et mesuré par les deux audits de la 0.13.2 :

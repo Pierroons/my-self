@@ -252,7 +252,8 @@ SelfJustice, et se replie sur ses chemins.
   recalculés en CI par une seconde implémentation
   (`self-security/selfdataguard/tests/vecteurs_argon2.py`, argon2-cffi). Pas de
   coffre `SDG2.` figé.
-- **CI, à chaque envoi** (`.github/workflows/structure.yml`) :
+- **CI** (`.github/workflows/structure.yml`) : les contrôles structurels à chaque envoi, et les
+  bancs des seuls modules que l'envoi touche, avec ceux qui en dépendent (`scripts/ci-modules.sh`) :
   - les bancs de SelfRecover, SelfDataGuard et SelfRecover-LUKS doivent afficher leur nombre
     exact de contrôles passés ;
   - une partie d'entre eux est doublée d'un canari : la CI plante un défaut connu et exige que le
