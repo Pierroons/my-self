@@ -26,10 +26,30 @@ $etat  = sys_get_temp_dir() . '/sanity-sdg-sessions-' . getmypid();
 $bases = $etat . '/sessions';
 @mkdir($etat, 0700, true);
 
+// Les serveurs lancés meurent avec le banc, à n'importe quelle sortie : un `php -S` survit à
+// son parent, et un banc tombé en route (erreur fatale, `exit`, signal) les laissait tourner.
+// Un signal ne déclenche pas les fonctions d'arrêt : sans pcntl, il reste hors de portée.
+$serveurs = [];
+register_shutdown_function(static function (): void {
+    global $serveurs;
+    foreach ($serveurs as $p) {
+        if (is_resource($p)) {
+            proc_terminate($p);
+            proc_close($p);
+        }
+    }
+});
+if (function_exists('pcntl_async_signals')) {
+    pcntl_async_signals(true);
+    foreach ([SIGTERM, SIGINT, SIGHUP] as $signal) {
+        pcntl_signal($signal, static fn () => exit(128 + $signal));
+    }
+}
+
 /** Lance la démo sur un port libre ; rend [processus, port]. */
 function demarrer(array $env): array
 {
-    global $demo, $etat;
+    global $demo, $etat, $serveurs;
     $port = 0;
     $s = stream_socket_server('tcp://127.0.0.1:0');
     $port = (int) substr(strrchr(stream_socket_get_name($s, false), ':'), 1);
@@ -42,6 +62,7 @@ function demarrer(array $env): array
         $env + ['DATAGUARD_DB_PATH' => $etat . '/demo.sqlite', 'DATAGUARD_BLINDKEY_PATH' => $etat . '/blindkey.bin',
                 'PATH' => getenv('PATH') ?: '/usr/bin:/bin']
     );
+    $serveurs[] = $proc;
     for ($i = 0; $i < 50; $i++) {
         $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
         if ($c) { fclose($c); return [$proc, $port]; }
