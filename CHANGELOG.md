@@ -43,40 +43,6 @@ Mesuré : `sanity_escalade` passe à 287 cas, chacun des deux cas du défaut jou
 de canaris neuve, six canaris, chacun vu rouge sur son cas. Relu avant l'envoi par un audit, qui a trouvé le geste
 sans effet sur une fenêtre encore ouverte : corrigé ici par le refus.
 
-### SelfModerate 0.8.0 : lever n'est plus gracier, et un refus du journal ne défait plus le vote — 4 novembre 2026
-
-La 0.8.0 répond aux demandes d'un deuxième hôte, qui fait du moteur la seule source de ses bans. Aucun changement de
-schéma.
-
-- **Lever n'est plus gracier** : `adminLever()` arrête une peine et garde les strikes, ceux d'un arbitre compris — un
-  ban, une levée, un ban signalent l'enchaînement (`bans_arbitre`). `adminProlonger()` repousse l'échéance d'un ban
-  d'arbitre en cours, même épisode, motif exigé ; un ban automatique ne se rallonge pas, l'arbitre le lève puis pose le
-  sien. Une durée qui atteindrait `SANS_FIN` est refusée. Un arbitre peut poser un ban sans fin, ou y porter un ban d'arbitre en cours :
-  l'échéance vaut `Moderate::SANS_FIN` et n'arrive pas, le lever ou le gracier exige un motif, et le signal
-  `ban_sans_fin` le garde parmi les signalements ouverts, hors de la file. La machine ne prononce toujours aucun ban sans
-  fin.
-- **Un refus du journal au début d'un ban automatique ne défait plus le vote** : la chute est signalée avec le ban dû
-  (`ban_en_attente`), et le vote négatif suivant le retente.
-- **Un votant absent d'`accounts`, ou dont `created_at` n'est pas un horodatage entier en secondes, ne vote plus** : il
-  paraissait très ancien.
-- **Une table `dm` absente lève une `LogicException` qui la nomme**, l'erreur de la base chaînée ; une `dm` présente qui
-  échoue garde son erreur.
-- **Quatre réglages dans `Config`** : `banAutomatique` (éteint, une réputation au plancher est signalée sans ban),
-  `signalPerteDuVote` (actif : la perte du droit de vote se signale, `droit_de_vote_perdu`), `messagesPourVoterAvantAge`
-  (les messages qui dispensent de l'ancienneté anti-Sybil ; 0 n'en dispense personne), `motifsVotantsMin` (sous ce
-  nombre de votants distincts, `reasonsFor()` ne rend rien). Les valeurs par défaut gardent le comportement de la 0.7.1,
-  sauf le signal de perte du vote.
-- La documentation dit ce qu'une `dm` vide éteint, ce qu'un hôte sans journal construit ne doit pas servir, et comment
-  un hôte aux autres noms de tables branche le moteur par des vues temporaires — un cas du banc le joue.
-- Le lab : la console lève, rallonge et gracie par trois boutons distincts, et nomme les trois causes neuves.
-
-**Pour un intégrateur** : un `Journal` qui filtre les actes accepte `ban_prolonge`, la cause `levee` de `ban_leve` et la
-clé `sans_fin` ; `duree` et `reste` y valent `null` pour un ban sans fin. Une console d'arbitre nomme `ban_en_attente`,
-`droit_de_vote_perdu` et `ban_sans_fin`, et une page qui date une échéance teste d'abord `Moderate::estSansFin()`.
-`Config` refuse un palier `dureesBan`, ou un `dureeBanAdminSecondes`, qui atteindrait `SANS_FIN` : une configuration
-qui écrivait `PHP_INT_MAX` pour dire « infini » lève à sa construction — l'échéance débordait, et le banni ne se lisait
-plus banni. Le détail : la section « Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
-
 ### SelfJustice 0.4.4 et SelfAct 0.1.4 : ce qui reste à dire juste, avant le passage du 15 novembre — 4 novembre 2026
 
 Les constats que la relecture de la 0.4.3 avait laissés pour après sa pose, ceux de la relecture de ce lot, et le
@@ -896,6 +862,42 @@ même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le mê
 ayant renoncé aux contrôles qui touchent au système.
 
 ---
+
+## [SelfModerate v0.8.0] — 7 novembre 2026
+
+### SelfModerate 0.8.0 : lever n'est plus gracier, et un refus du journal ne défait plus le vote — 4 novembre 2026
+
+La 0.8.0 répond aux demandes d'un deuxième hôte, qui fait du moteur la seule source de ses bans. Aucun changement de
+schéma.
+
+- **Lever n'est plus gracier** : `adminLever()` arrête une peine et garde les strikes, ceux d'un arbitre compris — un
+  ban, une levée, un ban signalent l'enchaînement (`bans_arbitre`). `adminProlonger()` repousse l'échéance d'un ban
+  d'arbitre en cours, même épisode, motif exigé ; un ban automatique ne se rallonge pas, l'arbitre le lève puis pose le
+  sien. Une durée qui atteindrait `SANS_FIN` est refusée. Un arbitre peut poser un ban sans fin, ou y porter un ban d'arbitre en cours :
+  l'échéance vaut `Moderate::SANS_FIN` et n'arrive pas, le lever ou le gracier exige un motif, et le signal
+  `ban_sans_fin` le garde parmi les signalements ouverts, hors de la file. La machine ne prononce toujours aucun ban sans
+  fin.
+- **Un refus du journal au début d'un ban automatique ne défait plus le vote** : la chute est signalée avec le ban dû
+  (`ban_en_attente`), et le vote négatif suivant le retente.
+- **Un votant absent d'`accounts`, ou dont `created_at` n'est pas un horodatage entier en secondes, ne vote plus** : il
+  paraissait très ancien.
+- **Une table `dm` absente lève une `LogicException` qui la nomme**, l'erreur de la base chaînée ; une `dm` présente qui
+  échoue garde son erreur.
+- **Quatre réglages dans `Config`** : `banAutomatique` (éteint, une réputation au plancher est signalée sans ban),
+  `signalPerteDuVote` (actif : la perte du droit de vote se signale, `droit_de_vote_perdu`), `messagesPourVoterAvantAge`
+  (les messages qui dispensent de l'ancienneté anti-Sybil ; 0 n'en dispense personne), `motifsVotantsMin` (sous ce
+  nombre de votants distincts, `reasonsFor()` ne rend rien). Les valeurs par défaut gardent le comportement de la 0.7.1,
+  sauf le signal de perte du vote.
+- La documentation dit ce qu'une `dm` vide éteint, ce qu'un hôte sans journal construit ne doit pas servir, et comment
+  un hôte aux autres noms de tables branche le moteur par des vues temporaires — un cas du banc le joue.
+- Le lab : la console lève, rallonge et gracie par trois boutons distincts, et nomme les trois causes neuves.
+
+**Pour un intégrateur** : un `Journal` qui filtre les actes accepte `ban_prolonge`, la cause `levee` de `ban_leve` et la
+clé `sans_fin` ; `duree` et `reste` y valent `null` pour un ban sans fin. Une console d'arbitre nomme `ban_en_attente`,
+`droit_de_vote_perdu` et `ban_sans_fin`, et une page qui date une échéance teste d'abord `Moderate::estSansFin()`.
+`Config` refuse un palier `dureesBan`, ou un `dureeBanAdminSecondes`, qui atteindrait `SANS_FIN` : une configuration
+qui écrivait `PHP_INT_MAX` pour dire « infini » lève à sa construction — l'échéance débordait, et le banni ne se lisait
+plus banni. Le détail : la section « Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
 
 ## [SelfDataGuard v0.9.0] — 6 novembre 2026
 
