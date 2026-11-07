@@ -10,39 +10,6 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover 0.13.3 — l'arbitre peut accorder un niveau 3 sans retour — 6 novembre 2026
-
-Correctif d'un défaut critique au barème, préexistant depuis la 0.13.0 et mesuré par les deux audits de la 0.13.2 :
-la fenêtre d'un niveau 3 range les secrets de qui tient le compte à la reprise, quel qu'il soit. Après un niveau 3
-frauduleux remarqué une fois sa fenêtre échue, le niveau 3 légitime du titulaire rouvrait un retour à l'auteur de la
-fraude ; après un papier volé, le voleur revenait à chaque cycle, et à la fin il gardait le compte. L'arbitre n'avait
-aucun geste pour accorder un niveau 3 sans rouvrir un retour à celui qu'il écartait. Aucune rupture de contrat :
-`StorageInterface` ne change pas, et un adaptateur dont `ouvrirFenetre()` suit son contrat n'a rien à reprendre.
-
-- **`Escalade::trancher()` prend `sansRetour`**, en dernier paramètre, `false` par défaut. Avec un accord, la reprise
-  de ce dossier ouvre une fenêtre déjà échue : qui tient alors le compte n'y revient ni par sa passphrase ni par ses
-  codes, que `parCode()` traite comme des codes inconnus. Le choix est écrit avec la décision, dans sa transaction,
-  par une fenêtre de durée nulle que seule la reprise de ce dossier reconnaît ; la fenêtre d'avant, close ou échue, est
-  remplacée dès la décision, et la décision relit la marque : un stockage qui ne la range pas la fait lever
-  (`LogicException`), sans rien trancher. **Sur une fenêtre encore ouverte et non reprise, le geste est refusé**
-  (`fenetre_ouverte`, avec son échéance) : cette fenêtre garde les secrets de qui tenait le compte avant le niveau 3
-  qui l'a ouverte — le voleur d'un papier, peut-être —, et la marque n'y serait qu'une prolongation. L'arbitre accorde
-  sans retour une fois qu'elle est échue, ou close après un retour. Un retour validé entre la lecture de la décision
-  et sa transaction est vu par elle (`reprise_en_cours`), et rien n'est tranché. Avec un refus, le paramètre fait
-  refuser la décision.
-- **Les réponses le disent** : `sans_retour` dans celles de `trancher()` et de `reEnroler()`, dont `fenetre_jusqua`
-  vaut alors l'instant de la reprise ; `fenetre()` gagne la clé `sans_retour`, son `etat` restant `echue`. L'arbitre
-  reçoit un message à part (`l3.accepte_sans_retour`).
-- **La limite reste, déplacée** : la bibliothèque ne sait toujours pas qui tenait le compte à bon droit. Le geste
-  fait de ce jugement celui de l'arbitre ; un arbitre trompé qui l'emploie retire au vrai titulaire son seul retour,
-  et la fenêtre née échue permet aussitôt la lecture du séquestre de l'archive née de ce niveau 3
-  (`lecture_admin_permise`). Il se réserve à un dossier qui montre que le compte a été pris. Le lab ne l'expose pas. Sans le geste, les bornes
-  valent par fenêtre, comme avant : le modèle de menace, les whitepapers et les README le disent.
-
-Mesuré : `sanity_escalade` passe à 287 cas, chacun des deux cas du défaut joué sans le geste puis avec ; une étape
-de canaris neuve, six canaris, chacun vu rouge sur son cas. Relu avant l'envoi par un audit, qui a trouvé le geste
-sans effet sur une fenêtre encore ouverte : corrigé ici par le refus.
-
 ### SelfModerate 0.8.0 : lever n'est plus gracier, et un refus du journal ne défait plus le vote — 4 novembre 2026
 
 La 0.8.0 répond aux demandes d'un deuxième hôte, qui fait du moteur la seule source de ses bans. Aucun changement de
@@ -891,6 +858,41 @@ même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le mê
 ayant renoncé aux contrôles qui touchent au système.
 
 ---
+
+## [SelfRecover v0.13.3] — 7 novembre 2026
+
+### SelfRecover 0.13.3 — l'arbitre peut accorder un niveau 3 sans retour — 6 novembre 2026
+
+Correctif d'un défaut critique au barème, préexistant depuis la 0.13.0 et mesuré par les deux audits de la 0.13.2 :
+la fenêtre d'un niveau 3 range les secrets de qui tient le compte à la reprise, quel qu'il soit. Après un niveau 3
+frauduleux remarqué une fois sa fenêtre échue, le niveau 3 légitime du titulaire rouvrait un retour à l'auteur de la
+fraude ; après un papier volé, le voleur revenait à chaque cycle, et à la fin il gardait le compte. L'arbitre n'avait
+aucun geste pour accorder un niveau 3 sans rouvrir un retour à celui qu'il écartait. Aucune rupture de contrat :
+`StorageInterface` ne change pas, et un adaptateur dont `ouvrirFenetre()` suit son contrat n'a rien à reprendre.
+
+- **`Escalade::trancher()` prend `sansRetour`**, en dernier paramètre, `false` par défaut. Avec un accord, la reprise
+  de ce dossier ouvre une fenêtre déjà échue : qui tient alors le compte n'y revient ni par sa passphrase ni par ses
+  codes, que `parCode()` traite comme des codes inconnus. Le choix est écrit avec la décision, dans sa transaction,
+  par une fenêtre de durée nulle que seule la reprise de ce dossier reconnaît ; la fenêtre d'avant, close ou échue, est
+  remplacée dès la décision, et la décision relit la marque : un stockage qui ne la range pas la fait lever
+  (`LogicException`), sans rien trancher. **Sur une fenêtre encore ouverte et non reprise, le geste est refusé**
+  (`fenetre_ouverte`, avec son échéance) : cette fenêtre garde les secrets de qui tenait le compte avant le niveau 3
+  qui l'a ouverte — le voleur d'un papier, peut-être —, et la marque n'y serait qu'une prolongation. L'arbitre accorde
+  sans retour une fois qu'elle est échue, ou close après un retour. Un retour validé entre la lecture de la décision
+  et sa transaction est vu par elle (`reprise_en_cours`), et rien n'est tranché. Avec un refus, le paramètre fait
+  refuser la décision.
+- **Les réponses le disent** : `sans_retour` dans celles de `trancher()` et de `reEnroler()`, dont `fenetre_jusqua`
+  vaut alors l'instant de la reprise ; `fenetre()` gagne la clé `sans_retour`, son `etat` restant `echue`. L'arbitre
+  reçoit un message à part (`l3.accepte_sans_retour`).
+- **La limite reste, déplacée** : la bibliothèque ne sait toujours pas qui tenait le compte à bon droit. Le geste
+  fait de ce jugement celui de l'arbitre ; un arbitre trompé qui l'emploie retire au vrai titulaire son seul retour,
+  et la fenêtre née échue permet aussitôt la lecture du séquestre de l'archive née de ce niveau 3
+  (`lecture_admin_permise`). Il se réserve à un dossier qui montre que le compte a été pris. Le lab ne l'expose pas. Sans le geste, les bornes
+  valent par fenêtre, comme avant : le modèle de menace, les whitepapers et les README le disent.
+
+Mesuré : `sanity_escalade` passe à 287 cas, chacun des deux cas du défaut joué sans le geste puis avec ; une étape
+de canaris neuve, six canaris, chacun vu rouge sur son cas. Relu avant l'envoi par un audit, qui a trouvé le geste
+sans effet sur une fenêtre encore ouverte : corrigé ici par le refus.
 
 ## [SelfDataGuard v0.9.0] — 6 novembre 2026
 
