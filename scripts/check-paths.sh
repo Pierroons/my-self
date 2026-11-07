@@ -245,7 +245,7 @@ if suspects:
 print(f"  ✓ aucune règle orpheline sur {examinees} règle(s) examinée(s)")
 PY
 
-echo "▸ Chemins cités — workflows GitHub"
+echo "▸ Chemins cités — workflows GitHub et leurs actions locales"
 # 🔑 **Deux familles, et la seconde était l'angle mort.** Les clés YAML
 # (`context`, `file`…) ne couvrent pas ce qu'un `run:` LANCE : un banc renommé
 # resterait cité par le workflow, et seule l'exécution en intégration continue
@@ -259,7 +259,10 @@ python3 - <<'EOF' || echec=1
 import pathlib, re, sys
 morts, examines = [], 0
 rep = pathlib.Path(".github/workflows")
-CLE = re.compile(r"\s*(context|working-directory|dockerfile|file):\s*(\S+)")
+# Une action locale (`uses: ./…`) porte ses propres étapes, et son `working-directory` se lit
+# comme celui d'un workflow : elle entre dans le périmètre, et son chemin doit désigner un
+# dossier qui porte un `action.yml`.
+CLE = re.compile(r"\s*(?:-\s+)?(context|working-directory|dockerfile|file|uses):\s*(\S+)")
 # ⚠️ **Hors de portée, et il faut le dire** : un chemin construit par une
 # variable (`php -l "$F"`) n'a pas d'extension littérale, donc aucun motif ne le
 # reconnaît ici. Mesuré le 10/10/2026 : 3 occurrences, toutes dans des canaris.
@@ -267,15 +270,23 @@ CMD = re.compile(
     r"(?:^|[\s|(&;])(?:bash|sh|php|python3|node)\s+"
     r"((?:\./)?[A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:sh|php|py|js))"
 )
-for wf in sorted(list(rep.glob("*.yml")) + list(rep.glob("*.yaml"))):
+actions = pathlib.Path(".github/actions")
+for wf in sorted(list(rep.glob("*.yml")) + list(rep.glob("*.yaml"))
+                 + list(actions.glob("*/action.yml")) + list(actions.glob("*/action.yaml"))):
     for n, line in enumerate(wf.read_text().splitlines(), 1):
         m = CLE.match(line)
         if m:
-            chemin = m.group(2).strip("'\"")
-            if not (chemin.startswith("$") or chemin == "."):
+            cle, chemin = m.group(1), m.group(2).strip("'\"")
+            if cle == "uses":
+                if chemin.startswith("./"):
+                    examines += 1
+                    p = pathlib.Path(chemin)
+                    if not ((p / "action.yml").exists() or (p / "action.yaml").exists()):
+                        morts.append(f"{wf}:{n}  uses: {chemin} (aucun action.yml)")
+            elif not (chemin.startswith("$") or chemin == "."):
                 examines += 1
                 if not pathlib.Path(chemin).exists():
-                    morts.append(f"{wf}:{n}  {m.group(1)}: {chemin}")
+                    morts.append(f"{wf}:{n}  {cle}: {chemin}")
         for cible in CMD.findall(line):
             if cible.startswith("/"):
                 continue
