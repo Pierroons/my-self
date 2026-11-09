@@ -67,16 +67,18 @@ jobs:
 
   transverse:
     runs-on: ubuntu-24.04
-    # 🔑 **120 minutes est une borne d'attente, pas une mesure.** L'ancien workflow
-    # n'en portait aucune — donc 360 par défaut — pour des runs de 294 à 330 minutes
-    # mesurés du 02 au 07/11 (`gh run list -w structure`). Le découpage par module
-    # répartit ces étapes sur 22 jobs, et `transverse` est le plus chargé : il tourne
-    # à chaque envoi et relance 36 bancs appariés par `check-portes.sh` (182 s sur le
-    # poste de travail, mesuré le 09/11 ; un runner est plus lent). Aucune durée PAR
-    # JOB n'est connue avant le premier run réel : un plafond serré rendrait alors le
-    # contrôle exigé rouge pour une raison étrangère au fond. Resserrer sur la mesure
-    # du premier run, pas avant.
-    timeout-minutes: 120
+    # 🔑 **90 minutes, et le chiffre vient de deux mesures.** L'ancien workflow n'en
+    # portait aucune — donc 360 par défaut — pour des runs de 294 à 330 minutes. Le
+    # découpage a été mesuré deux fois le 09/11/2026, par `workflow_dispatch` sur une
+    # branche de conv puis par l'envoi sur `dev` : **38 minutes de bout en bout** aux
+    # deux passages, le job le plus long à **37 puis 38 minutes**. Un même job varie
+    # de près de 40 % d'un run à l'autre, d'où la marge retenue : 90 minutes laissent
+    # 2,4 fois le pire relevé, de quoi absorber un runner lent sans qu'un plafond
+    # serré rende le contrôle exigé rouge pour une raison étrangère au fond.
+    # `transverse`, qui tourne à chaque envoi et relance 36 bancs appariés par
+    # `check-portes.sh`, a fait **6 minutes** aux deux runs : la crainte qu'il
+    # approche du plafond est levée par la mesure, pas par un raisonnement.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -931,7 +933,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1144,7 +1146,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1188,7 +1190,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1225,7 +1227,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1283,7 +1285,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1705,7 +1707,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1747,7 +1749,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1785,7 +1787,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1823,7 +1825,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2099,7 +2101,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2227,7 +2229,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2398,7 +2400,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2595,7 +2597,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.couplage == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2795,7 +2797,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.couplage == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -2829,7 +2831,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2901,7 +2903,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -3009,7 +3011,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -4323,7 +4325,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -4961,7 +4963,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfright == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
