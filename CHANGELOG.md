@@ -10,10 +10,10 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### La CI `structure` ne joue plus que les modules qu'un envoi touche — 7 novembre 2026
+### La CI `structure` ne joue plus que les modules qu'un envoi touche — 9 novembre 2026
 
-Chaque envoi rejouait les 188 étapes de tout le dépôt dans un seul job : 4 h 54 et 5 h 30 aux deux derniers passages
-verts, alors qu'une tâche sur une machine de GitHub s'arrête au bout de 6 h.
+Chaque envoi rejouait les 185 étapes de charge du dépôt entier, réparties sur deux jobs seulement : 4 h 54 et
+5 h 30 aux deux derniers passages verts, alors qu'une tâche sur une machine de GitHub s'arrête au bout de 6 h.
 
 - `scripts/ci-modules.sh` porte la table : quels chemins appartiennent à quel module, et de quels modules dépend
   chaque groupe. Le lab charge SelfDataGuard, SelfRecover et SelfModerate et porte les bancs de SelfModerate ; deux
@@ -23,46 +23,22 @@ verts, alors qu'une tâche sur une machine de GitHub s'arrête au bout de 6 h.
 - `transverse` tourne à chaque envoi. Les groupes `selfdataguard`, `selfrecover`, `couplage`, `lab` et `selfright`
   ne tournent que si l'envoi touche un module dont ils dépendent ; les plus longs se découpent en lots parallèles.
   Aucune étape n'est retirée ni modifiée.
+- 🔑 **Quatre bancs lisent hors de leur module et reviennent donc dans `transverse`** : les constructions de
+  SelfRecover (qui parcourent la racine du dépôt), la purge des sessions de la démo SelfDataGuard (qui asserte sur
+  son unité systemd), les variables documentées du serveur MCP et les promesses des README de SelfModerate (qui
+  assertent sur des `.md`). Rangés dans un job de groupe, ils cessaient de tourner quand le chemin qu'ils gardent
+  changeait — un envoi touchant `deploy/` ou un `.md` rendait vert sans les avoir joués. Les deux canaris qui les
+  gardent suivent leur banc.
 - Le job final `structure`, contrôle exigé sur `main`, rend vert si chaque groupe choisi a rendu `success` et
   chaque groupe écarté `skipped`. Un garde du transverse vérifie que chaque job du workflow suit la table.
 - La préparation PHP (version, extensions, plafond de 256M, autoload du lab) ne s'écrit plus qu'à un endroit,
   `.github/actions/preparer-php/`, que `scripts/check-paths.sh` lit désormais avec les workflows.
+- Chaque job porte un plafond de 120 minutes, là où le workflow n'en portait aucun. Le fichier dit pourquoi ce
+  chiffre n'est pas une mesure : aucune durée par job n'est connue avant le premier run réel, et un plafond serré
+  rendrait le contrôle exigé rouge pour une raison étrangère au fond. À resserrer sur la mesure de ce premier run.
 - `demo/selfdataguard/tests/sanity_sessions.php` arrête ses deux serveurs `php -S` à toute sortie, et plus
   seulement à sa fin normale : un banc tombé en route les laissait tourner. Un canari fait tomber le banc et exige
   qu'aucun serveur ne reste.
-
-### SelfRecover 0.13.3 — l'arbitre peut accorder un niveau 3 sans retour — 6 novembre 2026
-
-Correctif d'un défaut critique au barème, préexistant depuis la 0.13.0 et mesuré par les deux audits de la 0.13.2 :
-la fenêtre d'un niveau 3 range les secrets de qui tient le compte à la reprise, quel qu'il soit. Après un niveau 3
-frauduleux remarqué une fois sa fenêtre échue, le niveau 3 légitime du titulaire rouvrait un retour à l'auteur de la
-fraude ; après un papier volé, le voleur revenait à chaque cycle, et à la fin il gardait le compte. L'arbitre n'avait
-aucun geste pour accorder un niveau 3 sans rouvrir un retour à celui qu'il écartait. Aucune rupture de contrat :
-`StorageInterface` ne change pas, et un adaptateur dont `ouvrirFenetre()` suit son contrat n'a rien à reprendre.
-
-- **`Escalade::trancher()` prend `sansRetour`**, en dernier paramètre, `false` par défaut. Avec un accord, la reprise
-  de ce dossier ouvre une fenêtre déjà échue : qui tient alors le compte n'y revient ni par sa passphrase ni par ses
-  codes, que `parCode()` traite comme des codes inconnus. Le choix est écrit avec la décision, dans sa transaction,
-  par une fenêtre de durée nulle que seule la reprise de ce dossier reconnaît ; la fenêtre d'avant, close ou échue, est
-  remplacée dès la décision, et la décision relit la marque : un stockage qui ne la range pas la fait lever
-  (`LogicException`), sans rien trancher. **Sur une fenêtre encore ouverte et non reprise, le geste est refusé**
-  (`fenetre_ouverte`, avec son échéance) : cette fenêtre garde les secrets de qui tenait le compte avant le niveau 3
-  qui l'a ouverte — le voleur d'un papier, peut-être —, et la marque n'y serait qu'une prolongation. L'arbitre accorde
-  sans retour une fois qu'elle est échue, ou close après un retour. Un retour validé entre la lecture de la décision
-  et sa transaction est vu par elle (`reprise_en_cours`), et rien n'est tranché. Avec un refus, le paramètre fait
-  refuser la décision.
-- **Les réponses le disent** : `sans_retour` dans celles de `trancher()` et de `reEnroler()`, dont `fenetre_jusqua`
-  vaut alors l'instant de la reprise ; `fenetre()` gagne la clé `sans_retour`, son `etat` restant `echue`. L'arbitre
-  reçoit un message à part (`l3.accepte_sans_retour`).
-- **La limite reste, déplacée** : la bibliothèque ne sait toujours pas qui tenait le compte à bon droit. Le geste
-  fait de ce jugement celui de l'arbitre ; un arbitre trompé qui l'emploie retire au vrai titulaire son seul retour,
-  et la fenêtre née échue permet aussitôt la lecture du séquestre de l'archive née de ce niveau 3
-  (`lecture_admin_permise`). Il se réserve à un dossier qui montre que le compte a été pris. Le lab ne l'expose pas. Sans le geste, les bornes
-  valent par fenêtre, comme avant : le modèle de menace, les whitepapers et les README le disent.
-
-Mesuré : `sanity_escalade` passe à 287 cas, chacun des deux cas du défaut joué sans le geste puis avec ; une étape
-de canaris neuve, six canaris, chacun vu rouge sur son cas. Relu avant l'envoi par un audit, qui a trouvé le geste
-sans effet sur une fenêtre encore ouverte : corrigé ici par le refus.
 
 ### SelfJustice 0.4.4 et SelfAct 0.1.4 : ce qui reste à dire juste, avant le passage du 15 novembre — 4 novembre 2026
 
@@ -83,6 +59,11 @@ registre des textes.
   commence après elle. Le bras par défaut de la réserve, qu'aucun chemin connu n'atteint, ne conclut plus, et le
   banc vérifie qu'il ne sort pas.
 - **Un jour figé mal formé** (`SELFJUSTICE_JOUR`) retombe sur le jour réel au lieu de lever une erreur.
+- **La consultation d'article** ne s'effondre plus sur les grands codes : depuis la 0.4.3, la recherche d'un numéro
+  recyclé reparcourait tout le code du travail pour chaque version de chaque article, et la route rendait 502 après 30 s
+  (06/11, sur L1152-1, R6323-10, L1234-1). L'ordre de la jointure est imposé (`CROSS JOIN`), et la construction de la
+  base pose ses statistiques d'index (`ANALYZE`), qui manquaient. Un banc lit la forme du plan sur une base sans
+  statistiques.
 - **La sentinelle** juge la jurisprudence sur le compteur de Judilibre seul (`par_source.judilibre`), le cite dans
   ses alertes, et signale sa baisse même quand JADE la compense. JADE, qui partage la table et avance chaque soir,
   masquait un Judilibre figé derrière une date avancée.
@@ -914,6 +895,41 @@ clé `sans_fin` ; `duree` et `reste` y valent `null` pour un ban sans fin. Une c
 `Config` refuse un palier `dureesBan`, ou un `dureeBanAdminSecondes`, qui atteindrait `SANS_FIN` : une configuration
 qui écrivait `PHP_INT_MAX` pour dire « infini » lève à sa construction — l'échéance débordait, et le banni ne se lisait
 plus banni. Le détail : la section « Statut » de [`bi-self/selfmoderate/README.fr.md`](./bi-self/selfmoderate/README.fr.md).
+
+## [SelfRecover v0.13.3] — 7 novembre 2026
+
+### SelfRecover 0.13.3 — l'arbitre peut accorder un niveau 3 sans retour — 6 novembre 2026
+
+Correctif d'un défaut critique au barème, préexistant depuis la 0.13.0 et mesuré par les deux audits de la 0.13.2 :
+la fenêtre d'un niveau 3 range les secrets de qui tient le compte à la reprise, quel qu'il soit. Après un niveau 3
+frauduleux remarqué une fois sa fenêtre échue, le niveau 3 légitime du titulaire rouvrait un retour à l'auteur de la
+fraude ; après un papier volé, le voleur revenait à chaque cycle, et à la fin il gardait le compte. L'arbitre n'avait
+aucun geste pour accorder un niveau 3 sans rouvrir un retour à celui qu'il écartait. Aucune rupture de contrat :
+`StorageInterface` ne change pas, et un adaptateur dont `ouvrirFenetre()` suit son contrat n'a rien à reprendre.
+
+- **`Escalade::trancher()` prend `sansRetour`**, en dernier paramètre, `false` par défaut. Avec un accord, la reprise
+  de ce dossier ouvre une fenêtre déjà échue : qui tient alors le compte n'y revient ni par sa passphrase ni par ses
+  codes, que `parCode()` traite comme des codes inconnus. Le choix est écrit avec la décision, dans sa transaction,
+  par une fenêtre de durée nulle que seule la reprise de ce dossier reconnaît ; la fenêtre d'avant, close ou échue, est
+  remplacée dès la décision, et la décision relit la marque : un stockage qui ne la range pas la fait lever
+  (`LogicException`), sans rien trancher. **Sur une fenêtre encore ouverte et non reprise, le geste est refusé**
+  (`fenetre_ouverte`, avec son échéance) : cette fenêtre garde les secrets de qui tenait le compte avant le niveau 3
+  qui l'a ouverte — le voleur d'un papier, peut-être —, et la marque n'y serait qu'une prolongation. L'arbitre accorde
+  sans retour une fois qu'elle est échue, ou close après un retour. Un retour validé entre la lecture de la décision
+  et sa transaction est vu par elle (`reprise_en_cours`), et rien n'est tranché. Avec un refus, le paramètre fait
+  refuser la décision.
+- **Les réponses le disent** : `sans_retour` dans celles de `trancher()` et de `reEnroler()`, dont `fenetre_jusqua`
+  vaut alors l'instant de la reprise ; `fenetre()` gagne la clé `sans_retour`, son `etat` restant `echue`. L'arbitre
+  reçoit un message à part (`l3.accepte_sans_retour`).
+- **La limite reste, déplacée** : la bibliothèque ne sait toujours pas qui tenait le compte à bon droit. Le geste
+  fait de ce jugement celui de l'arbitre ; un arbitre trompé qui l'emploie retire au vrai titulaire son seul retour,
+  et la fenêtre née échue permet aussitôt la lecture du séquestre de l'archive née de ce niveau 3
+  (`lecture_admin_permise`). Il se réserve à un dossier qui montre que le compte a été pris. Le lab ne l'expose pas. Sans le geste, les bornes
+  valent par fenêtre, comme avant : le modèle de menace, les whitepapers et les README le disent.
+
+Mesuré : `sanity_escalade` passe à 287 cas, chacun des deux cas du défaut joué sans le geste puis avec ; une étape
+de canaris neuve, six canaris, chacun vu rouge sur son cas. Relu avant l'envoi par un audit, qui a trouvé le geste
+sans effet sur une fenêtre encore ouverte : corrigé ici par le refus.
 
 ## [SelfDataGuard v0.9.0] — 6 novembre 2026
 
