@@ -860,12 +860,19 @@ function article_renvoi(SQLite3 $db, array $row): ?array {
     // « Vivant » au sens du jour : la ligne vient du sélecteur, qui l'a calculé.
     $vivant = !empty($row['applicable']);
 
+    // 🔑 **L'ordre de la jointure est imposé.** Sans statistiques d'index, SQLite
+    // le choisit à l'aveugle, et il a mis `v` dehors : pour L1152-1 du code du
+    // travail, la requête reparcourait tout le code pour chaque version de chaque
+    // article du code, et la route rendait 502 après 30 s (mesuré le 06/11/2026
+    // sur la base servie : plus de 120 s, contre 0,04 s dans cet ordre). `CROSS
+    // JOIN` garde `anc` en boucle extérieure, et `+anc.code_id` la fait passer par
+    // l'index du numéro, qui ne rend qu'une poignée de versions.
     $sql = $vivant
         ? "SELECT anc.date_fin AS bascule, v.num AS ailleurs
              FROM articles anc
-             JOIN articles v ON v.code_id = anc.code_id AND " . legi_sql_applicable('v') . "
+             CROSS JOIN articles v ON v.code_id = anc.code_id AND " . legi_sql_applicable('v') . "
                             AND v.texte = anc.texte AND v.num <> anc.num
-            WHERE anc.num = :ref AND anc.code_id = :code
+            WHERE anc.num = :ref AND +anc.code_id = :code
               AND " . legi_sql_non_applicable('anc') . " AND anc.texte <> :texte
             ORDER BY anc.date_fin DESC LIMIT 1"
         : "SELECT :date_fin AS bascule, v.num AS ailleurs

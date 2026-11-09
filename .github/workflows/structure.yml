@@ -1475,6 +1475,12 @@ jobs:
       - name: Garde-fou — un article se dit applicable selon sa période
         run: python3 self-right/selfjustice/tests/test_applicabilite.py
 
+      # Sans statistiques d'index, SQLite choisit l'ordre des jointures à
+      # l'aveugle : la route d'article a rendu 502 sur le code du travail. Le plan
+      # se lit sur une base vide aux index du script de construction.
+      - name: Garde-fou — la recherche d'un numéro recyclé lit d'abord l'article demandé
+        run: python3 self-right/selfjustice/tests/sanity_plan_renvoi.py
+
       # Les vrais outils du client contre une instance scriptée : une réponse qui n'a
       # pas pu se faire ne doit jamais se lire comme une réponse vide.
       - name: Garde-fou — le client ne présente pas un échec comme une absence
