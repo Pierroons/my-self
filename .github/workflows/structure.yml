@@ -67,7 +67,16 @@ jobs:
 
   transverse:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # 🔑 **120 minutes est une borne d'attente, pas une mesure.** L'ancien workflow
+    # n'en portait aucune — donc 360 par défaut — pour des runs de 294 à 330 minutes
+    # mesurés du 02 au 07/11 (`gh run list -w structure`). Le découpage par module
+    # répartit ces étapes sur 22 jobs, et `transverse` est le plus chargé : il tourne
+    # à chaque envoi et relance 36 bancs appariés par `check-portes.sh` (182 s sur le
+    # poste de travail, mesuré le 09/11 ; un runner est plus lent). Aucune durée PAR
+    # JOB n'est connue avant le premier run réel : un plafond serré rendrait alors le
+    # contrôle exigé rouge pour une raison étrangère au fond. Resserrer sur la mesure
+    # du premier run, pas avant.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -773,11 +782,156 @@ jobs:
       - name: Garde-fou — les vecteurs Argon2id de SelfDataGuard viennent d'une seconde implémentation
         run: python3 self-security/selfdataguard/tests/vecteurs_argon2.py
 
+      # ── Bancs qui lisent hors de leur module ───────────────────────────────
+      # Ces quatre-là assertent sur des chemins que la table range « transverse
+      # seul » : l'unité systemd de la purge, les README de SelfModerate et du MCP,
+      # et la racine du dépôt pour les constructions. Rangés dans un job de groupe,
+      # ils ne tournaient plus quand le chemin qu'ils gardent changeait — un envoi
+      # qui ne touche que `deploy/` ou un `.md` rendait vert sans les avoir joués.
+
+      - name: Garde-fou — les appelants passent ce que la bibliothèque exige
+        run: |
+          # PHP ne compte les arguments qu'à l'exécution : un constructeur qui
+          # gagne un paramètre obligatoire laisse tous ses appelants passer
+          # `php -l` et lever à la première requête. C'est arrivé aux deux seules
+          # routes de récupération de la démo publique, restées à 2 arguments.
+          php bi-self/selfrecover/tests/sanity_constructions.php
+
+      - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
+        run: |
+          # @plante
+          php demo/selfdataguard/tests/sanity_sessions.php
+          F=demo/selfdataguard/api/_bootstrap.php
+          canari() {  # canari <avant> <après> <ligne rouge attendue>
+            cp "$F" /tmp/boot.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$1" "$2" \
+              || { echo "::error::canari non planté"; exit 1; }
+            if sortie=$(php demo/selfdataguard/tests/sanity_sessions.php 2>&1); then
+              cp /tmp/boot.intact "$F"; echo "::error::le banc reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/boot.intact "$F"
+            echo "$sortie" | grep -qF "$3" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $3 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ le banc rougit sur « $3 »"
+          }
+          canari "\$baseVisiteur = \$repertoireBases . '/' . \$idVisiteur . '.sqlite';" \
+            "\$baseVisiteur = \$repertoireBases . '/commune.sqlite';" 'le second visiteur voit le coffre du premier'
+          canari "new SqliteAdapter(\$baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:')" \
+            "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
+          canari "=== '1';" "!== '0';" 'attributs du cookie'
+          canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
+          canari "if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" 'if (false) {' \
+            'une clé neuve a remplacé celle des coffres existants'
+          F=demo/selfdataguard/api/login.php
+          canari '    fail_vault($e);' "    fail('Authentication failed', 401);" 'un coffre falsifié est rendu comme autre chose'
+          F=demo/selfdataguard/api/register.php
+          canari '    isset($session) && $dataGuard->delete($session->generation());' '' "le compte d'une inscription refusée est resté"
+          F=demo/selfdataguard/api/coffre_open.php
+          canari '    } catch (EscrowEnvelopeMismatchException) {' '    } catch (\DomainException) {' \
+            'une ligne de séquestre réécrite cache la vue des lectures'
+          F=self-security/selfdataguard/src/SelfDataGuard.php
+          canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
+            'une ligne de séquestre supprimée se lit comme un séquestre jamais déposé'
+
+      # Le banc des sessions lance deux serveurs `php -S`, qui survivent à leur parent. Ce canari
+      # fait tomber le banc juste après le premier démarrage et compte les serveurs de la démo
+      # avant et après : un banc tombé ne doit en laisser aucun.
+
+      - name: Canari — le banc des sessions n'abandonne aucun serveur quand il tombe
+        run: |
+          # @plante
+          B=demo/selfdataguard/tests/sanity_sessions.php
+          compter() { pgrep -fc -- "-S 127\.0\.0\.1:[0-9]+ -t $(pwd)/demo/selfdataguard\$" || true; }
+          avant=$(compter)
+          cp "$B" /tmp/sessions.intact; md5=$(md5sum "$B" | cut -d" " -f1)
+          python3 -c 'import sys; f=sys.argv[1]; s=open(f).read(); a="[$serveur, $port] = demarrer([]);"; sys.exit("motif trouvé %d fois" % s.count(a)) if s.count(a) != 1 else open(f, "w").write(s.replace(a, a + "\nthrow new RuntimeException(\"canari\");"))' "$B" \
+            || { echo "::error::canari non planté"; exit 1; }
+          if php "$B" >/dev/null 2>&1; then
+            cp /tmp/sessions.intact "$B"; echo "::error::le banc planté n'est pas tombé"; exit 1
+          fi
+          cp /tmp/sessions.intact "$B"
+          [ "$(md5sum "$B" | cut -d" " -f1)" = "$md5" ] || { echo "::error::$B non restauré"; exit 1; }
+          sleep 1
+          apres=$(compter)
+          [ "$apres" = "$avant" ] || { echo "::error::le banc tombé a laissé $((apres - avant)) serveur(s)"; exit 1; }
+          echo "✓ le banc tombé n'a laissé aucun serveur"
+
+      # Chaque correctif de SelfDataGuard a son cas dans un banc. Chaque canari
+      # retire le correctif et exige que le banc rougisse sur ce cas-là.
+
+      - name: Garde-fou — SelfModerate, les seuils que le README promet sont ceux que la config applique
+        run: |
+          sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
+          echo "$sortie"
+          echo "$sortie" | grep -qx '✅ 47/47 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 47 contrôles"; exit 1; }
+
+      - name: Canari — SelfModerate change un seuil que le README promet
+        run: |
+          # @plante
+          # Dans une copie du module, une chose à la fois. Chaque valeur que le
+          # README annonce est changée dans `Config` : le banc des promesses doit
+          # rougir sur CE champ, et dans le bon jeu. Puis deux retouches du README :
+          # un qualificatif ajouté après une valeur, et un chiffre glissé dans la
+          # phrase d'un champ déclaré non promis.
+          for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
+                     meuteLiensMin meuteVotantsMax meuteEpisodeCooldown fenetreFarmingJours \
+                     farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
+                     ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal balayageFiletMax \
+                     prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
+                     readme:qualificatif readme:sans-chiffre; do
+            PLANTE=$(mktemp -d)
+            cp -r bi-self/selfmoderate "$PLANTE/m"
+            CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
+          import os, pathlib, re
+          m = pathlib.Path(os.environ['PLANTE']) / 'm'
+          cas = os.environ['CAS']
+          fichier = m / ('README.fr.md' if cas.startswith('readme:') else 'src/Config.php')
+          t = fichier.read_text(encoding='utf-8')
+          speciaux = {
+              'dureesBan':                    ('$dureesBan = [120, 600, 1800]', '$dureesBan = [120, 600, 3600]'),
+              'plancherFraction':             ('$plancherFraction = 1 / 3', '$plancherFraction = 1 / 2'),
+              'prod:fenetreSalveSecondes':    ('fenetreSalveSecondes: 300,', 'fenetreSalveSecondes: 600,'),
+              'prod:ageMinPourVoterSecondes': ('ageMinPourVoterSecondes: 86400,', 'ageMinPourVoterSecondes: 3600,'),
+              'prod:dureesBan':               ('dureesBan: [86400, 604800, 2592000]', 'dureesBan: [86400, 604800, 1296000]'),
+              'readme:qualificatif':          ('Score plafonné à **30** (`Config`)', 'Score plafonné à **30** en démonstration, **50** en service (`Config`)'),
+              'readme:sans-chiffre':          ('la remontée passive en rend un par intervalle de calme', 'la remontée passive en rend un par jour de calme'),
+          }
+          if cas in speciaux:
+              avant, apres = speciaux[cas]
+          else:
+              r = re.search(r'public readonly int \$' + cas + r' = (\d+),', t)
+              assert r, "la plantation n'a pas pris — ce canari ne prouve rien"
+              avant, apres = r.group(0), r.group(0)[:-len(r.group(1)) - 1] + str(int(r.group(1)) + 1) + ','
+          assert t.count(avant) == 1, "la plantation n'a pas pris — ce canari ne prouve rien"
+          fichier.write_text(t.replace(avant, apres), encoding='utf-8')
+          PY
+            if sortie=$(php "$PLANTE/m/tests/sanity_promesses.php" 2>&1); then
+              echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              prod:*)              attendu="✗ ${cas#prod:} (prod)" ;;
+              dureesBan)           attendu='✗ dureesBan (demo)' ;;
+              readme:qualificatif) attendu='✗ README.fr.md : la phrase porteuse est introuvable' ;;
+              readme:sans-chiffre) attendu='✗ intervalleConvalescenceSecondes (non promis)' ;;
+              *)                   attendu="✗ $cas (" ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Garde-fou — toute variable d'environnement lue est documentée
+        run: python3 self-right/selfjustice/tests/sanity_variables_documentees.py
+
   selfdataguard-1:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -842,66 +996,6 @@ jobs:
       # perd Secure par défaut, un quota par adresse levé, une clé d'index régénérée
       # sous des bases existantes, un coffre falsifié rendu comme un mot de passe faux,
       # un compte gardé après une inscription refusée — le banc doit rougir sur chacun.
-      - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
-        run: |
-          # @plante
-          php demo/selfdataguard/tests/sanity_sessions.php
-          F=demo/selfdataguard/api/_bootstrap.php
-          canari() {  # canari <avant> <après> <ligne rouge attendue>
-            cp "$F" /tmp/boot.intact; avant=$(md5sum "$F" | cut -d" " -f1)
-            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$1" "$2" \
-              || { echo "::error::canari non planté"; exit 1; }
-            if sortie=$(php demo/selfdataguard/tests/sanity_sessions.php 2>&1); then
-              cp /tmp/boot.intact "$F"; echo "::error::le banc reste VERT sans le correctif"; exit 1
-            fi
-            cp /tmp/boot.intact "$F"
-            echo "$sortie" | grep -qF "$3" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $3 »"; exit 1; }
-            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
-            echo "✓ le banc rougit sur « $3 »"
-          }
-          canari "\$baseVisiteur = \$repertoireBases . '/' . \$idVisiteur . '.sqlite';" \
-            "\$baseVisiteur = \$repertoireBases . '/commune.sqlite';" 'le second visiteur voit le coffre du premier'
-          canari "new SqliteAdapter(\$baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:')" \
-            "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
-          canari "=== '1';" "!== '0';" 'attributs du cookie'
-          canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
-          canari "if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" 'if (false) {' \
-            'une clé neuve a remplacé celle des coffres existants'
-          F=demo/selfdataguard/api/login.php
-          canari '    fail_vault($e);' "    fail('Authentication failed', 401);" 'un coffre falsifié est rendu comme autre chose'
-          F=demo/selfdataguard/api/register.php
-          canari '    isset($session) && $dataGuard->delete($session->generation());' '' "le compte d'une inscription refusée est resté"
-          F=demo/selfdataguard/api/coffre_open.php
-          canari '    } catch (EscrowEnvelopeMismatchException) {' '    } catch (\DomainException) {' \
-            'une ligne de séquestre réécrite cache la vue des lectures'
-          F=self-security/selfdataguard/src/SelfDataGuard.php
-          canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
-            'une ligne de séquestre supprimée se lit comme un séquestre jamais déposé'
-
-      # Le banc des sessions lance deux serveurs `php -S`, qui survivent à leur parent. Ce canari
-      # fait tomber le banc juste après le premier démarrage et compte les serveurs de la démo
-      # avant et après : un banc tombé ne doit en laisser aucun.
-      - name: Canari — le banc des sessions n'abandonne aucun serveur quand il tombe
-        run: |
-          # @plante
-          B=demo/selfdataguard/tests/sanity_sessions.php
-          compter() { pgrep -fc -- "-S 127\.0\.0\.1:[0-9]+ -t $(pwd)/demo/selfdataguard\$" || true; }
-          avant=$(compter)
-          cp "$B" /tmp/sessions.intact; md5=$(md5sum "$B" | cut -d" " -f1)
-          python3 -c 'import sys; f=sys.argv[1]; s=open(f).read(); a="[$serveur, $port] = demarrer([]);"; sys.exit("motif trouvé %d fois" % s.count(a)) if s.count(a) != 1 else open(f, "w").write(s.replace(a, a + "\nthrow new RuntimeException(\"canari\");"))' "$B" \
-            || { echo "::error::canari non planté"; exit 1; }
-          if php "$B" >/dev/null 2>&1; then
-            cp /tmp/sessions.intact "$B"; echo "::error::le banc planté n'est pas tombé"; exit 1
-          fi
-          cp /tmp/sessions.intact "$B"
-          [ "$(md5sum "$B" | cut -d" " -f1)" = "$md5" ] || { echo "::error::$B non restauré"; exit 1; }
-          sleep 1
-          apres=$(compter)
-          [ "$apres" = "$avant" ] || { echo "::error::le banc tombé a laissé $((apres - avant)) serveur(s)"; exit 1; }
-          echo "✓ le banc tombé n'a laissé aucun serveur"
-
-      # Chaque correctif de SelfDataGuard a son cas dans un banc. Chaque canari
-      # retire le correctif et exige que le banc rougisse sur ce cas-là.
       - name: Canaris — les correctifs de SelfDataGuard rougissent quand on les retire
         run: |
           # @plante
@@ -1050,7 +1144,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1094,7 +1188,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1131,7 +1225,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1189,7 +1283,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1611,7 +1705,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1653,7 +1747,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1691,7 +1785,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfdataguard == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1729,7 +1823,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -1740,14 +1834,6 @@ jobs:
       # Priorité sur le reste : ce sont eux qui échouent en silence.
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)
         run: php bi-self/selfrecover/tests/sanity_socle.php
-
-      - name: Garde-fou — les appelants passent ce que la bibliothèque exige
-        run: |
-          # PHP ne compte les arguments qu'à l'exécution : un constructeur qui
-          # gagne un paramètre obligatoire laisse tous ses appelants passer
-          # `php -l` et lever à la première requête. C'est arrivé aux deux seules
-          # routes de récupération de la démo publique, restées à 2 arguments.
-          php bi-self/selfrecover/tests/sanity_constructions.php
 
       - name: Garde-fou — un secret rendu s'accompagne de sa consigne
         run: |
@@ -2013,7 +2099,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2141,7 +2227,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2312,7 +2398,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfrecover == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2509,7 +2595,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.couplage == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2709,7 +2795,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.couplage == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -2743,7 +2829,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2815,7 +2901,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -2923,7 +3009,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -4237,7 +4323,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.lab == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -4765,71 +4851,6 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Garde-fou — SelfModerate, les seuils que le README promet sont ceux que la config applique
-        run: |
-          sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
-          echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 47/47 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 47 contrôles"; exit 1; }
-
-      - name: Canari — SelfModerate change un seuil que le README promet
-        run: |
-          # @plante
-          # Dans une copie du module, une chose à la fois. Chaque valeur que le
-          # README annonce est changée dans `Config` : le banc des promesses doit
-          # rougir sur CE champ, et dans le bon jeu. Puis deux retouches du README :
-          # un qualificatif ajouté après une valeur, et un chiffre glissé dans la
-          # phrase d'un champ déclaré non promis.
-          for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
-                     meuteLiensMin meuteVotantsMax meuteEpisodeCooldown fenetreFarmingJours \
-                     farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
-                     ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal balayageFiletMax \
-                     prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
-                     readme:qualificatif readme:sans-chiffre; do
-            PLANTE=$(mktemp -d)
-            cp -r bi-self/selfmoderate "$PLANTE/m"
-            CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
-          import os, pathlib, re
-          m = pathlib.Path(os.environ['PLANTE']) / 'm'
-          cas = os.environ['CAS']
-          fichier = m / ('README.fr.md' if cas.startswith('readme:') else 'src/Config.php')
-          t = fichier.read_text(encoding='utf-8')
-          speciaux = {
-              'dureesBan':                    ('$dureesBan = [120, 600, 1800]', '$dureesBan = [120, 600, 3600]'),
-              'plancherFraction':             ('$plancherFraction = 1 / 3', '$plancherFraction = 1 / 2'),
-              'prod:fenetreSalveSecondes':    ('fenetreSalveSecondes: 300,', 'fenetreSalveSecondes: 600,'),
-              'prod:ageMinPourVoterSecondes': ('ageMinPourVoterSecondes: 86400,', 'ageMinPourVoterSecondes: 3600,'),
-              'prod:dureesBan':               ('dureesBan: [86400, 604800, 2592000]', 'dureesBan: [86400, 604800, 1296000]'),
-              'readme:qualificatif':          ('Score plafonné à **30** (`Config`)', 'Score plafonné à **30** en démonstration, **50** en service (`Config`)'),
-              'readme:sans-chiffre':          ('la remontée passive en rend un par intervalle de calme', 'la remontée passive en rend un par jour de calme'),
-          }
-          if cas in speciaux:
-              avant, apres = speciaux[cas]
-          else:
-              r = re.search(r'public readonly int \$' + cas + r' = (\d+),', t)
-              assert r, "la plantation n'a pas pris — ce canari ne prouve rien"
-              avant, apres = r.group(0), r.group(0)[:-len(r.group(1)) - 1] + str(int(r.group(1)) + 1) + ','
-          assert t.count(avant) == 1, "la plantation n'a pas pris — ce canari ne prouve rien"
-          fichier.write_text(t.replace(avant, apres), encoding='utf-8')
-          PY
-            if sortie=$(php "$PLANTE/m/tests/sanity_promesses.php" 2>&1); then
-              echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
-            fi
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
-              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
-            fi
-            case $cas in
-              prod:*)              attendu="✗ ${cas#prod:} (prod)" ;;
-              dureesBan)           attendu='✗ dureesBan (demo)' ;;
-              readme:qualificatif) attendu='✗ README.fr.md : la phrase porteuse est introuvable' ;;
-              readme:sans-chiffre) attendu='✗ intervalleConvalescenceSecondes (non promis)' ;;
-              *)                   attendu="✗ $cas (" ;;
-            esac
-            echo "$sortie" | grep -qF "$attendu" \
-              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
-            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
-          done
-
       - name: Garde-fou — premier administrateur et dernier administrateur
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
@@ -4940,7 +4961,7 @@ jobs:
     needs: modules
     if: needs.modules.outputs.selfright == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -5015,9 +5036,6 @@ jobs:
 
       - name: Garde-fou — le rafraîchissement Judilibre repart de ses propres juridictions
         run: python3 self-right/selfjustice/tests/test_reprise_judilibre.py
-
-      - name: Garde-fou — toute variable d'environnement lue est documentée
-        run: python3 self-right/selfjustice/tests/sanity_variables_documentees.py
 
       - name: Garde-fou — un numéro d'article qui a changé de contenu
         run: bash self-right/selfjustice/tests/test_renvoi_article.sh
