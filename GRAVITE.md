@@ -67,9 +67,9 @@ transforment une défense en arme contre l'utilisateur.
 
 **Si respecter le contrat à la lettre produit une installation vulnérable, le
 défaut est au contrat, pas chez l'intégrateur.** Ces bibliothèques sont faites
-pour être intégrées par des gens qui ne liront pas leur code. Une propriété dont
-dépend la sécurité et qui n'est pas écrite dans l'interface n'existe pas : elle
-sera perdue au premier adaptateur, et silencieusement.
+pour être intégrées par des gens qui ne liront pas forcément leur code. Une
+propriété dont dépend la sécurité et qui n'est pas écrite dans l'interface
+n'existe pas : elle sera perdue au premier adaptateur, et silencieusement.
 
 Trois formes à chercher : un paramètre qui porte une garde et dont la valeur par
 défaut l'annule ; une propriété tenue par le moteur de stockage de référence et

@@ -44,7 +44,12 @@ absence, elle est le cas majoritaire.
 
 Par défaut, **les fichiers modifiés**, jamais le dépôt entier. Un lint global sur
 un dépôt qui n'en a jamais eu remonte des centaines de défauts anciens sans
-rapport avec le travail en cours, et on cesse de lire au troisième.
+rapport avec le travail en cours : le rapport devient illisible, et le défaut
+qu'on vient d'introduire s'y perd.
+
+Ce périmètre borne ce que tu **lances**, pas ce que tu **rapportes** : dans le
+périmètre retenu, aucun défaut trouvé n'est écarté parce qu'il en précède trop
+d'autres.
 
 Détermine la branche de base dans cet ordre, et ne la code jamais en dur :
 

@@ -25,8 +25,8 @@ l'instance disent la même chose, dans les deux sens** — rien de servi hors du
 dépôt, rien de corrigé qui ne soit déployé. Un correctif appliqué à un seul
 exemplaire d'un mécanisme dupliqué a déjà coûté 11 jours d'exposition, puis 70.
 
-SelfInvoice ne vit plus ici : il n'avait pas de code dans ce dépôt, et sa
-documentation a rejoint `selffarm-lite`, qui porte l'implémentation.
+SelfInvoice est porté par le dépôt voisin `selffarm-lite` — spécification,
+documentation et code.
 
 Chaque module porte son README. La structure interne varie : `api/` là où une
 API est servie, `site/` là où une page est servie, `tests/` là où il en existe,
