@@ -258,6 +258,55 @@ $_COOKIE[(new ReflectionClassConstant(Auth::class, 'COOKIE'))->getValue()] = $pe
 v('une session périmée ne s\'ouvre plus, et s\'efface par son empreinte',
     Auth::currentAccount($pdo) === null && $enClair(Db::empreinteJeton($perimee)) === 0);
 
+// ── Les échecs de la bibliothèque ne ferment pas la page de connexion ────────
+//
+// Les deux comptent dans `login_attempts`. Sans filtre, douze tentatives de
+// récupération depuis une adresse verrouillaient la connexion de tout ce qui est
+// derrière elle — un foyer, un relais, une sortie de réseau anonyme.
+$voisin = compte($pdo, 'voisindenat');
+$ipPartagee = '198.51.100.77';
+$ins = $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, 0, ?, ?)');
+foreach (['l1:', 'l2:', 'enroll:'] as $prefixe) {
+    for ($i = 0; $i < 6; $i++) {
+        $ins->execute([$prefixe . bin2hex(random_bytes(8)), $ipPartagee, time()]);
+    }
+}
+$apres = Auth::login($pdo, 'voisindenat', $voisin['password'], $ipPartagee);
+v('⭐ les échecs de récupération d\'une adresse ne verrouillent pas sa connexion',
+    ($apres['ok'] ?? false) === true,
+    'status=' . (string) ($apres['status'] ?? '?'));
+
+// Témoin : le frein mord toujours sur ce qui est bien au lab.
+for ($i = 0; $i < 13; $i++) {
+    Auth::login($pdo, 'voisindenat', 'mauvais-mot-de-passe', $ipPartagee);
+}
+$verrou = Auth::login($pdo, 'voisindenat', $voisin['password'], $ipPartagee);
+v('témoin — 13 échecs du lab depuis la même adresse la verrouillent',
+    ($verrou['status'] ?? '') === 'locked');
+
+// ── Les sessions d'un compte sont bornées ────────────────────────────────────
+$borne = (new ReflectionClassConstant(Auth::class, 'SESSIONS_MAX_PAR_COMPTE'))->getValue();
+$empileur = compte($pdo, 'empileur');
+$derniers = [];
+for ($i = 0; $i < $borne + 4; $i++) {
+    $derniers[] = (string) (Auth::login($pdo, 'empileur', $empileur['password'], '203.0.113.9')['token'] ?? '');
+}
+$compteSessions = static function (string $nom) use ($pdo): int {
+    $q = $pdo->prepare('SELECT COUNT(*) FROM app_sessions s JOIN accounts a ON a.id = s.account_id WHERE a.username = ?');
+    $q->execute([$nom]);
+
+    return (int) $q->fetchColumn();
+};
+// Le libellé ne porte pas la borne : un canari l'épingle, et un nombre
+// interpolé le ferait mentir le jour où la borne change.
+v('⭐ les connexions d\'un compte n\'empilent pas plus de sessions que la borne',
+    $compteSessions('empileur') === $borne,
+    'borne ' . $borne . ', trouvé ' . $compteSessions('empileur'));
+$_COOKIE[(new ReflectionClassConstant(Auth::class, 'COOKIE'))->getValue()] = end($derniers);
+v('la session la plus récente reste ouverte', (Auth::currentAccount($pdo)['username'] ?? '') === 'empileur');
+$_COOKIE[(new ReflectionClassConstant(Auth::class, 'COOKIE'))->getValue()] = $derniers[0];
+v('la plus ancienne a été retirée', Auth::currentAccount($pdo) === null);
+
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"
     : "ÉCHEC — $echecs sur " . ($echecs + $reussites) . ".\n");

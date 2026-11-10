@@ -12,7 +12,6 @@ $r = RecoverL3::submit(
     Db::pdo(),
     (string) ($body['dispute_number'] ?? ''),
     (string) ($body['claim_secret'] ?? ''),
-    $answers,
-    client_ip()
+    $answers
 );
 json_out($r, $r['ok'] ? 200 : (int) ($r['code'] ?? 400));
