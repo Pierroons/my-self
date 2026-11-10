@@ -223,6 +223,56 @@ coupure
 #
 # Un banc dont tous les cas rougissent ne prouve rien s'il rougit aussi sur un
 # rejeu sain : ces témoins-là doivent passer sur toutes les versions du script.
+# ── 7. Un rejeu qui n'a rien pu éprouver ─────────────────────────────────────
+#
+# Le canari appelle un outil que la machine n'a pas : il n'est ni périmé ni
+# aveugle, il n'est pas rejoué. Le verdict rendait « ✓ les 0 canari(s) … » et 0,
+# c'est-à-dire le même vert qu'une passe complète (mesuré le 10/11/2026). Les six
+# propriétés précédentes jugent l'état de l'arbre ; celle-ci juge ce que le
+# verdict AFFIRME, et c'est ce qui manquait.
+# ⚠️ Le canari restaure avant d'appeler l'outil manquant : un résidu le ferait
+# compter ROUGE, et le témoin mesurerait alors tout autre chose que « non rejoué ».
+echo "▸ 7. un rejeu qui n'a rien pu éprouver"
+depot rien-mesure
+canari "$D" 'cp src/m.php /tmp/m.sauve
+sed -i "s/IS NULL/IS NOT NULL/" src/m.php
+cp /tmp/m.sauve src/m.php
+outil-qui-nexiste-pas-du-tout --plante'
+rejouer "$D"
+if [ "$RC" -eq 2 ] && printf '%s\n' "$SORTIE" | grep -q 'RIEN MESURÉ'; then
+    ok "le rejeu rend 2 et dit qu'il ne porte sur rien"
+else
+    nok "le rejeu rend $RC : « rien mesuré » se lit comme « tout tient »"
+fi
+if ! printf '%s\n' "$SORTIE" | grep -q "plantent et rougissent comme ils l'annoncent"; then
+    ok "il n'affirme pas que des canaris tiennent"
+else
+    nok "il affirme que des canaris tiennent alors qu'aucun n'a tourné"
+fi
+
+# Un rejeu partiel ne rend pas vert non plus : son vert ne porterait pas sur ce
+# qu'il a sauté, et c'est justement ce qu'on viendrait lui demander.
+echo "▸ témoin — un rejeu partiel : un canari tenu, un non rejoué"
+depot rejeu-partiel
+mkdir -p "$D/.github/workflows"
+{ printf 'jobs:\n  banc:\n    steps:\n'
+  printf '      - name: Canari — celui-ci tient\n        run: |\n          # @plante\n'
+  printf '          cp src/m.php /tmp/m.sauve\n'
+  printf '          sed -i "s/IS NULL/IS NOT NULL/" src/m.php\n'
+  printf '          cp /tmp/m.sauve src/m.php\n'
+  printf '      - name: Canari — celui-ci n a pas son outil\n        run: |\n          # @plante\n'
+  printf '          cp src/m.php /tmp/m.sauve2\n'
+  printf '          sed -i "s/IS NULL/IS NOT NULL/" src/m.php\n'
+  printf '          cp /tmp/m.sauve2 src/m.php\n'
+  printf '          outil-qui-nexiste-pas-du-tout --plante\n'
+} > "$D/.github/workflows/structure.yml"
+rejouer "$D"
+if [ "$RC" -eq 2 ] && printf '%s\n' "$SORTIE" | grep -q 'PARTIEL'; then
+    ok "le rejeu rend 2 et dit sur quoi son vert ne porte pas"
+else
+    nok "le rejeu rend $RC sur un rejeu partiel, sans dire ce qu'il a sauté"
+fi
+
 echo "▸ témoin — un canari qui se restaure lui-même, sur un arbre modifié"
 depot sain
 # shellcheck disable=SC2016

@@ -31,8 +31,14 @@
 # `refs/worktree/check-canaris/residu-NN`.
 #
 # Usage : scripts/check-canaris.sh [--statique | --abandonner] [chemin du workflow]
-# Sortie : 0 si le périmètre est déclaré et si chaque canari plante et rougit
-#          comme il l'annonce, 1 sinon, 130 si le rejeu est interrompu.
+# Sortie : 0 si le périmètre est déclaré et si chaque canari rejoué plante et
+#          rougit comme il l'annonce, 1 si l'un n'a pas rendu son rouge, 2 si le
+#          banc n'a pas pu mesurer (aucun canari éprouvé, ou certains non
+#          rejouables), 130 si le rejeu est interrompu.
+#          🔑 **Le 2 existe parce que le 0 recouvrait deux choses.** Un rejeu où
+#          aucun canari n'avait pu tourner rendait « ✓ les 0 canari(s) … » et 0,
+#          soit le même vert qu'une passe complète (mesuré le 10/11/2026). « Rien
+#          mesuré » n'est ni une passe qui tient, ni un garde-fou aveugle.
 #          `--abandonner` lève le journal d'un rejeu coupé, une fois l'arbre vérifié.
 #
 # 🔑 **Deux sens, deux natures.** « Une étape qui plante dans le dépôt est
@@ -493,12 +499,30 @@ if ARRET:
 if absents:
     print(f'• {len(absents)} canari(s) non rejoué(s) : un outil manque sur cette machine.')
 if not rouges:
+    # Ce qui n'a pas été éprouvé ne se dit pas dans la même phrase que ce qui tient.
+    if not verts:
+        print(f'⚠ RIEN MESURÉ — 0 canari sur {len(canaris)} éprouvé : ce rejeu ne porte sur rien.')
+        sys.exit(2)
+    if absents:
+        print(f'⚠ PARTIEL — les {verts} canari(s) rejoué(s) plantent et rougissent comme ils')
+        print(f'  l\'annoncent ; les {len(absents)} autres ne sont pas éprouvés, et ce vert ne')
+        print('  porte pas sur eux.')
+        sys.exit(2)
     print(f'✓ les {verts} canari(s) rejoué(s) plantent et rougissent comme ils l\'annoncent.')
     sys.exit(0)
 
-print(f'✗ {len(rouges)} canari(s) sur {verts + len(rouges)} rejoué(s) ne tiennent plus leur promesse :')
+print(f'✗ {len(rouges)} canari(s) sur {verts + len(rouges)} rejoué(s) n\'ont pas rendu le rouge'
+      ' qu\'ils annoncent :')
 for nom, cause in rouges:
     print(f'   • {nom[:60]} — {cause[:80]}')
-print('  La CI tomberait sur le premier, et son message accuserait le contrôle planté.')
+# La cause se lit, elle ne se devine pas : les trois familles ne se corrigent pas au
+# même endroit, et les confondre envoie corriger des canaris sains. Mesuré le
+# 10/11/2026 : 29 canaris accusés de ne plus rien prouver tenaient tous, et c'était
+# `demo/lab/vendor/` qui manquait — un prérequis que les jobs posent et que ce rejeu
+# ne pose pas.
+print('  Lis la cause avant de toucher un canari : « la plantation n\'a pas pris » dit un motif')
+print('  périmé ; « reste VERT » un garde-fou qui ne mord plus ; « casse le banc » ou un rouge')
+print('  hors du cas annoncé vient souvent d\'un prérequis du job que ce rejeu ne pose pas —')
+print('  lance le banc visé sur l\'arbre intact avant de conclure.')
 sys.exit(1)
 PY

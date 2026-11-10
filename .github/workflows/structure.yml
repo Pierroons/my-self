@@ -3181,6 +3181,17 @@ jobs:
           # Le défaut réel, replanté : le require retiré, deux scénarios sur quatre
           # lèvent. C'est la seule chose qui distingue ce banc d'un banc qui ne
           # mesure rien, puisque les deux rendent vert.
+          #
+          # 🔑 Témoin négatif, parce que ce canari prend tout rouge pour une preuve.
+          # Dans ce job, le garde-fou qui précède lance déjà le banc intact — mais
+          # `check-canaris.sh` rejoue l'étape SEULE, sans ses voisines. Le 10/11/2026,
+          # rejoué ainsi sur un clone sans `demo/lab/vendor/`, le banc sortait en 255
+          # avant toute plantation : le `if` ci-dessous était faux, et ce canari a
+          # rendu ✓ sans rien éprouver. Le témoin le rend autoportant.
+          temoin=$(php demo/lab/tests/sanity_simulateur.php 2>&1) && rct=0 || rct=$?
+          [ "$rct" = 0 ] || { echo "$temoin"; echo "::error::le banc du simulateur ne tourne pas ici (rc=$rct) — ce canari ne peut rien éprouver"; exit 1; }
+          echo "$temoin" | grep -qE '^OK — 40/40 ' \
+            || { echo "$temoin"; echo "::error::le banc du simulateur ne joue pas ses 40 contrôles avant la plantation — ce canari ne prouve rien"; exit 1; }
           F=demo/lab/lib/attack_sim.php
           cp "$F" /tmp/as.intact
           sed -i "s#^require_once __DIR__ . '/derive_cli.php';#// canari#" "$F"
