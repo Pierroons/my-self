@@ -10,6 +10,27 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover 0.13.4 — la demande de défi ne range plus rien pour un identifiant mal formé ou inconnu — 10 novembre 2026
+
+Correctif d'un déni de service signalé par un joueur du lab CTF. `Device::ouvrirDefi()` se joint sans session ni
+secret, et rangeait un défi pour n'importe quel identifiant d'appareil, de n'importe quelle taille, cinq minutes
+durant. Mesuré sur la 0.13.3 : 200 identifiants inconnus de 1 Mo écrivent 200 Mo en 0,63 s, sans un refus. Aucune
+rupture de contrat : ni la signature de `Device` ni `StorageInterface` ne changent.
+
+- **L'identifiant passe d'abord par la forme qu'impose l'enrôlement** (`Device::estIdentifiantAppareil()`, désormais
+  la seule définition pour les deux méthodes). Hors de cette forme, la demande est refusée
+  (`appareil.identifiant_invalide`). Un appareil enrôlé a forcément cette forme : aucun titulaire n'est coupé.
+- **Un défi n'est rangé que pour un appareil enrôlé.** L'inconnu reçoit un défi de même forme, que rien ne retient,
+  et la réponse ne dit pas s'il existe. La purge des défis expirés ne tourne plus que quand un défi est rangé.
+- **Ce qui reste, déclaré** : un chronomètre distingue le défi rangé de l'autre, ce qui suppose de deviner un
+  identifiant tiré au hasard par le navigateur ; qui en tient un fait encore écrire une ligne par appel, et seul un
+  frein devant la route borne ce débit. La porte ne reçoit toujours pas l'adresse du client et ne compte aucun échec
+  de signature : c'est l'objet de la 0.14.0, qui change la signature des deux méthodes.
+
+Mesuré : `sanity_device` passe à 37 cas ; contre la 0.13.3, il rougit sur 5 (32/37), dont l'identifiant de 1 Mo et
+les deux cents inconnus (203 défis rangés). Un canari neuf débranche les deux gardes et exige le rouge sur ces deux
+cas ; rejoué par `check-canaris.sh` avec celui de l'enrôlement, chacun plante et rougit comme il l'annonce.
+
 ### La CI `structure` ne joue plus que les modules qu'un envoi touche — 9 novembre 2026
 
 Chaque envoi rejouait les 185 étapes de charge du dépôt entier, réparties sur deux jobs seulement : 4 h 54 et
