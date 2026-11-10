@@ -30,7 +30,6 @@ $r = RecoverL3::chat(
     (string) ($body['dispute_number'] ?? ''),
     (string) ($body['claim_secret'] ?? ''),
     array_key_exists('message', $body) ? (string) $body['message'] : null, // absence = polling
-    $isAdmin,
-    client_ip()
+    $isAdmin
 );
 json_out($r, $r['ok'] ? 200 : (int) ($r['code'] ?? 400));

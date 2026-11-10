@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Device\Device as Protocole;
 use Pierroons\SelfRecover\Duree;
@@ -37,6 +38,16 @@ final class Auth
     public const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
     public const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
     public const LOGIN_WINDOW = 900;
+    /**
+     * Sessions vivantes gardées par compte ; au-delà, les plus anciennes partent.
+     *
+     * 🔑 Une connexion RÉUSSIE n'est comptée par aucun frein — ni celui par
+     * identifiant ni celui par adresse, qui ne pèsent que les échecs — et chaque
+     * appel rangeait une session de plus, que rien ne retirait avant son terme.
+     * Un plafond glissant borne la table sans jamais refuser une connexion
+     * légitime : qui ouvre une onzième session perd sa plus vieille, pas la main.
+     */
+    public const SESSIONS_MAX_PAR_COMPTE = 10;
     /** Bornes d'un identifiant, en caractères [a-z0-9_]. */
     public const IDENTIFIANT_MIN = 3;
     public const IDENTIFIANT_MAX = 20;
@@ -222,9 +233,7 @@ final class Auth
         // rouvrir un chemin où l'on enrôle sur un compte qu'on ne prouve pas
         // posséder — celui qui a permis une prise de compte le 13/08/2026.
         $sessionToken = self::generateSessionToken();
-        $pdo->prepare(
-            'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
-        )->execute([(int) $accountId, Db::empreinteJeton($sessionToken), time()]);
+        self::ouvrirSession($pdo, (int) $accountId, $sessionToken);
 
         return [
             'ok' => true,
@@ -265,12 +274,25 @@ final class Auth
 
         // LAB-03 : échecs récents par IP (anti-spraying — un même mot de passe testé sur
         // de nombreux comptes ne dépasse jamais le seuil par username, mais sature le seuil IP).
+        //
+        // 🔑 Les lignes de la bibliothèque sont écartées, et c'est la symétrie de ce
+        // que `StockageSelfRecover::compterEchecsIp()` fait dans l'autre sens. Les deux
+        // partagent cette table : sans ce filtre, douze échecs de récupération depuis
+        // une adresse fermaient la page de connexion à tout ce qui est derrière elle —
+        // un foyer, un relais, une sortie de réseau anonyme.
         $failsIp = 0;
         if ($ip !== null) {
+            $exclus = implode(' AND ', array_fill(0, count(Etiquette::PREFIXES), 'username NOT LIKE ?'));
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+                'SELECT COUNT(*) FROM login_attempts'
+                . ' WHERE ip = ? AND success = 0 AND attempted_at > ?'
+                . ' AND (' . $exclus . ')'
             );
-            $stmt->execute([$ip, time() - self::LOGIN_WINDOW]);
+            $stmt->execute([
+                $ip,
+                time() - self::LOGIN_WINDOW,
+                ...array_map(static fn (string $p): string => $p . '%', Etiquette::PREFIXES),
+            ]);
             $failsIp = (int) $stmt->fetchColumn();
         }
 
@@ -319,9 +341,7 @@ final class Auth
         }
 
         $token = self::generateSessionToken();
-        $pdo->prepare(
-            'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
-        )->execute([(int) $acc['id'], Db::empreinteJeton($token), time()]);
+        self::ouvrirSession($pdo, (int) $acc['id'], $token);
 
         return ['ok' => true, 'token' => $token];
     }
@@ -501,6 +521,27 @@ final class Auth
     {
         $pdo->prepare('DELETE FROM app_sessions WHERE created_at < ?')
             ->execute([time() - self::SESSION_TTL]);
+    }
+
+    /**
+     * Range une session neuve pour ce compte et ne garde que les plus récentes.
+     *
+     * Les deux portes qui ouvrent une session — l'inscription et la connexion —
+     * passent par ici : une borne posée à un seul endroit ne borne rien.
+     */
+    private static function ouvrirSession(PDO $pdo, int $accountId, string $token): void
+    {
+        $pdo->prepare('INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)')
+            ->execute([$accountId, Db::empreinteJeton($token), time()]);
+
+        // `id` plutôt que `created_at` : deux sessions ouvertes dans la même
+        // seconde porteraient la même date, et la fenêtre en retiendrait une de
+        // trop ou une de moins.
+        $pdo->prepare(
+            'DELETE FROM app_sessions WHERE account_id = ? AND id NOT IN ('
+            . ' SELECT id FROM app_sessions WHERE account_id = ? ORDER BY id DESC LIMIT ?'
+            . ')'
+        )->execute([$accountId, $accountId, self::SESSIONS_MAX_PAR_COMPTE]);
     }
 
     public static function setSessionCookie(string $token, int $lifetime = self::SESSION_TTL): void
