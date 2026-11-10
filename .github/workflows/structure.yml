@@ -1881,8 +1881,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du facteur « cet appareil » a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 29/29$' \
-            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 29 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 37/37$' \
+            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 37 cas"; exit 1; }
 
       # Enrôler ouvre le compte avec le seul mot mémorisé : ce chemin n'avait aucun
       # frein par compte, donc rien sous un profil où l'adresse ne distingue personne.
@@ -1923,6 +1923,44 @@ jobs:
           echo "$sortie" | grep -q '❌ .*au sixième essai, même le bon mot est freiné' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du frein"; exit 1; }
           echo "✓ le banc rougit, et sur les deux cas — l'exigence et le frein"
+
+      # La demande de défi se joint sans session ni secret : chaque défi rangé est
+      # une écriture qu'un tiers paie d'une requête.
+      - name: Canari — la demande de défi range un identifiant mal formé, ou celui d'un appareil inconnu
+        run: |
+          # @plante
+          F=bi-self/selfrecover/src/Device/Device.php
+          cp "$F" /tmp/Device-defi.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          python3 - <<'PY'
+          chemin = 'bi-self/selfrecover/src/Device/Device.php'
+          gardes = [
+              ('        if (!self::estIdentifiantAppareil($credentialId)) {', '        if (false) { // forme débranchée'),
+              ('        if ($this->stockage->trouverAppareil($credentialId) === null) {',
+               '        if (false) { // inconnu rangé'),
+          ]
+          s = open(chemin, encoding='utf-8').read()
+          for avant, apres in gardes:
+              assert s.count(avant) == 1, f'motif introuvable : {avant[:40]!r} — ce canari ne prouve rien'
+              s = s.replace(avant, apres, 1)
+          open(chemin, 'w', encoding='utf-8').write(s)
+          PY
+          grep -q 'forme débranchée' "$F" && grep -q 'inconnu rangé' "$F" \
+            || { cp /tmp/Device-defi.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/Device-defi.intact "$F"; echo "::error::la version plantée ne compile pas"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1); then
+            cp /tmp/Device-defi.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT quand la demande de défi range tout"; exit 1
+          fi
+          cp /tmp/Device-defi.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q '❌ .*un identifiant de 1 Mo est refusé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la forme"; exit 1; }
+          echo "$sortie" | grep -q '❌ .*deux cents identifiants inconnus ne rangent aucun défi' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de l'inconnu"; exit 1; }
+          echo "✓ le banc rougit, et sur les deux cas — la forme et l'inconnu"
 
       # Le compte est écrit en dur : c'est un inventaire, pas un seuil. Un code de
       # sortie à zéro dit que les cas joués ont réussi, jamais qu'aucun n'a

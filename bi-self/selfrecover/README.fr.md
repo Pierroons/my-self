@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.3](https://img.shields.io/badge/status-v0.13.3-green.svg)](#statut)
+[![Status: v0.13.4](https://img.shields.io/badge/status-v0.13.4-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -475,7 +475,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.13.3 (avril → novembre 2026)
+### Livré — v0.1.0 à v0.13.4 (avril → novembre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -504,6 +504,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Le titulaire qui revient par ses codes d'avant n'est plus arrêté par le demandeur** — le lot neuf du demandeur ne compte plus contre les codes d'avant et ses gestes ne réarment plus ce compteur, la route du sel rend l'ancien sel pour un code d'avant, et `Recovery::estCodeDeRetour()` permet au plafond de service d'un intégrateur de laisser passer un retour (v0.13.1)
 - [x] **Le retour garde ce qu'il devait reprendre** — la passphrase apportée au retour ne peut être ni celle d'avant ni celle du demandeur, et un second niveau 3 ne remplace plus une fenêtre que son titulaire a reprise, tant que l'arbitre ne l'a pas close ; le modèle de menace dit que le prix du cas symétrique vaut par fenêtre — chaque niveau 3 rouvre un retour à qui tenait le compte juste avant (v0.13.2)
 - [x] **L'arbitre peut accorder un niveau 3 sans retour (v0.13.3)** — tant qu'aucune fenêtre n'est ouverte, après une fraude vue trop tard ou un papier volé, la reprise n'ouvre plus de fenêtre à qui a pris le compte ; juger qui le tenait à bon droit est alors à l'arbitre
+- [x] **La demande de défi de « cet appareil » ne range plus rien pour un identifiant mal formé ou inconnu (v0.13.4)** — l'identifiant doit avoir la forme qu'impose l'enrôlement, et un défi n'est rangé que pour un appareil enrôlé ; la porte ne reçoit toujours pas l'adresse du client et ne compte aucun échec de signature, ce que la 0.14.0 changera
 
 ### Ensuite
 

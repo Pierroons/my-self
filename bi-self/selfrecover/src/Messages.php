@@ -211,6 +211,10 @@ final class Messages
             'fr' => 'Challenge invalide ou expiré.',
             'en' => 'Invalid or expired challenge.',
         ],
+        'appareil.identifiant_invalide' => [
+            'fr' => "Identifiant d'appareil invalide.",
+            'en' => 'Invalid device identifier.',
+        ],
         // ⚠️ Cette entrée porte une CONSIGNE : le mot de passe rendu ne sera pas
         // réaffiché. `sanity_annonce_secrets.php` l'exige dans les deux langues,
         // et remonte jusqu'ici depuis le retour qui la compose.

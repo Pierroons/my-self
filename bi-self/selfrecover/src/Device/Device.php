@@ -114,7 +114,7 @@ final class Device
         $credentialId = trim($credentialId);
         $clePublique  = Encoding::b64urlDecode($clePubliqueB64url);
 
-        if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $credentialId) || strlen($clePublique) < 50) {
+        if (!self::estIdentifiantAppareil($credentialId) || strlen($clePublique) < 50) {
             return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.donnees_invalides')];
         }
         if (!self::estCleDerivee($motDerive)) {
@@ -190,14 +190,36 @@ final class Device
     /**
      * Émet un défi de 32 octets pour une récupération depuis cet appareil.
      *
+     * 🔴 **Rien ne s'écrit pour un identifiant mal formé ou inconnu.** Cette porte
+     * se joint sans session ni secret : un défi rangé pour n'importe quel
+     * identifiant, de n'importe quelle taille, laisse un tiers remplir la base au
+     * rythme de ses requêtes. L'identifiant passe donc par la forme qu'impose
+     * l'enrôlement, et le défi n'est rangé que pour un appareil enrôlé. L'inconnu
+     * en reçoit un de même forme, que rien ne retient : la réponse ne dit pas s'il
+     * existe.
+     *
+     * Le prix : un chronomètre distingue le défi rangé de l'autre, ce qui suppose
+     * de deviner un identifiant tiré au hasard par le navigateur. Qui en tient un
+     * fait encore écrire une ligne par appel ; ce débit, seul un frein devant la
+     * route le borne.
+     *
      * @return array{ok: bool, challenge?: string, message?: string}
      */
     public function ouvrirDefi(string $credentialId, ?int $maintenant = null): array
     {
-        $maintenant = $maintenant ?? time();
-        $this->stockage->purgerDefisExpires($maintenant - self::DEFI_TTL);
+        $maintenant   = $maintenant ?? time();
+        $credentialId = trim($credentialId);
+
+        if (!self::estIdentifiantAppareil($credentialId)) {
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.identifiant_invalide')];
+        }
 
         $defi = Encoding::b64urlEncode(random_bytes(32));
+        if ($this->stockage->trouverAppareil($credentialId) === null) {
+            return ['ok' => true, 'challenge' => $defi];
+        }
+
+        $this->stockage->purgerDefisExpires($maintenant - self::DEFI_TTL);
         $this->stockage->enregistrerDefi($defi, $credentialId, $maintenant);
 
         return ['ok' => true, 'challenge' => $defi];
@@ -283,6 +305,17 @@ final class Device
     public function etiquetteEchecsEnrolement(string $nomCompte): string
     {
         return Etiquette::sous(Etiquette::PREFIXE_ENROLEMENT, $nomCompte, $this->selDeploiement);
+    }
+
+    /**
+     * L'identifiant d'appareil a-t-il la forme que l'enrôlement impose ?
+     *
+     * Une seule définition pour l'enrôlement et le défi : un appareil enrôlé a
+     * forcément cette forme, donc la refuser ailleurs ne coupe aucun titulaire.
+     */
+    public static function estIdentifiantAppareil(string $valeur): bool
+    {
+        return (bool) preg_match('/^[A-Za-z0-9_-]{16,64}$/', $valeur);
     }
 
     /**
