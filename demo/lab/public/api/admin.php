@@ -29,7 +29,7 @@ switch ($action) {
         $ok = Admin::setReportStatus($pdo, (int) ($body['id'] ?? 0), (string) ($body['status'] ?? ''));
         json_out(['ok' => $ok], $ok ? 200 : 400);
 
-    case 'moderate': // geste d'arbitre, signé du nom de la session
+    case 'moderate': // geste d'arbitre, signé du compte de la session
         $id    = (int) ($body['account_id'] ?? 0);
         $op    = (string) ($body['op'] ?? '');
         $motif = (string) ($body['motif'] ?? '');
@@ -39,12 +39,12 @@ switch ($action) {
             ? ['signal' => (int) ($body['vu']['signal'] ?? 0), 'detections' => (int) ($body['vu']['detections'] ?? 0)]
             : null;
         $r = match ($op) {
-            'ban'       => Moderate::adminBan($pdo, $id, (string) $moi['username'], $motif),
-            'lever'     => Moderate::adminLever($pdo, $id, (string) $moi['username'], $motif),
-            'pardon'    => Moderate::adminPardon($pdo, $id, (string) $moi['username'], $motif),
-            'prolonger' => Moderate::adminProlonger($pdo, $id, (string) $moi['username'], $motif, (int) ($body['secondes'] ?? 0)),
-            'maintenir' => Moderate::adminMaintenir($pdo, $id, (string) $moi['username'], $motif, $vu),
-            'classer'   => Moderate::adminClasser($pdo, $id, (string) $moi['username'], $motif, $vu),
+            'ban'       => Moderate::adminBan($pdo, $id, (int) $moi['id'], $motif),
+            'lever'     => Moderate::adminLever($pdo, $id, (int) $moi['id'], $motif),
+            'pardon'    => Moderate::adminPardon($pdo, $id, (int) $moi['id'], $motif),
+            'prolonger' => Moderate::adminProlonger($pdo, $id, (int) $moi['id'], $motif, (int) ($body['secondes'] ?? 0)),
+            'maintenir' => Moderate::adminMaintenir($pdo, $id, (int) $moi['id'], $motif, $vu),
+            'classer'   => Moderate::adminClasser($pdo, $id, (int) $moi['id'], $motif, $vu),
             default     => ['ok' => false, 'message' => 'Opération inconnue.'],
         };
         json_out($r, $r['ok'] ? 200 : 400);

@@ -299,8 +299,16 @@ return [
     'Ce ban est déjà sans fin.' => 'This ban already has no end.',
     'Seul un ban d\'arbitre se rallonge : lève celui-ci — la récidive reste comptée —, puis pose le tien.'
         => 'Only an arbiter ban is extended: lift this one — the repeat offence still counts —, then set your own.',
-    'Durée trop longue : un ban qui ne doit pas finir se pose sans fin.'
-        => 'Duration too long: a ban that must not end is set with no end.',
+    'Durée trop longue : au-delà d\'un siècle, un ban se pose sans fin.'
+        => 'Duration too long: beyond a century, a ban is set with no end.',
+    'Un geste d\'arbitre se signe : aucun arbitre n\'est nommé.'
+        => 'An arbiter action is signed: no arbiter is named.',
+    'Ce nom d\'arbitre désigne plusieurs comptes : passe son identifiant.'
+        => 'This arbiter name designates several accounts: pass its identifier.',
+    'L\'arbitre doit être un compte de l\'instance : celui-ci n\'en désigne aucun.'
+        => 'The arbiter must be an account of this instance: this one designates none.',
+    'Un arbitre ne fait aucun geste sur son propre compte.'
+        => 'An arbiter takes no action on their own account.',
     'Ban prolongé sans fin.' => 'Ban extended with no end.',
     'Ban prolongé jusqu\'au %s.' => 'Ban extended until %s.',
     'Un ban sans fin ne se lève qu\'avec un motif écrit.' => 'An endless ban is only lifted with a written reason.',

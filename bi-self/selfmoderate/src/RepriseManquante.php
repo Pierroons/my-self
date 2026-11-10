@@ -1,8 +1,10 @@
 <?php
 
 /**
- * Un compte porte une case de signalement ouverte et aucun signal dans
- * `mod_signaux` : la reprise des versions d'avant la 0.7.0 n'a pas été faite.
+ * Une reprise de schéma n'a pas été faite : un compte porte une case de
+ * signalement ouverte et aucun signal dans `mod_signaux` (avant la 0.7.0,
+ * `migrerSignaux()`), ou un ban en cours et aucune peine ouverte dans
+ * `mod_peines` (avant la 0.9.0, `migrerBans()`). Le message nomme laquelle.
  *
  * C'est une erreur d'intégration, et elle se dit à qui peut la réparer : à la
  * lecture du compte lui-même, et à l'arbitre, dont les listes la lèvent. Le vote

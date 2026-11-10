@@ -213,6 +213,50 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_signaux_compte ON mod_signaux(account_id, cause);
 CREATE INDEX IF NOT EXISTS idx_signaux_file ON mod_signaux(cause, ouvert_le);
 
+-- SelfModerate — l'historique des peines, une ligne écrite au début de chacune.
+-- `member_moderation` porte l'état du moment et l'efface à la fin ; ici, la peine
+-- reste, avec qui l'a prononcée et comment elle a fini. L'arbitre est copié
+-- (identifiant et nom) sans clé étrangère : la trace survit à son compte.
+CREATE TABLE IF NOT EXISTS mod_peines (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id        INTEGER NOT NULL,
+    origine           TEXT,              -- 'auto' | 'admin' ; NULL : ban d'origine inconnue, repris
+    episode           INTEGER NOT NULL,  -- le numéro d'épisode (`strikes`) que la peine a pris
+    motif             TEXT,
+    arbitre_id        INTEGER,           -- NULL : la machine, ou une reprise
+    arbitre_nom       TEXT,
+    debut             INTEGER NOT NULL,  -- 0 : début inconnu d'une peine reprise
+    echeance_initiale INTEGER NOT NULL,
+    echeance          INTEGER NOT NULL,  -- prolongations comprises ; Moderate::SANS_FIN pour un ban sans fin
+    decide_le         INTEGER NOT NULL,  -- la dernière décision : le début, ou la dernière prolongation
+    prolongations     INTEGER NOT NULL DEFAULT 0,
+    fin               INTEGER,           -- NULL tant qu'elle court ; l'échéance quand le temps l'a close
+    fin_cause         TEXT,              -- 'echeance' | 'levee' | 'grace' | 'meute_detectee'
+    fin_arbitre_id    INTEGER,
+    fin_arbitre_nom   TEXT,
+    reprise           INTEGER NOT NULL DEFAULT 0,  -- 1 : ouverte par migrerBans(), ce que la base d'avant ignorait reste inconnu
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_peines_ouverte ON mod_peines(account_id) WHERE fin IS NULL;
+CREATE INDEX IF NOT EXISTS idx_peines_compte ON mod_peines(account_id, id);
+
+-- Les causes d'une peine, figées à son début : les votes reçus dont l'effet était
+-- négatif. Une copie, sans clé vers `mod_votes` : la remise au départ met l'effet
+-- à zéro, un compte supprimé emporte ses votes, la cause reste.
+CREATE TABLE IF NOT EXISTS mod_peine_causes (
+    peine_id  INTEGER NOT NULL,
+    vote_id   INTEGER NOT NULL,
+    voter_id  INTEGER NOT NULL,
+    effet     INTEGER NOT NULL,
+    vote_le   INTEGER NOT NULL,
+    PRIMARY KEY (peine_id, vote_id),
+    FOREIGN KEY (peine_id) REFERENCES mod_peines(id) ON DELETE CASCADE
+);
+
+-- Les deux listes de l'arbitre et le balayage filtrent sur ces colonnes.
+CREATE INDEX IF NOT EXISTS idx_modmod_revue ON member_moderation(account_id) WHERE needs_review = 1;
+CREATE INDEX IF NOT EXISTS idx_modmod_ban ON member_moderation(banned_until) WHERE banned_until > 0;
+
 -- Rapports red team — soumis via formulaire public. Le corps du rapport
 -- (titre, description, repro, contact) est chiffré en PGP dans le navigateur :
 -- la base ne révèle qu'un message PGP. handle/severity/target restent en clair (tri + hall of fame).
