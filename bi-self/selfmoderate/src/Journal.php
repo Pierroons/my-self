@@ -43,8 +43,9 @@ interface Journal
      *              posé avant que l'origine ne soit enregistrée
      *   arbitre    nom du compte de l'arbitre au moment du geste, ou null quand
      *              c'est la machine
-     *   arbitre_id identifiant de ce compte (`accounts.id`), ou null quand c'est
-     *              la machine : le nom peut changer, l'identifiant reste
+     *   arbitre_id identifiant de ce compte (`accounts.id`), celui que l'hôte a
+     *              passé au geste ; null quand c'est la machine. Le nom peut
+     *              changer, l'identifiant reste
      *   motif      `reputation_zero` ou `meute_detectee` pour la machine, texte validé
      *              par `validateReason()` pour un arbitre ; le même au début et à la
      *              fin d'un ban

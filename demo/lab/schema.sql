@@ -220,7 +220,9 @@ CREATE INDEX IF NOT EXISTS idx_signaux_file ON mod_signaux(cause, ouvert_le);
 -- SelfModerate — l'historique des peines, une ligne écrite au début de chacune.
 -- `member_moderation` porte l'état du moment et l'efface à la fin ; ici, la peine
 -- reste, avec qui l'a prononcée et comment elle a fini. L'arbitre est copié
--- (identifiant et nom) sans clé étrangère : la trace survit à son compte.
+-- (identifiant et nom) sans clé étrangère : la trace survit à son compte. Le
+-- compte puni, lui, l'emporte : sa suppression efface son historique, et le
+-- journal reste la trace.
 CREATE TABLE IF NOT EXISTS mod_peines (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id        INTEGER NOT NULL,
@@ -233,12 +235,15 @@ CREATE TABLE IF NOT EXISTS mod_peines (
     echeance_initiale INTEGER NOT NULL,
     echeance          INTEGER NOT NULL,  -- prolongations comprises ; Moderate::SANS_FIN pour un ban sans fin
     decide_le         INTEGER NOT NULL,  -- la dernière décision : le début, ou la dernière prolongation
+    decide_par_id     INTEGER,           -- l'arbitre de cette décision ; NULL : la machine, ou une reprise
+    decide_par_nom    TEXT,
     prolongations     INTEGER NOT NULL DEFAULT 0,
     fin               INTEGER,           -- NULL tant qu'elle court ; l'échéance quand le temps l'a close
-    fin_cause         TEXT,              -- 'echeance' | 'levee' | 'grace' | 'meute_detectee'
+    fin_cause         TEXT,              -- 'echeance' | 'levee' | 'grace' | 'meute_detectee' |
+                                         -- 'hors_moteur' : fermée par migrerBans(), sa fin réelle inconnue
     fin_arbitre_id    INTEGER,
     fin_arbitre_nom   TEXT,
-    reprise           INTEGER NOT NULL DEFAULT 0,  -- 1 : ouverte par migrerBans(), ce que la base d'avant ignorait reste inconnu
+    reprise           INTEGER NOT NULL DEFAULT 0,  -- 1 : ouverte par migrerBans(), ce que la base ignorait reste inconnu
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_peines_ouverte ON mod_peines(account_id) WHERE fin IS NULL;
@@ -257,7 +262,8 @@ CREATE TABLE IF NOT EXISTS mod_peine_causes (
     FOREIGN KEY (peine_id) REFERENCES mod_peines(id) ON DELETE CASCADE
 );
 
--- Les deux listes de l'arbitre et le balayage filtrent sur ces colonnes.
+-- Les listes de l'arbitre et `bansEnCours()` filtrent sur ces colonnes ; le
+-- balayage, qui lit aussi la convalescence, parcourt la table.
 CREATE INDEX IF NOT EXISTS idx_modmod_revue ON member_moderation(account_id) WHERE needs_review = 1;
 CREATE INDEX IF NOT EXISTS idx_modmod_ban ON member_moderation(banned_until) WHERE banned_until > 0;
 

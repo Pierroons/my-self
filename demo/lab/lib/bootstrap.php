@@ -134,6 +134,11 @@ function require_admin(\PDO $pdo): array
     if (empty($acc['is_admin'])) {
         json_out(['ok' => false, 'error' => 'forbidden', 'message' => 'Réservé à l\'administration.'], 403);
     }
+    // Un administrateur sous peine ne signe aucun geste d'arbitre : ses routes lui
+    // sont fermées, comme sa console.
+    if (\Pierroons\SelfModerate\Moderate::estBanni($pdo, (int) $acc['id'])) {
+        json_out(['ok' => false, 'error' => 'forbidden', 'message' => 'Un administrateur sous peine n\'a pas accès à la console.'], 403);
+    }
     return $acc;
 }
 

@@ -3690,8 +3690,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 214/214 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 214 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 220/220 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 220 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3700,66 +3700,111 @@ jobs:
           # banc qui tombe pour une autre raison (un prérequis du job absent) rendrait
           # le même rouge qu'une plantation qui mord.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          echo "$sortie" | grep -qx '✅ 214/214 contrôles passés' \
-            || { echo "$sortie" | tail -5; echo "::error::le banc de modération intact ne joue pas ses 214 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
-          # Onze défauts plantés un à un, chacun restauré avant le suivant ; chaque
-          # plantation est jugée, même après l'échec d'une autre, et doit rougir sur
-          # le cas qui la nomme.
+          # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
+          # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
+          grep -qx '✅ 220/220 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 220 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # Vingt-six défauts plantés un à un — le moteur, la console et les routes du
+          # lab —, chaque fichier restauré avant le suivant ; chaque plantation est
+          # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
+          # Les quatre fermetures de peine (échéance, levée, grâce, meute) sont arrêtées
+          # plus tôt par la garde du moteur, qui refuse d'ouvrir une peine sur une ligne
+          # restée ouverte : leur rouge est ce refus, nommé.
           M=bi-self/selfmoderate/src/Moderate.php
-          cp "$M" /tmp/moderate.socle.intact
+          P=demo/lab/public/admin.php
+          B=demo/lab/lib/bootstrap.php
+          for f in "$M" "$P" "$B"; do cp "$f" "/tmp/socle.$(basename "$f").intact"; done
+          restaurer() { for f in "$M" "$P" "$B"; do cp "/tmp/socle.$(basename "$f").intact" "$f"; done; }
           echecs=0
-          for cas in horloge causes prolongation console soi inconnu ouverture reprise meute arbitre_id siecle; do
-            attendu=$(CAS="$cas" python3 - "$M" <<'PY'
-          import os, sys
-          p = sys.argv[1]
-          s = open(p, encoding='utf-8').read()
-          avant, apres, attendu = {
-              'horloge':      ("return self::$horloge ? (int) (self::$horloge)() : time();", "return time();",
-                               "le moteur ne lit pas l'horloge branchée"),
-              'causes':       ("        )->execute([$peine, $accountId]);\n", "        );\n",
-                               "l'historique perd une peine automatique ou ses causes"),
-              'prolongation': ("            self::prolongerPeine($pdo, $accountId, $jusqua, $maintenant);\n", "",
-                               "l'historique ou la console perd l'arbitre d'un ban"),
-              'console':      ("                'arbitre'    => self::compteSigne($r['arbitre_id'], $r['arbitre_nom']),",
-                               "                'arbitre'    => null,",
-                               "l'historique ou la console perd l'arbitre d'un ban"),
-              'soi':          ("        if ((int) $comptes[0]['id'] === $accountId) {", "        if (false) {",
-                               "un geste passe sans arbitre identifiable, ou sur le compte de son arbitre"),
-              'inconnu':      ("        if ($comptes === []) {\n", "        if (false) {\n",
-                               "un geste passe sans arbitre identifiable, ou sur le compte de son arbitre"),
-              'ouverture':    ("            self::exigerAucunePeineOuverte($pdo, $accountId);\n            $jusqua     =",
-                               "            $jusqua     =",
-                               "une peine s'ouvre sur une autre"),
-              'reprise':      ("        if ($row !== false && (int) $row['banned_until'] > 0 && !(int) $row['peine_ouverte']) {",
-                               "        if (false) {",
-                               "un ban sans sa ligne passe en silence, ou la reprise le rate"),
-              'meute':        ("            self::fermerPeine($pdo, $author, self::maintenant(), 'meute_detectee', null);\n", "",
-                               "l'historique des peines et l'état des bans se sont séparés"),
-              'arbitre_id':   ("                'arbitre_id' => $qui['id'],\n                'raison'  => $etat['review_reason'],",
-                               "                'raison'  => $etat['review_reason'],",
-                               "un acte omet une clé que la table du journal lui promet"),
-              'siecle':       ("            if (!$sansFin && $seconds > self::DUREE_MAX) {",
-                               "            if (!$sansFin && $seconds >= self::SANS_FIN - $maintenant) {",
-                               "une durée fait un ban sans fin, ou un ban sans fin sort sans motif"),
+          cas_liste="horloge causes prolongation console soi inconnu ouverture reprise meute arbitre_id siecle
+                     instant sous_peine jour decide_par horloge_invalide orphelines rouvrir console_orphelines
+                     console_peines garde_auto fin_echeance fin_levee fin_grace borne_prolonger lab_page lab_route"
+          for cas in $cas_liste; do
+            attendu=$(CAS="$cas" python3 - <<'PY'
+          import os
+          M = 'bi-self/selfmoderate/src/Moderate.php'
+          P = 'demo/lab/public/admin.php'
+          B = 'demo/lab/lib/bootstrap.php'
+          ARB = "✗ ⭐ un geste passe sans arbitre identifiable, sur le compte de son arbitre, ou signé d'un arbitre sous peine"
+          HIST = "✗ ⭐ l'historique et les bans divergent sans réparation"
+          ORPH = "porte une peine ouverte dans mod_peines et aucun ban en cours"
+          f, avant, apres, attendu = {
+              'horloge':      (M, "    public static function maintenant(): int\n    {\n",
+                                  "    public static function maintenant(): int\n    {\n        return time();\n",
+                               "✗ ⭐ le moteur ne lit pas l'horloge branchée"),
+              'causes':       (M, "        )->execute([$peine, $accountId]);\n", "        );\n",
+                               "✗ ⭐ l'historique perd une peine automatique ou ses causes"),
+              'prolongation': (M, "            self::prolongerPeine($pdo, $accountId, $jusqua, $maintenant, $qui);\n", "",
+                               "✗ ⭐ l'historique ou la console perd l'arbitre d'un ban"),
+              'console':      (M, "                'arbitre'    => self::compteSigne($r['arbitre_id'], $r['arbitre_nom']),",
+                                  "                'arbitre'    => null,",
+                               "✗ ⭐ l'historique ou la console perd l'arbitre d'un ban"),
+              'soi':          (M, "        if ((int) $compte['id'] === $accountId) {", "        if (false) {", ARB),
+              'inconnu':      (M, "        if ($compte === false) {", "        if (false) {", ARB),
+              'ouverture':    (M, "            self::exigerAucunePeineOuverte($pdo, $accountId);\n            $jusqua     =",
+                                  "            $jusqua     =",
+                               "✗ ⭐ une peine s'ouvre sur une autre"),
+              'reprise':      (M, "        if ($row !== false && (int) $row['banned_until'] > 0 && !(int) $row['peine_ouverte']) {",
+                                  "        if (false) {",
+                               "✗ ⭐ un ban sans sa ligne passe en silence, ou la reprise le rate"),
+              'meute':        (M, "            self::fermerPeine($pdo, $author, self::maintenant(), 'meute_detectee', null);\n", "", ORPH),
+              'arbitre_id':   (M, "                'arbitre_id' => $qui['id'],\n                'raison'  => $etat['review_reason'],",
+                                  "                'raison'  => $etat['review_reason'],",
+                               "✗ ⭐ un acte omet une clé que la table du journal lui promet"),
+              'siecle':       (M, "            if (!$sansFin && $seconds > self::DUREE_MAX) {",
+                                  "            if (!$sansFin && $seconds >= self::SANS_FIN - $maintenant) {",
+                               "✗ ⭐ une durée fait un ban sans fin, ou un ban sans fin sort sans motif"),
+              'instant':      (M, "        return self::presenter($row, $signaux, $jusqua > 0 && $jusqua <= $t, $t);",
+                                  "        return self::presenter($row, $signaux, $jusqua > 0 && $jusqua <= self::maintenant(), self::maintenant());",
+                               "✗ ⭐ une grâce au bord de l'échéance laisse une peine ouverte sans ban, ou sans fin au journal"),
+              'sous_peine':   (M, "        if ((int) $compte['banned_until'] > self::maintenant()) {", "        if (false) {", ARB),
+              'jour':         (M, "$t === null || $precis || $t <= 0", "$t === null || true || $t <= 0",
+                               "✗ ⭐ l'historique rend la seconde du vote décisif"),
+              'decide_par':   (M, "->execute([$echeance, $decideLe, $par['id'], $par['nom'], $accountId]);",
+                                  "->execute([$echeance, $decideLe, null, null, $accountId]);",
+                               "✗ ⭐ la dernière décision est attribuée à un autre arbitre"),
+              'horloge_invalide': (M, "        if (!is_int($t) || $t <= 0 || $t >= self::SANS_FIN) {", "        if (false) {",
+                               "✗ ⭐ une horloge invalide passe"),
+              'orphelines':   (M, "                  WHERE fin IS NULL\n                    AND NOT EXISTS (SELECT 1 FROM member_moderation m WHERE m.account_id = mod_peines.account_id AND m.banned_until > 0)\"",
+                                  "                  WHERE 0\"", HIST),
+              'rouvrir':      (M, "                if ($rouvrir->rowCount() === 0) {", "                if (true) {", HIST),
+              'console_orphelines': (M, "            throw self::repriseManquante((int) $compte, 'orpheline');", "            $compte = null;", HIST),
+              'console_peines': (M, "            throw self::repriseManquante((int) $compte, 'peines');", "            $compte = null;",
+                               "✗ ⭐ un ban sans sa ligne passe en silence, ou la reprise le rate"),
+              'garde_auto':   (M, "        $signaux = self::signauxDe($pdo, $accountId);\n        self::exigerAucunePeineOuverte($pdo, $accountId);\n",
+                                  "        $signaux = self::signauxDe($pdo, $accountId);\n", HIST),
+              'fin_echeance': (M, "            self::fermerPeine($pdo, $accountId, $avance['fin']['jusqu_a'], 'echeance', null);\n", "", ORPH),
+              'fin_levee':    (M, "            self::fermerPeine($pdo, $accountId, $maintenant, 'levee', $qui);\n", "", ORPH),
+              'fin_grace':    (M, "                self::fermerPeine($pdo, $accountId, $maintenant, 'grace', $qui);\n", "", ORPH),
+              'borne_prolonger': (M, "($secondes > self::DUREE_MAX || $etat['banned_until'] + $secondes - $maintenant > self::DUREE_MAX)",
+                                  "($secondes >= self::SANS_FIN - $etat['banned_until'])",
+                               "✗ la prolongation rate"),
+              'lab_page':     (P, "if (Moderate::estBanni($pdo, (int) $account['id'])) {", "if (false) {",
+                               "✗ ⭐ un administrateur sous peine garde la console du lab"),
+              'lab_route':    (B, "if (\\Pierroons\\SelfModerate\\Moderate::estBanni($pdo, (int) $acc['id'])) {", "if (false) {",
+                               "✗ ⭐ un administrateur sous peine garde la console du lab"),
           }[os.environ['CAS']]
+          s = open(f, encoding='utf-8').read()
           assert s.count(avant) == 1, 'plantation impossible'
-          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          open(f, 'w', encoding='utf-8').write(s.replace(avant, apres))
           print(attendu)
           PY
-            ) || { cp /tmp/moderate.socle.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — elle ne prouve rien"; echecs=$((echecs + 1)); continue; }
+            ) || { restaurer; echo "::error::la plantation « $cas » n'a pas pris — elle ne prouve rien"; echecs=$((echecs + 1)); continue; }
             sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-            cp /tmp/moderate.socle.intact "$M"
+            restaurer
             if [ "$rc" -eq 0 ]; then
               echo "::error::le banc reste VERT avec la plantation « $cas »"; echecs=$((echecs + 1)); continue
             fi
-            if ! echo "$sortie" | grep -qF -- "✗ ⭐ $attendu"; then
-              echo "$sortie" | grep -E '✗|Fatal' | head -3
-              echo "::error::rouge avec « $cas », mais pas sur son cas : $attendu"; echecs=$((echecs + 1)); continue
+            if ! grep -qF -- "$attendu" <<< "$sortie"; then
+              grep -E '✗|Fatal' <<< "$sortie" | head -3 || true
+              echo "::error::rouge avec « $cas », mais pas sur ce qui la nomme : $attendu"; echecs=$((echecs + 1)); continue
             fi
-            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+            echo "✓ plantation « $cas » : le banc rougit, et sur ce qui la nomme"
           done
-          cmp -s /tmp/moderate.socle.intact "$M" || { echo "::error::le moteur n'a pas été restauré à l'identique"; exit 1; }
-          [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur 11 ne rendent pas le rouge de leur cas"; exit 1; }
+          for f in "$M" "$P" "$B"; do
+            cmp -s "/tmp/socle.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
+          done
+          [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur 27 ne rendent pas le rouge attendu"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -4565,8 +4610,8 @@ jobs:
             CAS="$cas" python3 - "$M" "$C" <<'PY'
           import os, sys
           fichier, avant, apres = {
-              'lecture-ecrit': (1, '        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, self::maintenant());',
-                                   '        self::rattraperSeul($pdo, $accountId);\n        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, self::maintenant());'),
+              'lecture-ecrit': (1, '        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, $t);',
+                                   '        self::rattraperSeul($pdo, $accountId);\n        $row     = self::ligne($pdo, $accountId);\n        $avance  = self::avancer($row, $t);'),
               'garde':         (1, 'if (self::$ecritures > 0) {', 'if (false) {'),
               'filet':         (1, 'if (self::$trancheBalayee && !self::enTransaction($pdo)) {', 'if (false) {'),
               'filet-hote':    (1, 'if (self::$trancheBalayee && !self::enTransaction($pdo)) {', 'if (self::$trancheBalayee) {'),

@@ -649,8 +649,18 @@ final class Db
             }
         }
 
+        // SelfModerate — motif de vote, et ce que le vote a changé à la réputation.
+        // Un vote d'avant cette colonne la garde à NULL : le moteur le lit sans effet connu.
+        $cols = self::$pdo->query('PRAGMA table_info(mod_votes)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        foreach (['reason' => 'TEXT', 'reason_code' => 'TEXT', 'effet' => 'INTEGER'] as $col => $type) {
+            if (!in_array($col, $cols, true)) {
+                self::$pdo->exec("ALTER TABLE mod_votes ADD COLUMN $col $type");
+            }
+        }
+
         // SelfModerate — les bans en cours reçoivent leur ligne dans `mod_peines`, que
-        // `schema.sql` vient de créer (`migrerBans()`, rejouable sans effet). La marque
+        // `schema.sql` vient de créer (`migrerBans()`, rejouable sans effet). Après la
+        // colonne `mod_votes.effet`, que la reprise lit pour figer les causes. La marque
         // évite de relire `member_moderation` à chaque ouverture.
         if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'peines-en-table'")->fetchColumn() === false) {
             require_once __DIR__ . '/../vendor/autoload.php';
@@ -665,15 +675,6 @@ final class Db
             } catch (\Throwable $e) {
                 self::$pdo->exec('ROLLBACK');
                 throw $e;
-            }
-        }
-
-        // SelfModerate — motif de vote, et ce que le vote a changé à la réputation.
-        // Un vote d'avant cette colonne la garde à NULL : le moteur le lit sans effet connu.
-        $cols = self::$pdo->query('PRAGMA table_info(mod_votes)')->fetchAll(PDO::FETCH_COLUMN, 1);
-        foreach (['reason' => 'TEXT', 'reason_code' => 'TEXT', 'effet' => 'INTEGER'] as $col => $type) {
-            if (!in_array($col, $cols, true)) {
-                self::$pdo->exec("ALTER TABLE mod_votes ADD COLUMN $col $type");
             }
         }
 

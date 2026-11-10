@@ -301,12 +301,10 @@ return [
         => 'Only an arbiter ban is extended: lift this one — the repeat offence still counts —, then set your own.',
     'Durée trop longue : au-delà d\'un siècle, un ban se pose sans fin.'
         => 'Duration too long: beyond a century, a ban is set with no end.',
-    'Un geste d\'arbitre se signe : aucun arbitre n\'est nommé.'
-        => 'An arbiter action is signed: no arbiter is named.',
-    'Ce nom d\'arbitre désigne plusieurs comptes : passe son identifiant.'
-        => 'This arbiter name designates several accounts: pass its identifier.',
-    'L\'arbitre doit être un compte de l\'instance : celui-ci n\'en désigne aucun.'
-        => 'The arbiter must be an account of this instance: this one designates none.',
+    'L\'arbitre doit être un compte de l\'instance : cet identifiant n\'en désigne aucun.'
+        => 'The arbiter must be an account of this instance: this identifier designates none.',
+    'Un arbitre sous peine ne fait aucun geste d\'arbitre.'
+        => 'An arbiter under a penalty takes no arbiter action.',
     'Un arbitre ne fait aucun geste sur son propre compte.'
         => 'An arbiter takes no action on their own account.',
     'Ban prolongé sans fin.' => 'Ban extended with no end.',

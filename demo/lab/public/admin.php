@@ -24,6 +24,15 @@ if (!$account || empty($account['is_admin'])) {
     render_footer();
     exit;
 }
+// Un administrateur sous peine ne signe aucun geste d'arbitre (le moteur les refuse) :
+// la console lui est fermée aussi.
+if (Moderate::estBanni($pdo, (int) $account['id'])) {
+    http_response_code(403);
+    render_header('Espace', $account);
+    echo '<div class="card"><h1>403</h1><p class="muted">Un administrateur sous peine n\'a pas accès à la console.</p></div>';
+    render_footer();
+    exit;
+}
 
 $stats   = Admin::stats($pdo);
 $comptes = Admin::accounts($pdo);
