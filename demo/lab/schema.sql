@@ -73,6 +73,10 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     attempted_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(username, attempted_at);
+-- Le frein par adresse filtre sur `ip`, que l'index ci-dessus ne couvre pas : il
+-- balayait la table entière à chaque connexion, chaque récupération et chaque
+-- ouverture de dossier — une table que ces mêmes appels font grossir.
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at);
 
 -- Forum : sujets
 CREATE TABLE IF NOT EXISTS threads (
@@ -405,6 +409,9 @@ CREATE TABLE IF NOT EXISTS device_challenges (
     credential_id TEXT,
     created_at    INTEGER NOT NULL
 );
+-- La purge des défis expirés tourne en tête de CHAQUE demande de défi : sans cet
+-- index elle balaie tout, et son coût croît avec ce que ces demandes accumulent.
+CREATE INDEX IF NOT EXISTS idx_device_challenges_date ON device_challenges(created_at);
 CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id);
 CREATE INDEX IF NOT EXISTS idx_devcred_account ON device_credentials(account_id);
 
