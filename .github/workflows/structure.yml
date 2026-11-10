@@ -1881,8 +1881,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du facteur « cet appareil » a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 29/29$' \
-            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 29 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 37/37$' \
+            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 37 cas"; exit 1; }
 
       # Enrôler ouvre le compte avec le seul mot mémorisé : ce chemin n'avait aucun
       # frein par compte, donc rien sous un profil où l'adresse ne distingue personne.
@@ -1923,6 +1923,44 @@ jobs:
           echo "$sortie" | grep -q '❌ .*au sixième essai, même le bon mot est freiné' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du frein"; exit 1; }
           echo "✓ le banc rougit, et sur les deux cas — l'exigence et le frein"
+
+      # La demande de défi se joint sans session ni secret : chaque défi rangé est
+      # une écriture qu'un tiers paie d'une requête.
+      - name: Canari — la demande de défi range un identifiant mal formé, ou celui d'un appareil inconnu
+        run: |
+          # @plante
+          F=bi-self/selfrecover/src/Device/Device.php
+          cp "$F" /tmp/Device-defi.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          python3 - <<'PY'
+          chemin = 'bi-self/selfrecover/src/Device/Device.php'
+          gardes = [
+              ('        if (!self::estIdentifiantAppareil($credentialId)) {', '        if (false) { // forme débranchée'),
+              ('        if ($this->stockage->trouverAppareil($credentialId) === null) {',
+               '        if (false) { // inconnu rangé'),
+          ]
+          s = open(chemin, encoding='utf-8').read()
+          for avant, apres in gardes:
+              assert s.count(avant) == 1, f'motif introuvable : {avant[:40]!r} — ce canari ne prouve rien'
+              s = s.replace(avant, apres, 1)
+          open(chemin, 'w', encoding='utf-8').write(s)
+          PY
+          grep -q 'forme débranchée' "$F" && grep -q 'inconnu rangé' "$F" \
+            || { cp /tmp/Device-defi.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/Device-defi.intact "$F"; echo "::error::la version plantée ne compile pas"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1); then
+            cp /tmp/Device-defi.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT quand la demande de défi range tout"; exit 1
+          fi
+          cp /tmp/Device-defi.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q '❌ .*un identifiant de 1 Mo est refusé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la forme"; exit 1; }
+          echo "$sortie" | grep -q '❌ .*deux cents identifiants inconnus ne rangent aucun défi' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de l'inconnu"; exit 1; }
+          echo "✓ le banc rougit, et sur les deux cas — la forme et l'inconnu"
 
       # Le compte est écrit en dur : c'est un inventaire, pas un seuil. Un code de
       # sortie à zéro dit que les cas joués ont réussi, jamais qu'aucun n'a
@@ -3215,8 +3253,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_frein_login.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 18/18 ' \
-            || { echo "::error::le banc du frein de connexion n'a pas joué ses 18 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 23/23 ' \
+            || { echo "::error::le banc du frein de connexion n'a pas joué ses 23 cas"; exit 1; }
 
       # Un blob chiffré n'est lisible que là où il a été écrit. Sans contexte, qui
       # obtient une écriture recopie un blob dans une ligne qu'il a le droit de lire
@@ -3256,7 +3294,7 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les vingt-deux gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les vingt-quatre gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
@@ -3303,6 +3341,23 @@ jobs:
             'if ($failsIp >= self::LOGIN_MAX_FAILS_PER_IP) { // canari' \
             demo/lab/tests/sanity_frein_login.php \
             '✗ au seuil, même le bon mot de passe est refusé'
+
+          # 3 bis. Le frein par adresse recompte les lignes de la bibliothèque :
+          #    des tentatives de récupération reverrouillent la page de connexion
+          #    pour tout ce qui partage l'adresse.
+          canari demo/lab/lib/auth.php \
+            "'username NOT LIKE ?'" \
+            "'? IS NOT NULL'" \
+            demo/lab/tests/sanity_frein_login.php \
+            "✗ ⭐ les échecs de récupération d'une adresse ne verrouillent pas sa connexion"
+
+          # 3 ter. Les sessions d'un compte cessent d'être bornées : chaque
+          #    connexion en range une de plus, que rien ne retire avant 24 h.
+          canari demo/lab/lib/auth.php \
+            ')->execute([$accountId, $accountId, self::SESSIONS_MAX_PAR_COMPTE]);' \
+            ')->execute([$accountId, $accountId, 99999]); // canari' \
+            demo/lab/tests/sanity_frein_login.php \
+            "✗ ⭐ les connexions d'un compte n'empilent pas plus de sessions que la borne"
 
           # 4. La page cesse d'honorer le type « month » : le champ redevient libre,
           #    le titulaire écrit « 03/2024 » et diverge en disant vrai.

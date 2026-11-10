@@ -197,12 +197,18 @@ final class RecoverL3
         ];
     }
 
+    /**
+     * ⚠️ Pas de paramètre d'adresse, et c'est volontaire : `Escalade::soumettre()`
+     * n'en accepte pas. Ce chemin portait un `?string $ip = null` que la route
+     * remplissait et que personne ne lisait — un relecteur y voyait une adresse
+     * comptée quelque part, alors qu'aucun compteur ne la recevait. Il reviendra
+     * le jour où la bibliothèque le prendra ; d'ici là, le sésame borne cet appel.
+     */
     public static function submit(
         PDO $pdo,
         string $number,
         string $claimSecret,
         array $answers,
-        ?string $ip = null,
     ): array {
         $r = self::escalade($pdo)->soumettre($number, $claimSecret, $answers);
         if (($r['ok'] ?? false) !== true) {
@@ -221,13 +227,13 @@ final class RecoverL3
      * ne connaît pas les rôles — c'est pourquoi elle expose deux chemins distincts
      * et que le choix se fait ici.
      */
+    /** Même raison que `submit()` : `Escalade::fil()` ne prend pas d'adresse. */
     public static function chat(
         PDO $pdo,
         string $number,
         string $claimSecret,
         ?string $message,
         bool $isAdmin,
-        ?string $ip = null,
     ): array {
         $esc = self::escalade($pdo);
 

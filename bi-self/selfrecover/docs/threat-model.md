@@ -46,6 +46,13 @@ it requires the caller to assert that the holder is already authenticated, and i
 account. What no assertion replaces, and what the integrator owes: the account name comes from the open
 session, never from the request body.
 
+⚠️ **Recovering from an enrolled device is reachable without a session, and the library neither receives
+the client's address on that path nor counts a failed signature.** What guards the account is the ECDSA
+signature itself, out of reach by repetition. What guards the storage: `ouvrirDefi()` refuses an
+identifier outside the form enrolment imposes, and stores a challenge only for an enrolled device. What
+nothing in the library bounds yet is the request rate on those two routes, and the trace a ban would
+need: until both methods take the address, the integrator puts a rate limit in front of them.
+
 Which brake applies — per account, per address, or both — is not guessed: the deployment declares a
 profile, and the library refuses an address where none can mean anything, and refuses the absence of one
 where the brake is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it

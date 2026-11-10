@@ -520,9 +520,20 @@ for nom, cause in rouges:
 # 10/11/2026 : 29 canaris accusés de ne plus rien prouver tenaient tous, et c'était
 # `demo/lab/vendor/` qui manquait — un prérequis que les jobs posent et que ce rejeu
 # ne pose pas.
-print('  Lis la cause avant de toucher un canari : « la plantation n\'a pas pris » dit un motif')
-print('  périmé ; « reste VERT » un garde-fou qui ne mord plus ; « casse le banc » ou un rouge')
+print('  Lis la cause avant de toucher un canari. « la plantation n\'a pas pris » dit un motif')
+print('  périmé. « reste VERT » dit un garde-fou qui ne mord plus. « casse le banc » ou un rouge')
 print('  hors du cas annoncé vient souvent d\'un prérequis du job que ce rejeu ne pose pas —')
 print('  lance le banc visé sur l\'arbre intact avant de conclure.')
+# Le délai est un plafond par canari, et tous n'ont pas le même budget : un canari
+# à 21 plantations relance son banc 42 fois (deux profils), là où un autre le lance
+# une. Mesuré le 10/11/2026 sur les deux gardes de la passphrase apportée : leur banc
+# seul prend 6 s, et le canari entier prend 874 s MACHINE LIBRE — 97 % du plafond.
+# Ils ne dépassent donc pas par accident de charge : leur budget est au ras, et la
+# file des 79 autres canaris les pousse simplement de l'autre côté. Un canari qui
+# frôle son plafond rend un verdict qui dépend de la charge, c'est-à-dire aucun.
+print(f'  « dépasse {DELAI} s » ne dit pas qu\'un canari est en défaut : il dit que son budget')
+print(f'  ne suffit pas ici. Chronomètre-le seul avant de le mettre en cause — s\'il frôle déjà')
+print(f'  le plafond, son verdict dépend de la charge de la machine. Découpe-le, ou relève')
+print(f'  CHECK_CANARIS_DELAI pour ce rejeu.')
 sys.exit(1)
 PY

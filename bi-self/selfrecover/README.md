@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.13.3](https://img.shields.io/badge/status-v0.13.3-green.svg)](#status)
+[![Status: v0.13.4](https://img.shields.io/badge/status-v0.13.4-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -473,7 +473,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.13.3 (April → November 2026)
+### Shipped — v0.1.0 to v0.13.4 (April → November 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -502,6 +502,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **The holder who comes back with their old codes is no longer stopped by the requester** — the requester's new batch no longer counts against the holder's old codes and their own gestures no longer rearm that counter, the salt route serves the old salt for an old code, and `Recovery::estCodeDeRetour()` lets an integrator's service-wide cap step aside for a return (v0.13.1)
 - [x] **The return keeps what it was meant to take back** — the passphrase brought on return can be neither the one from before nor the requester's, and a second level 3 no longer replaces a window its holder has taken back until the arbitrator closes it; the threat model says the symmetric price holds per window — each level 3 reopens a return to whoever held the account just before (v0.13.2)
 - [x] **The arbitrator can accept a level 3 without return (v0.13.3)** — while no window is open, after a fraud noticed too late or a stolen sheet, the recovery no longer opens a window to whoever took the account; judging who held it rightfully is then the arbitrator's
+- [x] **The device-recovery challenge stores nothing for a malformed or unknown identifier (v0.13.4)** — the identifier must have the form enrolment imposes, and a challenge is stored only for an enrolled device; the door still receives no client address and counts no signature failure, which v0.14.0 will change
 
 ### Next
 

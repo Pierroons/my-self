@@ -220,6 +220,46 @@ $vidage = print_r($devJ, true);
 verifier('contre-témoin : le vidage de l\'objet nomme son profil', str_contains($vidage, 'CLEARWEB'));
 verifier('🔑 et il ne contient pas le sel du déploiement', !str_contains($vidage, $SEL));
 
+// ── Scénario 7 : la demande de défi, joignable sans session ni secret ───────
+echo "\n→ La demande de défi ne range rien pour qui n'est pas enrôlé\n";
+// 🔑 Chaque défi rangé est une écriture qu'un tiers paie d'une requête : un
+// identifiant mal formé ou inconnu ne doit en ranger aucun.
+$stD = new StockageMemoire();
+$stD->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
+$devD = new Device($stD, ProfilDeploiement::CLEARWEB, $SEL, Langue::FR, delaiRefusUs: 0);
+[$privD, $pubD] = engendrerPaire();
+$credD = 'cred' . str_repeat('M', 20);
+$devD->enroler('alice', $credD, $pubD, $MOT, Titulaire::AUTHENTIFIE, '192.0.2.1', $now);
+
+$gros = $devD->ouvrirDefi(str_repeat('A', 1_000_000), $now);
+verifier('⭐ un identifiant de 1 Mo est refusé',
+    $gros['ok'] === false && !isset($gros['challenge']), (string) ($gros['message'] ?? ''));
+verifier('un identifiant vide est refusé', $devD->ouvrirDefi('', $now)['ok'] === false);
+verifier('un identifiant hors de l\'alphabet est refusé',
+    $devD->ouvrirDefi("cred'" . str_repeat('N', 20), $now)['ok'] === false);
+
+for ($i = 0; $i < 200; $i++) {
+    $devD->ouvrirDefi('inconnu' . sprintf('%016d', $i), $now);
+}
+verifier('⭐ deux cents identifiants inconnus ne rangent aucun défi',
+    $stD->defis === [], count($stD->defis) . ' défi(s) rangé(s)');
+
+$credInconnu = 'inconnu' . str_repeat('Z', 16);
+$inconnu = $devD->ouvrirDefi($credInconnu, $now);
+$connu   = $devD->ouvrirDefi($credD, $now);
+verifier('🔑 un inconnu reçoit un défi de même forme qu\'un appareil enrôlé',
+    $inconnu['ok'] === true && array_keys($inconnu) === array_keys($connu)
+    && strlen($inconnu['challenge']) === strlen($connu['challenge']));
+verifier('contre-témoin : pour l\'appareil enrôlé, le défi est rangé', count($stD->defis) === 1);
+
+$sigD = Encoding::b64urlEncode(signerP1363($privD, $connu['challenge']));
+verifier('contre-témoin : et il ouvre la récupération',
+    ($devD->cloreDefi($credD, $connu['challenge'], $sigD, $now)['ok'] ?? false) === true);
+
+$sigI = Encoding::b64urlEncode(signerP1363($privD, $inconnu['challenge']));
+verifier('le défi remis à un inconnu ne se clôt pas : rien ne l\'a retenu',
+    $devD->cloreDefi($credInconnu, $inconnu['challenge'], $sigI, $now)['ok'] === false);
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Device SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 // Le compte est écrit ici et repris en intégration continue : un « N passés » dit
