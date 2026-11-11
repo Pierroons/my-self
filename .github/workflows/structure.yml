@@ -402,6 +402,49 @@ jobs:
       - name: Garde-fou — les gabarits de vhost sont syntaxiquement valides
         run: bash scripts/check-vhost.sh
 
+      # Le 11/11/2026, une pose de vhost sur le lab CTF n'a rien appliqué et le
+      # poseur a conclu « ✓ terminé » : une zone `limit_req` ne peut pas changer
+      # de clé à chaud, le master nginx a refusé la configuration entière et gardé
+      # l'ancienne. `nginx -t` passait (processus neuf, sans l'état des zones) et
+      # `systemctl reload` rendait 0 (le signal part sans attendre le verdict).
+      # Trois verts couvraient un correctif de sécurité non appliqué. Le poseur
+      # détecte désormais ce cas et bascule sur un redémarrage ; ce contrôle éprouve
+      # la détection, sans machine ni nginx.
+      - name: Garde-fou — le poseur de vhost sait quand un rechargement ne suffit pas
+        run: |
+          sortie=$(bash deploy/ctf-s2/tests/test_pose_vhost.sh)
+          echo "$sortie"
+          # Le compte est écrit en dur : c'est un inventaire, pas un seuil. Ajouter
+          # un cas au banc demande de le monter ici, et cette friction est le contrôle.
+          echo "$sortie" | grep -qF '✅ 4/4 — le poseur reconnaît' \
+            || { echo "::error::le banc du poseur n'a pas joué ses 4 cas"; exit 1; }
+
+      - name: Canari — la détection de clé rougit quand elle cesse de comparer
+        run: |
+          # @plante
+          # On rend `zones_a_cle_changee` muette — exactement l'état du poseur avant
+          # le 11/11 : aucune clé détectée, donc `reload` choisi, donc une pose sans
+          # effet annoncée comme un succès. La plantation vit dans /tmp et le banc la
+          # prend par ZONES_LIB : le dépôt n'est pas modifié.
+          awk '/^zones_a_cle_changee\(\) \{$/ { print; print "  return 0  # @canari"; next } { print }' \
+            deploy/ctf-s2/lib-zones.sh > /tmp/zones-muettes.sh
+          grep -q '# @canari' /tmp/zones-muettes.sh \
+            || { echo "::error::la plantation n'a rien changé — ce canari ne prouve rien"; exit 1; }
+          if sortie=$(ZONES_LIB=/tmp/zones-muettes.sh bash deploy/ctf-s2/tests/test_pose_vhost.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT alors que la détection ne compare plus rien"
+            exit 1
+          fi
+          # ⚠️ Rougir ne suffit pas : il faut rougir SUR LE BON CAS. Un banc qui ne
+          # démarre pas rougit aussi, et cette étape conclurait qu'elle a prouvé
+          # quelque chose. Éprouvé en pointant ZONES_LIB vers un fichier absent : le
+          # banc rougit, et ce contrôle le refuse.
+          echo "$sortie" | grep -qF '❌ un changement de clé doit être détecté' \
+            || { echo "$sortie"
+                 echo "::error::le banc a rougi, mais PAS sur le cas de la clé changée"
+                 exit 1; }
+          echo "✓ le banc rougit, et il rougit SUR LA CLÉ CHANGÉE"
+
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 
