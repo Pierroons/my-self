@@ -10,6 +10,24 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover-LUKS 0.6.3 — la clé d'amorçage se pose avec une espace, et rien ne la remplace sans l'avoir relue — 11 novembre 2026
+
+Correctif. `INSTALL.md` (§8b) et `install.sh` (réponse par défaut à « Fermer le shell d'amorçage ? ») posaient une
+**virgule** entre les options et la clé du dropbear d'amorçage : `command="…",no-X11-forwarding,ssh-ed25519 AAAA…`. Le
+type de clé y est lu comme une option, la ligne ne désigne plus aucune clé, et la machine reste injoignable au
+démarrage, ce qui ne se voit qu'au redémarrage. Mesuré au lecteur d'OpenSSH : la ligne à virgule est refusée, la même
+avec une espace est lue. Le contre-témoin d'`install.sh` comptait des motifs et la laissait passer. Signalé sur
+`INSTALL.md` en migrant trois machines, qui avaient été éditées à la main et n'étaient pas touchées ; le même défaut
+dans `install.sh` a été trouvé en le vérifiant.
+
+- **`cle-amorcage.sh`, neuf**, assemble la ligne (une espace devant une clé nue, une virgule devant des options déjà
+  présentes) et la relit : la forme d'abord, puis la lecture par `ssh-keygen` quand il est installé. `install.sh`
+  l'appelle et ne remplace le fichier que si la relecture passe ; le §8b le fait relancer avant la régénération.
+- **La vérification finale d'`install.sh` juge chaque pièce de l'image**, au lieu de se taire dès qu'une seule est
+  présente, et exige le script de secours quand dropbear est embarqué, comme le garde-fou post-update.
+- **`tests/test_cle_amorcage.sh`** : 25 cas, rouge sur 8 contre la 0.6.2 ; deux canaris replantent la virgule et une
+  relecture qui laisse tout passer.
+
 ### SelfRecover-Lite — le whitepaper est publié, avant tout code — 11 novembre 2026
 
 `bi-self/selfrecover-lite/` porte le whitepaper v1.0 (français et anglais, `.md` et `.docx`) et un README : la

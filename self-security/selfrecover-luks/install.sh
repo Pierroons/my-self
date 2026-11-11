@@ -68,7 +68,7 @@ say "0. Vérifications"
 [ -n "$ROOT_DEV" ] || die "ROOT_DEV non défini (édite l'en-tête du script)."
 for f in selfrecover_derive.c selfrecover-keyscript.sh initramfs-hook-selfrecover \
          setup-add-selfrecover-slot.sh initramfs-post-update-verifie-selfrecover \
-         verifie-sauvegardes.sh selfrecover-secours.sh format-slot.sh; do
+         verifie-sauvegardes.sh selfrecover-secours.sh format-slot.sh cle-amorcage.sh; do
   [ -f "$HERE/$f" ] || die "Fichier manquant dans le dépôt : $f"
 done
 command -v cryptsetup >/dev/null || die "cryptsetup absent."
@@ -353,13 +353,14 @@ else
     # à la saisie. L'option qui ressemble à un durcissement ferait ici une fuite.
     SR_OPTS='command="'"$SKG"'/selfrecover-secours.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
     AK=/etc/dropbear/initramfs/authorized_keys
-    awk -v o="$SR_OPTS" '
-      /^[[:space:]]*(#|$)/ { print; next }
-      { print o "," $0 }
-    ' "$AK" > "$AK.nouveau"
-    # Contre-témoin AVANT de remplacer : autant de clés après qu'avant, et plus
-    # aucune ligne de clé sans option. Un fichier tronqué ici rendrait la machine
-    # injoignable au prochain démarrage, et on ne le verrait qu'à ce moment-là.
+    # La ligne s'assemble dans cle-amorcage.sh : une espace entre les options et le
+    # type de clé. Une virgule fait lire le type comme une option, et la clé n'ouvre plus.
+    bash "$HERE/cle-amorcage.sh" borner "$AK" "$SR_OPTS" > "$AK.nouveau" \
+      || { rm -f "$AK.nouveau"; die "pose du command= impossible — fichier laissé intact."; }
+    # Contre-témoin AVANT de remplacer : autant de clés après qu'avant, plus aucune
+    # ligne de clé sans option, et chaque ligne relue comme le serveur SSH la lira.
+    # Un fichier tronqué ou illisible ici rendrait la machine injoignable au prochain
+    # démarrage, et on ne le verrait qu'à ce moment-là.
     AV=$(grep -c '^ssh-' "$AK" || true)
     AP=$(grep -c 'command=' "$AK.nouveau" || true)
     NU=$(grep -c '^ssh-' "$AK.nouveau" || true)
@@ -367,6 +368,8 @@ else
       rm -f "$AK.nouveau"
       die "pose du command= incohérente ($AV clés, $AP bornées, $NU nues) — fichier laissé intact."
     fi
+    bash "$HERE/cle-amorcage.sh" verifier "$AK.nouveau" \
+      || { rm -f "$AK.nouveau"; die "clé d'amorçage illisible après la pose du command= — fichier laissé intact."; }
     cp -a "$AK" "$AK.avant-command.$(date +%s)"
     mv "$AK.nouveau" "$AK"
     chmod 0600 "$AK"
@@ -527,15 +530,25 @@ if [ "${ROOTDELAY_PORTEUR:-}" = /etc/default/raspi-extra-cmdline ]; then
 fi
 
 say "Vérification du contenu de l'initrd"
-MOTIFS="selfrecover-keyscript|selfrecover_derive_c|libargon2|libgcc"
-if [ "$DROPBEAR" = oui ]; then MOTIFS="$MOTIFS|sbin/dropbear"; fi
-# `|| true` : sous pipefail, un grep sans correspondance ferait sortir le script
-# muet juste après la régénération. Ici l'absence doit s'afficher.
-PIECES="$(lsinitramfs "/boot/initrd.img-$KR" | grep -E "$MOTIFS" || true)"
-if [ -n "$PIECES" ]; then
-  printf '%s\n' "$PIECES" | sed 's/^/  /'
-else
-  warn "aucune pièce SelfRecover trouvée dans l'initrd — NE PAS redémarrer avant de comprendre."
+MOTIFS="selfrecover-keyscript selfrecover_derive_c libargon2 libgcc"
+# Le script de secours n'a de sens que comme command= de la clé dropbear : sans lui
+# dans une image qui embarque dropbear, cette clé ne rendrait plus rien et la machine
+# serait injoignable au démarrage. Le hook post-update l'exige de la même façon.
+if [ "$DROPBEAR" = oui ]; then MOTIFS="$MOTIFS sbin/dropbear selfkeyguard/selfrecover-secours"; fi
+# Chaque pièce se juge seule : une seule présente ne dit rien des autres.
+# `|| true` : sous pipefail, une image illisible ferait sortir le script muet juste
+# après la régénération. Ici l'absence doit s'afficher.
+CONTENU="$(lsinitramfs "/boot/initrd.img-$KR" || true)"
+MANQUENT=""
+for m in $MOTIFS; do
+  if printf '%s\n' "$CONTENU" | grep -q -- "$m"; then
+    printf '%s\n' "$CONTENU" | grep -- "$m" | sed 's/^/  /'
+  else
+    MANQUENT="$MANQUENT $m"
+  fi
+done
+if [ -n "$MANQUENT" ]; then
+  warn "absentes de l'initrd :$MANQUENT — NE PAS redémarrer avant de comprendre."
 fi
 
 # ---------- 10. Récap ----------
