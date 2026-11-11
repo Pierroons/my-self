@@ -3299,6 +3299,45 @@ jobs:
           echo "$sortie" | grep -qE '^OK — 23/23 ' \
             || { echo "::error::le banc du frein de connexion n'a pas joué ses 23 cas"; exit 1; }
 
+      # Les trois plafonds par origine comparaient l'adresse ENTIÈRE : en IPv6, un
+      # /64 routé donne 2^64 clés et aucun compteur ne mord. Le vhost agrégeait
+      # déjà ses files, l'application non — les deux remparts partageaient la même
+      # faiblesse (relevé par la conv Formation le 11/11/2026).
+      - name: Garde-fou — l'origine comptée par les freins est un préfixe
+        run: |
+          sortie=$(php demo/lab/tests/sanity_cle_frein.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de la clé de frein a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 14/14 ' \
+            || { echo "::error::le banc de la clé de frein n'a pas joué ses 14 cas"; exit 1; }
+
+      - name: Canari — le banc rougit si l'origine redevient une adresse entière
+        run: |
+          # @plante
+          # On retire le masque : la fonction rend alors l'adresse telle quelle,
+          # soit l'état d'avant le 11/11. Le banc doit rougir SUR LE CAS DU /64
+          # partagé, pas sur un contretemps de chargement.
+          B=demo/lab/lib/bootstrap.php
+          cp -p "$B" /tmp/bootstrap-avant-canari.php
+          sed -i 's/^    \$garde = strlen(\$paquet) === 4 ? 3 : 8;$/    $garde = strlen($paquet);/' "$B"
+          # -F : le motif porte un « $ » au milieu. Sans lui, le grep de certains
+          # postes (ugrep en mode BRE) rend 0 sur une ligne qui est pourtant là, et
+          # ce canari refuserait de prouver quoi que ce soit — mesuré le 11/11.
+          grep -qF 'garde = strlen($paquet);' "$B" \
+            || { cp -p /tmp/bootstrap-avant-canari.php "$B"
+                 echo "::error::la plantation n'a rien changé — ce canari ne prouve rien"; exit 1; }
+          sortie=$(php demo/lab/tests/sanity_cle_frein.php 2>&1) && rc=0 || rc=$?
+          cp -p /tmp/bootstrap-avant-canari.php "$B"
+          cmp -s "$B" /tmp/bootstrap-avant-canari.php \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          rm -f /tmp/bootstrap-avant-canari.php
+          [ "$rc" != 0 ] || { echo "$sortie"
+                              echo "::error::le banc reste VERT sans le masque — il ne mesure rien"; exit 1; }
+          echo "$sortie" | grep -qF '✗ ⭐ deux adresses d'"'"'un même /64 rendent LA MÊME clé' \
+            || { echo "$sortie"
+                 echo "::error::le banc a rougi, mais PAS sur le cas du /64 partagé"; exit 1; }
+          echo "✓ le banc rougit sur le /64 partagé, et le fichier est restauré"
+
       # Un blob chiffré n'est lisible que là où il a été écrit. Sans contexte, qui
       # obtient une écriture recopie un blob dans une ligne qu'il a le droit de lire
       # et l'application le déchiffre : l'écriture rendait le clair.

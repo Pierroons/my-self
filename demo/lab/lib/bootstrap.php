@@ -154,7 +154,26 @@ function require_csrf(): void
 }
 
 /**
- * L'adresse de l'appelant, telle que le serveur la rapporte.
+ * L'origine de l'appelant pour les freins : son PRÉFIXE, pas son adresse.
+ *
+ * 🔑 Un /64 en IPv6 et un /24 en IPv4 sont la plus petite unité qu'un opérateur
+ * attribue à un même client. Compter l'adresse entière ne borne donc rien : ce
+ * serveur publie un AAAA, et qui dispose d'un /64 routé change d'adresse à chaque
+ * requête — 2^64 clés gratuites. Les trois plafonds du lab (comptes créés par
+ * origine, échecs cumulés, échecs de récupération) étaient inertes en IPv6 pour
+ * cette seule raison, alors même que le vhost agrégeait déjà ses files.
+ *
+ * Le masque est posé sur la forme BINAIRE (`inet_pton`), jamais sur le texte : une
+ * adresse à zéros compressés comme `2001:db8::1` n'a que trois champs avant `::`,
+ * et un motif qui en attend quatre la laisse passer entière. C'est l'angle mort que
+ * le `map $cle_frein` du vhost porte encore, et que celui-ci n'a pas.
+ *
+ * Effet de bord voulu : la base ne conserve plus l'adresse entière d'un visiteur,
+ * seulement son préfixe.
+ *
+ * ⚠️ Une valeur que le système ne reconnaît pas comme une adresse est rendue telle
+ * quelle, et compte donc pour elle seule. La réduire à une constante de repli
+ * rejoindrait le défaut décrit juste en dessous.
  *
  * ⚠️ **Rend `null` quand le serveur ne la rapporte pas, et ce `null` n'est pas
  * rattrapé.** Ce lab déclare le profil `clearweb` à la bibliothèque, qui refuse
@@ -166,7 +185,21 @@ function require_csrf(): void
  */
 function client_ip(): ?string
 {
-    return $_SERVER['REMOTE_ADDR'] ?? null;
+    $brute = $_SERVER['REMOTE_ADDR'] ?? null;
+    if ($brute === null || $brute === '') {
+        return null;
+    }
+    if (filter_var($brute, FILTER_VALIDATE_IP) === false) {
+        return $brute;
+    }
+    $paquet = inet_pton($brute);
+    if ($paquet === false) {
+        return $brute;
+    }
+    $garde = strlen($paquet) === 4 ? 3 : 8;
+    $rendu = inet_ntop(substr($paquet, 0, $garde) . str_repeat("\0", strlen($paquet) - $garde));
+
+    return $rendu === false ? $brute : $rendu;
 }
 
 /** Échappe le HTML pour affichage sûr. */
