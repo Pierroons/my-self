@@ -219,8 +219,54 @@ def horodatage(nom: str):
     return m.group(1) if m else None
 
 
+def lecture_rattrapee(conn, disponibles, global_publie):
+    """La lecture qui vient d'avoir lieu peut-elle servir de preuve demain ?
+
+    Une fenêtre **non vide** dont le dernier appliqué atteint le plus récent
+    publié a été vue entière : elle vaut par elle-même.
+
+    🔑 **Une fenêtre vide ne vaut rien par elle-même.** Elle ne dit pas ce
+    qu'elle portait avant d'être purgée. Elle n'hérite du droit de servir de
+    preuve que si une lecture rattrapée existe déjà, et que l'une des deux
+    conditions tient : le fonds global n'a pas changé depuis elle — rien n'a
+    donc été purgé —, ou elle est assez récente pour que la purge tombe entre
+    deux passages consécutifs.
+
+    ⚠️ Sans cette condition, **une seule nuit manquée la veille d'une
+    republication fait perdre un incrément en silence** : la nuit suivante, la
+    fenêtre vide poserait une ancre neuve sous le nouveau global, et le passage
+    d'après accorderait la preuve par-dessus l'incrément jamais vu. La garde
+    d'avant ce mécanisme, elle, refusait ce cas.
+    """
+    if disponibles:
+        return etat_lire(conn, "dernier_diff", "") >= disponibles[-1]
+    ancre = etat_lire(conn, "fenetre_lue_le", "")
+    if not ancre:
+        return False
+    if global_publie and global_publie == etat_lire(conn, "global_vu", ""):
+        return True
+    return age_ancre(ancre) is not None
+
+
+def age_ancre(ancre):
+    """L'âge d'une ancre si elle est dans la mémoire de la fenêtre, sinon None."""
+    try:
+        age = datetime.datetime.now() - datetime.datetime.strptime(ancre, MARQUE_TEMPS)
+    except ValueError:
+        return None
+    return age if age <= datetime.timedelta(hours=MEMOIRE_FENETRE_H) else None
+
+
 def continuite_prouvee(conn, disponibles, global_vu):
     """L'instant qui prouve que la fenêtre publiée rejoint la base, ou None.
+
+    ⚠️ **La prémisse, à garder sous les yeux** : une republication du fonds
+    global ne purge aucun incrément paru depuis le dernier passage rattrapé.
+    Elle est étayée par un mois d'observation — les 24 incréments gardés au
+    cache le 11/11/2026 paraissent tous entre 21:09 et 21:52, et le seul global
+    observé à 11:23 — et par rien d'autre. Si la DILA se met à publier hors de
+    ce créneau, un incrément pourra paraître et être purgé entre deux lectures
+    sans témoin, et aucune des conditions ci-dessous ne le verra.
 
     🔑 **La preuve vient de la dernière lecture RATTRAPÉE**, c'est-à-dire d'un
     passage qui a lu la fenêtre entière et appliqué tout ce qu'elle portait :
@@ -250,11 +296,7 @@ def continuite_prouvee(conn, disponibles, global_vu):
         return None
     if not global_vu or global_vu != etat_lire(conn, "global_vu", ""):
         return None
-    try:
-        age = datetime.datetime.now() - datetime.datetime.strptime(lu_le, MARQUE_TEMPS)
-    except ValueError:
-        return None
-    return lu_le if age <= datetime.timedelta(hours=MEMOIRE_FENETRE_H) else None
+    return lu_le if age_ancre(lu_le) is not None else None
 
 
 def texte_lisible(brut: str) -> str:
@@ -581,8 +623,8 @@ def main():
     # une archive dont un libellé de juridiction est refusé fait avancer
     # `dernier_diff` sans écrire ses décisions. Le passage sort en échec et le
     # pilote alerte ; son ancre certifierait une fenêtre qu'il n'a pas absorbée.
-    if a.depuis and complet and (not disponibles
-                                 or etat_lire(conn, "dernier_diff", "") >= disponibles[-1]):
+    # Ce qu'une fenêtre vide peut hériter est dans `lecture_rattrapee()`.
+    if a.depuis and complet and lecture_rattrapee(conn, disponibles, global_publie):
         etat_ecrire(conn, "fenetre_lue_le", lu_le)
         etat_ecrire(conn, "global_vu", global_publie)
         conn.commit()

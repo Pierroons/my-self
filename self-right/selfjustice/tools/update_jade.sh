@@ -76,6 +76,18 @@ age=$(age_dernier)
 case "$rc" in
     0)
         journal "Collecte faite — dernier incrément appliqué il y a ${age:-?} jour(s)."
+        # 🔑 **Une collecte qui réussit sans rien rapporter cesse d'être saine si
+        # elle dure.** Le cas mesuré : la DILA renomme ou déplace ses incréments
+        # en gardant son fonds global. La fenêtre paraît alors vide, le
+        # collecteur sort en 0, et rien ne sonne — sans limite de durée. Une
+        # source qui cesse simplement de publier prend le même chemin. Le seuil
+        # est celui de la branche « injoignable » : ce qui compte est l'âge du
+        # fonds, pas la raison de son silence.
+        if [ -n "$age" ] && [ "$age" -gt "$AGE_ALERTE" ]; then
+            alerter "SelfJustice — JADE en retard, sans erreur" \
+                    "Collecte sans echec, mais dernier increment applique il y a $age jours. Voir $LOG_FILE."
+            exit "$SOURCE_INDISPONIBLE"
+        fi
         ;;
     4)
         if [ -z "$age" ]; then

@@ -31,6 +31,16 @@ fenêtre d'incréments avait seulement roulé.
 - **Une lecture qui n'a pas rattrapé la fenêtre ne prouve rien** : ancrer la preuve sur toute lecture, même
   refusée, refermerait un vrai trou en quelques nuits, chaque refus repoussant l'ancre jusqu'à ce que les
   incréments suivants soient tous nés après elle.
+- **Une fenêtre vide n'ouvre plus de droit à prouver, elle en hérite.** Elle ne dit pas ce qu'elle portait avant
+  d'être purgée : elle ne vaut lecture rattrapée que si une telle lecture existe déjà, et que le fonds global
+  n'a pas changé depuis elle ou qu'elle est assez récente pour que la purge tombe entre deux passages
+  consécutifs. Sans cette condition, **une seule nuit manquée la veille d'une republication faisait perdre un
+  incrément en silence** : la fenêtre vide du lendemain posait une ancre neuve sous le nouveau global, et le
+  passage d'après accordait la preuve par-dessus l'incrément que personne n'avait vu.
+- **Le pilote alerte aussi quand la collecte réussit sans rien rapporter.** `update_jade.sh` ne comparait l'âge
+  du fonds au seuil de sept jours que sous « source injoignable ». Si la DILA renommait ou déplaçait ses seuls
+  incréments en gardant son fonds global, la fenêtre paraissait vide, le collecteur sortait en 0, et rien ne
+  sonnait — sans limite de durée. Une source qui cesse de publier prenait le même chemin.
 - **« Né après la lecture » ne suffirait pas non plus**, et c'est la condition du global qui ferme ce trou : un
   incrément peut paraître après une lecture et disparaître avant la suivante, et la fenêtre du lendemain ne
   porterait alors que des incréments nés après l'ancre. La seule condition de temps accorderait la preuve

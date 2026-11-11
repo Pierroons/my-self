@@ -345,8 +345,12 @@ def main():
 
         pdb = base_prete("preuve.sqlite")
         code, sortie = passage(pdb, fonds(tmp / "fonds-vide"))
+        verdict(code == 0 and etat_de(pdb, "fenetre_lue_le") is None,
+                "une fenêtre vide sans lecture rattrapée antérieure ne consigne rien : "
+                "elle ne dit pas ce qu'elle portait avant d'être purgée (code %d)" % code)
+        code, sortie = passage(pdb, fonds(tmp / "fonds-rattrape", reference))
         verdict(code == 0 and etat_de(pdb, "fenetre_lue_le") is not None,
-                "fenêtre vide → rien à appliquer, et la lecture est consignée "
+                "une fenêtre entièrement appliquée, elle, consigne la lecture "
                 "(code %d, ancre %s)" % (code, etat_de(pdb, "fenetre_lue_le")))
 
         antidater(pdb, 24)
@@ -396,6 +400,34 @@ def main():
                 and etat_de(pdb8, "dernier_diff") == reference,
                 "un fonds global republié depuis la dernière lecture annule la "
                 "preuve : un incrément a pu y être purgé sans témoin (code %d)" % code)
+
+        # 🔑 Ce qu'une fenêtre vide peut hériter, et ce qu'elle ne peut pas. Les
+        # deux cas qui suivent ne diffèrent que par l'âge de l'ancre : le premier
+        # est l'incident du 08/11/2026, où la veille avait tout vu ; le second est
+        # la nuit manquée, où un incrément a disparu sans témoin.
+        republie_nom = "Freemium_jade_global_20261108-140000.tar.gz"
+        pdb9 = base_prete("preuve-vide-heritee.sqlite")
+        antidater(pdb9, 24)
+        code, sortie = passage(pdb9, fonds(tmp / "fonds-vide-recent",
+                                           global_nom=republie_nom))
+        verdict(code == 0 and etat_de(pdb9, "global_vu") == republie_nom,
+                "une fenêtre vide sous un global republié hérite quand la lecture de "
+                "la veille est récente — c'est l'incident du 08/11 (code %d)" % code)
+
+        pdb10 = base_prete("preuve-nuit-manquee.sqlite")
+        vieille = antidater(pdb10, 48)
+        code, sortie = passage(pdb10, fonds(tmp / "fonds-vide-nuit-manquee",
+                                            global_nom=republie_nom))
+        verdict(code == 0 and etat_de(pdb10, "fenetre_lue_le") == vieille
+                and etat_de(pdb10, "global_vu") == GLOBAL_TEMOIN,
+                "mais après une nuit manquée elle n'hérite pas : l'ancre et le global "
+                "vu ne bougent pas (code %d)" % code)
+        code, sortie = passage(pdb10, fonds(tmp / "fonds-apres-nuit-manquee", neuf,
+                                            global_nom=republie_nom))
+        verdict(code != 0 and "trou possible" in sortie.lower()
+                and etat_de(pdb10, "dernier_diff") == reference,
+                "et le refus tient le lendemain : l'incrément que personne n'a vu "
+                "n'est pas enjambé (code %d)" % code)
 
         # ⚠️ Nom et cache propres à ce cas : `telecharger()` rend un fichier déjà
         # présent dans le cache sans le retélécharger, donc réutiliser le nom d'un
