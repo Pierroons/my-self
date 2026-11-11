@@ -7,14 +7,17 @@ de sortie, avec une date exacte que personne n'a vue immobile. Les propriétés
 qui comptent ici ne sont donc pas « ça écrit », mais « ça refuse en le disant »
 et « ça n'invente rien ».
 
-Sept propriétés, sur des archives fabriquées pour ce contrôle — ici c'est
-légitime : ce qu'on éprouve est le comportement du code face à des cas qu'aucun
-dump réel ne contient à la demande (un XML tronqué, une juridiction inconnue,
-une page d'erreur déguisée en archive).
+Les propriétés sont éprouvées sur des archives et des fenêtres fabriquées — ici
+c'est légitime : ce qu'on éprouve est le comportement du code face à des cas
+qu'aucun dump réel ne contient à la demande (un XML tronqué, une juridiction
+inconnue, une page d'erreur déguisée en archive, une fenêtre d'incréments qui a
+roulé). Leur compte est imprimé en fin de passage, pour qu'il n'ait pas à être
+tenu à jour ici.
 
     python3 tests/sanity_jade_collecteur.py
 """
 
+import datetime
 import functools
 import http.server
 import os
@@ -85,6 +88,47 @@ def une_decision(ident):
     return [(ident, DECISION.format(
         id=ident, juri="Conseil d'Etat", date="2026-02-01", num=ident[-6:],
         formation="Section", publi="B", contenu="Texte."))]
+
+
+def horodate(heures=0):
+    """Un instant décalé de `heures`, au format que portent les noms d'incrément."""
+    return (datetime.datetime.now()
+            + datetime.timedelta(hours=heures)).strftime("%Y%m%d-%H%M%S")
+
+
+def etat_de(db, cle):
+    """Ce que le collecteur a retenu sous cette clé, ou None."""
+    c = sqlite3.connect(db)
+    r = c.execute("SELECT valeur FROM jade_etat WHERE cle=?", (cle,)).fetchone()
+    c.close()
+    return r[0] if r else None
+
+
+def antidater(db, heures):
+    """Recule la dernière lecture rattrapée : le banc ne peut pas attendre un jour."""
+    quand = horodate(-heures)
+    c = sqlite3.connect(db)
+    c.execute("INSERT OR REPLACE INTO jade_etat VALUES ('fenetre_lue_le', ?)", (quand,))
+    c.commit()
+    c.close()
+    return quand
+
+
+def fonds(chemin, *increments):
+    """Un répertoire servi comme la DILA sert le fonds JADE : son tarball global,
+    et une fenêtre d'incréments qui peut être vide.
+
+    🔑 Le global y est toujours, même quand la fenêtre est vide — mesuré le
+    11/11/2026 sur l'index réel, qui portait `Freemium_jade_global_20261108` et
+    deux incréments. C'est ce qui permet de distinguer une fenêtre vide d'une
+    page qui n'est pas l'index du fonds.
+    """
+    chemin.mkdir()
+    archive(chemin / "Freemium_jade_global_20260101-140000.tar.gz",
+            une_decision("CETATEXT000001"))
+    for nom in increments:
+        archive(chemin / nom, une_decision("CETATEXT9" + nom[5:13]))
+    return chemin
 
 
 def main():
@@ -255,15 +299,103 @@ def main():
                 "fenêtre qui commence après le dernier appliqué → arrêt nommé (code %d)" % code)
         verdict(dernier == "JADE_20260203-213000.tar.gz" and n == 3,
                 "et rien n'est écrit : %s, %d décisions" % (dernier, n))
+        verdict(etat_de(base, "fenetre_lue_le") is not None
+                and "20260210" < etat_de(base, "fenetre_lue_le"),
+                "et il tient alors qu'une lecture rattrapée existe : les incréments "
+                "de cette fenêtre sont nés avant elle")
+
+        # ── La preuve de continuité ─────────────────────────────────────────
+        # 🔑 Une fenêtre qui commence après le dernier appliqué ne dit pas à elle
+        # seule qu'il manque quelque chose : la DILA purge ses incréments quand
+        # elle republie son fonds global. Mesuré les 08 et 09/11/2026 — fenêtre
+        # vide le dimanche suivant un global, puis un seul incrément le lundi,
+        # et le collecteur a refusé deux soirs de suite une collecte entière.
+        # Ce qui tranche est la dernière lecture RATTRAPÉE : si le plus ancien
+        # incrément publié est né après elle, rien n'a pu paraître et disparaître
+        # entre les deux. Une lecture qui n'a pas rattrapé la fenêtre ne prouve
+        # rien, sinon trois refus successifs blanchiraient un vrai trou.
+        print("\n▸ La preuve de continuité (une fenêtre qui a roulé)")
+        pcache = tmp / "cache-preuve"
+        pcache.mkdir()
+        reference = "JADE_%s.tar.gz" % horodate(-30)
+        archive(tmp / reference, une_decision("CETATEXT9" + reference[5:13]))
+
+        def base_prete(nom):
+            """Une base dont le dernier appliqué a 30 h, et qui n'a aucune ancre."""
+            d = tmp / nom
+            lancer(d, "--diff", str(tmp / reference))
+            return d
+
+        def passage(db, repertoire):
+            serveur = dila_locale(repertoire)
+            try:
+                return lancer(db, "--depuis", "auto", "--cache", str(pcache),
+                              dila="http://127.0.0.1:%d" % serveur.server_port)
+            finally:
+                serveur.shutdown()
+
+        neuf = "JADE_%s.tar.gz" % horodate(-2)
+
+        pdb = base_prete("preuve.sqlite")
+        code, sortie = passage(pdb, fonds(tmp / "fonds-vide"))
+        verdict(code == 0 and etat_de(pdb, "fenetre_lue_le") is not None,
+                "fenêtre vide → rien à appliquer, et la lecture est consignée "
+                "(code %d, ancre %s)" % (code, etat_de(pdb, "fenetre_lue_le")))
+
+        antidater(pdb, 24)
+        code, sortie = passage(pdb, fonds(tmp / "fonds-roule", neuf))
+        verdict(code == 0 and etat_de(pdb, "dernier_diff") == neuf,
+                "fenêtre roulée, née après la dernière lecture rattrapée → appliquée "
+                "(code %d, dernier %s)" % (code, etat_de(pdb, "dernier_diff")))
+
+        pdb3 = base_prete("preuve-vue.sqlite")
+        antidater(pdb3, 1)
+        code, sortie = passage(pdb3, fonds(tmp / "fonds-deja-vu", neuf))
+        verdict(code != 0 and "trou possible" in sortie.lower()
+                and etat_de(pdb3, "dernier_diff") == reference,
+                "un incrément déjà visible lors de la dernière lecture ne prouve "
+                "rien → refus (code %d)" % code)
+
+        pdb4 = base_prete("preuve-non-rattrapee.sqlite")
+        troue = fonds(tmp / "fonds-troue", neuf)
+        code, _ = passage(pdb4, troue)
+        premier = etat_de(pdb4, "fenetre_lue_le")
+        code2, sortie2 = passage(pdb4, troue)
+        verdict(code != 0 and code2 != 0 and premier is None
+                and etat_de(pdb4, "fenetre_lue_le") is None,
+                "une lecture qui n'a pas rattrapé la fenêtre ne devient pas une "
+                "preuve : deux refus de suite, aucune ancre (codes %d et %d)"
+                % (code, code2))
+
+        pdb5 = base_prete("preuve-perimee.sqlite")
+        antidater(pdb5, 26)
+        code, sortie = passage(pdb5, fonds(tmp / "fonds-perime", neuf))
+        verdict(code != 0 and etat_de(pdb5, "dernier_diff") == reference,
+                "passé la mémoire de la fenêtre, la même situation redevient un "
+                "trou (code %d)" % code)
+
+        faux_index = tmp / "pas-un-index"
+        faux_index.mkdir()
+        (faux_index / "index.html").write_text(
+            "<html><body><h1>Service momentanément indisponible</h1></body></html>",
+            encoding="utf-8")
+        pdb6 = base_prete("preuve-index.sqlite")
+        code, sortie = passage(pdb6, faux_index)
+        verdict(code == 4 and etat_de(pdb6, "fenetre_lue_le") is None,
+                "un index qui ne nomme ni incrément ni fonds global → source "
+                "indisponible, aucune ancre (code %d)" % code)
 
         serveur = dila_locale(continue_)
         port_ferme = serveur.server_port
         serveur.shutdown()
         serveur.server_close()
+        ancre_avant = etat_de(base, "fenetre_lue_le")
         code, sortie = lancer(base, "--depuis", "auto", "--cache", str(cache),
                               dila="http://127.0.0.1:%d" % port_ferme)
         verdict(code == 4 and "Traceback" not in sortie,
                 "DILA injoignable → code 4, sans trace Python (code %d)" % code)
+        verdict(etat_de(base, "fenetre_lue_le") == ancre_avant,
+                "et un passage qui n'a pas joint la DILA ne consigne aucune lecture")
 
         print()
         if echecs:

@@ -10,6 +10,39 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice 0.4.5 — une fenêtre d'incréments JADE qui a roulé n'est plus prise pour un trou — 11 novembre 2026
+
+La collecte quotidienne du fonds JADE a refusé d'écrire deux soirs de suite, les 9 et 10 novembre, laissant
+la jurisprudence administrative figée au 7. Sa garde compare le plus ancien incrément publié par la DILA au
+dernier appliqué en base : quand le premier est postérieur au second, ce qui les séparait a pu disparaître, et
+avancer le point de reprise par-dessus rendrait la lacune invisible pour toujours. Le refus était donc juste
+dans sa forme, et faux dans son cas : rien n'avait disparu.
+
+- **Ce qui purge la fenêtre est la republication du fonds global, pas l'âge des incréments.** Mesuré du 8 au
+  11 novembre : l'incrément du samedi avait disparu le dimanche, lendemain d'un global paru le 8 à 11:23, et la
+  fenêtre était vide ce soir-là ; celui du lundi vivait encore trente-trois heures après sa parution. L'en-tête
+  de `build_jade_db.py` affirmait que le global de JADE porte la même date figée que celui de LEGI — la DILA le
+  republie, à une cadence qu'elle n'annonce pas.
+- `build_jade_db.py` retient désormais la dernière lecture **rattrapée** de la fenêtre — un passage qui l'a lue
+  entière et a appliqué tout ce qu'elle portait, fenêtre vide comprise. Si le plus ancien incrément publié est
+  né après cette lecture, rien n'a pu paraître et disparaître entre les deux, et la collecte reprend. Sinon le
+  refus tient.
+- **Une lecture qui n'a pas rattrapé la fenêtre ne prouve rien**, et c'est ce qui sépare ce correctif d'un
+  désarmement de la garde : ancrer la preuve sur toute lecture, même refusée, refermerait un vrai trou en trois
+  nuits, chaque refus repoussant l'ancre jusqu'à ce que les incréments suivants soient tous nés après elle.
+- La preuve expire au bout de 25 heures, soit 45 minutes de marge sur la cadence du timer et sa dispersion. Une
+  nuit manquée annule donc la preuve et le refus revient : la borne est une prudence, pas une profondeur de
+  fenêtre mesurée, puisque la DILA ne purge pas par âge.
+- L'ordre que donne le refus était impraticable : rejouer le fonds global écrit le point de reprise à minuit du
+  jour du dump, et le premier incrément qui suit est toujours postérieur à ce minuit, donc la reprise
+  automatique retombait sur le même refus. Le message nomme maintenant le global **et** les incréments de la
+  fenêtre dans un seul appel.
+- `diffs_disponibles()` refuse un index qui ne nomme ni incrément ni fonds global, en source indisponible. Une
+  page de courtoisie servie en HTTP 200 rendait la même liste vide qu'une vraie fenêtre vide ; depuis que la
+  fenêtre vide fait preuve, cette confusion en ferait une preuve tirée d'une source qu'on n'a pas lue.
+- Le banc `sanity_jade_collecteur.py` éprouve ces propriétés sur des fenêtres fabriquées, dont l'incident
+  reproduit en trois passages. Le cas du trou réel reste refusé, avec un contrôle de plus qui dit pourquoi.
+
 ### Outils de SelfRecover — l'ancienne copie de la porte « appareil » est retirée — 10 novembre 2026
 
 `bi-self/selfrecover/tools/reference/device_handlers.php` venait de la démo supprimée en août : rien ne l'incluait,
