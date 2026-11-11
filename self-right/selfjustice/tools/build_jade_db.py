@@ -20,11 +20,10 @@ qui ne bougeait pas, et personne ne l'a vu — parce qu'il n'y avait rien à voi
 pas d'erreur, pas de code de sortie, une date exacte. La DILA republie le global
 de JADE, mais à une cadence qu'elle n'annonce pas : celui que portait l'index le
 11/11/2026 datait du 08/11. Un global absorbé seul fige donc la base à sa date.
-`--global` écrit `dernier_diff` à **minuit** du jour du dump, et `--depuis auto`
+`--global` écrit donc `dernier_diff` à la date du dump, et `--depuis auto`
 refuse de s'arrêter tant qu'un incrément postérieur reste à appliquer — d'où
 l'ordre que donne le refus de la garde : le global et les incréments de la
-fenêtre dans le même appel, puisque le premier incrément qui suit un global est
-toujours postérieur à ce minuit.
+fenêtre dans un même appel.
 
 ⚠️ **Le même identifiant peut apparaître deux fois dans une archive.** 40 sur
 les 552 576 fichiers du global. La base en compte donc 552 536 : l'écart n'est
@@ -39,13 +38,12 @@ REPLACE` rend la redondance inoffensive, tandis qu'un saut fondé sur une
 profondeur supposée perdrait des décisions en silence.
 
 ⚠️ **Cette fenêtre se vide quand le global est republié, et elle ne se vide pas
-par âge.** Mesuré du 08 au 11/11/2026 : l'incrément du samedi avait disparu le
-dimanche, lendemain d'un global paru le 08 à 11:23, et la fenêtre était vide ce
-soir-là ; celui du lundi vivait encore trente-trois heures après sa parution.
-Une garde qui compare la fenêtre au seul dernier incrément appliqué refuse donc
-une collecte entière à chaque republication — ce qui est arrivé deux soirs de
-suite. Ce qui permet de trancher est la dernière lecture *rattrapée* :
-`continuite_prouvee()`.
+par âge.** Mesuré du 08 au 11/11/2026 : un global paraît le 08 à 11:23, et le
+même soir la fenêtre ne publie plus rien — l'incrément de la veille a disparu à
+26 h d'âge, alors que celui du 09 vivait encore 33 h après sa parution. Une
+garde qui compare la fenêtre au seul dernier incrément appliqué refuse donc une
+collecte entière à chaque republication. Ce qui permet de trancher est la
+dernière lecture *rattrapée* : `continuite_prouvee()`.
 
 ⚠️ **Aucun incrément ne porte de liste de suppression.** Vérifié sur cinq d'entre
 eux le 10/09/2026 : ils ne contiennent que des XML de décision. Une décision
@@ -96,10 +94,9 @@ MARQUE_TEMPS = "%Y%m%d-%H%M%S"
 # passe toutes les 24 h avec 15 min de dispersion (`jade-update.timer`), donc
 # deux lectures consécutives sont espacées de 24 h 15 au plus : 25 h laisse
 # 45 min de marge et refuse dès qu'un passage a été manqué.
-# ⚠️ Cette borne est une prudence, pas une profondeur mesurée. La DILA ne purge
-# pas par âge : le 08/11/2026 l'incrément de la veille avait disparu à 26 h,
-# alors que celui du 09 vivait encore à 33 h le 11/11. Ce qui purge est la
-# republication du fonds global, à une cadence qu'elle n'annonce pas.
+# ⚠️ Cette borne est une prudence, pas une profondeur mesurée : la DILA ne purge
+# pas par âge, et un incrément peut donc vivre plus longtemps sans que 25 h soit
+# une sous-estimation à relever. Les mesures sont en tête de ce fichier.
 MEMOIRE_FENETRE_H = 25
 
 # Code de sortie quand la DILA ne répond pas : rien n'a été écrit, et le passage
@@ -232,7 +229,7 @@ def continuite_prouvee(conn, disponibles):
     rien n'a pu paraître et disparaître entre les deux.
 
     ⚠️ **« Vu » ne suffit pas, il faut « appliqué ».** Ancrer la preuve sur toute
-    lecture, même refusée, referme un vrai trou en trois nuits : chaque refus
+    lecture, même refusée, referme un vrai trou en quelques nuits : chaque refus
     repousserait l'ancre, et les incréments d'après finiraient par être tous nés
     après elle. La garde se désarmerait d'elle-même, exactement dans le cas
     qu'elle existe pour attraper.
@@ -404,7 +401,7 @@ def diffs_disponibles():
     🔑 **Une fenêtre vide et un index qu'on ne sait plus lire rendent la même
     liste.** Ce qui les sépare est le fonds global, que l'index porte en
     permanence : mesuré le 11/11/2026, il nommait `Freemium_jade_global_20261108`
-    à côté de ses deux incréments. Un corps qui ne nomme ni l'un ni l'autre
+    à côté des incréments du moment. Un corps qui ne nomme ni l'un ni l'autre
     n'est donc pas le listage du fonds — page de courtoisie, portail captif,
     gabarit changé —, et le prendre pour une fenêtre vide ferait écrire à la
     garde une preuve de continuité sur une source qu'on n'a pas lue.
@@ -504,7 +501,7 @@ def main():
             sys.exit("Rien à reprendre — le fonds global n'a pas été absorbé.")
         # L'instant se prend AVANT la requête : la prémisse de la preuve est
         # « tout ce qui avait paru à cet instant était visible dans cette
-        # lecture », et `urlopen` peut attendre 90 s.
+        # lecture », et la requête peut attendre le délai de `diffs_disponibles()`.
         lu_le = datetime.datetime.now().strftime(MARQUE_TEMPS)
         try:
             disponibles = diffs_disponibles()
@@ -557,11 +554,15 @@ def main():
 
     # L'ancre de la garde, et elle ne s'écrit qu'ici : non pas « j'ai lu la
     # fenêtre » mais « j'ai lu la fenêtre et appliqué tout ce qu'elle portait ».
-    # Tous les chemins d'échec sortent avant ce point — fenêtre lue puis
+    # Les chemins d'échec qui précèdent sortent avant ce point — fenêtre lue puis
     # téléchargement perdu, archive corrompue, garde qui refuse : aucun n'a
     # rattrapé la fenêtre, aucun ne doit pouvoir servir de preuve demain.
-    if a.depuis and (not disponibles
-                     or etat_lire(conn, "dernier_diff", "") >= disponibles[-1]):
+    # 🔑 `complet` en fait partie, et c'est le seul échec qui arrive JUSQU'ICI :
+    # une archive dont un libellé de juridiction est refusé fait avancer
+    # `dernier_diff` sans écrire ses décisions. Le passage sort en échec et le
+    # pilote alerte ; son ancre certifierait une fenêtre qu'il n'a pas absorbée.
+    if a.depuis and complet and (not disponibles
+                                 or etat_lire(conn, "dernier_diff", "") >= disponibles[-1]):
         etat_ecrire(conn, "fenetre_lue_le", lu_le)
         conn.commit()
 

@@ -118,10 +118,9 @@ def fonds(chemin, *increments):
     """Un répertoire servi comme la DILA sert le fonds JADE : son tarball global,
     et une fenêtre d'incréments qui peut être vide.
 
-    🔑 Le global y est toujours, même quand la fenêtre est vide — mesuré le
-    11/11/2026 sur l'index réel, qui portait `Freemium_jade_global_20261108` et
-    deux incréments. C'est ce qui permet de distinguer une fenêtre vide d'une
-    page qui n'est pas l'index du fonds.
+    🔑 Le global y est toujours, même quand la fenêtre est vide : c'est ce qui
+    permet de distinguer une fenêtre vide d'une page qui n'est pas l'index du
+    fonds. La mesure est dans `diffs_disponibles()`.
     """
     chemin.mkdir()
     archive(chemin / "Freemium_jade_global_20260101-140000.tar.gz",
@@ -307,13 +306,11 @@ def main():
         # ── La preuve de continuité ─────────────────────────────────────────
         # 🔑 Une fenêtre qui commence après le dernier appliqué ne dit pas à elle
         # seule qu'il manque quelque chose : la DILA purge ses incréments quand
-        # elle republie son fonds global. Mesuré les 08 et 09/11/2026 — fenêtre
-        # vide le dimanche suivant un global, puis un seul incrément le lundi,
-        # et le collecteur a refusé deux soirs de suite une collecte entière.
-        # Ce qui tranche est la dernière lecture RATTRAPÉE : si le plus ancien
-        # incrément publié est né après elle, rien n'a pu paraître et disparaître
-        # entre les deux. Une lecture qui n'a pas rattrapé la fenêtre ne prouve
-        # rien, sinon trois refus successifs blanchiraient un vrai trou.
+        # elle republie son fonds global. Ce qui tranche est la dernière lecture
+        # RATTRAPÉE : si le plus ancien incrément publié est né après elle, rien
+        # n'a pu paraître et disparaître entre les deux. Une lecture qui n'a pas
+        # rattrapé la fenêtre ne prouve rien, sinon des refus successifs
+        # blanchiraient un vrai trou.
         print("\n▸ La preuve de continuité (une fenêtre qui a roulé)")
         pcache = tmp / "cache-preuve"
         pcache.mkdir()
@@ -373,6 +370,32 @@ def main():
         verdict(code != 0 and etat_de(pdb5, "dernier_diff") == reference,
                 "passé la mémoire de la fenêtre, la même situation redevient un "
                 "trou (code %d)" % code)
+
+        # ⚠️ Nom et cache propres à ce cas : `telecharger()` rend un fichier déjà
+        # présent dans le cache sans le retélécharger, donc réutiliser le nom d'un
+        # cas précédent ferait absorber SON archive, et celle-ci jamais.
+        pdb7 = base_prete("preuve-incomplete.sqlite")
+        cache7 = tmp / "cache-incomplet"
+        cache7.mkdir()
+        refuse = "JADE_%s.tar.gz" % horodate(-3)
+        incomplet = tmp / "fonds-incomplet"
+        incomplet.mkdir()
+        archive(incomplet / "Freemium_jade_global_20260101-140000.tar.gz",
+                une_decision("CETATEXT000002"))
+        archive(incomplet / refuse, [("CETATEXT990001", DECISION.format(
+            id="CETATEXT990001", juri="Chambre régionale des comptes de Bretagne",
+            date="2024-01-01", num="990001", formation="", publi="C",
+            contenu="Texte."))])
+        ancre_posee = antidater(pdb7, 24)
+        serveur = dila_locale(incomplet)
+        try:
+            code, sortie = lancer(pdb7, "--depuis", "auto", "--cache", str(cache7),
+                                  dila="http://127.0.0.1:%d" % serveur.server_port)
+        finally:
+            serveur.shutdown()
+        verdict(code != 0 and etat_de(pdb7, "fenetre_lue_le") == ancre_posee,
+                "une collecte incomplète n'arme pas la preuve, bien qu'elle applique "
+                "l'incrément : l'ancre reste celle d'avant (code %d)" % code)
 
         faux_index = tmp / "pas-un-index"
         faux_index.mkdir()
