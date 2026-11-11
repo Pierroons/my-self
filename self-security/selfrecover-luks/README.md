@@ -3,7 +3,7 @@
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.2](https://img.shields.io/badge/status-v0.6.2-green.svg)](./INSTALL.md)
+[![Status: v0.6.3](https://img.shields.io/badge/status-v0.6.3-green.svg)](./INSTALL.md)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -64,6 +64,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript + rescue script in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
 | `format-slot.sh` | records the enrolled key format per volume, refuses to install a keyscript of another format, and gives the `keyfile-size` bound a keyscript needs, which it checks or fixes in crypttab |
+| `cle-amorcage.sh` | sets the `command=` in front of the boot dropbear's keys and re-reads each line the way the SSH server will: an unreadable line would leave the machine unreachable at boot |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `selfrecover-secours.sh` | `command=` of the boot SSH key: offers the recovery passphrase **or** the native passphrase, **never a shell** |
 | `verifie-initramfs.sh` | compares the images in `/boot` with the fingerprint recorded on the encrypted volume — makes an image modified off-machine visible |
@@ -73,6 +74,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | guard: the four read paths, and the trailing `\n` that breaks the key |
 | [`tests/test_secours_sans_shell.sh`](./tests/test_secours_sans_shell.sh) | bench: the boot rescue offers both paths and refuses any shell |
 | [`tests/test_sauvegardes.sh`](./tests/test_sauvegardes.sh) | bench: `verifie-sauvegardes.sh` refuses a copy on the encrypted volume or a stale one |
+| [`tests/test_cle_amorcage.sh`](./tests/test_cle_amorcage.sh) | bench: the boot key line is set with a space, and an unreadable line is refused |
 | [`tests/test_garde_fou_image_chargee.sh`](./tests/test_garde_fou_image_chargee.sh) | bench: the guard judges the image the bootloader **loads** (Raspberry Pi included) |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | measurement note (French): how `cryptsetup` reads a key depending on the path taken |
 | `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |

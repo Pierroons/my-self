@@ -3,7 +3,7 @@
 > 🇬🇧 **[Read in English →](./README.md)**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.6.2](https://img.shields.io/badge/statut-v0.6.2-green.svg)](./INSTALL.md)
+[![Statut : v0.6.3](https://img.shields.io/badge/statut-v0.6.3-green.svg)](./INSTALL.md)
 [![Fait partie de : Self-Security](https://img.shields.io/badge/fait%20partie%20de-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon de : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -64,6 +64,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript + script de secours dans l'initrd |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
 | `format-slot.sh` | inscrit le format de clé enrôlé par volume, refuse de poser un keyscript d'un autre format, et donne la borne `keyfile-size` d'un keyscript, qu'il vérifie ou corrige dans crypttab |
+| `cle-amorcage.sh` | pose le `command=` devant les clés du dropbear d'amorçage et relit chaque ligne comme le serveur SSH la lira : une ligne illisible rendrait la machine injoignable au démarrage |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `selfrecover-secours.sh` | `command=` de la clé du SSH d'amorçage : propose la passphrase recover **ou** la passphrase native, **jamais un shell** |
 | `verifie-initramfs.sh` | compare les images de `/boot` à l'empreinte consignée sur le volume chiffré — rend visible une image modifiée hors de la machine |
@@ -74,6 +75,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
 | [`tests/test_secours_sans_shell.sh`](./tests/test_secours_sans_shell.sh) | banc : le secours d'amorçage rend les deux voies et refuse tout shell |
 | [`tests/test_sauvegardes.sh`](./tests/test_sauvegardes.sh) | banc : `verifie-sauvegardes.sh` refuse une copie sur le volume chiffré ou périmée |
+| [`tests/test_cle_amorcage.sh`](./tests/test_cle_amorcage.sh) | banc : la ligne de clé d'amorçage se pose avec une espace, et une ligne illisible est refusée |
 | [`tests/test_garde_fou_image_chargee.sh`](./tests/test_garde_fou_image_chargee.sh) | banc : le garde-fou juge l'image que l'amorceur **charge** (Raspberry Pi compris) |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé** |

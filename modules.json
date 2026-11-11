@@ -85,7 +85,7 @@
       "id": "selfrecover-luks",
       "nom": "SelfRecover-LUKS",
       "dossier": "self-security/selfrecover-luks",
-      "version": "0.6.2",
+      "version": "0.6.3",
       "resume": {
         "fr": "ouverture d'un disque chiffré LUKS par une passphrase dérivée en Argon2id",
         "en": "unlocking a LUKS-encrypted disk with an Argon2id-derived passphrase"
@@ -249,7 +249,7 @@
       "id": "selfjustice",
       "nom": "SelfJustice",
       "dossier": "self-right/selfjustice",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "statut": {
         "fr": "bêta",
         "en": "beta"

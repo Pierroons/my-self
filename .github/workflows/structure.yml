@@ -758,6 +758,66 @@ jobs:
           echo "✓ le banc rougit, et il rougit SUR LE SHELL — pas sur un contretemps"
           echo "✓ le banc rougit, et sur le cas de la sauvegarde périmée"
 
+      - name: Garde-fou — la clé d'amorçage se pose lisible, et une ligne illisible est refusée
+        run: |
+          # Jusqu'à la 0.6.2, install.sh et INSTALL.md (§8b) posaient une VIRGULE entre
+          # les options et la clé : le type de clé était lu comme une option, la ligne ne
+          # désignait plus aucune clé, et la machine restait injoignable au démarrage.
+          # Le contre-témoin d'install.sh comptait des motifs et la laissait passer.
+          # cle-amorcage.sh assemble la ligne et la relit avant tout remplacement.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_cle_amorcage.sh)
+          echo "$sortie"
+          # Compte en dur : un `N/N` dirait que les cas joués passent, jamais
+          # qu'aucun n'a disparu.
+          echo "$sortie" | grep -qE '^✅ 25/25 ' \
+            || { echo "::error::le banc de la clé d'amorçage n'a pas joué ses 25 cas"; exit 1; }
+
+      - name: Canari — le banc de la clé d'amorçage rougit si la virgule revient
+        run: |
+          # @plante
+          # Le défaut de la 0.6.2, replanté dans une copie : la virgule entre les
+          # options et la clé nue. Le banc doit cesser de passer, et sur ce cas-là.
+          C=self-security/selfrecover-luks/cle-amorcage.sh
+          sed 's|printf \x27%s %s\\n\x27 "$options"|printf \x27%s,%s\\n\x27 "$options"|' "$C" > /tmp/cle-virgule.sh
+          grep -qF "printf '%s,%s\\n' \"\$options\"" /tmp/cle-virgule.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          bash -n /tmp/cle-virgule.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(CLE=/tmp/cle-virgule.sh \
+               bash self-security/selfrecover-luks/tests/test_cle_amorcage.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT alors que la virgule est revenue"
+            exit 1
+          fi
+          echo "$sortie" | grep -q '❌ clé nue : les options, UNE espace' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur la ligne à virgule"
+                 exit 1; }
+          echo "✓ le banc rougit, et il rougit SUR LA VIRGULE"
+
+      - name: Canari — le banc de la clé d'amorçage rougit si la relecture laisse tout passer
+        run: |
+          # @plante
+          # Une relecture qui n'arrête rien laisserait install.sh remplacer le fichier
+          # par une ligne illisible. On la neutralise dans une copie.
+          C=self-security/selfrecover-luks/cle-amorcage.sh
+          sed 's#\[ -z "\$fautives" \] ||#true ||#' "$C" > /tmp/cle-laxiste.sh
+          grep -qF 'true || refus "ligne(s)' /tmp/cle-laxiste.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          bash -n /tmp/cle-laxiste.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(CLE=/tmp/cle-laxiste.sh \
+               bash self-security/selfrecover-luks/tests/test_cle_amorcage.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT alors que la relecture laisse tout passer"
+            exit 1
+          fi
+          echo "$sortie" | grep -q '❌ ⭐ la ligne à virgule de la 0.6.2 : refusée par verifier' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur la relecture de la ligne à virgule"
+                 exit 1; }
+          echo "✓ le banc rougit, et il rougit SUR LA RELECTURE"
+
       - name: Garde-fou — un seul plancher pour les secrets de déploiement
         run: bash scripts/check-plancher-secret.sh
 

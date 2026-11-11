@@ -397,9 +397,13 @@ grep -qx "$NET_MODULE" /etc/initramfs-tools/modules || echo "$NET_MODULE" >> /et
 # ⚠️ Le `command=` n'est pas décoratif — voir juste en dessous pourquoi.
 install -d -m 0755 /etc/dropbear/initramfs
 O='command="/etc/selfkeyguard/selfrecover-secours.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
-printf '%s,%s\n' "$O" "$(cat ~/.ssh/id_ed25519.pub)" \
+# Une ESPACE entre les options et la clé : une virgule ferait lire le type de clé
+# comme une option, et la machine serait injoignable au démarrage.
+printf '%s %s\n' "$O" "$(cat ~/.ssh/id_ed25519.pub)" \
   > /etc/dropbear/initramfs/authorized_keys   # adapte
 chmod 0600 /etc/dropbear/initramfs/authorized_keys
+# relis la ligne comme le serveur SSH la lira, avant de régénérer l'initramfs
+bash cle-amorcage.sh verifier /etc/dropbear/initramfs/authorized_keys
 
 # dropbear sur un port dédié
 echo 'DROPBEAR_OPTIONS="-p 2222 -s -j -k -I 300"' > /etc/dropbear/initramfs/dropbear.conf
@@ -958,6 +962,7 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 | `selfrecover-secours.sh` | `command=` de la clé dropbear : propose la passphrase recover **ou** la native, **jamais un shell** (§8b) |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS, et inscrit son format |
 | `format-slot.sh` | inscrit le format enrôlé par volume, refuse de poser un keyscript d'un autre format, et donne la borne `keyfile-size` d'un keyscript, qu'il vérifie ou corrige dans crypttab ; posé dans `$SKG` pour le garde-fou |
+| `cle-amorcage.sh` | pose le `command=` devant les clés du dropbear d'amorçage (une espace devant une clé nue) et relit chaque ligne comme le serveur SSH la lira ; appelé par `install.sh`, et au §8b |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
 | `genere-passphrase.py` | tire une passphrase diceware et affiche les deux formes avec leur longueur (§5) |
 | `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les pièces, **le sel**, **la borne `keyfile-size`** et **l'image que l'amorceur charge** après chaque génération d'initramfs (§11) |

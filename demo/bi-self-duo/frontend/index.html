@@ -390,7 +390,7 @@
     <li>Le mot mémorisé sert de <strong>clé</strong> HMAC et ne quitte jamais le navigateur — le serveur ne range qu'un <code>Argon2id</code> de l'empreinte.</li>
     <li>Le nom d'hôte entre dans le message, et le navigateur le lit lui-même : une page qui imite le service dérive une empreinte inutilisable ici, et la base d'un autre site n'en donne aucune.</li>
     <li>Le sel accompagne le nom d'hôte : un par compte, engendré par le navigateur, non secret — il évite que deux mots identiques donnent la même empreinte.</li>
-    <li>Mode <strong>Full</strong>, le seul implémenté : zéro e-mail. La variante <strong>Lite</strong> (e-mail conservé + mot mémorisé HMACé en plus du token reset) est spécifiée, pas implémentée.</li>
+    <li>SelfRecover, la forme implémentée : zéro e-mail. La forme <strong>SelfRecover-Lite</strong>, pour le site qui garde l'e-mail (le lien et un appareil enregistré, jamais l'un sans l'autre), est une conception publiée, pas implémentée.</li>
   </ul>
 </div>
 
@@ -431,13 +431,14 @@
 
 <div class="synergy" style="margin-top: 0; margin-bottom: 2rem;">
   <p>
-    <strong><a href="/recover">SelfRecover</a></strong> est conçu en deux variantes selon ton infrastructure.
-    Le <strong>Full</strong>, celui qu'implémente la bibliothèque, retire totalement l'email du protocole :
+    <strong><a href="/recover">SelfRecover</a></strong> existe sous deux formes, selon ton site.
+    SelfRecover, celle qu'implémente la bibliothèque, retire totalement l'email du protocole :
     récupération par passphrase diceware + dérivation HMAC liée au nom d'hôte que le navigateur
     lit, donc zéro SMTP, zéro token reset à exfiltrer.
-    Le <strong>Lite</strong> conserverait l'email habituel en y ajoutant un mot mémorisé HMACé côté
-    client : même un attaquant qui contrôle la boîte mail ne pourrait pas reset le compte sans
-    connaître ce mot. Il est spécifié, mais n'est pas implémenté dans cette version.
+    <strong>SelfRecover-Lite</strong> garde l'email habituel et exige en plus un appareil que
+    le client a enregistré : un attaquant qui contrôle la boîte mail ne peut pas reset le compte
+    sans lui, sauf par un recours humain dont le titulaire est prévenu et qu'il peut contester.
+    C'est une conception publiée, pas encore implémentée.
   </p>
 </div>
 

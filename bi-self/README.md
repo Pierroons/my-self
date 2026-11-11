@@ -52,6 +52,7 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.13.4** — PSR-4 library + browser deriver, deployed and self-audited implementation |
+| [SelfRecover-Lite](./selfrecover-lite/) | Hardened email recovery, for sites that keep email | design published (whitepaper) — no implementation |
 | [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.8.0 — installable engine, automatic ban traced to a journal, a pack that weighs no more than a single member, checks in CI; 2 protocol mechanisms missing |
 
 ---

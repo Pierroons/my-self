@@ -11,7 +11,7 @@
 
 The costliest pattern is a familiar one, and it keeps recurring: a trivial authorization flaw — changing an identifier in an API request is enough to read someone else's account — on a service whose account recovery runs through an email channel. The scale then comes down to nothing more than the number of rows in the table.
 
-The question is structural: why does a service need to index a mailbox to establish that you are you? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover offers a technical answer: remove the email channel (**Full** mode, the only one implemented). A **Lite** mode that kept it optional was shown as a demonstration in v0.1.1; that demonstration was removed on 18 August 2026. Published in April 2026 (v0.1.0), under AGPL-3.0-or-later since 19 April 2026.
+The question is structural: why does a service need to index a mailbox to establish that you are you? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover offers a technical answer: remove the email channel. For a site that keeps email, a second form, SelfRecover-Lite, hardens that recovery instead of removing it; it is described in its own whitepaper, with no implementation yet. An earlier "Lite" mode, shown as a demonstration in v0.1.1, was removed on 18 August 2026; the new form takes neither its code nor its mechanism. Published in April 2026 (v0.1.0), under AGPL-3.0-or-later since 19 April 2026.
 
 This whitepaper describes the protocol. It targets no actor in particular — it is an open-source proposal that public and private operators may audit, integrate, or contest freely.
 
