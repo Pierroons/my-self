@@ -116,6 +116,17 @@ if [ "$code" -eq 75 ] && grep -q "DILA injoignable, JADE en retard" "$BAC/ntfy.l
 else
     nok "un fonds en retard d'une semaine : code $code (attendu 75), alertes : $(paste -sd'|' "$BAC/ntfy.log")"
 fi
+
+# 🔑 Le silence le plus long est celui d'une collecte qui RÉUSSIT sans rien
+# rapporter : si la DILA renomme ou déplace ses incréments en gardant son fonds
+# global, la fenêtre paraît vide et le collecteur sort en 0. Sans ce cas, rien
+# ne sonnait, sans limite de durée.
+jouer 0 8; code=$?
+if [ "$code" -eq 75 ] && grep -q "JADE en retard, sans erreur" "$BAC/ntfy.log"; then
+    ok "collecte sans échec mais fonds vieux de 8 jours → alerte, code 75"
+else
+    nok "un fonds figé sans erreur reste muet : code $code (attendu 75), alertes : $(paste -sd'|' "$BAC/ntfy.log")"
+fi
 # Le code de la source indisponible n'a de sens que si l'unité l'accepte.
 if grep -q -E '^SuccessExitStatus=([0-9 ]* )?75( |$)' "$UNITE"; then
     ok "l'unité accepte 75 (SuccessExitStatus)"
