@@ -3908,12 +3908,12 @@ jobs:
           # page publique, la fin d'un ban et le blocage des messages dans le lab. Chaque
           # fichier est restauré avant la plantation suivante ; chaque plantation est
           # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
-          FICHIERS="bi-self/selfmoderate/src/Moderate.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php"
+          FICHIERS="bi-self/selfmoderate/src/Moderate.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php demo/lab/public/profile.php"
           for f in $FICHIERS; do cp "$f" "/tmp/croise.$(tr / _ <<< "$f").intact"; done
           restaurer() { for f in $FICHIERS; do cp "/tmp/croise.$(tr / _ <<< "$f").intact" "$f"; done; }
           echecs=0
           cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_bloque raison_route publique
-                     fin_exacte refus_exact profil blocage_envoi blocage_masque"
+                     emis fin_exacte refus_exact profil blocage_envoi blocage_masque"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
           import os
@@ -3922,6 +3922,7 @@ jobs:
           O = 'demo/lab/public/moderation.php'
           F = 'demo/lab/lib/moderate.php'
           D = 'demo/lab/lib/dm.php'
+          P = 'demo/lab/public/profile.php'
           CROISE = "✗ ⭐ le croisement rate"
           TREVE = "✗ ⭐ la trêve ou les plafonds ratent"
           ROUTE = "✗ ⭐ la route de vote dit le sort d'un vote croisé"
@@ -3946,6 +3947,7 @@ jobs:
               'raison_route': (V, "unset($result['blocked_reason']);\n", "", ROUTE),
               'publique':     (O, "array_filter($blocked, static fn (array $v): bool => !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true))",
                                   "$blocked", "✗ ⭐ la page publique publie un croisement"),
+              'emis':         (P, "$cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ?')", "$cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND blocked = 0')", ROUTE),
               'fin_exacte':   (M, "        return intdiv($bannedUntil + 3599, 3600) * 3600;", "        return $bannedUntil;", FIN),
               'refus_exact':  (M, "date('d/m/Y H:i', self::finAffichee($rep['banned_until'], $rep['ban_origine']))",
                                   "date('d/m/Y H:i', $rep['banned_until'])", FIN),

@@ -6486,12 +6486,17 @@ $voter161 = static function (string $session, int $post) use ($serveur161): arra
     return [$r['code'], json_decode($r['corps'], true) ?? []];
 };
 [$codeCroise161, $croise161] = $voter161($sessionB161, $messageA161);
+// Sa page compte le vote croisé parmi ses votes émis, comme un vote compté.
+$emisB161 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $b161")->fetchColumn();
+$pageB161 = requeteLab($serveur161, '/profile.php', $sessionB161)['corps'];
+$emisAffiches161 = preg_match('#' . preg_quote(t('prf.act.given'), '#') . '</span><br><strong[^>]*>(\d+)</strong>#u', $pageB161, $mE161) === 1 ? (int) $mE161[1] : null;
 [$codePorte161, $porte161] = $voter161($sessionC161, message($pdo, membre($pdo, 'route-d-161'), 'fil 161 d'));
 $codeCroise161 === 200 && ($croise161['ok'] ?? false) && !array_key_exists('score', $croise161)
     && !array_key_exists('blocked_reason', $croise161) && ($croise161['message'] ?? '') === 'Vote enregistré.'
-    && $codePorte161 === 200 && array_key_exists('score', $porte161)
-    ? ok('⭐ la route de vote rend le score d\'un vote qui porte, pas celui d\'un vote croisé, et ne nomme pas sa raison')
-    : nok('⭐ la route de vote dit le sort d\'un vote croisé : ' . json_encode([$codeCroise161, $croise161, $codePorte161, $porte161], JSON_UNESCAPED_UNICODE));
+    && $codePorte161 === 200 && array_key_exists('score', $porte161) && $emisAffiches161 === $emisB161 && $emisB161 === 1
+    ? ok('⭐ la route de vote rend le score d\'un vote qui porte, pas celui d\'un vote croisé, et ne nomme pas sa raison ; la page du votant le compte parmi ses votes')
+    : nok('⭐ la route de vote dit le sort d\'un vote croisé : ' . json_encode([$codeCroise161, $croise161, $codePorte161, $porte161,
+        'emis' => [$emisB161, $emisAffiches161]], JSON_UNESCAPED_UNICODE));
 
 $publique161 = requeteLab($serveur161, '/moderation.php');
 $arbitrale161 = requeteLab($serveur161, '/moderation.php', sessionArbitre($pdo, 'arbitre-moderation-161'));

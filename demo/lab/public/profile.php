@@ -156,7 +156,9 @@ $cnt = function (string $sql) use ($pdo, $myId): int {
 };
 $nbPosts      = $cnt('SELECT COUNT(*) FROM posts WHERE account_id = ?');
 $nbThreads    = $cnt('SELECT COUNT(*) FROM threads WHERE account_id = ?');
-$nbVotesEmis  = $cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND blocked = 0');
+// Ses votes émis comptent tous : un vote croisé ou annulé qui sortirait du compte
+// dirait à son auteur ce qu'en a fait le moteur (`userVote()` le rend de même).
+$nbVotesEmis  = $cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ?');
 $nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');
 [$canVote, $whyNot] = Moderate::canVote($pdo, $myId);
 
