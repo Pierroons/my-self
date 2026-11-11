@@ -11,19 +11,18 @@ use Pierroons\MySelfLab\Auth;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 $estArbitre = $account && !empty($account['is_admin']);
-$blocked = Moderate::blockedVotes($pdo, 30);
+// Un vote croisé, ou tombé pendant sa trêve, ne se publie pas : la ligne dirait à
+// chacun des deux que l'autre a voté contre lui. Il s'écarte dans la requête, avant
+// la limite : retiré après, il ferait baisser le compte, qui le daterait. L'arbitre
+// les voit.
+$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'treve']);
 
 // Le protocole veut qu'on voie les motifs sans voir qui a voté : Moderate::reasonsFor()
 // arrondit même la date au jour pour qu'un recoupement ne désigne pas l'auteur. Les
 // noms sont donc retirés ici, et non masqués à l'affichage — ce qui n'est pas chargé
 // ne peut pas être réaffiché par mégarde.
-// Un vote croisé, ou tombé pendant sa trêve, ne se publie pas : la ligne dirait à
-// chacun des deux que l'autre a voté contre lui. L'arbitre les voit.
 if (!$estArbitre) {
-    $blocked = array_values(array_map(
-        static fn (array $v): array => ['blocked_reason' => $v['blocked_reason']],
-        array_filter($blocked, static fn (array $v): bool => !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true))
-    ));
+    $blocked = array_map(static fn (array $v): array => ['blocked_reason' => $v['blocked_reason']], $blocked);
 }
 
 render_header(t('mod.title'), $account);

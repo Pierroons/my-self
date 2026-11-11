@@ -98,13 +98,9 @@ const VOTE_ENREGISTRE = <?= json_encode(tc('Vote enregistré.')) ?>;
 function votePost(postId, value, reason, code){
   labPost('/api/vote.php',{target_type:'post',target_id:postId,value:value,reason:reason||null,reason_code:code||null}).then(d=>{
     if(d.ok){
-      // Le score ne revient que d'un vote qui porte ; le bouton se marque, et la
-      // page reste la même, quel que soit le sort du vote (`userVote()`).
-      if(d.score!==undefined){
-        const s=document.getElementById('score-'+postId);
-        s.textContent=d.score;
-        s.className='score '+(d.score>0?'pos':(d.score<0?'neg':''));
-      }
+      // La route ne rend pas le score : le bouton se marque, et la page reste la
+      // même, quel que soit le sort du vote (`userVote()`). Le score se lit au
+      // rechargement.
       document.querySelectorAll('.votebox[data-post="'+postId+'"] button').forEach(b=>b.disabled=true);
       const btn=document.querySelector('.votebox[data-post="'+postId+'"] button[data-val="'+value+'"]');
       if(btn)btn.classList.add('actif');

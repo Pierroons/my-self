@@ -39,18 +39,23 @@ final class DM
             return ['ok' => false, 'error' => 'self', 'message' => 'Tu ne peux pas t\'écrire à toi-même.'];
         }
         // Rien n'entre dans `dm` entre deux membres dont l'un a bloqué l'autre :
-        // SelfModerate y lit les liens entre votants (`areLinked()`).
-        if (self::aBloque($pdo, (int) $recipientId, $senderId)) {
-            return ['ok' => false, 'error' => 'bloque', 'message' => 'Ce membre ne reçoit pas tes messages.'];
-        }
-        if (self::aBloque($pdo, $senderId, (int) $recipientId)) {
-            return ['ok' => false, 'error' => 'bloque', 'message' => 'Tu as bloqué ce membre : débloque-le pour lui écrire.'];
-        }
-
+        // SelfModerate y lit les liens entre votants (`areLinked()`). Le blocage se
+        // lit dans l'insertion même — une instruction qui écrit prend le verrou
+        // d'écriture avant de lire : un blocage posé pendant l'envoi refuse encore.
         $ciphertext = DataGuard::encrypt($message, DataGuard::contexteDm($pdo, $senderId, (int) $recipientId));
-        $pdo->prepare(
-            'INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)'
-        )->execute([$senderId, (int) $recipientId, $ciphertext, time()]);
+        $insert = $pdo->prepare(
+            'INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at)
+             SELECT ?, ?, ?, ?
+              WHERE NOT EXISTS (SELECT 1 FROM dm_blocages
+                                 WHERE (bloqueur_id = ? AND bloque_id = ?) OR (bloqueur_id = ? AND bloque_id = ?))'
+        );
+        $insert->execute([$senderId, (int) $recipientId, $ciphertext, time(),
+                          (int) $recipientId, $senderId, $senderId, (int) $recipientId]);
+        if ($insert->rowCount() === 0) {
+            return self::aBloque($pdo, $senderId, (int) $recipientId)
+                ? ['ok' => false, 'error' => 'bloque', 'message' => 'Tu as bloqué ce membre : débloque-le pour lui écrire.']
+                : ['ok' => false, 'error' => 'bloque', 'message' => 'Ce membre ne reçoit pas tes messages.'];
+        }
 
         return ['ok' => true, 'dm_id' => (int) $pdo->lastInsertId()];
     }

@@ -39,19 +39,31 @@ class Moderate
 
     /**
      * La fin d'un ban telle qu'une page la montre au compte banni. Un ban
-     * automatique commence à l'instant du vote décisif, et sa fin moins son
-     * palier le redonne : arrondie à l'heure pleine suivante (UTC), elle ne le
-     * dit plus qu'à l'heure près, et la page écrit « au plus tard ». Un ban
-     * d'arbitre est signé : il reste à la seconde. Un ban sans fin, ou aucun
-     * ban, passe tel quel.
+     * automatique commence à l'instant du vote décisif : sa fin s'arrondit dès
+     * la pose (`arrondirFin()`), et la page écrit « au plus tard ». Celle d'un
+     * ban posé avant cette règle s'arrondit ici de même. Un ban d'arbitre est
+     * signé : il reste à la seconde. Un ban sans fin, ou aucun ban, passe tel
+     * quel.
      */
     public static function finAffichee(int $bannedUntil, ?string $origine): int
     {
-        if ($origine !== 'auto' || $bannedUntil <= 0 || self::estSansFin($bannedUntil)) {
-            return $bannedUntil;
+        return $origine === 'auto' ? self::arrondirFin($bannedUntil) : $bannedUntil;
+    }
+
+    /**
+     * La fin d'un ban automatique, portée au multiple suivant de
+     * `arrondiFinBanSecondes` (UTC) : sa fin moins son palier redonnerait la
+     * seconde du vote décisif, par la page comme par l'instant où le compte
+     * revote. Aucun ban, ou un ban sans fin, passe tel quel.
+     */
+    private static function arrondirFin(int $fin): int
+    {
+        $pas = self::config()->arrondiFinBanSecondes;
+        if ($fin <= 0 || self::estSansFin($fin)) {
+            return $fin;
         }
 
-        return intdiv($bannedUntil + 3599, 3600) * 3600;
+        return intdiv($fin + $pas - 1, $pas) * $pas;
     }
 
     /**
@@ -110,12 +122,14 @@ class Moderate
     public const DUREE_MAX = 3_155_760_000;
 
     /**
-     * Ce qu'un plafond de votant compte : ses votes qui portent, et ceux qu'un
-     * croisement ou sa trêve ont fait tomber. Sans eux, chaque vote croisé
-     * rendait sa place, et un membre qui riposte contre chacun de ses critiques
-     * n'avait plus aucune borne.
+     * Un vote exprimé, en filtre SQL sur `mod_votes` : un vote qui porte, ou
+     * qu'un croisement ou sa trêve ont fait tomber. Les plafonds de son auteur
+     * le comptent — sans quoi un membre qui riposte contre chacun de ses
+     * critiques n'aurait aucune borne —, sa cible en lit le motif, et le graphe
+     * de meute le garde. Public : une page de l'hôte qui compte des votes reçus
+     * compte les mêmes.
      */
-    private const COMPTE_AU_PLAFOND = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))";
+    public const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))";
 
     /**
      * Une durée en clair : l'unité suit l'ordre de grandeur, et la durée n'est
@@ -1187,7 +1201,7 @@ class Moderate
         // Anti upvote-farming : >3 upvotes voter→author sur 60j
         if ($value === 1) {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = 1 AND ' . self::COMPTE_AU_PLAFOND . ' AND created_at >= ?'
+                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = 1 AND ' . self::VOTE_EXPRIME . ' AND created_at >= ?'
             );
             $stmt->execute([$voterId, $author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
@@ -1202,7 +1216,7 @@ class Moderate
         // votant patient érode une réputation message après message.
         if ($value === -1) {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND ' . self::COMPTE_AU_PLAFOND . ' AND created_at >= ?'
+                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND ' . self::VOTE_EXPRIME . ' AND created_at >= ?'
             );
             $stmt->execute([$voterId, $author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
@@ -1218,7 +1232,7 @@ class Moderate
         if ($value === -1) {
             $stmt = $pdo->prepare(
                 'SELECT COUNT(DISTINCT target_author) AS cibles, MAX(target_author = ?) AS deja
-                   FROM mod_votes WHERE voter_id = ? AND value = -1 AND ' . self::COMPTE_AU_PLAFOND . ' AND created_at >= ?'
+                   FROM mod_votes WHERE voter_id = ? AND value = -1 AND ' . self::VOTE_EXPRIME . ' AND created_at >= ?'
             );
             $stmt->execute([$author, $voterId, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             $portee = $stmt->fetch();
@@ -1285,7 +1299,7 @@ class Moderate
      *
      * Aucune peine n'est levée : un croisement n'est pas une injustice réparée,
      * et une peine causée entre-temps reste à l'arbitre. Les deux votes restent
-     * comptés dans les plafonds de leur auteur (`COMPTE_AU_PLAFOND`).
+     * comptés dans les plafonds de leur auteur (`VOTE_EXPRIME`).
      *
      * @return 'treve'|'vote_croise'|null la raison qui fait tomber le vote, ou null s'il porte
      */
@@ -1534,8 +1548,10 @@ class Moderate
         $minLies = (int) self::config()->meuteLiensMin;
         // Un vote déjà annulé pour meute reste dans le graphe : son auteur relie
         // encore ceux qui ne se connaissent qu'à travers lui. Sans lui, une
-        // chaîne A–B–C dont B a été annulé laisserait C garder son vote.
-        $enJeu = "value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')";
+        // chaîne A–B–C dont B a été annulé laisserait C garder son vote. Un vote
+        // croisé, ou tombé pendant sa trêve, y reste aussi : une meute de deux
+        // dont l'un a été croisé n'obtient pas plus qu'un membre seul.
+        $enJeu = "value = -1 AND (" . self::VOTE_EXPRIME . " OR blocked_reason = 'pack_voting')";
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
              WHERE $enJeu AND created_at >= ?$surCible
@@ -1796,7 +1812,8 @@ class Moderate
      * début de la peine que le compte portait alors.
      *
      * Un vote croisé (`croiser()`) rend son point par le même chemin, mais
-     * `$leverLaPeine` à faux : il ne lève aucune peine.
+     * `$leverLaPeine` à faux : il ne lève aucune peine et ne ferme aucune
+     * convalescence — il rend le point, et le droit de vote s'il revient.
      *
      * @param int[] $voteIds
      */
@@ -1862,8 +1879,9 @@ class Moderate
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
-        // pour une faute annulée.
-        if ($rep['reputation'] >= self::config()->entreeConvalescenceSous()) {
+        // pour une faute annulée. Un croisement n'annule aucune faute : il rend
+        // son point, et la convalescence suit son cours, signal compris.
+        if ($leverLaPeine && $rep['reputation'] >= self::config()->entreeConvalescenceSous()) {
             $pdo->prepare('UPDATE member_moderation SET convalescent = 0 WHERE account_id = ?')
                 ->execute([$author]);
             // Seul le signalement que la chute a provoqué s'en va avec elle. Une
@@ -2591,7 +2609,7 @@ class Moderate
 
         $episode = (int) $etat['strikes'] + 1;
         $duree   = self::config()->dureeBanPourEpisode($episode);
-        $jusqua  = $maintenant + $duree;
+        $jusqua  = self::arrondirFin($maintenant + $duree);
         $signaux = self::signauxDe($pdo, $accountId);
         self::exigerAucunePeineOuverte($pdo, $accountId);
 
@@ -2836,19 +2854,26 @@ class Moderate
      * Liste des votes bloqués. Rend le votant ET sa cible : vue d'arbitrage, et
      * le contraire de ce que reasonsFor() protège juste en dessous. Un appelant
      * qui la sert sans contrôle d'accès publie qui a voté contre qui.
+     *
+     * `$saufRaisons` écarte ces raisons dans la requête, avant la limite : une
+     * page publique qui les retirerait après verrait son compte baisser à chaque
+     * vote écarté, et le daterait.
+     *
+     * @param string[] $saufRaisons
      */
-    public static function blockedVotes(PDO $pdo, int $limit = 30): array
+    public static function blockedVotes(PDO $pdo, int $limit = 30, array $saufRaisons = []): array
     {
-        $stmt = $pdo->prepare('
+        $sauf = $saufRaisons === [] ? '' : ' AND v.blocked_reason NOT IN (' . implode(',', array_fill(0, count($saufRaisons), '?')) . ')';
+        $stmt = $pdo->prepare("
             SELECT v.id, v.target_type, v.target_id, v.value, v.blocked_reason, v.created_at,
                    voter.username AS voter, auth.username AS cible
               FROM mod_votes v
               JOIN accounts voter ON voter.id = v.voter_id
               JOIN accounts auth ON auth.id = v.target_author
-             WHERE v.blocked = 1
+             WHERE v.blocked = 1$sauf
              ORDER BY v.created_at DESC LIMIT ?
-        ');
-        $stmt->execute([$limit]);
+        ");
+        $stmt->execute([...array_map('strval', array_values($saufRaisons)), $limit]);
         return $stmt->fetchAll();
     }
 
@@ -2870,7 +2895,9 @@ class Moderate
      */
     public static function reasonsFor(PDO $pdo, int $accountId, int $limit = 50): array
     {
-        $recus = "FROM mod_votes WHERE target_author = ? AND blocked = 0 AND reason IS NOT NULL AND reason <> ''";
+        // Le motif d'un vote croisé, ou tombé pendant sa trêve, reste à sa cible :
+        // le retirer lui dirait lequel venait de l'autre.
+        $recus = "FROM mod_votes WHERE target_author = ? AND " . self::VOTE_EXPRIME . " AND reason IS NOT NULL AND reason <> ''";
         // Sous ce nombre de votants, un motif peut désigner son auteur : rien n'est rendu.
         if (self::config()->motifsVotantsMin > 1) {
             $votants = $pdo->prepare("SELECT COUNT(DISTINCT voter_id) $recus");

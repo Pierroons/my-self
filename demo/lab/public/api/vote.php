@@ -19,11 +19,9 @@ $reason     = isset($body['reason']) ? (string) $body['reason'] : null;
 $reasonCode = isset($body['reason_code']) ? (string) $body['reason_code'] : null;
 
 $result = Moderate::applyVote($pdo, (int) $acc['id'], $targetType, $targetId, $value, $reason, $reasonCode);
-// Le score à jour rafraîchit la page sans la recharger — pour un vote qui porte
-// seulement : celui d'un vote tombé, inchangé, dirait au votant ce qu'en a fait le
-// moteur. La raison reste au moteur et à l'arbitre.
-if ($result['ok'] && empty($result['blocked'])) {
-    $result['score'] = Moderate::score($pdo, $targetType, $targetId);
-}
-unset($result['blocked_reason']);
-json_out($result, $result['ok'] ? 200 : 400);
+// La réponse est la même pour tout vote qui passe : `ok` et le message. `blocked`,
+// sa raison ou le score à jour diraient au votant ce qu'en a fait le moteur — et,
+// pour un vote croisé, que sa cible venait de voter contre lui. Seuls les plafonds
+// du votant ont leur message : ils portent sur sa propre conduite. Le score se lit
+// au rechargement.
+json_out(['ok' => (bool) $result['ok'], 'message' => (string) $result['message']], $result['ok'] ? 200 : 400);

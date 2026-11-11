@@ -81,6 +81,10 @@ final class Config
      *                                        cette fenêtre se croisent : les deux votes sont
      *                                        annulés. La même durée fait ensuite la trêve, où
      *                                        aucun des deux ne vote plus contre l'autre.
+     * @param int      $arrondiFinBanSecondes La fin d'un ban automatique se pose au multiple
+     *                                        suivant de cette durée (UTC) : sa fin moins son
+     *                                        palier redonnerait la seconde du vote décisif.
+     *                                        1 la laisse exacte ; au plus un jour.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -110,6 +114,7 @@ final class Config
         public readonly int $messagesPourVoterAvantAge = 1,
         public readonly int $motifsVotantsMin = 1,
         public readonly int $fenetreCroiseeSecondes = 600,
+        public readonly int $arrondiFinBanSecondes = 60,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -145,6 +150,9 @@ final class Config
         if ($this->fenetreCroiseeSecondes < 1 || $this->fenetreCroiseeSecondes > Moderate::DUREE_MAX) {
             throw new InvalidArgumentException('fenetreCroiseeSecondes est une durée : strictement positive, et d\'au plus un siècle (Moderate::DUREE_MAX).');
         }
+        if ($this->arrondiFinBanSecondes < 1 || $this->arrondiFinBanSecondes > 86400) {
+            throw new InvalidArgumentException('arrondiFinBanSecondes est un pas d\'arrondi : 1 seconde au moins, un jour au plus.');
+        }
     }
 
     /** Les valeurs raccourcies, pour qu'une démonstration tienne dans une séance. */
@@ -162,6 +170,7 @@ final class Config
             dureesBan: [86400, 604800, 2592000],
             intervalleConvalescenceSecondes: 604800,
             fenetreCroiseeSecondes: 259200,
+            arrondiFinBanSecondes: 3600,
         );
     }
 

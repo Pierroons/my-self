@@ -908,8 +908,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 49/49 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 49 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 53/53 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 53 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
@@ -3733,8 +3733,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 236/236 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 236 contrôles"; exit 1; }
+          grep -qx '✅ 245/245 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 245 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3745,8 +3745,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 236/236 contrôles passés' <<< "$sortie" \
-            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 236 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          grep -qx '✅ 245/245 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 245 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3902,18 +3902,20 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 236/236 contrôles passés' <<< "$sortie" \
-            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 236 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
-          # Le croisement, sa trêve et ses plafonds dans le moteur ; la route de vote, la
-          # page publique, la fin d'un ban et le blocage des messages dans le lab. Chaque
+          grep -qx '✅ 245/245 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 245 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, le graphe
+          # de meute et la fin réelle d'un ban dans le moteur ; la route de vote, la page
+          # publique, les votes reçus, les fins de ban et le blocage dans le lab. Chaque
           # fichier est restauré avant la plantation suivante ; chaque plantation est
           # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
-          FICHIERS="bi-self/selfmoderate/src/Moderate.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php demo/lab/public/profile.php"
+          FICHIERS="bi-self/selfmoderate/src/Moderate.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php demo/lab/public/profile.php demo/lab/lib/forum.php demo/lab/lib/profile.php"
           for f in $FICHIERS; do cp "$f" "/tmp/croise.$(tr / _ <<< "$f").intact"; done
           restaurer() { for f in $FICHIERS; do cp "/tmp/croise.$(tr / _ <<< "$f").intact" "$f"; done; }
           echecs=0
-          cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_bloque raison_route publique
-                     emis fin_exacte refus_exact profil blocage_envoi blocage_masque"
+          cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_rendu route_brute publique
+                     limite_publique emis fin_exacte refus_exact profil blocage_envoi envoi_en_vol blocage_masque
+                     convalescence motifs_croises recus fin_reelle meute_croisee forum_fin profil_save_fin"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
           import os
@@ -3923,11 +3925,20 @@ jobs:
           F = 'demo/lab/lib/moderate.php'
           D = 'demo/lab/lib/dm.php'
           P = 'demo/lab/public/profile.php'
+          FO = 'demo/lab/lib/forum.php'
+          LP = 'demo/lab/lib/profile.php'
           CROISE = "✗ ⭐ le croisement rate"
           TREVE = "✗ ⭐ la trêve ou les plafonds ratent"
           ROUTE = "✗ ⭐ la route de vote dit le sort d'un vote croisé"
           FIN = "✗ ⭐ la fin d'un ban redonne l'instant du vote décisif"
           BLOC = "✗ ⭐ un blocage laisse un message entrer dans dm, ou efface"
+          REFUS = "✗ ⭐ un refus du lab dit la fin exacte d'un ban automatique"
+          RENDU = "json_out(['ok' => (bool) $result['ok'], 'message' => (string) $result['message']], $result['ok'] ? 200 : 400);"
+          LISTE = "$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'treve']);"
+          GARDE = "                                 WHERE (bloqueur_id = ? AND bloque_id = ?) OR (bloqueur_id = ? AND bloque_id = ?))'\n"
+          SANS_GARDE = "                                 WHERE 0 AND ((bloqueur_id = ? AND bloque_id = ?) OR (bloqueur_id = ? AND bloque_id = ?)))'\n"
+          INSERTION = ("        $insert = $pdo->prepare(\n            'INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at)\n"
+                       "             SELECT ?, ?, ?, ?\n              WHERE NOT EXISTS (SELECT 1 FROM dm_blocages\n")
           f, avant, apres, attendu = {
               'treve':        (M, "        if ($enTreve) {\n            return 'treve';\n        }\n", "", TREVE),
               'croisement':   (M, "            $croise = self::croiser($pdo, $voterId, $author);", "            $croise = null;", CROISE),
@@ -3935,26 +3946,42 @@ jobs:
                                   "        $pdo->prepare(\"UPDATE mod_votes SET blocked = 1, blocked_reason = 'vote_croise' WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?\")\n"
                                   "            ->execute([$cible, $votant, $depuis]);\n",
                                "✗ ⭐ le croisement déborde de sa règle"),
-              'plafonds':     (M, "private const COMPTE_AU_PLAFOND = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))\";",
-                                  "private const COMPTE_AU_PLAFOND = \"(blocked = 0)\";", TREVE),
+              'plafonds':     (M, "public const VOTE_EXPRIME = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))\";",
+                                  "public const VOTE_EXPRIME = \"(blocked = 0)\";", TREVE),
               'leve_la_peine': (M, "[(int) $vote], leverLaPeine: false);", "[(int) $vote], leverLaPeine: true);",
                                "✗ ⭐ un croisement lève une peine"),
               'user_vote':    (M, "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?'",
                                   "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ? AND blocked = 0'", CROISE),
               'message':      (M, "'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')]",
                                   "'blocked_reason' => $croise, 'message' => static::t('Vote croisé.')]", CROISE),
-              'score_bloque': (V, "if ($result['ok'] && empty($result['blocked'])) {", "if ($result['ok']) {", ROUTE),
-              'raison_route': (V, "unset($result['blocked_reason']);\n", "", ROUTE),
-              'publique':     (O, "array_filter($blocked, static fn (array $v): bool => !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true))",
-                                  "$blocked", "✗ ⭐ la page publique publie un croisement"),
+              'score_rendu':  (V, RENDU, RENDU.replace("(string) $result['message']]", "(string) $result['message'], 'score' => Moderate::score($pdo, $targetType, $targetId)]"), ROUTE),
+              'route_brute':  (V, RENDU, "json_out($result, $result['ok'] ? 200 : 400);", ROUTE),
+              'publique':     (O, LISTE, "$blocked = Moderate::blockedVotes($pdo, 30);", "✗ ⭐ la page publique publie un croisement"),
+              'limite_publique': (O, LISTE, "$blocked = array_values(array_filter(Moderate::blockedVotes($pdo, 30), static fn (array $v): bool => $estArbitre || !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true)));",
+                               "✗ ⭐ la page publique écarte les croisements après sa limite"),
               'emis':         (P, "$cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ?')", "$cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND blocked = 0')", ROUTE),
-              'fin_exacte':   (M, "        return intdiv($bannedUntil + 3599, 3600) * 3600;", "        return $bannedUntil;", FIN),
+              'fin_exacte':   (M, "        return $origine === 'auto' ? self::arrondirFin($bannedUntil) : $bannedUntil;", "        return $bannedUntil;", FIN),
               'refus_exact':  (M, "date('d/m/Y H:i', self::finAffichee($rep['banned_until'], $rep['ban_origine']))",
                                   "date('d/m/Y H:i', $rep['banned_until'])", FIN),
-              'profil':       (F, "self::finAffichee((int) $etat['banned_until'], $etat['ban_origine'] ?? null)", "(int) $etat['banned_until']",
-                               "✗ ⭐ le profil d'un banni dit la fin à la minute"),
-              'blocage_envoi': (D, "        if (self::aBloque($pdo, (int) $recipientId, $senderId)) {", "        if (false) {", BLOC),
+              'profil':       (F, "self::finAffichee((int) $etat['banned_until'], $etat['ban_origine'] ?? null)", "(int) $etat['banned_until']", FIN),
+              'blocage_envoi': (D, GARDE, SANS_GARDE, BLOC),
+              'envoi_en_vol': (D, INSERTION + GARDE, "        if (self::aBloque($pdo, (int) $recipientId, $senderId) || self::aBloque($pdo, $senderId, (int) $recipientId)) {\n"
+                                  "            return ['ok' => false, 'error' => 'bloque', 'message' => 'Ce membre ne reçoit pas tes messages.'];\n        }\n"
+                                  + INSERTION + SANS_GARDE, "✗ ⭐ un message en vol entre dans dm après le blocage"),
               'blocage_masque': (D, "               AND NOT EXISTS (SELECT 1 FROM dm_blocages b WHERE b.bloqueur_id = d.recipient_id AND b.bloque_id = d.sender_id)\n", "", BLOC),
+              'convalescence': (M, "        if ($leverLaPeine && $rep['reputation'] >= self::config()->entreeConvalescenceSous()) {",
+                                  "        if ($rep['reputation'] >= self::config()->entreeConvalescenceSous()) {", "✗ ⭐ un croisement ferme la convalescence"),
+              'motifs_croises': (M, "$recus = \"FROM mod_votes WHERE target_author = ? AND \" . self::VOTE_EXPRIME . \" AND reason IS NOT NULL AND reason <> ''\";",
+                                  "$recus = \"FROM mod_votes WHERE target_author = ? AND blocked = 0 AND reason IS NOT NULL AND reason <> ''\";",
+                               "✗ ⭐ le motif d'un vote croisé quitte la page de sa cible"),
+              'recus':        (P, "$cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . Moderate::VOTE_EXPRIME);",
+                                  "$cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');", "✗ ⭐ le compteur des votes reçus baisse au croisement"),
+              'fin_reelle':   (M, "        $jusqua  = self::arrondirFin($maintenant + $duree);", "        $jusqua  = $maintenant + $duree;",
+                               "✗ ⭐ la fin réelle d'un ban automatique redonne la seconde du vote"),
+              'meute_croisee': (M, "        $enJeu = \"value = -1 AND (\" . self::VOTE_EXPRIME . \" OR blocked_reason = 'pack_voting')\";",
+                                  "        $enJeu = \"value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')\";", "✗ ⭐ un vote croisé sort du graphe de meute"),
+              'forum_fin':    (FO, "            Moderate::finDeBan($etat)\n", "            date('d/m/Y H:i', (int) $etat['banned_until'])\n", REFUS),
+              'profil_save_fin': (LP, "            Moderate::finDeBan($etat)\n", "            date('d/m/Y H:i', (int) $etat['banned_until'])\n", REFUS),
           }[os.environ['CAS']]
           s = open(f, encoding='utf-8').read()
           assert s.count(avant) == 1, 'plantation impossible'
@@ -4452,8 +4479,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'chaine':    ("        $enJeu = \"value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')\";\n",
-                            "        $enJeu = \"value = -1 AND blocked = 0\";\n"),
+              'chaine':    ("        $enJeu = \"value = -1 AND (\" . self::VOTE_EXPRIME . \" OR blocked_reason = 'pack_voting')\";\n",
+                            "        $enJeu = \"value = -1 AND \" . self::VOTE_EXPRIME;\n"),
               'course':    ("'pack_voting' WHERE id = ? AND blocked = 0\");\n", "'pack_voting' WHERE id = ?\");\n"),
               'tiers':     ("            if ($neuf->fetchColumn() === false) {\n", "            if (false) {\n"),
               'migration': ("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes", "SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes"),
