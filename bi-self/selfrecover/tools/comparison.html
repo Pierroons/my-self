@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SelfRecover — Comparatif sécurité (Classique vs Lite vs Full)</title>
-    <meta name="description" content="Comparaison des 3 modèles de récupération de compte : reset par email classique, SelfRecover Lite (email + mot mémorisé HMAC), SelfRecover Full (sans email, diceware).">
+    <title>SelfRecover — Comparatif (classique, SelfRecover-Lite, SelfRecover)</title>
+    <meta name="description" content="Comparaison de trois façons de récupérer un compte : le reset par e-mail classique, SelfRecover-Lite (le lien et un appareil enregistré, jamais l'un sans l'autre) et SelfRecover (sans e-mail).">
     <style>
         :root {
             --bg: #0f1419; --panel: #1a2028; --text: #e8eaed; --muted: #9aa0a6;
@@ -110,66 +110,80 @@
 <body>
 <div class="container">
     <h1>📊 SelfRecover — Comparatif sécurité</h1>
-    <p class="subtitle">Trois approches de la récupération de compte, comparées côte à côte. Pour tout service où la sécurité des comptes compte vraiment.</p>
+    <p class="subtitle">Trois façons de récupérer un compte, comparées côte à côte : le reset par e-mail habituel, et les deux formes de SelfRecover.</p>
 
     <nav class="nav">
-        <a href="../docs/whitepaper-fr.md">📄 Whitepaper</a>
+        <a href="../docs/whitepaper-fr.md">📄 Whitepaper SelfRecover</a>
+        <a href="../../selfrecover-lite/docs/whitepaper-fr.md">📄 Whitepaper SelfRecover-Lite</a>
         <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">📦 GitHub</a>
     </nav>
 
     <div class="intro">
-        <strong>Pourquoi cette comparaison ?</strong> La récupération de compte par email est souvent le
-        maillon faible de l'authentification : un email compromis ou intercepté suffit à prendre le compte,
-        sans second facteur. SelfRecover propose <strong>deux paliers d'adoption progressive</strong> pour
-        durcir la récupération <em>sans refonte totale</em>.
-        <br><br><strong>Seul le mode Full est implémenté.</strong> La colonne Lite décrit une conception,
-        montrée en démonstration en v0.1.1 ; cette démonstration a été retirée le 18 août 2026.
+        <strong>Pourquoi cette comparaison ?</strong> La récupération de compte par e-mail est souvent le
+        maillon faible de l'authentification : qui lit la boîte obtient le compte. SelfRecover existe sous
+        <strong>deux formes, pour deux types de site</strong>. <strong>SelfRecover</strong> retire l'e-mail de la
+        récupération : il convient au site qui accepte de demander un secret à retenir. <strong>SelfRecover-Lite</strong>
+        garde l'e-mail et exige une seconde preuve : il convient au site qui garde l'e-mail, une boutique en ligne
+        par exemple.
+        <br><br><strong>Seul SelfRecover est implémenté.</strong> La colonne SelfRecover-Lite décrit une conception,
+        publiée dans son whitepaper ; aucune implémentation n'en est publiée. Un ancien mode « Lite », montré en
+        démonstration en v0.1.1 puis retiré le 18 août 2026, n'en partage ni le code ni le mécanisme.
     </div>
 
     <div class="grid3">
         <!-- CLASSIQUE -->
         <div class="col classique">
-            <div class="col-header">Reset email classique <span class="col-tag">FRAGILE</span></div>
-            <p style="font-size:0.85rem;color:var(--muted);">L'industrie standard depuis 20 ans. Email = preuve d'identité.</p>
+            <div class="col-header">Reset e-mail classique <span class="col-tag">FRAGILE</span></div>
+            <p style="font-size:0.85rem;color:var(--muted);">Le parcours habituel. L'e-mail vaut preuve d'identité.</p>
             <h3>Flux</h3>
-<div class="flow">1. User clique "mdp oublié"
-2. Site génère un token unique
-3. Mail envoyé avec lien :
-   site.fr/reset/{token}
-4. User clique le lien
-5. Site affiche form "nouveau pwd"
-6. User saisit le pwd → reset</div>
+<div class="flow">1. Le client clique
+   « mot de passe oublié »
+2. Le site génère un jeton
+3. Un e-mail part avec un lien :
+   site.fr/reset/{jeton}
+4. Le client ouvre le lien
+5. Le site demande un nouveau
+   mot de passe → reset</div>
             <h3>Postulat</h3>
-            <p style="font-size:0.85rem;">Quiconque a accès à l'email du compte peut le récupérer.</p>
-            <div class="col-summary">→ Email volé / intercepté = compte volé. Pas de second facteur. Phishing facile.</div>
+            <p style="font-size:0.85rem;">Quiconque a accès à l'e-mail du compte peut le récupérer.</p>
+            <div class="col-summary">→ E-mail lu par un autre = compte pris. Aucune seconde preuve.</div>
         </div>
 
         <!-- LITE -->
         <div class="col lite">
-            <div class="col-header">SelfRecover Lite <span class="col-tag">UPGRADE</span></div>
-            <p style="font-size:0.85rem;color:var(--muted);">Conserve SMTP + ajoute un mot mémorisé HMAC. <strong>Migration progressive</strong>.</p>
+            <div class="col-header">SelfRecover-Lite <span class="col-tag">CONCEPTION</span></div>
+            <p style="font-size:0.85rem;color:var(--muted);">Garde l'e-mail, et exige un appareil enregistré. Rien à retenir par défaut.</p>
             <h3>Flux</h3>
-<div class="flow">1. User clique "mdp oublié"
-2. Site génère token (email-link)
-   + salt cryptographique (15min)
-3. Mail envoyé avec lien
-4. User clique le lien
-5. Site demande nouveau pwd
-   + MOT MÉMORISÉ
-6. Browser calcule
-   HMAC(clé = mot_mémorisé,
-        message = salt)
-7. Serveur vérifie HMAC →
-   reset OK</div>
+<div class="flow">1. Le client clique
+   « mot de passe oublié »
+2. Un e-mail part avec un lien
+   et un code
+3. Le lien s'ouvre, ou le code
+   se tape, sur un navigateur
+   que le client a enregistré
+   (le « témoin » : un secret
+   aléatoire dans un cookie)
+4. Le lien + le témoin →
+   nouveau mot de passe
+5. Sans appareil enregistré :
+   le lien + un mot facultatif,
+   ou un humain du service
+   client, après un délai où
+   le titulaire est prévenu
+6. Une fenêtre de reprise
+   (14 jours par défaut) :
+   le titulaire dépossédé
+   revient par un appareil
+   d'avant</div>
             <h3>Postulat</h3>
-            <p style="font-size:0.85rem;">Email seul ≠ accès. Il faut aussi le mot mémorisé.</p>
-            <div class="col-summary">→ Email volé seul = INSUFFISANT. Le sel vient du jeton de reset, pas de l'adresse : la dérivation n'apporte ici aucun anti-hameçonnage. Compatibilité SMTP préservée.</div>
+            <p style="font-size:0.85rem;">L'e-mail seul ne suffit plus, l'appareil seul non plus : jamais l'un sans l'autre.</p>
+            <div class="col-summary">→ E-mail lu par un autre = insuffisant sans un appareil enregistré. Limite déclarée : le téléphone volé déverrouillé porte souvent le témoin et la boîte.</div>
         </div>
 
-        <!-- FULL -->
+        <!-- SELFRECOVER -->
         <div class="col full">
-            <div class="col-header">SelfRecover Full <span class="col-tag">CIBLE</span></div>
-            <p style="font-size:0.85rem;color:var(--muted);">Aucun email, aucun tiers. Split knowledge + diceware.</p>
+            <div class="col-header">SelfRecover <span class="col-tag">SANS E-MAIL</span></div>
+            <p style="font-size:0.85rem;color:var(--muted);">Aucun e-mail, aucun tiers. Split knowledge + diceware.</p>
             <h3>Flux</h3>
 <div class="flow">1. Niveau 1 : nom du compte
    + passphrase diceware
@@ -185,7 +199,7 @@
    lit des faits bruts</div>
             <h3>Postulat</h3>
             <p style="font-size:0.85rem;">Aucune dépendance externe. La récupération passe par ce que l'utilisateur détient, puis par un arbitre humain.</p>
-            <div class="col-summary">→ Zéro fournisseur SMTP. Zéro tiers. Un accès root au serveur contourne tout le protocole.</div>
+            <div class="col-summary">→ Zéro fournisseur d'envoi. Zéro tiers. Un accès root au serveur contourne tout le protocole.</div>
         </div>
     </div>
 
@@ -194,47 +208,65 @@
         <thead>
             <tr>
                 <th>Adversaire</th>
-                <th>Reset email classique</th>
-                <th>SelfRecover Lite</th>
-                <th>SelfRecover Full</th>
+                <th>Reset e-mail classique</th>
+                <th>SelfRecover-Lite (conception)</th>
+                <th>SelfRecover</th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td>Email intercepté seul</td>
-                <td class="ko">❌ Compte volé direct</td>
-                <td class="ok">✓ Bloqué (manque mot mémorisé)</td>
-                <td class="ok">✓ N/A (pas d'email)</td>
+                <td>Lien lu par un autre (e-mail transféré, scanner, interception)</td>
+                <td class="ko">❌ Compte pris</td>
+                <td class="ok">✓ Bloqué : il manque un appareil enregistré, ou le mot</td>
+                <td class="ok">✓ Sans objet (pas d'e-mail)</td>
             </tr>
             <tr>
-                <td>Phishing (faux site)</td>
-                <td class="ko">❌ Token réutilisable</td>
-                <td class="partial">~ Non couvert par la dérivation (sel du jeton, pas d'adresse)</td>
+                <td>Boîte mail prise (mot de passe de messagerie volé)</td>
+                <td class="ko">❌ Compte pris</td>
+                <td class="partial">~ Rien sans appareil ni mot ; reste le recours humain, après un délai où le titulaire est prévenu et peut s'opposer</td>
+                <td class="ok">✓ Sans objet (pas d'e-mail)</td>
+            </tr>
+            <tr>
+                <td>Hameçonnage (faux site, relais)</td>
+                <td class="ko">❌ Le lien se relaie</td>
+                <td class="ok">✓ Le témoin ne part pas vers un autre domaine, et aucun geste n'ouvre la session d'un autre appareil</td>
                 <td class="ok">✓ Bloqué en mode <code>hostname</code> (adresse lue par le navigateur)</td>
             </tr>
             <tr>
+                <td>Demandes en boucle (boîte inondée, quota d'envoi épuisé)</td>
+                <td class="partial">~ Variable selon l'implémentation</td>
+                <td class="ok">✓ Envois espacés par adresse ; aucun compteur ne bloque le compte visé ; le titulaire qui demande depuis son appareil passe avant</td>
+                <td class="ok">✓ Sans objet (pas d'e-mail)</td>
+            </tr>
+            <tr>
                 <td>Fuite base de données</td>
-                <td class="partial">~ Tokens fuités utilisables temporairement</td>
-                <td class="ok">✓ Secrets en Argon2id : un calcul Argon2id par essai</td>
+                <td class="partial">~ Jetons fuités utilisables temporairement</td>
+                <td class="ok">✓ Empreintes des témoins seules ; jeton du lien sans état, clé hors base ; mot en Argon2id avec un poivre hors base</td>
                 <td class="ok">✓ Secrets en Argon2id : un calcul Argon2id par essai</td>
             </tr>
             <tr>
-                <td>Fournisseur SMTP compromis</td>
-                <td class="ko">❌ Mass compromise possible</td>
-                <td class="ok">✓ SMTP seul ne suffit pas</td>
-                <td class="ok">✓ N/A (pas de SMTP)</td>
+                <td>Fournisseur d'envoi compromis</td>
+                <td class="ko">❌ Prise de comptes en masse possible</td>
+                <td class="ok">✓ L'e-mail seul ne suffit pas</td>
+                <td class="ok">✓ Sans objet (pas d'envoi)</td>
             </tr>
             <tr>
-                <td>Brute-force online</td>
-                <td class="partial">~ Variable selon implem</td>
-                <td class="ok">✓ Argon2id + rate-limit</td>
-                <td class="ok">✓ Argon2id + rate-limit + escalade L1/L2/L3</td>
+                <td>Essais en ligne (force brute)</td>
+                <td class="partial">~ Variable selon l'implémentation</td>
+                <td class="ok">✓ Jeton HMAC-SHA256 ; code : 5 essais comptés sur le témoin qui le tape, puis il meurt</td>
+                <td class="ok">✓ Argon2id + freins + escalade L1/L2/L3</td>
             </tr>
             <tr>
                 <td>Mot mémorisé / passphrase deviné seul</td>
                 <td class="ok">✓ N/A</td>
-                <td class="ok">✓ Bloqué (manque mail-link)</td>
-                <td class="ok">✓ Bloqué (manque le username + la passphrase L1)</td>
+                <td class="ok">✓ Bloqué (il manque le lien)</td>
+                <td class="ok">✓ Bloqué (il manque le nom du compte et la passphrase L1)</td>
+            </tr>
+            <tr>
+                <td>Téléphone volé déverrouillé</td>
+                <td class="ko">❌ La boîte suffit</td>
+                <td class="ko">❌ Limite déclarée : témoin et boîte dans la même poche. Le titulaire est prévenu, et revient par un autre appareil d'avant pendant la fenêtre, ou par le recours humain</td>
+                <td class="ok">✓ Le téléphone seul ne suffit pas : il faut aussi le mot mémorisé ou la passphrase</td>
             </tr>
             <tr>
                 <td>Compromission poste utilisateur (keylogger)</td>
@@ -253,31 +285,33 @@
 
     <h2>🛠 Implémentation comparée</h2>
     <table>
-        <thead><tr><th>Critère</th><th>Classique</th><th>Lite</th><th>Full</th></tr></thead>
+        <thead><tr><th>Critère</th><th>Classique</th><th>SelfRecover-Lite</th><th>SelfRecover</th></tr></thead>
         <tbody>
-            <tr><td>Migration depuis l'existant</td><td class="ok">N/A (statu quo)</td><td class="ok">Incrémentale (additif)</td><td class="partial">Refonte modérée</td></tr>
-            <tr><td>Dépendance fournisseur SMTP</td><td class="ko">Oui</td><td class="partial">Oui (mais ne suffit plus)</td><td class="ok">Aucune</td></tr>
-            <tr><td>Empreinte code (back)</td><td class="ok">Minimale</td><td class="ok">Faible</td><td class="partial">Modérée</td></tr>
-            <tr><td>Empreinte code (front)</td><td class="ok">Minimale</td><td class="ok">Faible</td><td class="partial">Modérée</td></tr>
-            <tr><td>Friction utilisateur</td><td class="ok">Minimale (1 click email)</td><td class="partial">Faible (1 mot à retenir)</td><td class="ko">Modérée (passphrase de 6 mots, sur papier)</td></tr>
-            <tr><td>Audit cryptographique</td><td class="partial">Variable</td><td class="ok">Simple (HMAC + Argon2id)</td><td class="ok">Documenté, AGPL</td></tr>
-            <tr><td>Primitives cryptographiques</td><td class="partial">Variable selon l'implémentation</td><td class="ok">Standard (HMAC + Argon2id)</td><td class="ok">Standard (HMAC + Argon2id + diceware EFF)</td></tr>
+            <tr><td>État</td><td class="ok">Partout</td><td class="partial">Conception publiée, non implémentée</td><td class="ok">Implémenté, AGPL</td></tr>
+            <tr><td>Migration depuis l'existant</td><td class="ok">N/A (statu quo)</td><td class="ok">Additive : le « mot de passe oublié » reste, durci</td><td class="partial">Refonte modérée : l'e-mail sort de la récupération</td></tr>
+            <tr><td>Dépendance au fournisseur d'envoi</td><td class="ko">Oui</td><td class="partial">Oui (mais ne suffit plus)</td><td class="ok">Aucune</td></tr>
+            <tr><td>Empreinte code (serveur)</td><td class="ok">Minimale</td><td class="partial">Modérée (bibliothèque PHP, sans démon ni tâche planifiée)</td><td class="partial">Modérée</td></tr>
+            <tr><td>Empreinte code (navigateur)</td><td class="ok">Minimale</td><td class="ok">Faible (une question à l'enregistrement, une page « mes appareils »)</td><td class="partial">Modérée</td></tr>
+            <tr><td>Friction utilisateur</td><td class="ok">Minimale (1 clic dans l'e-mail)</td><td class="ok">Faible : rien à retenir par défaut ; plus long sans appareil enregistré</td><td class="ko">Modérée (passphrase de 6 mots, sur papier)</td></tr>
+            <tr><td>Primitives cryptographiques</td><td class="partial">Variable selon l'implémentation</td><td class="ok">Standard (HMAC-SHA256, Argon2id, secret aléatoire de 32 octets)</td><td class="ok">Standard (HMAC + Argon2id + diceware EFF)</td></tr>
         </tbody>
     </table>
 
-    <h2>📋 Stratégie d'adoption recommandée</h2>
-    <ol style="margin: 14px 0 24px 22px;">
-        <li><strong>Phase 1 — Coexistence</strong> : déployer SelfRecover Lite comme <em>option additionnelle</em> à côté du reset email classique. Le user qui l'active saisit son mot mémorisé à l'inscription. Ceux qui ne le font pas restent sur le mode classique.</li>
-        <li><strong>Phase 2 — Migration progressive</strong> : à chaque connexion, proposer aux users existants d'activer le mot mémorisé. Mesurer l'adoption.</li>
-        <li><strong>Phase 3 — Bascule majeure</strong> : rendre Lite obligatoire pour les nouveaux comptes et les opérations sensibles. Garder le mode classique en fallback dégradé.</li>
-        <li><strong>Phase 4 — Mode Full optionnel</strong> : pour les usages les plus critiques (admin, comptes sensibles), proposer SelfRecover Full sans aucun email.</li>
-    </ol>
+    <h2>📋 Quelle forme pour quel site</h2>
+    <p>Le choix se fait une fois, avant l'installation, entre trois formes. Chacune porte ses propres facteurs de récupération et refuse ceux des autres ; un compte relève d'une seule.</p>
+    <ul style="margin: 14px 0 24px 22px;">
+        <li><strong><code>clearweb</code> · Lite</strong> (SelfRecover-Lite) : le site garde l'e-mail, et ses clients ne retiendront pas un secret de plus — une boutique en ligne, un service grand public.</li>
+        <li><strong><code>clearweb</code> · Standard</strong> (SelfRecover) : le site accepte de retirer l'e-mail de la récupération — un forum, une communauté, un public technique.</li>
+        <li><strong><code>tor-onion</code></strong> (SelfRecover) : le service vit derrière un service caché. Lite n'y est pas proposé : un compte rattaché à une adresse e-mail est l'inverse de ce qu'on y cherche.</li>
+    </ul>
+    <p>SelfRecover-Lite n'est pas une étape vers SelfRecover : c'est la forme qui convient au site qui garde l'e-mail.</p>
 
     <div class="cta">
         <h3>Aller plus loin</h3>
-        <p>Le protocole est décrit dans le whitepaper ; le code est publié sous AGPL. Une instance de démonstration est déployée par ailleurs — voir le README du module pour son adresse.</p>
+        <p>Les deux mécanismes sont décrits dans leurs whitepapers ; le code de SelfRecover est publié sous AGPL. Une instance de démonstration est déployée par ailleurs — voir le README du module pour son adresse.</p>
         <div class="cta-buttons">
-            <a class="cta-btn" href="../docs/whitepaper-fr.md">📄 Lire le whitepaper</a>
+            <a class="cta-btn" href="../docs/whitepaper-fr.md">📄 Whitepaper SelfRecover</a>
+            <a class="cta-btn" href="../../selfrecover-lite/docs/whitepaper-fr.md">📄 Whitepaper SelfRecover-Lite</a>
             <a class="cta-btn secondary" href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">📦 Code source (AGPL)</a>
         </div>
     </div>

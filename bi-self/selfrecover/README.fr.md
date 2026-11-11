@@ -27,20 +27,20 @@ SelfRecover protège l'**authentification**. SelfDataGuard protège les **donné
 
 ---
 
-## Deux modes d'adoption — Full et Lite (v0.1.1)
+## Deux formes — SelfRecover et SelfRecover-Lite
 
-SelfRecover est conçu en deux variantes pour permettre une adoption progressive
-sans réécriture totale de la pile d'authentification existante. **Seul Full est implémenté
-dans la bibliothèque actuelle.** Lite a été publié en v0.1.1 sous forme de démonstration
-(tag signé `v0.1.1`) ; cette démonstration a été retirée le 18/08/2026, et la version
-actuelle ne contient aucun code Lite.
+SelfRecover existe sous deux formes, pour deux types de site, choisies une fois avant
+l'installation. **Seul SelfRecover est implémenté.** SelfRecover-Lite est une conception
+publiée dans [son whitepaper](../selfrecover-lite/docs/whitepaper-fr.md), sans implémentation
+à ce jour. Un ancien mode « Lite », montré en démonstration en v0.1.1 (tag signé `v0.1.1`)
+puis retiré le 18/08/2026, n'en partage ni le code ni le mécanisme.
 
-| Mode | Canal email | Crypto ajoutée | Quand le choisir |
-|------|-------------|----------------|------------------|
-| **Full** | Aucun | Passphrase diceware + HMAC par service | Projets greenfield, modèles de menace exigeants |
-| **Lite** (spécifié, non implémenté) | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
+| Forme | Canal e-mail | Ce qui s'ajoute | Pour quel site |
+|-------|--------------|-----------------|----------------|
+| **SelfRecover** (`clearweb` · Standard, ou `tor-onion`) | Aucun | Passphrase diceware + HMAC par service | Le site qui accepte de demander un secret à retenir : forum, communauté, public technique, service caché |
+| **SelfRecover-Lite** (`clearweb` · Lite ; conception, non implémentée) | Conservé | Un appareil enregistré (le « témoin »), exigé avec le lien ; sans appareil, un mot facultatif ou un recours humain | Le site qui garde l'e-mail : boutique en ligne, service grand public |
 
-**Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
+**Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (11 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
 
 ---
 

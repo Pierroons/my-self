@@ -10,6 +10,19 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover-Lite — le whitepaper est publié, avant tout code — 11 novembre 2026
+
+`bi-self/selfrecover-lite/` porte le whitepaper v1.0 (français et anglais, `.md` et `.docx`) et un README : la
+conception de SelfRecover-Lite, pour le site qui garde l'e-mail. Une récupération y exige le lien reçu par e-mail
+**et** un navigateur que le client a enregistré (le témoin) ; sans lui, un mot facultatif ou un recours humain, toujours
+avec le lien. Le document décrit le mécanisme, les variantes écartées, le modèle de menace, les limites et les
+antériorités. **Aucune implémentation n'est publiée** : le code viendra après le plan du module.
+
+Les textes de SelfRecover qui décrivaient l'ancien mode « Lite » de la v0.1.1 (retiré le 18 août 2026) sont réécrits :
+la section « Deux modes d'adoption » des README devient « Deux formes », le comparatif `tools/comparison.html` compare
+le reset classique, SelfRecover-Lite et SelfRecover sur 11 adversaires, la ligne 14 des whitepapers et la démo
+`bi-self-duo` renvoient à la nouvelle conception. Aucune version ne bouge.
+
 ### Outils de SelfRecover — l'ancienne copie de la porte « appareil » est retirée — 10 novembre 2026
 
 `bi-self/selfrecover/tools/reference/device_handlers.php` venait de la démo supprimée en août : rien ne l'incluait,

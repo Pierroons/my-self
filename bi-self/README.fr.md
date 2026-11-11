@@ -52,6 +52,7 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.13.4** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
+| [SelfRecover-Lite](./selfrecover-lite/) | Récupération par e-mail durcie, pour les sites qui gardent l'e-mail | conception publiée (whitepaper) — aucune implémentation |
 | [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.8.0 — moteur installable, ban automatique tracé au journal, une meute qui ne pèse pas plus qu'un membre seul, contrôles en CI ; 2 mécanismes du protocole manquent |
 
 ---

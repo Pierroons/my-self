@@ -27,20 +27,20 @@ SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**
 
 ---
 
-## Two adoption modes — Full and Lite (v0.1.1)
+## Two forms — SelfRecover and SelfRecover-Lite
 
-SelfRecover is designed in two flavors so legacy systems can adopt it progressively
-without an all-or-nothing rewrite of their authentication stack. **Only Full is implemented
-in the current library.** Lite was published in v0.1.1 as a demonstration (signed tag
-`v0.1.1`); that demonstration was removed on 2026-08-18, and the current version has no
-Lite code.
+SelfRecover comes in two forms, for two kinds of site, chosen once before installation.
+**Only SelfRecover is implemented.** SelfRecover-Lite is a design published in
+[its whitepaper](../selfrecover-lite/docs/whitepaper-en.md), with no implementation yet. An
+earlier "Lite" mode, shown as a demonstration in v0.1.1 (signed tag `v0.1.1`) and removed on
+2026-08-18, shares neither its code nor its mechanism.
 
-| Mode | Email channel | Crypto added | When to pick it |
-|------|---------------|--------------|-----------------|
-| **Full** | None at all | Diceware passphrase + HMAC-per-service | Greenfield projects, high-assurance threat models |
-| **Lite** (specified, not implemented) | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
+| Form | Email channel | What it adds | For which site |
+|------|---------------|--------------|----------------|
+| **SelfRecover** (`clearweb` · Standard, or `tor-onion`) | None at all | Diceware passphrase + HMAC-per-service | A site that accepts asking for a secret to remember: forum, community, technical audience, hidden service |
+| **SelfRecover-Lite** (`clearweb` · Lite; design, not implemented) | Kept | A registered device (the "witness"), required with the link; without one, an optional word or a human review | A site that keeps email: online shop, consumer service |
 
-**Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (8 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
+**Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (11 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
 
 ---
 
