@@ -2220,8 +2220,12 @@ class Moderate
      *   reste inconnu (`reprise = 1`) : l'arbitre, l'échéance d'avant une
      *   prolongation, un début non enregistré (`debut = 0`). Ses causes sont les
      *   votes dont l'effet est encore négatif à la reprise.
-     * - Une ligne ouverte sans ban : elle se ferme à l'instant de la reprise,
-     *   cause `hors_moteur` — l'instant réel de sa fin n'est pas connu.
+     * - Une ligne ouverte qui ne dit plus le ban en cours — aucun ban, ou un ban
+     *   d'un autre début (levé puis reposé hors du moteur) : elle se ferme à
+     *   l'instant de la reprise, cause `hors_moteur` ; l'instant réel de sa fin
+     *   n'est pas connu.
+     * - Une ligne ouverte dont l'échéance n'est plus celle du ban (prolongé hors du
+     *   moteur) reçoit l'échéance de l'état.
      */
     public static function migrerBans(PDO $pdo): int
     {
@@ -2230,7 +2234,8 @@ class Moderate
             $fermees = $pdo->prepare(
                 "UPDATE mod_peines SET fin = ?, fin_cause = 'hors_moteur'
                   WHERE fin IS NULL
-                    AND NOT EXISTS (SELECT 1 FROM member_moderation m WHERE m.account_id = mod_peines.account_id AND m.banned_until > 0)"
+                    AND NOT EXISTS (SELECT 1 FROM member_moderation m WHERE m.account_id = mod_peines.account_id
+                                       AND m.banned_until > 0 AND m.ban_debut = mod_peines.debut)"
             );
             $fermees->execute([$t]);
             $faites = $fermees->rowCount();
@@ -2261,8 +2266,15 @@ class Moderate
                 }
                 $faites++;
             }
+            $recalees = $pdo->prepare(
+                'UPDATE mod_peines
+                    SET echeance = (SELECT m.banned_until FROM member_moderation m WHERE m.account_id = mod_peines.account_id)
+                  WHERE fin IS NULL
+                    AND echeance <> (SELECT m.banned_until FROM member_moderation m WHERE m.account_id = mod_peines.account_id)'
+            );
+            $recalees->execute();
 
-            return $faites;
+            return $faites + $recalees->rowCount();
         });
     }
 
@@ -2541,17 +2553,36 @@ class Moderate
     }
 
     /**
+     * L'identifiant de l'arbitre est un entier, quel que soit le mode de l'appelant :
+     * hors `strict_types`, PHP convertirait `"1"`, `1.5` ou `true` en identifiant, et
+     * un nom fait de chiffres signerait au nom d'un autre compte.
+     */
+    private static function identifiantArbitre(mixed $arbitre): int
+    {
+        if (!is_int($arbitre)) {
+            throw new \TypeError(sprintf(
+                'SelfModerate : l\'arbitre d\'un geste se désigne par l\'identifiant entier de son compte (accounts.id), pas par %s.',
+                get_debug_type($arbitre)
+            ));
+        }
+
+        return $arbitre;
+    }
+
+    /**
      * L'arbitre d'un geste est un compte de l'hôte, désigné par son identifiant
-     * (`accounts.id`) : un nom se prend, un identifiant non. Un arbitre ne fait
-     * aucun geste sur son propre compte, ni aucun tant que sa propre peine court
-     * — sans quoi deux arbitres bannis se lèveraient l'un l'autre.
+     * (`accounts.id`) : un nom se prend, un identifiant non. Il ne fait aucun geste
+     * sur son propre compte, ni aucun tant qu'un **autre arbitre** l'a banni —
+     * sans quoi deux arbitres bannis se lèveraient l'un l'autre. Banni par la
+     * machine, il garde ses gestes : des votants ne coupent pas la modération. Lu
+     * sous le verrou du geste : un ban posé sur l'arbitre pendant ce geste est vu.
      *
      * @return array{id: int, nom: string}|string le compte, ou le refus
      */
     private static function arbitre(PDO $pdo, int $arbitre, int $accountId): array|string
     {
         $stmt = $pdo->prepare(
-            'SELECT a.id, a.username, COALESCE(m.banned_until, 0) AS banned_until
+            'SELECT a.id, a.username, COALESCE(m.banned_until, 0) AS banned_until, m.ban_origine
                FROM accounts a LEFT JOIN member_moderation m ON m.account_id = a.id
               WHERE a.id = ?'
         );
@@ -2564,7 +2595,7 @@ class Moderate
         if ((int) $compte['id'] === $accountId) {
             return static::t('Un arbitre ne fait aucun geste sur son propre compte.');
         }
-        if ((int) $compte['banned_until'] > self::maintenant()) {
+        if ((int) $compte['banned_until'] > self::maintenant() && $compte['ban_origine'] === 'admin') {
             return static::t('Un arbitre sous peine ne fait aucun geste d\'arbitre.');
         }
 
@@ -2755,15 +2786,18 @@ class Moderate
      * lève quand l'état cesse. L'acte dit laquelle était ouverte.
      *
      * `$arbitre` est le compte qui signe le geste, dans les six gestes d'arbitre :
-     * son identifiant, ou un nom qui en désigne un seul (`arbitre()`). Une durée
-     * de plus d'un siècle (`DUREE_MAX`) est refusée : ce ban-là se pose sans fin.
+     * son identifiant entier (`accounts.id`), vérifié à l'exécution — une chaîne
+     * lève une `TypeError`, même hors `strict_types` (`identifiantArbitre()`). Une
+     * durée de plus d'un siècle (`DUREE_MAX`) est refusée : ce ban-là se pose sans fin.
+     *
+     * @param int $arbitre
      *
      * @return array{ok: bool, message: string}
      */
     public static function adminBan(
         PDO $pdo,
         int $accountId,
-        int $arbitre,
+        mixed $arbitre,
         string $motif,
         ?int $seconds = null,
         bool $sansFin = false
@@ -2780,10 +2814,7 @@ class Moderate
         if ($inconnu !== null) {
             return $inconnu;
         }
-        $qui = self::arbitre($pdo, $arbitre, $accountId);
-        if (is_string($qui)) {
-            return ['ok' => false, 'message' => $qui];
-        }
+        $arbitreId = self::identifiantArbitre($arbitre);
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -2797,8 +2828,12 @@ class Moderate
         // qu'il était avant qu'un autre geste passe.
         self::rattraperSeul($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif, $seconds, $sansFin): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $seconds, $sansFin): array {
             $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
             if ($etat['banned']) {
                 return ['ok' => false, 'message' => self::estSansFin($etat['banned_until'])
                     ? static::t('Déjà banni sans fin : lève ce ban avant d\'en poser un autre.')
@@ -2884,7 +2919,7 @@ class Moderate
      *
      * @return array{ok: bool, message: string, anticipee?: bool}
      */
-    public static function adminPardon(PDO $pdo, int $accountId, int $arbitre, ?string $motif = null): array
+    public static function adminPardon(PDO $pdo, int $accountId, mixed $arbitre, ?string $motif = null): array
     {
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
@@ -2898,10 +2933,7 @@ class Moderate
         if ($inconnu !== null) {
             return $inconnu;
         }
-        $qui = self::arbitre($pdo, $arbitre, $accountId);
-        if (is_string($qui)) {
-            return ['ok' => false, 'message' => $qui];
-        }
+        $arbitreId = self::identifiantArbitre($arbitre);
         $motif = $motif !== null ? trim($motif) : '';
         if ($motif !== '') {
             [$motifOk, $pourquoi] = self::validateReason($motif);
@@ -2911,8 +2943,12 @@ class Moderate
         }
         self::rattraperSeul($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif): array {
             $etat       = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
             $enAttente  = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;
@@ -3004,7 +3040,7 @@ class Moderate
      *
      * @return array{ok: bool, message: string, anticipee?: bool}
      */
-    public static function adminLever(PDO $pdo, int $accountId, int $arbitre, ?string $motif = null): array
+    public static function adminLever(PDO $pdo, int $accountId, mixed $arbitre, ?string $motif = null): array
     {
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
@@ -3018,10 +3054,7 @@ class Moderate
         if ($inconnu !== null) {
             return $inconnu;
         }
-        $qui = self::arbitre($pdo, $arbitre, $accountId);
-        if (is_string($qui)) {
-            return ['ok' => false, 'message' => $qui];
-        }
+        $arbitreId = self::identifiantArbitre($arbitre);
         $motif = $motif !== null ? trim($motif) : '';
         if ($motif !== '') {
             [$motifOk, $pourquoi] = self::validateReason($motif);
@@ -3031,8 +3064,12 @@ class Moderate
         }
         self::rattraperSeul($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif): array {
             $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
             $enAttente = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;
@@ -3102,7 +3139,7 @@ class Moderate
     public static function adminProlonger(
         PDO $pdo,
         int $accountId,
-        int $arbitre,
+        mixed $arbitre,
         string $motif,
         int $secondes = 0,
         bool $sansFin = false
@@ -3119,10 +3156,7 @@ class Moderate
         if ($inconnu !== null) {
             return $inconnu;
         }
-        $qui = self::arbitre($pdo, $arbitre, $accountId);
-        if (is_string($qui)) {
-            return ['ok' => false, 'message' => $qui];
-        }
+        $arbitreId = self::identifiantArbitre($arbitre);
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
@@ -3132,8 +3166,12 @@ class Moderate
         }
         self::rattraperSeul($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif, $secondes, $sansFin): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $secondes, $sansFin): array {
             $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
             $enAttente = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;
@@ -3214,7 +3252,7 @@ class Moderate
      * @param array{signal: int, detections: int}|null $vu
      * @return array{ok: bool, message: string}
      */
-    public static function adminMaintenir(PDO $pdo, int $accountId, int $arbitre, string $motif, ?array $vu = null): array
+    public static function adminMaintenir(PDO $pdo, int $accountId, mixed $arbitre, string $motif, ?array $vu = null): array
     {
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
@@ -3228,18 +3266,19 @@ class Moderate
         if ($inconnu !== null) {
             return $inconnu;
         }
-        $qui = self::arbitre($pdo, $arbitre, $accountId);
-        if (is_string($qui)) {
-            return ['ok' => false, 'message' => $qui];
-        }
+        $arbitreId = self::identifiantArbitre($arbitre);
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
         self::rattraperSeul($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif, $vu): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $vu): array {
             $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
             if (!$etat['banned']) {
                 return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
             }
@@ -3288,7 +3327,7 @@ class Moderate
      * @param array{signal: int, detections: int}|null $vu
      * @return array{ok: bool, message: string}
      */
-    public static function adminClasser(PDO $pdo, int $accountId, int $arbitre, string $motif, ?array $vu = null): array
+    public static function adminClasser(PDO $pdo, int $accountId, mixed $arbitre, string $motif, ?array $vu = null): array
     {
         $sansTrace = self::refusSansJournal();
         if ($sansTrace !== null) {
@@ -3302,18 +3341,19 @@ class Moderate
         if ($inconnu !== null) {
             return $inconnu;
         }
-        $qui = self::arbitre($pdo, $arbitre, $accountId);
-        if (is_string($qui)) {
-            return ['ok' => false, 'message' => $qui];
-        }
+        $arbitreId = self::identifiantArbitre($arbitre);
         [$motifOk, $pourquoi] = self::validateReason($motif);
         if (!$motifOk) {
             return ['ok' => false, 'message' => $pourquoi];
         }
         self::rattraperSeul($pdo, $accountId);
 
-        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif, $vu): array {
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $vu): array {
             $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
             $enAttente = self::refusFinEnAttente($etat);
             if ($enAttente !== null) {
                 return $enAttente;

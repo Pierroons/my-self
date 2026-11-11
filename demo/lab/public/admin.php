@@ -24,15 +24,10 @@ if (!$account || empty($account['is_admin'])) {
     render_footer();
     exit;
 }
-// Un administrateur sous peine ne signe aucun geste d'arbitre (le moteur les refuse) :
-// la console lui est fermée aussi.
-if (Moderate::estBanni($pdo, (int) $account['id'])) {
-    http_response_code(403);
-    render_header('Espace', $account);
-    echo '<div class="card"><h1>403</h1><p class="muted">Un administrateur sous peine n\'a pas accès à la console.</p></div>';
-    render_footer();
-    exit;
-}
+// Banni par un autre arbitre, un administrateur ne signe aucun geste de modération (le
+// moteur les refuse) ; la console reste ouverte, et le lui dit.
+$monEtat = Moderate::getReputation($pdo, (int) $account['id']);
+$gestesSuspendus = $monEtat['banned'] && $monEtat['ban_origine'] === 'admin';
 
 $stats   = Admin::stats($pdo);
 $comptes = Admin::accounts($pdo);
@@ -179,6 +174,9 @@ table.adm tr:last-child td{border-bottom:none}
 <div class="card">
   <h2>⛔ Bans en cours <span class="muted" style="font-size:12px">(vote et publication bloqués ; messages privés ouverts)</span></h2>
   <p class="muted" style="margin-top:0;font-size:12.5px">
+    <?php if ($gestesSuspendus): ?>
+      <span style="color:var(--danger)">⚠ Tes gestes de modération sont suspendus tant que dure ton ban d'arbitre.</span><br>
+    <?php endif; ?>
     <?php if ($repriseManquante !== null): ?>
       <span style="color:var(--danger)">⚠ Les bans et les signalements ne peuvent pas s'afficher : <?= h($repriseManquante) ?></span><br>
     <?php endif; ?>
