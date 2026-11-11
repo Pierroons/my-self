@@ -16,6 +16,7 @@ if (!$account) {
 }
 $inbox = DM::inbox($pdo, (int) $account['id']);
 $sent = DM::sent($pdo, (int) $account['id']);
+$bloques = DM::bloques($pdo, (int) $account['id']);
 DM::markRead($pdo, (int) $account['id']);
 
 render_header(t('msg.title'), $account);
@@ -50,7 +51,25 @@ render_header(t('msg.title'), $account);
   </div>
 <?php endforeach; endif; ?>
 
+<?php if ($bloques): ?>
+<h2 style="margin-top:24px"><?= h(t('msg.blocked.h2')) ?> (<?= count($bloques) ?>)</h2>
+<p class="muted"><?= h(t('msg.blocked.note')) ?></p>
+<?php foreach ($bloques as $b): ?>
+  <div class="post" style="display:flex;justify-content:space-between;align-items:center">
+    <span class="auteur">@<?= h($b) ?></span>
+    <button class="btn btn-ghost js-debloquer" data-membre="<?= h($b) ?>" style="padding:4px 12px;font-size:12px"><?= h(t('msg.unblock')) ?></button>
+  </div>
+<?php endforeach; endif; ?>
+
 <script nonce="<?= nonce() ?>">
+document.querySelectorAll('.js-debloquer').forEach(function(b){
+  b.addEventListener('click', function(){
+    labPost('/api/dm_block.php',{action:'debloquer',membre:b.dataset.membre}).then(d=>{
+      if(d.ok){location.reload();}
+      else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||<?= json_encode(t('log.error')) ?>)+'</div>';}
+    });
+  });
+});
 function envoyer(){
   const dest=document.getElementById('dest').value.trim();
   const contenu=document.getElementById('contenu').value.trim();

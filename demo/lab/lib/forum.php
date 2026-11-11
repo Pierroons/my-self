@@ -79,7 +79,7 @@ final class Forum
         }
         return ['ok' => false, 'error' => 'compte_banni', 'message' => sprintf(
             'Compte banni jusqu\'au %s : la publication reprend à la fin de la peine.',
-            date('d/m/Y H:i', $etat['banned_until'])
+            Moderate::finDeBan($etat)
         )];
     }
 

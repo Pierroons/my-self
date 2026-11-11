@@ -110,6 +110,8 @@ $porteurs = [
                     ...deuxJeux('fenetreFarmingJours', (int) $m[2])]],
     ['README.fr.md', '/Et un votant ne vise pas plus de (\d+) membres distincts sur la même fenêtre \(`ciblesParVotantMax`\) : au-delà/u',
         fn ($m) => deuxJeux('ciblesParVotantMax', (int) $m[1])],
+    ['README.fr.md', '/\*\*Vote croisé\*\* : deux membres qui votent l\'un contre l\'autre en moins de \*\*(\d+) h\*\* en service, \*\*(\d+) min\*\* en démonstration \(`fenetreCroiseeSecondes`\)/u',
+        fn ($m) => [['fenetreCroiseeSecondes', 'prod', $m[1] * $h], ['fenetreCroiseeSecondes', 'demo', $m[2] * 60]]],
 
     ['README.md', '/^- Every user starts at \*\*(\d+)\*\* \(configurable\)$/mu',
         fn ($m) => deuxJeux('reputationInitiale', (int) $m[1])],
@@ -150,6 +152,8 @@ $porteurs = [
                     ...deuxJeux('fenetreFarmingJours', (int) $m[2])]],
     ['README.md', '/And a voter targets no more than (\d+) distinct members over the same window \(`ciblesParVotantMax`\): beyond that/u',
         fn ($m) => deuxJeux('ciblesParVotantMax', (int) $m[1])],
+    ['README.md', '/\*\*Crossed votes\*\*: two members who vote against each other within \*\*(\d+) hours\*\* in service, \*\*(\d+) minutes\*\* in demonstration \(`fenetreCroiseeSecondes`\)/u',
+        fn ($m) => [['fenetreCroiseeSecondes', 'prod', $m[1] * $h], ['fenetreCroiseeSecondes', 'demo', $m[2] * 60]]],
     ['README.fr.md', '/au \*\*(\d+)ᵉ ban d\'arbitre\*\* sur un même compte \(`bansArbitreSignal`\)/u',
         fn ($m) => deuxJeux('bansArbitreSignal', (int) $m[1])],
     ['README.md', '/at the \*\*(\d+)(?:st|nd|rd|th) arbiter ban\*\* on the same account \(`bansArbitreSignal`\)/u',

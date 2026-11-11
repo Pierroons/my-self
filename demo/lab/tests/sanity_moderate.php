@@ -902,10 +902,11 @@ Moderate::rangDe($pdo, $seulA) === 1 && $modSeulA['review_reason'] !== 'meute_re
 // lisant ses propres constantes pour tout le reste. `SANS_FIN` n'en est pas
 // un : c'est l'échéance sentinelle d'un ban sans fin, qu'aucune config ne règle.
 // `DUREE_MAX` non plus : c'est la plus longue échéance qui se lise encore comme
-// une échéance, et non comme `SANS_FIN`.
+// une échéance, et non comme `SANS_FIN`. `COMPTE_AU_PLAFOND` est un filtre SQL —
+// les votes qu'un plafond compte —, sans nombre à régler.
 $jumelles = array_values(array_filter(
     array_keys((new ReflectionClass(Moteur::class))->getConstants()),
-    static fn (string $c): bool => !str_starts_with($c, 'REASON_') && !in_array($c, ['SANS_FIN', 'DUREE_MAX'], true)
+    static fn (string $c): bool => !str_starts_with($c, 'REASON_') && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'COMPTE_AU_PLAFOND'], true)
 ));
 $jumelles === []
     ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
@@ -4375,8 +4376,16 @@ function requeteLab(array $serveur, string $chemin, ?string $session = null, ?st
 /** Une session d'arbitre, posée en base comme la connexion la pose : rend le jeton du cookie. */
 function sessionArbitre(PDO $pdo, string $nom): string
 {
+    return sessionMembre($pdo, $nom, arbitre: true);
+}
+
+/** Une session de membre, posée en base comme la connexion la pose : rend le jeton du cookie. */
+function sessionMembre(PDO $pdo, string $nom, bool $arbitre = false): string
+{
     $id = membre($pdo, $nom);
-    $pdo->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$id]);
+    if ($arbitre) {
+        $pdo->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$id]);
+    }
     // La forme qu'`Auth::estJeton()` accepte : 24 octets en hexadécimal.
     $jeton = bin2hex(random_bytes(24));
     $pdo->prepare('INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)')
@@ -6303,6 +6312,253 @@ $origines158 === ['auto', 'auto'] && $aLeveB158['ok'] && $bLeveA158['ok']
     : nok('⭐ la levée croisée de deux arbitres bannis par la machine ne tient pas ce que le README écrit : ' . json_encode([
         'origines' => $origines158, 'a_leve_b' => $aLeveB158, 'b_leve_a' => $bLeveA158, 'signes' => $signes158, 'bannis' => $libres158,
     ], JSON_UNESCAPED_UNICODE));
+
+// ── 159. ⭐ Deux membres qui votent l'un contre l'autre se croisent ─────────────
+// A vote contre B, puis B contre A dans la fenêtre, quel que soit le message : les
+// deux votes tombent dans la transaction du second, chacun rend son point, et une
+// trêve de la même durée suit. Les votes tombés comptent dans les plafonds, et le
+// croisement ne lève aucune peine.
+$t159 = time();
+Moderate::setHorloge(static function () use (&$t159): int { return $t159; });
+$journalAvant159 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$fenetre159 = Moderate::config()->fenetreCroiseeSecondes;
+$sorts159 = static function (int $de, int $vers) use ($pdo): array {
+    $s = $pdo->prepare('SELECT blocked, blocked_reason FROM mod_votes WHERE voter_id = ? AND target_author = ? ORDER BY id');
+    $s->execute([$de, $vers]);
+    return array_map(static fn (array $v): string => (int) $v['blocked'] ? (string) $v['blocked_reason'] : 'porte', $s->fetchAll());
+};
+$raison159 = static fn (array $r): string => !$r['ok'] ? 'refus : ' . $r['message'] : ($r['blocked_reason'] ?? 'porte');
+[$a159, $b159] = [membre($pdo, 'croise-a-159'), membre($pdo, 'croise-b-159')];
+poserReputation($pdo, $a159, 15);
+poserReputation($pdo, $b159, 15);
+$messagesA159 = [message($pdo, $a159, 'fil 159 a1'), message($pdo, $a159, 'fil 159 a2')];
+$messagesB159 = [message($pdo, $b159, 'fil 159 b1'), message($pdo, $b159, 'fil 159 b2'), message($pdo, $b159, 'fil 159 b3')];
+$premier159 = Moderate::applyVote($pdo, $a159, 'post', $messagesB159[0], -1, motif());
+$bApresLePremier159 = reputation($pdo, $b159);
+$t159 += 60;
+$riposte159 = Moderate::applyVote($pdo, $b159, 'post', $messagesA159[0], -1, motif());
+$croisement159 = [
+    'reputations' => [reputation($pdo, $a159), reputation($pdo, $b159)],
+    'b_apres_le_premier' => $bApresLePremier159,
+    'sorts' => [$sorts159($a159, $b159), $sorts159($b159, $a159)],
+    'reponses' => [$premier159['message'], $riposte159['message'], $riposte159['blocked'] ?? null],
+    'mes_votes' => [Moderate::userVote($pdo, $a159, 'post', $messagesB159[0]), Moderate::userVote($pdo, $b159, 'post', $messagesA159[0])],
+];
+$croisement159 === ['reputations' => [15, 15], 'b_apres_le_premier' => 14, 'sorts' => [['vote_croise'], ['vote_croise']],
+                    'reponses' => ['Vote enregistré.', 'Vote enregistré.', true], 'mes_votes' => [-1, -1]]
+    ? ok('⭐ deux membres qui votent l\'un contre l\'autre se croisent : les deux votes tombent dans la transaction du second, chacun rend son point, la réponse est celle d\'un vote compté, et chacun garde son vote sur sa page')
+    : nok('⭐ le croisement rate : ' . json_encode($croisement159, JSON_UNESCAPED_UNICODE));
+
+$t159 += 60;
+$treve159 = [
+    $raison159(Moderate::applyVote($pdo, $a159, 'post', $messagesB159[1], -1, motif())),
+    $raison159(Moderate::applyVote($pdo, $b159, 'post', $messagesA159[1], -1, motif())),
+];
+$repsTreve159 = [reputation($pdo, $a159), reputation($pdo, $b159)];
+$t159 += $fenetre159;   // la trêve court depuis le croisement : elle est passée
+$apresTreve159 = $raison159(Moderate::applyVote($pdo, $a159, 'post', $messagesB159[2], -1, motif()));
+$bApresTreve159 = reputation($pdo, $b159);
+// Trois votes de A contre B dans la fenêtre longue — tombé, tombé, compté : le plafond est plein.
+$plafond159 = $raison159(Moderate::applyVote($pdo, $a159, 'member', $b159, -1, motif()));
+$treve159 === ['treve', 'treve'] && $repsTreve159 === [15, 15] && $apresTreve159 === 'porte' && $bApresTreve159 === 14
+    && $plafond159 === 'downvote_farming'
+    ? ok('⭐ une trêve suit le croisement : pendant elle, aucun des deux ne vote contre l\'autre ; après elle, le vote porte ; et les votes tombés comptent dans les plafonds')
+    : nok('⭐ la trêve ou les plafonds ratent : ' . json_encode([
+        'treve' => $treve159, 'reputations' => $repsTreve159, 'apres' => $apresTreve159, 'b' => $bApresTreve159, 'plafond' => $plafond159,
+    ], JSON_UNESCAPED_UNICODE));
+
+[$c159, $d159] = [membre($pdo, 'hors-c-159'), membre($pdo, 'hors-d-159')];
+Moderate::applyVote($pdo, $c159, 'post', message($pdo, $d159, 'fil 159 d'), -1, motif());
+$t159 += $fenetre159 + 1;
+$horsFenetre159 = $raison159(Moderate::applyVote($pdo, $d159, 'post', message($pdo, $c159, 'fil 159 c'), -1, motif()));
+[$e159, $f159] = [membre($pdo, 'haut-e-159'), membre($pdo, 'haut-f-159')];
+Moderate::applyVote($pdo, $e159, 'member', $f159, 1);
+$haut159 = $raison159(Moderate::applyVote($pdo, $f159, 'member', $e159, -1, motif()));
+[$g159, $h159] = [membre($pdo, 'un-g-159'), membre($pdo, 'un-h-159')];
+poserReputation($pdo, $h159, 15);
+Moderate::applyVote($pdo, $g159, 'post', message($pdo, $h159, 'fil 159 h1'), -1, motif());
+$t159 += 10;
+Moderate::applyVote($pdo, $g159, 'post', message($pdo, $h159, 'fil 159 h2'), -1, motif());
+$t159 += 10;
+Moderate::applyVote($pdo, $h159, 'post', message($pdo, $g159, 'fil 159 g'), -1, motif());
+$unPourUn159 = [$sorts159($g159, $h159), reputation($pdo, $h159)];
+$horsFenetre159 === 'porte' && $haut159 === 'porte' && $unPourUn159 === [['porte', 'vote_croise'], 14]
+    ? ok('⭐ le croisement s\'en tient à sa règle : hors de la fenêtre rien ne se croise, un vote positif non plus, et un vote ne fait tomber qu\'un vote — le plus récent de l\'autre')
+    : nok('⭐ le croisement déborde de sa règle : ' . json_encode([
+        'hors_fenetre' => $horsFenetre159, 'positif' => $haut159, 'un_pour_un' => $unPourUn159,
+    ], JSON_UNESCAPED_UNICODE));
+
+// Aucune peine levée : banni par d'autres votes entre son contrôle et le verrou de son
+// vote, le membre qui riposte retrouve son point, pas sa liberté. (Le vote d'un banni
+// sous le verrou est une course que le lot suivant ferme ; la règle tient d'ici là.)
+$v159 = membre($pdo, 'riposte-v-159');
+poserReputation($pdo, $v159, 6);
+$face159 = membre($pdo, 'face-159');
+$messageFace159 = message($pdo, $face159, 'fil 159 face');
+Moderate::applyVote($pdo, $face159, 'post', message($pdo, $v159, 'fil 159 v'), -1, motif());
+$chute159 = array_map(static fn (int $i): int => membre($pdo, "chute-$i-159"), range(1, 5));
+$c159p = new PdoAPointDArret('sqlite:' . getenv('LAB_DB_PATH'));
+$c159p->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$c159p->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$c159p->avantLeVerrou = static function () use ($pdo, $v159, $chute159): void {
+    foreach ($chute159 as $votant) {
+        Moderate::applyVote($pdo, $votant, 'member', $v159, -1, motif());
+    }
+};
+$c159p->verrous = 0;
+try {
+    $riposteBannie159 = Moderate::applyVote($c159p, $v159, 'post', $messageFace159, -1, motif());
+} catch (Throwable $e) {
+    $riposteBannie159 = ['ok' => false, 'message' => get_class($e) . ' : ' . $e->getMessage()];
+}
+$verrous159 = $c159p->verrous;
+$c159p = null;
+$etatV159 = Moderate::getReputation($pdo, $v159);
+$faceSort159 = $sorts159($face159, $v159);
+if ($etatV159['banned']) {
+    Moderate::adminLever($pdo, $v159, idDe($pdo, 'arbitre-banc'), motif());
+}
+Moderate::setHorloge(null);
+Moderate::setJournal($journalAvant159);
+if ($verrous159 !== 1) {
+    nok('le contrôle 159 ne mesure plus rien : verrous pris par la riposte ' . $verrous159 . ', la chute n\'arrive plus juste avant le verrou');
+} else {
+    $etatV159['banned'] && $etatV159['ban_origine'] === 'auto' && $etatV159['strikes'] === 1 && $faceSort159 === ['vote_croise']
+        && $etatV159['reputation'] === 1
+        ? ok('⭐ un croisement ne lève aucune peine : banni entre son contrôle et le verrou, le membre qui riposte retrouve son point, pas sa liberté, et garde son strike')
+        : nok('⭐ un croisement lève une peine : ' . json_encode([
+            'riposte' => $riposteBannie159, 'etat' => [$etatV159['banned'], $etatV159['ban_origine'], $etatV159['strikes'], $etatV159['reputation']],
+            'vote_en_face' => $faceSort159,
+        ], JSON_UNESCAPED_UNICODE));
+}
+
+// ── 160. ⭐ La fin d'un ban automatique se montre à l'heure, « au plus tard » ──────
+// Elle moins son palier redonne l'instant du vote décisif : à la minute, elle le
+// livrait à qui recoupe les présences. Un ban d'arbitre, signé, reste à la minute.
+$heure160 = 1_800_000_000 - 1_800_000_000 % 3600;
+$fins160 = [
+    Moderate::finAffichee($heure160 + 1, 'auto') === $heure160 + 3600,
+    Moderate::finAffichee($heure160, 'auto') === $heure160,
+    Moderate::finAffichee($heure160 + 1, 'admin') === $heure160 + 1,
+    Moderate::finAffichee($heure160 + 1, null) === $heure160 + 1,
+    Moderate::finAffichee(Moderate::SANS_FIN, 'auto') === Moderate::SANS_FIN,
+    Moderate::finAffichee(0, 'auto') === 0,
+];
+$auto160 = membre($pdo, 'fin-auto-160');
+poserReputation($pdo, $auto160, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-160'), 'member', $auto160, -1, motif(), 'agressif');
+$etatAuto160 = Moderate::getReputation($pdo, $auto160);
+[$peutAuto160, $refusAuto160] = Moderate::canVote($pdo, $auto160);
+$attenduAuto160 = date('d/m/Y H:i', Moderate::finAffichee($etatAuto160['banned_until'], 'auto'));
+$arbitre160 = membre($pdo, 'fin-arbitre-160');
+poserReputation($pdo, $arbitre160, 15);
+Moderate::adminBan($pdo, $arbitre160, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+[$peutArbitre160, $refusArbitre160] = Moderate::canVote($pdo, $arbitre160);
+$attenduArbitre160 = date('d/m/Y H:i', Moderate::getReputation($pdo, $arbitre160)['banned_until']);
+Moderate::adminLever($pdo, $auto160, idDe($pdo, 'arbitre-banc'), motif());
+Moderate::adminLever($pdo, $arbitre160, idDe($pdo, 'arbitre-banc'), motif());
+!in_array(false, $fins160, true) && $etatAuto160['banned']
+    && !$peutAuto160 && str_contains($refusAuto160, $attenduAuto160 . ' au plus tard') && str_ends_with($attenduAuto160, ':00')
+    && !$peutArbitre160 && str_contains($refusArbitre160, $attenduArbitre160) && !str_contains($refusArbitre160, 'au plus tard')
+    ? ok('⭐ la fin d\'un ban automatique se montre à l\'heure pleine suivante, « au plus tard » — le refus du vote compris ; un ban d\'arbitre reste à la minute')
+    : nok('⭐ la fin d\'un ban redonne l\'instant du vote décisif : ' . json_encode([
+        'fins' => $fins160, 'auto' => [$peutAuto160, $refusAuto160, $attenduAuto160], 'arbitre' => [$peutArbitre160, $refusArbitre160, $attenduArbitre160],
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 161. ⭐ Le lab ne dit pas le sort d'un vote, et un blocage n'écrit rien dans dm ─
+// La route de vote, la page publique et le profil d'un banni sont les canaux par
+// lesquels le lab laissait lire un croisement ou l'instant d'un vote ; un message
+// reçu sous blocage ferait, dans `dm`, un lien entre un harceleur et sa victime.
+$journalAvant161 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$serveur161 = serveurLab();
+$sessionB161 = sessionMembre($pdo, 'route-b-161');
+$sessionC161 = sessionMembre($pdo, 'route-c-161');
+[$a161, $b161] = [membre($pdo, 'route-a-161'), idDe($pdo, 'route-b-161')];
+poserReputation($pdo, $a161, 15);
+poserReputation($pdo, $b161, 15);
+$messageA161 = message($pdo, $a161, 'fil 161 a');
+Moderate::applyVote($pdo, $a161, 'post', message($pdo, $b161, 'fil 161 b'), -1, motif());
+$voter161 = static function (string $session, int $post) use ($serveur161): array {
+    $csrf = csrfDeLaPage(requeteLab($serveur161, '/messages.php', $session)['corps']);
+    $r = requeteLab($serveur161, '/api/vote.php', $session, $csrf, ['target_type' => 'post', 'target_id' => $post, 'value' => -1, 'reason' => motif()]);
+    return [$r['code'], json_decode($r['corps'], true) ?? []];
+};
+[$codeCroise161, $croise161] = $voter161($sessionB161, $messageA161);
+[$codePorte161, $porte161] = $voter161($sessionC161, message($pdo, membre($pdo, 'route-d-161'), 'fil 161 d'));
+$codeCroise161 === 200 && ($croise161['ok'] ?? false) && !array_key_exists('score', $croise161)
+    && !array_key_exists('blocked_reason', $croise161) && ($croise161['message'] ?? '') === 'Vote enregistré.'
+    && $codePorte161 === 200 && array_key_exists('score', $porte161)
+    ? ok('⭐ la route de vote rend le score d\'un vote qui porte, pas celui d\'un vote croisé, et ne nomme pas sa raison')
+    : nok('⭐ la route de vote dit le sort d\'un vote croisé : ' . json_encode([$codeCroise161, $croise161, $codePorte161, $porte161], JSON_UNESCAPED_UNICODE));
+
+$publique161 = requeteLab($serveur161, '/moderation.php');
+$arbitrale161 = requeteLab($serveur161, '/moderation.php', sessionArbitre($pdo, 'arbitre-moderation-161'));
+$publique161['code'] === 200 && !str_contains($publique161['corps'], 'vote_croise') && !str_contains($publique161['corps'], 'treve')
+    && $arbitrale161['code'] === 200 && str_contains($arbitrale161['corps'], 'vote_croise')
+    ? ok('⭐ la page publique ne liste ni vote croisé ni trêve ; l\'arbitre les voit')
+    : nok('⭐ la page publique publie un croisement : ' . json_encode([
+        'publique' => [$publique161['code'], str_contains($publique161['corps'], 'vote_croise'), str_contains($publique161['corps'], 'treve')],
+        'arbitre' => [$arbitrale161['code'], str_contains($arbitrale161['corps'], 'vote_croise')],
+    ], JSON_UNESCAPED_UNICODE));
+
+$sessionE161 = sessionMembre($pdo, 'profil-e-161');
+$e161 = idDe($pdo, 'profil-e-161');
+poserReputation($pdo, $e161, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-161'), 'member', $e161, -1, motif(), 'agressif');
+$profilE161 = requeteLab($serveur161, '/profile.php', $sessionE161);
+// Les dates attendues, formées dans le fuseau des pages du lab.
+$finE161 = Moderate::getReputation($pdo, $e161)['banned_until'];
+$fuseauAvant161 = date_default_timezone_get();
+date_default_timezone_set('Europe/Paris');
+$arrondie161 = date('d/m/Y H:i', Moderate::finAffichee($finE161, 'auto')) . ' au plus tard';
+$exacte161 = date('d/m/Y H:i', $finE161);
+date_default_timezone_set($fuseauAvant161);
+Moderate::adminLever($pdo, $e161, idDe($pdo, 'arbitre-banc'), motif());
+$profilE161['code'] === 200 && substr_count($profilE161['corps'], $arrondie161) >= 2
+    && ($exacte161 . ' au plus tard' === $arrondie161 || !str_contains($profilE161['corps'], $exacte161))
+    ? ok('⭐ le profil d\'un compte banni par la machine dit la fin à l\'heure pleine, « au plus tard »')
+    : nok('⭐ le profil d\'un banni dit la fin à la minute : ' . json_encode([
+        $profilE161['code'], $arrondie161, $exacte161, substr_count($profilE161['corps'], $arrondie161),
+        preg_match_all('#\d{2}/\d{2}/\d{4} \d{2}:\d{2}[^<]{0,14}#u', $profilE161['corps'], $m161) ? $m161[0] : [],
+    ], JSON_UNESCAPED_UNICODE));
+
+$sessionX161 = sessionMembre($pdo, 'bloque-x-161');
+$sessionY161 = sessionMembre($pdo, 'bloque-y-161');
+[$x161, $y161] = [idDe($pdo, 'bloque-x-161'), idDe($pdo, 'bloque-y-161')];
+messagePrive($pdo, $x161, $y161);   // X a écrit à Y avant de le bloquer
+$csrfX161 = csrfDeLaPage(requeteLab($serveur161, '/messages.php', $sessionX161)['corps']);
+$csrfY161 = csrfDeLaPage(requeteLab($serveur161, '/messages.php', $sessionY161)['corps']);
+$bloquer161 = static fn (string $action): int => requeteLab($serveur161, '/api/dm_block.php', $sessionX161, $csrfX161,
+    ['action' => $action, 'membre' => 'bloque-y-161'])['code'];
+$ecrire161 = static function (string $session, ?string $csrf, string $a) use ($serveur161): array {
+    $r = requeteLab($serveur161, '/api/dm_send.php', $session, $csrf, ['destinataire' => $a, 'message' => 'Bonjour, une question sur ton message.']);
+    return [$r['code'], json_decode($r['corps'], true)['error'] ?? null];
+};
+$dmYX161 = static fn (): int => (int) $pdo->query("SELECT COUNT(*) FROM dm WHERE sender_id = $y161 AND recipient_id = $x161")->fetchColumn();
+$recusDeY161 = static fn (): int => count(array_filter(
+    json_decode(requeteLab($serveur161, '/api/dm_inbox.php', $sessionX161)['corps'], true)['inbox'] ?? [],
+    static fn (array $m): bool => $m['expediteur'] === 'bloque-y-161'
+));
+$blocage161 = ['bloquer' => $bloquer161('bloquer')];
+$blocage161['y_ecrit'] = $ecrire161($sessionY161, $csrfY161, 'bloque-x-161');
+$blocage161['x_ecrit'] = $ecrire161($sessionX161, $csrfX161, 'bloque-y-161');
+$blocage161['sous_blocage'] = [$dmYX161(), Moderate::areLinked($pdo, $x161, $y161)];
+$blocage161['debloquer'] = $bloquer161('debloquer');
+$blocage161['y_ecrit_apres'] = $ecrire161($sessionY161, $csrfY161, 'bloque-x-161');
+$blocage161['debloque'] = [$dmYX161(), Moderate::areLinked($pdo, $x161, $y161)];
+$blocage161['rebloquer'] = $bloquer161('bloquer');
+$blocage161['masque'] = [$recusDeY161(), $dmYX161()];
+$blocage161['redebloquer'] = $bloquer161('debloquer');
+$blocage161['revenu'] = $recusDeY161();
+arreterLab($serveur161);
+Moderate::setJournal($journalAvant161);
+$blocage161 === ['bloquer' => 200, 'y_ecrit' => [400, 'bloque'], 'x_ecrit' => [400, 'bloque'], 'sous_blocage' => [0, false],
+                 'debloquer' => 200, 'y_ecrit_apres' => [201, null], 'debloque' => [1, true],
+                 'rebloquer' => 200, 'masque' => [0, 1], 'redebloquer' => 200, 'revenu' => 1]
+    ? ok('⭐ un blocage refuse l\'envoi dans les deux sens sans rien écrire dans dm, masque ce qui était reçu sans l\'effacer, et se lève')
+    : nok('⭐ un blocage laisse un message entrer dans dm, ou efface : ' . json_encode($blocage161, JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

@@ -94,19 +94,22 @@ if ($account) { [$canVote, $whyNot] = Moderate::canVote($pdo, (int) $account['id
 <?php if ($account && $canVote) { render_vote_reason_dialog(); } ?>
 
 <script nonce="<?= nonce() ?>">
+const VOTE_ENREGISTRE = <?= json_encode(tc('Vote enregistré.')) ?>;
 function votePost(postId, value, reason, code){
   labPost('/api/vote.php',{target_type:'post',target_id:postId,value:value,reason:reason||null,reason_code:code||null}).then(d=>{
     if(d.ok){
-      const s=document.getElementById('score-'+postId);
-      s.textContent=d.score;
-      s.className='score '+(d.score>0?'pos':(d.score<0?'neg':''));
-      // désactive les 2 boutons (vote unique) + marque l'actif
-      document.querySelectorAll('.votebox[data-post="'+postId+'"] button').forEach(b=>b.disabled=true);
-      if(!d.blocked){
-        const btn=document.querySelector('.votebox[data-post="'+postId+'"] button[data-val="'+value+'"]');
-        if(btn)btn.classList.add('actif');
+      // Le score ne revient que d'un vote qui porte ; le bouton se marque, et la
+      // page reste la même, quel que soit le sort du vote (`userVote()`).
+      if(d.score!==undefined){
+        const s=document.getElementById('score-'+postId);
+        s.textContent=d.score;
+        s.className='score '+(d.score>0?'pos':(d.score<0?'neg':''));
       }
-      if(d.blocked){alert(d.message);}
+      document.querySelectorAll('.votebox[data-post="'+postId+'"] button').forEach(b=>b.disabled=true);
+      const btn=document.querySelector('.votebox[data-post="'+postId+'"] button[data-val="'+value+'"]');
+      if(btn)btn.classList.add('actif');
+      // Seul un plafond du votant se dit : il porte sur sa propre conduite.
+      if(d.message!==VOTE_ENREGISTRE){alert(d.message);}
     } else { alert(d.message||<?= json_encode(t('log.error')) ?>); }
   });
 }

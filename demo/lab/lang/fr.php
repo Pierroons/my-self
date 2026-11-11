@@ -413,6 +413,9 @@ return [
     'msg.sent'     => '📤 Envoyés',
     'msg.sent.none' => 'Aucun message envoyé.',
     'msg.to_prefix' => 'à',
+    'msg.blocked.h2' => '🚫 Comptes bloqués',
+    'msg.blocked.note' => 'Ils ne peuvent plus t\'écrire, et leurs messages ne s\'affichent plus ici. Rien n\'est effacé : ils reviennent si tu débloques.',
+    'msg.unblock'  => 'Débloquer',
 
     // ── Console SU ────────────────────────────────────────────────────────
     // ⚠️ Comme pour l'Attack Simulator, les réponses de l'API (capacités,
@@ -457,6 +460,8 @@ return [
     'prf.support'    => '▲ Soutenir',
     'prf.report'     => '▼ Signaler',
     'prf.voted'      => 'Tu as déjà voté (%s)',
+    'prf.block'      => '🚫 Bloquer ses messages',
+    'prf.unblock'    => 'Débloquer ses messages',
     'prf.rep.trust'  => 'Confiance',
     'prf.rep.member' => 'Membre établi',
     'prf.rep.frail'  => 'Réputation fragile',

@@ -414,6 +414,9 @@ return [
     'msg.sent'     => '📤 Sent',
     'msg.sent.none' => 'No message sent.',
     'msg.to_prefix' => 'to',
+    'msg.blocked.h2' => '🚫 Blocked accounts',
+    'msg.blocked.note' => 'They can no longer write to you, and their messages no longer show here. Nothing is deleted: they come back if you unblock.',
+    'msg.unblock'  => 'Unblock',
 
     // ── SU console ────────────────────────────────────────────────────────
     // ⚠️ As with the Attack Simulator, API responses (capabilities, terminal
@@ -458,6 +461,8 @@ return [
     'prf.support'    => '▲ Support',
     'prf.report'     => '▼ Report',
     'prf.voted'      => 'You already voted (%s)',
+    'prf.block'      => '🚫 Block their messages',
+    'prf.unblock'    => 'Unblock their messages',
     'prf.rep.trust'  => 'Trusted',
     'prf.rep.member' => 'Established member',
     'prf.rep.frail'  => 'Fragile reputation',

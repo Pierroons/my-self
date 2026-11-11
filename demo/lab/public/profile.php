@@ -4,12 +4,14 @@ require_once __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/profile.php';
 require_once __DIR__ . '/../lib/moderate.php';
 require_once __DIR__ . '/../lib/memo_vault.php';
+require_once __DIR__ . '/../lib/dm.php';
 require_once __DIR__ . '/../lib/layout.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Profile;
 use Pierroons\MySelfLab\Moderate;
 use Pierroons\MySelfLab\MemoVault;
+use Pierroons\MySelfLab\DM;
 use Pierroons\MySelfLab\Auth;
 
 $pdo = Db::pdo();
@@ -68,7 +70,7 @@ if ($voirUsername !== null) {
             ?>
           <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700"><?= $repTexte ?></span>
             <?php if ($voitLesSanctions): ?>
-              <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) ?></span><?php endif; ?>
+              <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(sprintf(t('prf.banned.until'), Moderate::finDeBan($rep))) ?></span><?php endif; ?>
               <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
               <?php if ($rep['convalescent']): ?><span style="color:#d4a056"> · <?= h(t('prf.convalescent')) ?></span><?php endif; ?>
             <?php endif; ?>
@@ -82,6 +84,8 @@ if ($voirUsername !== null) {
             <button class="btn btn-ghost js-votembr" data-mid="<?= $memberId ?>" data-val="-1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px"><?= h(t('prf.report')) ?></button>
             <?php if ($mine !== null): ?><span class="muted" style="margin-left:8px"><?= h(t('prf.voted', $mine === 1 ? '▲' : '▼')) ?></span><?php endif; ?>
             <?php if (!$canVote && $whyNot): ?><p class="muted" style="margin-top:8px">⚠ <?= h($whyNot) ?></p><?php endif; ?>
+            <?php $bloque = DM::aBloque($pdo, (int) $account['id'], $memberId); ?>
+            <p style="margin:10px 0 0"><button class="btn btn-ghost js-bloquer" data-membre="<?= h($vue['username']) ?>" data-action="<?= $bloque ? 'debloquer' : 'bloquer' ?>" style="padding:4px 12px;font-size:12px"><?= h(t($bloque ? 'prf.unblock' : 'prf.block')) ?></button></p>
           <?php endif; ?>
         </div>
         <div class="card">
@@ -103,6 +107,14 @@ const PRF = <?= $prfJs ?>;
             else{ document.getElementById('vmsg').innerHTML='<div class="toast err">'+(d.message||PRF.err)+'</div>'; }
           });
         }
+        document.querySelectorAll('.js-bloquer').forEach(function(b){
+          b.addEventListener('click', function(){
+            labPost('/api/dm_block.php',{action:b.dataset.action,membre:b.dataset.membre}).then(d=>{
+              if(d.ok){ location.reload(); }
+              else{ document.getElementById('vmsg').innerHTML='<div class="toast err">'+(d.message||PRF.err)+'</div>'; }
+            });
+          });
+        });
         document.querySelectorAll('.js-votembr').forEach(function(b){
           b.addEventListener('click', function(){
             const mid = +b.dataset.mid, val = +b.dataset.val;
@@ -194,14 +206,14 @@ render_header(t('prf.title'), $account);
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:13px">
     <div><span class="muted"><?= h(t('prf.mod.right')) ?></span><br><strong style="color:<?= $canVote ? 'var(--acc)' : 'var(--warn)' ?>"><?= $canVote ? t('prf.mod.active') : '✗ '. t($rep['voting_rights'] ? 'prf.mod.limited' : 'prf.mod.removed') ?></strong></div>
     <div><span class="muted"><?= h(t('prf.mod.strikes')) ?></span><br><strong><?= $rep['strikes'] ?></strong></div>
-    <div><span class="muted"><?= h(t('prf.mod.status')) ?></span><br><strong style="color:<?= $rep['banned'] ? 'var(--danger)' : 'var(--acc)' ?>"><?= $rep['banned'] ? h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) : t('prf.mod.st.active') ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.mod.status')) ?></span><br><strong style="color:<?= $rep['banned'] ? 'var(--danger)' : 'var(--acc)' ?>"><?= $rep['banned'] ? h(sprintf(t('prf.banned.until'), Moderate::finDeBan($rep))) : t('prf.mod.st.active') ?></strong></div>
   </div>
   <?php if ($rep['banned']): ?>
     <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d96459;background:var(--elev);border-radius:0 6px 6px 0">
       <strong style="color:#d96459"><?= h(t('prf.mod.ban.h')) ?></strong>
       <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(
           t('prf.mod.ban.txt'),
-          date('d/m/Y H:i', $rep['banned_until']),
+          Moderate::finDeBan($rep),
           $rep['ban_origine'] === 'auto' ? t('prf.mod.ban.auto') : (string) $rep['ban_motif']
       )) ?></p>
     </div>
@@ -267,7 +279,7 @@ render_header(t('prf.title'), $account);
 <?php $gele = $rep['banned'] ? ' disabled' : ''; ?>
 <div class="card" style="max-width:560px">
   <div id="msg"></div>
-  <?php if ($rep['banned']): ?><p class="muted" style="margin-top:0;color:#d96459"><?= h(sprintf(t('prf.edit.banni'), date('d/m/Y H:i', $rep['banned_until']))) ?></p><?php endif; ?>
+  <?php if ($rep['banned']): ?><p class="muted" style="margin-top:0;color:#d96459"><?= h(sprintf(t('prf.edit.banni'), Moderate::finDeBan($rep))) ?></p><?php endif; ?>
   <?php if ($profilIllisible): ?>
     <p style="color:var(--danger)"><?= h(t('prf.illisible')) ?></p>
     <label class="muted"><input type="checkbox" id="remplacer-illisible"> <?= h(t('prf.illisible.remplacer')) ?></label>

@@ -38,6 +38,14 @@ final class DM
         if ((int) $recipientId === $senderId) {
             return ['ok' => false, 'error' => 'self', 'message' => 'Tu ne peux pas t\'écrire à toi-même.'];
         }
+        // Rien n'entre dans `dm` entre deux membres dont l'un a bloqué l'autre :
+        // SelfModerate y lit les liens entre votants (`areLinked()`).
+        if (self::aBloque($pdo, (int) $recipientId, $senderId)) {
+            return ['ok' => false, 'error' => 'bloque', 'message' => 'Ce membre ne reçoit pas tes messages.'];
+        }
+        if (self::aBloque($pdo, $senderId, (int) $recipientId)) {
+            return ['ok' => false, 'error' => 'bloque', 'message' => 'Tu as bloqué ce membre : débloque-le pour lui écrire.'];
+        }
 
         $ciphertext = DataGuard::encrypt($message, DataGuard::contexteDm($pdo, $senderId, (int) $recipientId));
         $pdo->prepare(
@@ -102,6 +110,55 @@ final class DM
         }
     }
 
+    /** `$bloqueur` a-t-il bloqué `$bloque` ? */
+    public static function aBloque(PDO $pdo, int $bloqueur, int $bloque): bool
+    {
+        $stmt = $pdo->prepare('SELECT 1 FROM dm_blocages WHERE bloqueur_id = ? AND bloque_id = ?');
+        $stmt->execute([$bloqueur, $bloque]);
+        $oui = $stmt->fetchColumn() !== false;
+        $stmt->closeCursor();
+
+        return $oui;
+    }
+
+    /**
+     * Bloque ou débloque un membre, désigné par son identifiant public. Bloquer ne
+     * touche à aucun message : ceux déjà reçus ne s'affichent plus dans la boîte de
+     * qui bloque, et reviennent s'il débloque.
+     */
+    public static function bloquer(PDO $pdo, int $bloqueur, string $username, bool $bloquer = true): array
+    {
+        $stmt = $pdo->prepare('SELECT id FROM accounts WHERE username = ?');
+        $stmt->execute([strtolower(trim($username))]);
+        $bloque = $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($bloque === false) {
+            return ['ok' => false, 'error' => 'membre_inconnu', 'message' => 'Membre introuvable.'];
+        }
+        if ((int) $bloque === $bloqueur) {
+            return ['ok' => false, 'error' => 'self', 'message' => 'Tu ne peux pas te bloquer toi-même.'];
+        }
+        if ($bloquer) {
+            $pdo->prepare('INSERT OR IGNORE INTO dm_blocages (bloqueur_id, bloque_id, created_at) VALUES (?, ?, ?)')
+                ->execute([$bloqueur, (int) $bloque, time()]);
+        } else {
+            $pdo->prepare('DELETE FROM dm_blocages WHERE bloqueur_id = ? AND bloque_id = ?')->execute([$bloqueur, (int) $bloque]);
+        }
+
+        return ['ok' => true, 'bloque' => $bloquer];
+    }
+
+    /** Les identifiants publics des membres que `$bloqueur` a bloqués. @return list<string> */
+    public static function bloques(PDO $pdo, int $bloqueur): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT a.username FROM dm_blocages b JOIN accounts a ON a.id = b.bloque_id WHERE b.bloqueur_id = ? ORDER BY a.username'
+        );
+        $stmt->execute([$bloqueur]);
+
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     /** Boîte de réception : messages reçus par l'account, déchiffrés. */
     public static function inbox(PDO $pdo, int $accountId): array
     {
@@ -109,6 +166,7 @@ final class DM
             SELECT d.id, d.sender_id, d.ciphertext, d.created_at, d.lu, a.username AS expediteur
               FROM dm d JOIN accounts a ON a.id = d.sender_id
              WHERE d.recipient_id = ?
+               AND NOT EXISTS (SELECT 1 FROM dm_blocages b WHERE b.bloqueur_id = d.recipient_id AND b.bloque_id = d.sender_id)
              ORDER BY d.created_at DESC
         ');
         $stmt->execute([$accountId]);

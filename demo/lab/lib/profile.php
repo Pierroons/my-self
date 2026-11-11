@@ -124,7 +124,7 @@ final class Profile
         if ($etat['banned']) {
             return ['ok' => false, 'error' => 'compte_banni', 'message' => sprintf(
                 'Compte banni jusqu\'au %s : le profil public se modifie de nouveau à la fin de la peine.',
-                date('d/m/Y H:i', $etat['banned_until'])
+                Moderate::finDeBan($etat)
             )];
         }
         $clean = [];

@@ -17,11 +17,13 @@ $blocked = Moderate::blockedVotes($pdo, 30);
 // arrondit même la date au jour pour qu'un recoupement ne désigne pas l'auteur. Les
 // noms sont donc retirés ici, et non masqués à l'affichage — ce qui n'est pas chargé
 // ne peut pas être réaffiché par mégarde.
+// Un vote croisé, ou tombé pendant sa trêve, ne se publie pas : la ligne dirait à
+// chacun des deux que l'autre a voté contre lui. L'arbitre les voit.
 if (!$estArbitre) {
-    $blocked = array_map(
+    $blocked = array_values(array_map(
         static fn (array $v): array => ['blocked_reason' => $v['blocked_reason']],
-        $blocked
-    );
+        array_filter($blocked, static fn (array $v): bool => !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true))
+    ));
 }
 
 render_header(t('mod.title'), $account);

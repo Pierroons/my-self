@@ -908,8 +908,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 47/47 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 47 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 49/49 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 49 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
@@ -3548,8 +3548,8 @@ jobs:
           # 21. L'envoi d'un message garde ouverte la lecture de son destinataire : deux envois
           #     simultanés en perdent un.
           canari demo/lab/lib/dm.php \
-            '        $stmt->closeCursor();' \
-            '        // canari' \
+            $'        $recipientId = $stmt->fetchColumn();\n        $stmt->closeCursor();' \
+            $'        $recipientId = $stmt->fetchColumn();\n        // canari' \
             demo/lab/tests/sanity_ecritures_simultanees.php \
             "✗ ⭐ deux envois de messages simultanés : aucun n'est perdu"
 
@@ -3733,8 +3733,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 227/227 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 227 contrôles"; exit 1; }
+          grep -qx '✅ 236/236 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 236 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3745,8 +3745,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 227/227 contrôles passés' <<< "$sortie" \
-            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 227 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          grep -qx '✅ 236/236 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 236 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3894,6 +3894,89 @@ jobs:
           done
           for f in "$M" "$P" "$D" "$A" "$B"; do
             cmp -s "/tmp/socle.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
+          done
+          [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
+
+      - name: Canari — SelfModerate, le vote croisé et les canaux du lab
+        run: |
+          # @plante
+          # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
+          sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+          grep -qx '✅ 236/236 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 236 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # Le croisement, sa trêve et ses plafonds dans le moteur ; la route de vote, la
+          # page publique, la fin d'un ban et le blocage des messages dans le lab. Chaque
+          # fichier est restauré avant la plantation suivante ; chaque plantation est
+          # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
+          FICHIERS="bi-self/selfmoderate/src/Moderate.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php"
+          for f in $FICHIERS; do cp "$f" "/tmp/croise.$(tr / _ <<< "$f").intact"; done
+          restaurer() { for f in $FICHIERS; do cp "/tmp/croise.$(tr / _ <<< "$f").intact" "$f"; done; }
+          echecs=0
+          cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_bloque raison_route publique
+                     fin_exacte refus_exact profil blocage_envoi blocage_masque"
+          for cas in $cas_liste; do
+            attendu=$(CAS="$cas" python3 - <<'PY'
+          import os
+          M = 'bi-self/selfmoderate/src/Moderate.php'
+          V = 'demo/lab/public/api/vote.php'
+          O = 'demo/lab/public/moderation.php'
+          F = 'demo/lab/lib/moderate.php'
+          D = 'demo/lab/lib/dm.php'
+          CROISE = "✗ ⭐ le croisement rate"
+          TREVE = "✗ ⭐ la trêve ou les plafonds ratent"
+          ROUTE = "✗ ⭐ la route de vote dit le sort d'un vote croisé"
+          FIN = "✗ ⭐ la fin d'un ban redonne l'instant du vote décisif"
+          BLOC = "✗ ⭐ un blocage laisse un message entrer dans dm, ou efface"
+          f, avant, apres, attendu = {
+              'treve':        (M, "        if ($enTreve) {\n            return 'treve';\n        }\n", "", TREVE),
+              'croisement':   (M, "            $croise = self::croiser($pdo, $voterId, $author);", "            $croise = null;", CROISE),
+              'tous':         (M, "        $annule->execute([(int) $vote]);\n        if ($annule->rowCount() !== 1) {\n            return null;\n        }\n",
+                                  "        $pdo->prepare(\"UPDATE mod_votes SET blocked = 1, blocked_reason = 'vote_croise' WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?\")\n"
+                                  "            ->execute([$cible, $votant, $depuis]);\n",
+                               "✗ ⭐ le croisement déborde de sa règle"),
+              'plafonds':     (M, "private const COMPTE_AU_PLAFOND = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))\";",
+                                  "private const COMPTE_AU_PLAFOND = \"(blocked = 0)\";", TREVE),
+              'leve_la_peine': (M, "[(int) $vote], leverLaPeine: false);", "[(int) $vote], leverLaPeine: true);",
+                               "✗ ⭐ un croisement lève une peine"),
+              'user_vote':    (M, "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?'",
+                                  "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ? AND blocked = 0'", CROISE),
+              'message':      (M, "'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')]",
+                                  "'blocked_reason' => $croise, 'message' => static::t('Vote croisé.')]", CROISE),
+              'score_bloque': (V, "if ($result['ok'] && empty($result['blocked'])) {", "if ($result['ok']) {", ROUTE),
+              'raison_route': (V, "unset($result['blocked_reason']);\n", "", ROUTE),
+              'publique':     (O, "array_filter($blocked, static fn (array $v): bool => !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true))",
+                                  "$blocked", "✗ ⭐ la page publique publie un croisement"),
+              'fin_exacte':   (M, "        return intdiv($bannedUntil + 3599, 3600) * 3600;", "        return $bannedUntil;", FIN),
+              'refus_exact':  (M, "date('d/m/Y H:i', self::finAffichee($rep['banned_until'], $rep['ban_origine']))",
+                                  "date('d/m/Y H:i', $rep['banned_until'])", FIN),
+              'profil':       (F, "self::finAffichee((int) $etat['banned_until'], $etat['ban_origine'] ?? null)", "(int) $etat['banned_until']",
+                               "✗ ⭐ le profil d'un banni dit la fin à la minute"),
+              'blocage_envoi': (D, "        if (self::aBloque($pdo, (int) $recipientId, $senderId)) {", "        if (false) {", BLOC),
+              'blocage_masque': (D, "               AND NOT EXISTS (SELECT 1 FROM dm_blocages b WHERE b.bloqueur_id = d.recipient_id AND b.bloque_id = d.sender_id)\n", "", BLOC),
+          }[os.environ['CAS']]
+          s = open(f, encoding='utf-8').read()
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(f, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          print(attendu)
+          PY
+            ) || { restaurer; echo "::error::la plantation « $cas » n'a pas pris — elle ne prouve rien"; echecs=$((echecs + 1)); continue; }
+            sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+            restaurer
+            if [ "$rc" -eq 0 ]; then
+              echo "::error::le banc reste VERT avec la plantation « $cas »"; echecs=$((echecs + 1)); continue
+            fi
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
+              grep -E 'Fatal error|Uncaught' <<< "$sortie" | head -2 || true
+              echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir"; echecs=$((echecs + 1)); continue
+            fi
+            if ! grep -qF -- "$attendu" <<< "$sortie"; then
+              grep -E '✗' <<< "$sortie" | head -3 || true
+              echo "::error::rouge avec « $cas », mais pas sur ce qui la nomme : $attendu"; echecs=$((echecs + 1)); continue
+            fi
+            echo "✓ plantation « $cas » : le banc rougit, et sur ce qui la nomme"
+          done
+          for f in $FICHIERS; do
+            cmp -s "/tmp/croise.$(tr / _ <<< "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
           done
           [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
 
@@ -4120,8 +4203,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'causalite': ("        if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []\n",
-                            "        if ($rep['banned'] && $rep['ban_origine'] === 'auto'\n"),
+              'causalite': ("        if ($leverLaPeine && $rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []\n",
+                            "        if ($leverLaPeine && $rep['banned'] && $rep['ban_origine'] === 'auto'\n"),
               'strikes':   ("                        strikes = MAX(0, strikes - 1),\n",
                             "                        strikes = 0,\n"),
               'remise':    ("                $effacer            = true;\n                array_push($tombentFin, 'ban_auto', 'reputation_zero');\n",
@@ -4284,8 +4367,8 @@ jobs:
           avant, apres = {
               'plafond': ("            if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {\n",
                           "            if (false) {\n"),
-              'reponse': ("        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote pris en compte.')];\n",
-                          "        return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep, 'message' => static::t('Vote pris en compte.')];\n"),
+              'reponse': ("        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote enregistré.')];\n",
+                          "        return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep, 'message' => static::t('Vote enregistré.')];\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -4369,7 +4452,7 @@ jobs:
           avant, apres = {
               'chaine':    ("        $enJeu = \"value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')\";\n",
                             "        $enJeu = \"value = -1 AND blocked = 0\";\n"),
-              'course':    ("WHERE id = ? AND blocked = 0\");\n", "WHERE id = ?\");\n"),
+              'course':    ("'pack_voting' WHERE id = ? AND blocked = 0\");\n", "'pack_voting' WHERE id = ?\");\n"),
               'tiers':     ("            if ($neuf->fetchColumn() === false) {\n", "            if (false) {\n"),
               'migration': ("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes", "SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes"),
               'panne':     ("            $tombentFin[]      = 'journal_en_panne';\n", ""),

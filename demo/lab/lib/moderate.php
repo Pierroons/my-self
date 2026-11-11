@@ -49,4 +49,18 @@ final class Moderate extends Engine
             'sortie'       => $c->sortieConvalescence(),
         ];
     }
+
+    /**
+     * La fin d'un ban telle que la voit le compte banni. Pour un ban automatique, le
+     * moteur l'arrondit à l'heure suivante (`finAffichee()`) — sans quoi elle redonne
+     * l'instant du vote décisif —, et la page dit « au plus tard ».
+     *
+     * @param array{banned_until: int, ban_origine: ?string} $etat ce que rend `getReputation()`
+     */
+    public static function finDeBan(array $etat): string
+    {
+        $fin = date('d/m/Y H:i', self::finAffichee((int) $etat['banned_until'], $etat['ban_origine'] ?? null));
+
+        return ($etat['ban_origine'] ?? null) === 'auto' ? sprintf(tc('%s au plus tard'), $fin) : $fin;
+    }
 }

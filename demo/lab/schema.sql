@@ -115,6 +115,19 @@ CREATE TABLE IF NOT EXISTS dm (
 );
 CREATE INDEX IF NOT EXISTS idx_dm_recipient ON dm(recipient_id, created_at);
 
+-- Blocage des messages privés : entre deux membres dont l'un a bloqué l'autre, l'envoi
+-- est refusé, dans les deux sens, et rien n'entre dans `dm` — SelfModerate y lit les
+-- liens entre votants, et un message sous blocage en fabriquerait un entre un
+-- harceleur et sa victime. Le blocage ne touche jamais l'historique de `dm`.
+CREATE TABLE IF NOT EXISTS dm_blocages (
+    bloqueur_id INTEGER NOT NULL,
+    bloque_id   INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (bloqueur_id, bloque_id),
+    FOREIGN KEY (bloqueur_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (bloque_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
 -- Profil membre — champs perso CHIFFRÉS at-rest (XChaCha20-Poly1305 via SelfDataGuard).
 -- Un dump SQL ne révèle que des blobs : aucune donnée personnelle en clair.
 CREATE TABLE IF NOT EXISTS profiles (

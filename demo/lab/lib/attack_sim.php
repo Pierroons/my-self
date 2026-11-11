@@ -245,8 +245,12 @@ final class AttackSimulator
         $sybilId = (int) $pdo->lastInsertId();
         [$canVote, $why] = Moderate::canVote($pdo, $sybilId);
 
-        // le vote honnête est-il toujours compté ?
-        $voteHonnete = Moderate::userVote($pdo, $ids['honnete'], 'member', $ids['cible']);
+        // le vote honnête est-il toujours compté ? `userVote()` rend aussi un vote
+        // tombé — c'est ce que voit son auteur — : la mesure lit le vote lui-même.
+        $compte = $pdo->prepare("SELECT blocked FROM mod_votes WHERE voter_id = ? AND target_type = 'member' AND target_id = ?");
+        $compte->execute([$ids['honnete'], $ids['cible']]);
+        $bloque = $compte->fetchColumn();
+        $voteHonnete = $bloque !== false && (int) $bloque === 0 ? 1 : null;
 
         $neutralise = $acceptes === count($faux) && $annules === count($faux) - 1 && $impact === -1
             && !$canVote && $voteHonnete !== null;

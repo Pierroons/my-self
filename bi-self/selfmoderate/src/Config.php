@@ -77,6 +77,10 @@ final class Config
      * @param int      $motifsVotantsMin      `reasonsFor()` ne rend les motifs reçus qu'à partir
      *                                        de ce nombre de votants distincts : sous lui, un motif
      *                                        peut désigner son auteur. 1 les rend toujours.
+     * @param int      $fenetreCroiseeSecondes Deux membres qui votent l'un contre l'autre dans
+     *                                        cette fenêtre se croisent : les deux votes sont
+     *                                        annulés. La même durée fait ensuite la trêve, où
+     *                                        aucun des deux ne vote plus contre l'autre.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -105,6 +109,7 @@ final class Config
         public readonly bool $signalPerteDuVote = true,
         public readonly int $messagesPourVoterAvantAge = 1,
         public readonly int $motifsVotantsMin = 1,
+        public readonly int $fenetreCroiseeSecondes = 600,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -137,6 +142,9 @@ final class Config
         if ($this->motifsVotantsMin < 1) {
             throw new InvalidArgumentException('motifsVotantsMin compte des votants : 1 ou plus.');
         }
+        if ($this->fenetreCroiseeSecondes < 1 || $this->fenetreCroiseeSecondes > Moderate::DUREE_MAX) {
+            throw new InvalidArgumentException('fenetreCroiseeSecondes est une durée : strictement positive, et d\'au plus un siècle (Moderate::DUREE_MAX).');
+        }
     }
 
     /** Les valeurs raccourcies, pour qu'une démonstration tienne dans une séance. */
@@ -153,6 +161,7 @@ final class Config
             ageMinPourVoterSecondes: 86400,
             dureesBan: [86400, 604800, 2592000],
             intervalleConvalescenceSecondes: 604800,
+            fenetreCroiseeSecondes: 259200,
         );
     }
 

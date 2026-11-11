@@ -38,6 +38,23 @@ class Moderate
     }
 
     /**
+     * La fin d'un ban telle qu'une page la montre au compte banni. Un ban
+     * automatique commence à l'instant du vote décisif, et sa fin moins son
+     * palier le redonne : arrondie à l'heure pleine suivante (UTC), elle ne le
+     * dit plus qu'à l'heure près, et la page écrit « au plus tard ». Un ban
+     * d'arbitre est signé : il reste à la seconde. Un ban sans fin, ou aucun
+     * ban, passe tel quel.
+     */
+    public static function finAffichee(int $bannedUntil, ?string $origine): int
+    {
+        if ($origine !== 'auto' || $bannedUntil <= 0 || self::estSansFin($bannedUntil)) {
+            return $bannedUntil;
+        }
+
+        return intdiv($bannedUntil + 3599, 3600) * 3600;
+    }
+
+    /**
      * Traduction des messages rendus à l'appelant. Identité par défaut : un
      * moteur qui impose sa langue n'est pas réutilisable, et un moteur qui
      * exige un traducteur pour démarrer ne l'est pas non plus.
@@ -91,6 +108,14 @@ class Moderate
      * sans fin, sans en porter le signal ni la règle du motif à la levée.
      */
     public const DUREE_MAX = 3_155_760_000;
+
+    /**
+     * Ce qu'un plafond de votant compte : ses votes qui portent, et ceux qu'un
+     * croisement ou sa trêve ont fait tomber. Sans eux, chaque vote croisé
+     * rendait sa place, et un membre qui riposte contre chacun de ses critiques
+     * n'avait plus aucune borne.
+     */
+    private const COMPTE_AU_PLAFOND = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))";
 
     /**
      * Une durée en clair : l'unité suit l'ordre de grandeur, et la durée n'est
@@ -721,7 +746,10 @@ class Moderate
         if ($rep['banned']) {
             return [false, self::estSansFin($rep['banned_until'])
                 ? static::t('Compte banni sans fin.')
-                : sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $rep['banned_until']))];
+                : sprintf(
+                    $rep['ban_origine'] === 'auto' ? static::t('Compte banni jusqu\'au %s au plus tard.') : static::t('Compte banni jusqu\'au %s.'),
+                    date('d/m/Y H:i', self::finAffichee($rep['banned_until'], $rep['ban_origine']))
+                )];
         }
         // Avant le seuil de réputation, et non après : les deux refusent le
         // vote, mais l'un s'efface en attendant et l'autre à une date. Rendre
@@ -1159,7 +1187,7 @@ class Moderate
         // Anti upvote-farming : >3 upvotes voter→author sur 60j
         if ($value === 1) {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = 1 AND blocked = 0 AND created_at >= ?'
+                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = 1 AND ' . self::COMPTE_AU_PLAFOND . ' AND created_at >= ?'
             );
             $stmt->execute([$voterId, $author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
@@ -1174,7 +1202,7 @@ class Moderate
         // votant patient érode une réputation message après message.
         if ($value === -1) {
             $stmt = $pdo->prepare(
-                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
+                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND ' . self::COMPTE_AU_PLAFOND . ' AND created_at >= ?'
             );
             $stmt->execute([$voterId, $author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
@@ -1190,7 +1218,7 @@ class Moderate
         if ($value === -1) {
             $stmt = $pdo->prepare(
                 'SELECT COUNT(DISTINCT target_author) AS cibles, MAX(target_author = ?) AS deja
-                   FROM mod_votes WHERE voter_id = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
+                   FROM mod_votes WHERE voter_id = ? AND value = -1 AND ' . self::COMPTE_AU_PLAFOND . ' AND created_at >= ?'
             );
             $stmt->execute([$author, $voterId, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             $portee = $stmt->fetch();
@@ -1203,6 +1231,17 @@ class Moderate
                             self::config()->ciblesParVotantMax,
                             self::config()->fenetreFarmingJours
                         )];
+            }
+        }
+
+        // Deux membres qui votent l'un contre l'autre se croisent : les deux votes
+        // tombent, dans cette transaction (`croiser()`). La réponse est celle d'un
+        // vote compté : elle ne nomme pas la règle.
+        if ($value === -1) {
+            $croise = self::croiser($pdo, $voterId, $author);
+            if ($croise !== null) {
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $croise);
+                return ['ok' => true, 'blocked' => true, 'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')];
             }
         }
 
@@ -1228,7 +1267,62 @@ class Moderate
         }
         self::enforceThresholds($pdo, $author, $newRep);
 
-        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote pris en compte.')];
+        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote enregistré.')];
+    }
+
+    /**
+     * Le vote croisé, sous le verrou du vote de `$votant` contre `$cible`.
+     *
+     * - **Trêve** : un croisement a eu lieu entre eux, dans un sens ou dans
+     *   l'autre, il y a moins de `fenetreCroiseeSecondes` ; le vote tombe
+     *   (`treve`). La trêve court depuis le croisement, pas depuis la dernière
+     *   tentative : un membre qui revoterait sans cesse ne s'abriterait pas des
+     *   votes de l'autre.
+     * - **Croisement** : `$cible` a contre `$votant` un vote négatif qui porte
+     *   encore, posé dans la même fenêtre ; le plus récent tombe avec le vote de
+     *   `$votant` (`vote_croise`) — un vote contre un vote, quel que soit le
+     *   message visé. Le point qu'il avait retiré revient à `$votant`.
+     *
+     * Aucune peine n'est levée : un croisement n'est pas une injustice réparée,
+     * et une peine causée entre-temps reste à l'arbitre. Les deux votes restent
+     * comptés dans les plafonds de leur auteur (`COMPTE_AU_PLAFOND`).
+     *
+     * @return 'treve'|'vote_croise'|null la raison qui fait tomber le vote, ou null s'il porte
+     */
+    private static function croiser(PDO $pdo, int $votant, int $cible): ?string
+    {
+        $depuis = self::maintenant() - self::config()->fenetreCroiseeSecondes;
+        $treve = $pdo->prepare(
+            "SELECT 1 FROM mod_votes
+              WHERE blocked_reason = 'vote_croise' AND created_at >= ?
+                AND ((voter_id = ? AND target_author = ?) OR (voter_id = ? AND target_author = ?))
+              LIMIT 1"
+        );
+        $treve->execute([$depuis, $votant, $cible, $cible, $votant]);
+        $enTreve = $treve->fetchColumn() !== false;
+        $treve->closeCursor();
+        if ($enTreve) {
+            return 'treve';
+        }
+        $face = $pdo->prepare(
+            'SELECT id FROM mod_votes
+              WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?
+              ORDER BY created_at DESC, id DESC LIMIT 1'
+        );
+        $face->execute([$cible, $votant, $depuis]);
+        $vote = $face->fetchColumn();
+        $face->closeCursor();
+        if ($vote === false) {
+            return null;
+        }
+        $annule = $pdo->prepare("UPDATE mod_votes SET blocked = 1, blocked_reason = 'vote_croise' WHERE id = ? AND blocked = 0");
+        $annule->execute([(int) $vote]);
+        if ($annule->rowCount() !== 1) {
+            return null;
+        }
+        self::restoreAfterCancel($pdo, $votant, [(int) $vote], leverLaPeine: false);
+
+        return 'vote_croise';
     }
 
     /**
@@ -1701,9 +1795,12 @@ class Moderate
      * `$etatAuRefus` le dit à qui la défait (`detecter()`), avec les strikes et le
      * début de la peine que le compte portait alors.
      *
+     * Un vote croisé (`croiser()`) rend son point par le même chemin, mais
+     * `$leverLaPeine` à faux : il ne lève aucune peine.
+     *
      * @param int[] $voteIds
      */
-    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds, ?array &$etatAuRefus = null): void
+    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds, ?array &$etatAuRefus = null, bool $leverLaPeine = true): void
     {
         // Ce que le temps a fait au compte s'inscrit d'abord : une sortie de
         // convalescence efface les effets des votes reçus, et une restitution
@@ -1729,7 +1826,7 @@ class Moderate
         // répare une injustice, elle n'en accorde aucune.
         $causes = array_filter($annules, static fn (array $v): bool =>
             (int) $v['effet'] < 0 && (int) $v['created_at'] <= $rep['ban_debut']);
-        if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []
+        if ($leverLaPeine && $rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []
             && $rep['reputation'] > self::config()->banA) {
             $attente = array_values(array_filter(self::deCause($rep['signaux'], 'levee_en_attente'),
                 static fn (array $s): bool => $s['ouvert_le'] >= $rep['ban_debut']));
@@ -2721,10 +2818,15 @@ class Moderate
         return (int) $stmt->fetchColumn();
     }
 
-    /** Le membre a-t-il déjà voté sur cette cible ? (pour UI) */
+    /**
+     * Le vote du membre sur cette cible, pour sa page : compté, neutralisé ou
+     * tombé, il le voit le même. Une page qui le taisait sur un vote tombé
+     * disait au votant ce qu'en avait fait le moteur — un croisement, une
+     * meute — et rouvrait des boutons que « déjà voté » refuse.
+     */
     public static function userVote(PDO $pdo, int $voterId, string $targetType, int $targetId): ?int
     {
-        $stmt = $pdo->prepare('SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ? AND blocked = 0');
+        $stmt = $pdo->prepare('SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?');
         $stmt->execute([$voterId, $targetType, $targetId]);
         $v = $stmt->fetchColumn();
         return $v === false ? null : (int) $v;

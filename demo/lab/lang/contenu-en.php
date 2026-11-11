@@ -239,7 +239,7 @@ return [
     'Tu as déjà voté ici.' => 'You have already voted here.',
     'Cible introuvable.' => 'Target not found.',
     'Motif inconnu de cette plateforme.' => 'Reason unknown on this platform.',
-    'Vote pris en compte.' => 'Vote recorded.',
+    'Vote enregistré.' => 'Vote recorded.',
     'Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).'
         => 'Vote recorded but neutralised: too many repeated upvotes towards this member (anti-farming).',
     'Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).'
@@ -255,6 +255,8 @@ return [
     'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',
     'minute' => 'minute', 'minutes' => 'minutes',
     'Compte banni jusqu\'au %s.' => 'Account banned until %s.',
+    'Compte banni jusqu\'au %s au plus tard.' => 'Account banned until %s at the latest.',
+    '%s au plus tard' => '%s at the latest',
     'Aucun signalement en cours sur ce compte.'
         => 'No flag pending on this account.',
     'Signalement classé.'

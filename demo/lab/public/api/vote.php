@@ -19,8 +19,11 @@ $reason     = isset($body['reason']) ? (string) $body['reason'] : null;
 $reasonCode = isset($body['reason_code']) ? (string) $body['reason_code'] : null;
 
 $result = Moderate::applyVote($pdo, (int) $acc['id'], $targetType, $targetId, $value, $reason, $reasonCode);
-if ($result['ok']) {
-    // Renvoie le score à jour pour rafraîchir l'UI sans recharger
+// Le score à jour rafraîchit la page sans la recharger — pour un vote qui porte
+// seulement : celui d'un vote tombé, inchangé, dirait au votant ce qu'en a fait le
+// moteur. La raison reste au moteur et à l'arbitre.
+if ($result['ok'] && empty($result['blocked'])) {
     $result['score'] = Moderate::score($pdo, $targetType, $targetId);
 }
+unset($result['blocked_reason']);
 json_out($result, $result['ok'] ? 200 : 400);
