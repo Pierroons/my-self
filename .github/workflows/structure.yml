@@ -3733,8 +3733,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 221/221 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 221 contrôles"; exit 1; }
+          grep -qx '✅ 227/227 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 227 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3745,30 +3745,56 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 221/221 contrôles passés' <<< "$sortie" \
-            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 221 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
-          # Des défauts plantés un à un — le moteur, la console et la migration du lab —,
+          grep -qx '✅ 227/227 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 227 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
+          # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
           # après l'échec d'une autre, et doit rougir sur ce qui la nomme.
           # Les quatre fermetures de peine (échéance, levée, grâce, meute) sont arrêtées
           # plus tôt par la garde du moteur, qui refuse d'ouvrir une peine sur une ligne
-          # restée ouverte : leur rouge est ce refus, nommé.
+          # restée ouverte : leur rouge est ce refus, nommé. Une prolongation qui n'écrit
+          # pas l'historique l'est de même : la ligne ne dit plus l'échéance, et le geste
+          # suivant sur le compte est refusé (`divergente`).
           M=bi-self/selfmoderate/src/Moderate.php
           P=demo/lab/public/admin.php
           D=demo/lab/lib/db.php
-          for f in "$M" "$P" "$D"; do cp "$f" "/tmp/socle.$(basename "$f").intact"; done
-          restaurer() { for f in "$M" "$P" "$D"; do cp "/tmp/socle.$(basename "$f").intact" "$f"; done; }
+          A=demo/lab/public/api/detect_abuse.php
+          B=demo/lab/lib/bootstrap.php
+          for f in "$M" "$P" "$D" "$A" "$B"; do cp "$f" "/tmp/socle.$(basename "$f").intact"; done
+          restaurer() { for f in "$M" "$P" "$D" "$A" "$B"; do cp "/tmp/socle.$(basename "$f").intact" "$f"; done; }
           echecs=0
           cas_liste="horloge causes prolongation console soi inconnu ouverture reprise meute arbitre_id siecle
                      instant sous_peine jour decide_par horloge_invalide orphelines rouvrir console_orphelines
-                     console_peines garde_auto fin_echeance fin_levee fin_grace borne_prolonger hors_verrou tout_ban
-                     type_entier debut_accorde echeance_recalee migration_lab bandeau_lab"
+                     console_peines garde_auto fin_echeance fin_levee fin_grace borne_prolonger tout_ban
+                     hors_verrou_ban hors_verrou_pardon hors_verrou_lever hors_verrou_prolonger hors_verrou_maintenir
+                     hors_verrou_classer origine_inconnue type_entier debut_accorde echeance_recalee recalee_reprise
+                     divergente_ligne divergente_listes migration_lab bandeau_lab console_reprise regle_lab
+                     balayage_suspendu"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
           import os
           M = 'bi-self/selfmoderate/src/Moderate.php'
           P = 'demo/lab/public/admin.php'
           D = 'demo/lab/lib/db.php'
+          A = 'demo/lab/public/api/detect_abuse.php'
+          B = 'demo/lab/lib/bootstrap.php'
+          LAB = "✗ ⭐ le lab ferme trop, ou pas assez, à un administrateur banni par un pair"
+          def hors_verrou(geste):
+              # La lecture de l'arbitre sortie de la transaction de ce geste-là, comme
+              # avant X1 : construite depuis le code, pour chacun des six gestes.
+              s = open(M, encoding='utf-8').read()
+              i = s.index('    public static function ' + geste + '(')
+              debut = s.index('        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction(', i)
+              qui = ("            $qui = self::arbitre($pdo, $arbitreId, $accountId);\n            if (is_string($qui)) {\n"
+                     "                return ['ok' => false, 'message' => $qui];\n            }\n")
+              fin = s.index(qui, debut) + len(qui)
+              fin = s.index('\n', fin) + 1
+              avant = s[debut:fin]
+              apres = ("        $qui = self::arbitre($pdo, $arbitreId, $accountId);\n        if (is_string($qui)) {\n"
+                       "            return ['ok' => false, 'message' => $qui];\n        }\n"
+                       + avant.replace(qui, '').replace('$arbitreId, $motif', '$qui, $motif'))
+              return (M, avant, apres, '✗ ⭐ ' + geste + ' : un arbitre banni pendant son geste le voit passer')
           ARB = "✗ ⭐ un geste passe sans arbitre identifiable, sur le compte de son arbitre, ou signé d'un arbitre sous peine"
           HIST = "✗ ⭐ l'historique et les bans divergent sans réparation"
           ORPH = "porte une peine ouverte dans mod_peines et aucun ban en cours"
@@ -3779,7 +3805,7 @@ jobs:
               'causes':       (M, "        )->execute([$peine, $accountId]);\n", "        );\n",
                                "✗ ⭐ l'historique perd une peine automatique ou ses causes"),
               'prolongation': (M, "            self::prolongerPeine($pdo, $accountId, $jusqua, $maintenant, $qui);\n", "",
-                               "✗ ⭐ l'historique ou la console perd l'arbitre d'un ban"),
+                               "✗ la prolongation rate"),
               'console':      (M, "                'arbitre'    => self::compteSigne($r['arbitre_id'], $r['arbitre_nom']),",
                                   "                'arbitre'    => null,",
                                "✗ ⭐ l'historique ou la console perd l'arbitre d'un ban"),
@@ -3788,8 +3814,7 @@ jobs:
               'ouverture':    (M, "            self::exigerAucunePeineOuverte($pdo, $accountId);\n            $jusqua     =",
                                   "            $jusqua     =",
                                "✗ ⭐ une peine s'ouvre sur une autre"),
-              'reprise':      (M, "        if ($row !== false && (int) $row['banned_until'] > 0 && !(int) $row['peine_ouverte']) {",
-                                  "        if (false) {",
+              'reprise':      (M, "            throw self::repriseManquante($accountId, $reprise);\n", "",
                                "✗ ⭐ un ban sans sa ligne passe en silence, ou la reprise le rate"),
               'meute':        (M, "            self::fermerPeine($pdo, $author, self::maintenant(), 'meute_detectee', null);\n", "", ORPH),
               'arbitre_id':   (M, "                'arbitre_id' => $qui['id'],\n                'raison'  => $etat['review_reason'],",
@@ -3801,8 +3826,10 @@ jobs:
               'instant':      (M, "        return self::presenter($row, $signaux, $jusqua > 0 && $jusqua <= $t, $t);",
                                   "        return self::presenter($row, $signaux, $jusqua > 0 && $jusqua <= self::maintenant(), self::maintenant());",
                                "✗ ⭐ une grâce au bord de l'échéance laisse une peine ouverte sans ban, ou sans fin au journal"),
-              'sous_peine':   (M, "        if ((int) $compte['banned_until'] > self::maintenant() && $compte['ban_origine'] === 'admin') {",
+              'sous_peine':   (M, "        if ((int) $compte['banned_until'] > self::maintenant() && $compte['ban_origine'] !== 'auto') {",
                                   "        if (false) {", ARB),
+              'origine_inconnue': (M, "> self::maintenant() && $compte['ban_origine'] !== 'auto') {",
+                                  "> self::maintenant() && $compte['ban_origine'] === 'admin') {", ARB),
               'jour':         (M, "$t === null || $precis || $t <= 0", "$t === null || true || $t <= 0",
                                "✗ ⭐ l'historique rend la seconde du vote décisif"),
               'decide_par':   (M, "->execute([$echeance, $decideLe, $par['id'], $par['nom'], $accountId]);",
@@ -3825,23 +3852,28 @@ jobs:
               'borne_prolonger': (M, "($secondes > self::DUREE_MAX || $etat['banned_until'] + $secondes - $maintenant > self::DUREE_MAX)",
                                   "($secondes >= self::SANS_FIN - $etat['banned_until'])",
                                "✗ la prolongation rate"),
-              'hors_verrou':  (M, "        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $seconds, $sansFin): array {\n"
-                                  "            $etat = self::etat($pdo, $accountId);\n            $qui = self::arbitre($pdo, $arbitreId, $accountId);\n"
-                                  "            if (is_string($qui)) {\n                return ['ok' => false, 'message' => $qui];\n            }\n",
-                                  "        $qui = self::arbitre($pdo, $arbitreId, $accountId);\n        if (is_string($qui)) {\n"
-                                  "            return ['ok' => false, 'message' => $qui];\n        }\n        self::rattraperSeul($pdo, $accountId);\n\n"
-                                  "        return self::transaction($pdo, static function () use ($pdo, $accountId, $qui, $motif, $seconds, $sansFin): array {\n"
-                                  "            $etat = self::etat($pdo, $accountId);\n",
-                               "✗ ⭐ un arbitre banni pendant son geste le voit passer"),
-              'tout_ban':     (M, "> self::maintenant() && $compte['ban_origine'] === 'admin') {", "> self::maintenant()) {", ARB),
+              'hors_verrou_ban':       hors_verrou('adminBan'),
+              'hors_verrou_pardon':    hors_verrou('adminPardon'),
+              'hors_verrou_lever':     hors_verrou('adminLever'),
+              'hors_verrou_prolonger': hors_verrou('adminProlonger'),
+              'hors_verrou_maintenir': hors_verrou('adminMaintenir'),
+              'hors_verrou_classer':   hors_verrou('adminClasser'),
+              'tout_ban':     (M, "> self::maintenant() && $compte['ban_origine'] !== 'auto') {", "> self::maintenant()) {", ARB),
               'type_entier':  (M, "        if (!is_int($arbitre)) {", "        if (false) {", ARB),
               'debut_accorde': (M, "\n                                       AND m.banned_until > 0 AND m.ban_debut = mod_peines.debut)",
                                   "\n                                       AND m.banned_until > 0)", HIST),
               'echeance_recalee': (M, "            $recalees->execute();\n", "", HIST),
+              'recalee_reprise': (M, "),\n                        reprise = 1\n                  WHERE fin IS NULL", ")\n                  WHERE fin IS NULL", HIST),
+              'divergente_ligne': (M, "                throw self::repriseManquante($accountId, 'divergente');\n", "", HIST),
+              'divergente_listes': (M, "            throw self::repriseManquante((int) $compte, 'divergente');", "            $compte = null;", HIST),
               'migration_lab': (D, "                    \\Pierroons\\SelfModerate\\Moderate::migrerBans(self::$pdo);\n", "",
                                "✗ ⭐ la migration perd un signal, en invente un, ou se rejoue"),
-              'bandeau_lab':  (P, "$gestesSuspendus = $monEtat['banned'] && $monEtat['ban_origine'] === 'admin';", "$gestesSuspendus = false;",
-                               "✗ ⭐ le lab ferme trop, ou pas assez, à un administrateur banni par un pair"),
+              'bandeau_lab':  (P, "    $gestesSuspendus = moderation_suspendue($pdo, $account);", "    $gestesSuspendus = false;", LAB),
+              'console_reprise': (P, "$repriseManquante = null;\n$gestesSuspendus = false;\n",
+                                  "$repriseManquante = null;\n$gestesSuspendus = moderation_suspendue($pdo, $account);\n", LAB),
+              'regle_lab':    (B, "    return $etat['banned'] && $etat['ban_origine'] !== 'auto';",
+                                  "    return $etat['banned'] && $etat['ban_origine'] === 'admin';", LAB),
+              'balayage_suspendu': (A, "if (moderation_suspendue($pdo, $admin)) {", "if (false) {", LAB),
           }[os.environ['CAS']]
           s = open(f, encoding='utf-8').read()
           assert s.count(avant) == 1, 'plantation impossible'
@@ -3860,7 +3892,7 @@ jobs:
             fi
             echo "✓ plantation « $cas » : le banc rougit, et sur ce qui la nomme"
           done
-          for f in "$M" "$P" "$D"; do
+          for f in "$M" "$P" "$D" "$A" "$B"; do
             cmp -s "/tmp/socle.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
           done
           [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
@@ -3887,7 +3919,7 @@ jobs:
           fi
           cp /tmp/moderate.intact "$M"
           cmp -s /tmp/moderate.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-          echo "$sortie" | grep -q 'la peine a reculé' \
+          grep -q 'la peine a reculé' <<< "$sortie" \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la peine prolongée"; exit 1; }
           echo "✓ le banc rougit, et sur le cas de la peine prolongée"
 
@@ -3928,7 +3960,7 @@ jobs:
             fi
             cp /tmp/moderate.votant.intact "$M"
             cmp -s /tmp/moderate.votant.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -3937,7 +3969,7 @@ jobs:
               classe) attendu='au début du ban passe pour une erreur d.intégration' ;;
               dm)     attendu='dm absente muette' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -3975,7 +4007,7 @@ jobs:
             fi
             cp /tmp/moderate.gestes.intact "$M"
             cmp -s /tmp/moderate.gestes.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -3984,7 +4016,7 @@ jobs:
               vu)     attendu='le ban sans fin rate' ;;
               borne|motif) attendu='une durée fait un ban sans fin, ou un ban sans fin sort sans motif' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4019,10 +4051,10 @@ jobs:
           fi
           cp /tmp/moderate.paires.intact "$M"
           cmp -s /tmp/moderate.paires.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-          if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+          if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
             echo "$sortie"; echo "::error::la plantation casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
           fi
-          echo "$sortie" | grep -q 'le coût d.un downvote croît avec ses votants' \
+          grep -q 'le coût d.un downvote croît avec ses votants' <<< "$sortie" \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du coût par paire"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du coût par paire"
 
@@ -4059,7 +4091,7 @@ jobs:
             fi
             cp /tmp/moderate.balayage.intact "$M"
             cmp -s /tmp/moderate.balayage.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4067,7 +4099,7 @@ jobs:
               jamais) attendu='une meute liée après coup n.est pas rattrapée' ;;
               course) attendu='la course ou la table absente est mal tenue' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4104,7 +4136,7 @@ jobs:
             fi
             cp /tmp/moderate.effet.intact "$M"
             cmp -s /tmp/moderate.effet.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4112,7 +4144,7 @@ jobs:
               strikes)   attendu='✗ ⭐ levée sur meute mal bornée' ;;
               remise)    attendu='✗ ⭐ points rendus deux fois' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4149,7 +4181,7 @@ jobs:
             fi
             cp /tmp/moderate.meute.intact "$M"
             cmp -s /tmp/moderate.meute.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4157,7 +4189,7 @@ jobs:
               episode) attendu='✗ ⭐ l.épisode glisse' ;;
               grace)   attendu='✗ ⭐ la grâce laisse la suspension ou le rang' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4191,14 +4223,14 @@ jobs:
             fi
             cp /tmp/moderate.signal.intact "$M"
             cmp -s /tmp/moderate.signal.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
               signal)      attendu='✗ ⭐ le ban a écrasé ou effacé la salve' ;;
               composition) attendu='✗ ⭐ composition de la chute absente ou fausse' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4229,10 +4261,10 @@ jobs:
             fi
             cp /tmp/moderate.borne.intact "$M"
             cmp -s /tmp/moderate.borne.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
-            echo "$sortie" | grep -q '✗ ⭐ la troncature cache la meute ou se tait' \
+            grep -q '✗ ⭐ la troncature cache la meute ou se tait' <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4264,14 +4296,14 @@ jobs:
             fi
             cp /tmp/moderate.votant.intact "$M"
             cmp -s /tmp/moderate.votant.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
               plafond) attendu='✗ ⭐ un votant érode tout le forum' ;;
               reponse) attendu='✗ ⭐ la réponse d.un vote révèle la réputation' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4307,14 +4339,14 @@ jobs:
             fi
             cp /tmp/garde.intact "$F"
             cmp -s /tmp/garde.intact "$F" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
               lecture) attendu='✗ ⭐ un journal en panne fait tomber la lecture' ;;
               profil)  attendu='✗ ⭐ profil public pendant un ban' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4352,7 +4384,7 @@ jobs:
             fi
             cp /tmp/moderate.audit.intact "$M"
             cmp -s /tmp/moderate.audit.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4363,7 +4395,7 @@ jobs:
               panne)     attendu='✗ ⭐ un journal en panne fait tomber la lecture ou referme sans trace' ;;
               attente)   attendu='✗ ⭐ panne du journal' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4399,7 +4431,7 @@ jobs:
             fi
             cp /tmp/moderate.config.intact "$M"
             cmp -s /tmp/moderate.config.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4408,7 +4440,7 @@ jobs:
               intervalleConvalescenceSecondes) attendu='✗ convalescence sourde à la config' ;;
               *)                               attendu="✗ seuil sourd à la config ($cas)" ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4447,7 +4479,7 @@ jobs:
             fi
             cp /tmp/moderate.promesse.intact "$M"
             cmp -s /tmp/moderate.promesse.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4455,7 +4487,7 @@ jobs:
               utc|borne)    attendu='✗ ⭐ le jour des motifs suit UTC, ou la limite coupe dans l.ordre d.arrivée' ;;
               *)            attendu='✗ motifs mal datés ou rangés dans leur ordre d.arrivée' ;;
             esac
-            echo "$sortie" | grep -q "$attendu" \
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4498,7 +4530,7 @@ jobs:
             fi
             cp /tmp/moderate.unite.intact "$M"
             cmp -s /tmp/moderate.unite.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4507,7 +4539,7 @@ jobs:
               farming) attendu='✗ seuil sourd à la config (fenetreFarmingJours)' ;;
               horloge) attendu='✗ convalescence sourde à la config' ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4547,14 +4579,14 @@ jobs:
             fi
             cp /tmp/moderate.convalescence.intact "$M"
             cmp -s /tmp/moderate.convalescence.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
               rabat|attend) attendu='la convalescence rabat un score, ou tient un compte déjà remonté' ;;
               droit|migre)  attendu="le droit de vote attend l'intervalle au-dessus du seuil, ou une base migrée garde son état" ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4623,7 +4655,7 @@ jobs:
             fi
             cp /tmp/moderate.arbitrage.intact "$M"
             cmp -s /tmp/moderate.arbitrage.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4639,7 +4671,7 @@ jobs:
               inconnu)    attendu="un geste sur un compte inexistant échoue autrement qu'en refus" ;;
               enchaine|compteur) attendu="les bans d'arbitre se perdent dans les strikes" ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4702,7 +4734,7 @@ jobs:
             cp /tmp/config.lecture.intact "$C"
             { cmp -s /tmp/moderate.lecture.intact "$M" && cmp -s /tmp/config.lecture.intact "$C"; } \
               || { echo "::error::un fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4720,7 +4752,7 @@ jobs:
               seuil-vote)    attendu='le balayage laisse en base un droit de vote que la lecture rend' ;;
               borne)         attendu='un seuil neuf accepte une valeur qui le vide de sens' ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4759,7 +4791,7 @@ jobs:
             fi
             cp /tmp/lab.annonce.intact "$F"
             cmp -s /tmp/lab.annonce.intact "$F" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4767,7 +4799,7 @@ jobs:
               unite)   attendu="une durée se lit dans une unité qui ne lui va pas" ;;
               meute-*) attendu='les trois votes de la meute sont acceptés, puis tous sauf le premier annulés' ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4862,7 +4894,7 @@ jobs:
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do
               cmp -s "/tmp/signaux.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
             done
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -4891,7 +4923,7 @@ jobs:
               fermedet)        attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
               chute|chute-hote) attendu="une chute pendant un ban d'arbitre passe inaperçue" ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4988,7 +5020,7 @@ jobs:
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php demo/lab/public/moderation.php; do
               cmp -s "/tmp/autrui.$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
             done
-            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
@@ -5032,7 +5064,7 @@ jobs:
               base)    attendu="dit une panne de la base comme un refus du journal" ;;
               page-mod) attendu="le planificateur tait un compte sauté" ;;
             esac
-            echo "$sortie" | grep -qF "$attendu" \
+            grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done

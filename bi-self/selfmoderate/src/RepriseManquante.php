@@ -4,9 +4,10 @@
  * Une reprise de schéma manque : un compte porte une case de signalement
  * ouverte et aucun signal dans `mod_signaux` (avant la 0.7.0,
  * `migrerSignaux()`) ; ou `mod_peines` et les bans divergent — un ban sans
- * peine ouverte, ou une peine ouverte sans ban, laissés par une base d'avant la
- * 0.9.0 ou par un écrivain hors du moteur (`migrerBans()`). Le message nomme
- * laquelle.
+ * peine ouverte, une peine ouverte sans ban, ou une peine ouverte qui ne dit
+ * plus le ban en cours (un autre début, une autre échéance), laissés par une base
+ * d'avant la 0.9.0 ou par un écrivain hors du moteur (`migrerBans()`). Le
+ * message nomme laquelle.
  *
  * C'est une erreur d'intégration, et elle se dit à qui peut la réparer : à la
  * lecture du compte lui-même, et à l'arbitre, dont les listes la lèvent. Le vote

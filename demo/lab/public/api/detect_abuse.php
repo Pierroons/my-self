@@ -9,7 +9,11 @@ use Pierroons\MySelfLab\Moderate;
 require_method('POST');
 require_csrf();
 $pdo = Db::pdo();
-require_admin($pdo);   // le balayage de tout le site est un geste d'arbitre
+$admin = require_admin($pdo);
+// Le balayage de tout le site est un geste d'arbitre : il annule les votes d'une meute.
+if (moderation_suspendue($pdo, $admin)) {
+    json_out(['ok' => false, 'error' => 'forbidden', 'message' => tc('Un arbitre sous peine ne fait aucun geste d\'arbitre.')], 403);
+}
 
 $result = Moderate::detectPackVoting($pdo);
 // Les peines échues se referment aussi ici : un planificateur qui appelle cette route

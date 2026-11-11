@@ -1190,7 +1190,8 @@ function etatBan(PDO $pdo, int $id): array
 /** Recule une peine dans le temps : début et fin décalés de $secondes. */
 function vieillirBan(PDO $pdo, int $id, int $secondes): void
 {
-    $pdo->prepare('UPDATE member_moderation SET ban_debut = ban_debut - ?, banned_until = banned_until - ? WHERE account_id = ?')
+    $pdo->prepare('UPDATE member_moderation SET ban_debut = CASE WHEN ban_debut > 0 THEN ban_debut - ? ELSE ban_debut END,
+                                                banned_until = banned_until - ? WHERE account_id = ?')
         ->execute([$secondes, $secondes, $id]);
     // L'historique passe le temps avec l'état : la peine ouverte recule d'autant.
     $pdo->prepare('UPDATE mod_peines SET debut = CASE WHEN debut > 0 THEN debut - ? ELSE debut END,
@@ -1298,10 +1299,11 @@ $leve = $journal->de($cible, 'ban_leve');
     : nok('plancher non tenu : ' . json_encode([$refus, $grace, $leve]));
 
 Moderate::adminBan($pdo, $cible, idDe($pdo, 'arbitre-banc'), motif());
+$t30 = time();   // un seul instant pour les deux tables : la peine dit le ban
 $pdo->prepare('UPDATE member_moderation SET ban_debut = ?, banned_until = ? WHERE account_id = ?')
-    ->execute([time() - 100, time() + 20, $cible]);   // plancher dépassé, peine encore en cours
+    ->execute([$t30 - 100, $t30 + 20, $cible]);   // plancher dépassé, peine encore en cours
 $pdo->prepare('UPDATE mod_peines SET debut = ?, decide_le = ?, echeance = ? WHERE account_id = ? AND fin IS NULL')
-    ->execute([time() - 100, time() - 100, time() + 20, $cible]);
+    ->execute([$t30 - 100, $t30 - 100, $t30 + 20, $cible]);
 $libre = Moderate::adminPardon($pdo, $cible, idDe($pdo, 'arbitre-banc'));
 $leve = $journal->de($cible, 'ban_leve');
 $libre['ok'] && !$libre['anticipee'] && count($leve) === 2 && $leve[1]['anticipee'] === false
@@ -4872,8 +4874,9 @@ function courseApresUnRefus(PDO $pdo, Closure $faireProie, Closure $intermede, ?
  */
 function echoirLaPeine(PDO $pdo, int $id): void
 {
-    $pdo->prepare('UPDATE member_moderation SET banned_until = ? WHERE account_id = ? AND banned_until > 0')->execute([time() - 1, $id]);
-    $pdo->prepare('UPDATE mod_peines SET echeance = ? WHERE account_id = ? AND fin IS NULL')->execute([time() - 1, $id]);
+    $echue = time() - 1;   // un seul instant pour les deux tables
+    $pdo->prepare('UPDATE member_moderation SET banned_until = ? WHERE account_id = ? AND banned_until > 0')->execute([$echue, $id]);
+    $pdo->prepare('UPDATE mod_peines SET echeance = ? WHERE account_id = ? AND fin IS NULL')->execute([$echue, $id]);
 }
 
 /** Recule de $secondes les votes reçus par la proie et sa peine : son histoire reste la même, une seconde plus tôt. */
@@ -5389,7 +5392,11 @@ foreach ([Moderate::DUREE_MAX - ((int) $apres139['banned_until'] - $t139) + 1, M
 $borne139 = (int) etatBan($pdo, $prolonge139)['banned_until'];
 $acte139  = $journal139->de($prolonge139, 'ban_prolonge');
 // À un siècle tout juste, la prolongation passe : la borne refuse au-delà, pas moins.
-$juste139 = Moderate::adminProlonger($pdo, $prolonge139, idDe($pdo, 'arbitre-banc'), motif(), Moderate::DUREE_MAX - ($borne139 - $t139));
+try {
+    $juste139 = Moderate::adminProlonger($pdo, $prolonge139, idDe($pdo, 'arbitre-banc'), motif(), Moderate::DUREE_MAX - ($borne139 - $t139));
+} catch (Throwable $e139) {
+    $juste139 = ['ok' => false, 'message' => get_class($e139) . ' : ' . $e139->getMessage()];
+}
 Moderate::setHorloge(null);
 $inconnue139 = membre($pdo, 'origine-inconnue-139');
 poserReputation($pdo, $inconnue139, 15);
@@ -5595,7 +5602,9 @@ $sansMotif143 = sousConfig(new Config(plancherFraction: 0.0), static function ()
             poserReputation($pdo, $id, 15);
             Moderate::adminBan($pdo, $id, idDe($pdo, 'arbitre-banc'), motif(), null, true);
             if ($forme === 'sans-debut') {
+                // Un ban d'avant l'enregistrement du début, repris tel quel : la peine ne le sait pas non plus.
                 $pdo->prepare('UPDATE member_moderation SET ban_debut = 0 WHERE account_id = ?')->execute([$id]);
+                $pdo->prepare('UPDATE mod_peines SET debut = 0 WHERE account_id = ? AND fin IS NULL')->execute([$id]);
             }
             $sortie = $geste === 'lever' ? Moderate::adminLever($pdo, $id, idDe($pdo, 'arbitre-banc')) : Moderate::adminPardon($pdo, $id, idDe($pdo, 'arbitre-banc'));
             $r["$geste/$forme"] = [$sortie['ok'], Moderate::estBanni($pdo, $id)];
@@ -5735,9 +5744,9 @@ array_column($gestes147, 'ok') === [true, true, true, true, true]
 // Un nom se prend : un homonyme gèlerait les gestes d'un modérateur, un tiers inscrit
 // sous son nom les signerait. Seul un entier passe, même chez un hôte hors du mode
 // strict, où PHP convertirait `"1"` ou `true`. Un arbitre ne touche pas à son propre
-// compte ; banni par un autre arbitre, il ne signe rien — sans quoi deux arbitres
-// bannis se lèveraient l'un l'autre ; banni par la machine, il garde ses gestes, et
-// des votants ne coupent pas la modération.
+// compte ; banni par un autre arbitre, ou sous un ban d'origine inconnue, qui peut en
+// être un, il ne signe rien ; banni par la machine, il garde ses gestes, et des
+// votants ne coupent pas la modération.
 require_once __DIR__ . '/appel_non_strict.inc';
 $soi148 = membre($pdo, 'soi-148');
 poserReputation($pdo, $soi148, 15);
@@ -5775,6 +5784,12 @@ $refus148 += [
     'banni gracie son pair' => Moderate::adminPardon($pdo, $soi148, $pair148, motif()),
     'banni bannit un tiers' => Moderate::adminBan($pdo, $autre148, $soi148, motif()),
 ];
+// Un ban écrit avant que l'origine ne s'enregistre peut être un ban d'arbitre.
+$inconnu148 = membre($pdo, 'inconnu-148');
+poserReputation($pdo, $inconnu148, 15);
+Moderate::adminBan($pdo, $inconnu148, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+$pdo->prepare('UPDATE member_moderation SET ban_origine = NULL WHERE account_id = ?')->execute([$inconnu148]);
+$refus148['banni d\'origine inconnue bannit un tiers'] = Moderate::adminBan($pdo, $autre148, $inconnu148, motif());
 // Banni par la machine : ses gestes passent, sauf sur lui-même.
 $auto148 = membre($pdo, 'auto-148');
 poserReputation($pdo, $auto148, 1);
@@ -5798,15 +5813,17 @@ $encore148 = [Moderate::estBanni($pdo, $soi148), Moderate::estBanni($pdo, $pair1
 Moderate::adminLever($pdo, $soi148, idDe($pdo, 'arbitre-banc'), motif());
 Moderate::adminLever($pdo, $pair148, idDe($pdo, 'arbitre-banc'), motif());
 Moderate::adminLever($pdo, $tiers148, idDe($pdo, 'arbitre-banc'), motif());
+Moderate::adminLever($pdo, $inconnu148, idDe($pdo, 'arbitre-banc'), motif());
 $motifs148 === ['nom' => 'type', 'identifiant en chaine' => 'type',
                 'hors mode strict \'1\'' => 'type', 'hors mode strict \'01\'' => 'type', 'hors mode strict 1.5' => 'type',
                 'hors mode strict true' => 'type', 'identifiant inconnu' => 'aucun compte', 'bannir soi' => 'soi',
                 'lever soi' => 'soi', 'prolonger soi' => 'soi', 'gracier soi' => 'soi', 'maintenir soi' => 'soi', 'classer soi' => 'soi',
                 'banni lève son pair' => 'sous peine', 'banni gracie son pair' => 'sous peine', 'banni bannit un tiers' => 'sous peine',
+                'banni d\'origine inconnue bannit un tiers' => 'sous peine',
                 'banni par la machine bannit un tiers' => 'accepté', 'banni par la machine se lève' => 'soi']
-    && $inscrits148 === 4 && $encore148 === [true, true, false]
+    && $inscrits148 === 5 && $encore148 === [true, true, false]
     && $auto148Banni['banned'] && $auto148Banni['ban_origine'] === 'auto' && $tiers148Banni
-    ? ok('⭐ l\'arbitre est un entier, même hors du mode strict : un identifiant sans compte, un geste sur son propre compte et un arbitre banni par un pair sont refusés sans rien inscrire ; banni par la machine, il garde ses gestes')
+    ? ok('⭐ l\'arbitre est un entier, même hors du mode strict : un identifiant sans compte, un geste sur son propre compte et un arbitre banni par un pair ou d\'origine inconnue sont refusés sans rien inscrire ; banni par la machine, il garde ses gestes')
     : nok('⭐ un geste passe sans arbitre identifiable, sur le compte de son arbitre, ou signé d\'un arbitre sous peine : ' . json_encode([
         'refus' => $motifs148, 'inscrits' => $inscrits148, 'bannis' => $encore148,
         'auto' => [$auto148Banni['banned'], $auto148Banni['ban_origine']], 'tiers' => $tiers148Banni,
@@ -5991,7 +6008,16 @@ try {
     $lecture152 = $e->getMessage();
 }
 $rouvre152 = $diag152(static fn () => Moderate::migrerBans($pdo));
-$lignes152 = $rouvre152 === 'passé' ? Moderate::peinesDe($pdo, $rouv152, precis: true) : [];
+// Une réparation manquée laisse une ligne que le moteur refuse : la lecture le dit, le
+// cas rougit sur son nom au lieu de tomber.
+$peines152 = static function (int $compte) use ($pdo): array|string {
+    try {
+        return Moderate::peinesDe($pdo, $compte, precis: true);
+    } catch (Throwable $e) {
+        return get_class($e) . ' : ' . $e->getMessage();
+    }
+};
+$lignes152 = $rouvre152 === 'passé' ? $peines152($rouv152) : [];
 if ($rouvre152 === 'passé') {
     Moderate::adminLever($pdo, $rouv152, idDe($pdo, 'arbitre-banc'), motif());
 } else {
@@ -6007,26 +6033,64 @@ Moderate::adminBan($pdo, $trois152, idDe($pdo, 'arbitre-un'), motif(), 3600);
 $debut152 = time() + 5;
 $fin152 = time() + 7200;
 $pdo->prepare('UPDATE member_moderation SET ban_debut = ?, banned_until = ? WHERE account_id = ?')->execute([$debut152, $fin152, $trois152]);
+// Avant la reprise, le moteur refuse ce compte — à sa lecture et aux listes de
+// l'arbitre — en nommant migrerBans() : l'historique ne se lit pas faux en silence.
+$divergente152 = static function (int $compte, callable $geste): string {
+    try {
+        $geste();
+        return 'passé';
+    } catch (\Pierroons\SelfModerate\RepriseManquante $e) {
+        return $e->compte === $compte && str_contains($e->getMessage(), 'ne dit plus') && str_contains($e->getMessage(), 'migrerBans()')
+            ? 'divergente' : $e->getMessage();
+    } catch (Throwable $e) {
+        return get_class($e) . ' : ' . $e->getMessage();
+    }
+};
+$sansRepriseReposee152 = [
+    $divergente152($trois152, static fn () => Moderate::getReputation($pdo, $trois152)),
+    $divergente152($trois152, static fn () => Moderate::bansEnCours($pdo, 100000)),
+];
 $reposee152 = $diag152(static fn () => Moderate::migrerBans($pdo));
-$apresReposee152 = Moderate::peinesDe($pdo, $trois152, precis: true);
+$apresReposee152 = $peines152($trois152);
 $pdo->prepare('UPDATE member_moderation SET banned_until = banned_until + 600 WHERE account_id = ?')->execute([$trois152]);
 $diag152(static fn () => Moderate::migrerBans($pdo));
-$apresProlongee152 = Moderate::peinesDe($pdo, $trois152, precis: true);
+$apresProlongee152 = $peines152($trois152);
 $diag152(static fn () => Moderate::adminLever($pdo, $trois152, idDe($pdo, 'arbitre-banc'), motif()));
-$troisieme152 = $reposee152 === 'passé' && count($apresReposee152) === 2
+// Un ban que le moteur a posé, prolongé hors de lui : refusé de même, puis recalé, et
+// sa ligne prend `reprise` — la prolongation n'est pas connue.
+$prol152 = membre($pdo, 'prolongee-152');
+poserReputation($pdo, $prol152, 15);
+Moderate::adminBan($pdo, $prol152, idDe($pdo, 'arbitre-un'), motif(), 3600);
+$repriseAvant152 = $peines152($prol152)[0]['reprise'] ?? null;
+$pdo->prepare('UPDATE member_moderation SET banned_until = banned_until + 600 WHERE account_id = ?')->execute([$prol152]);
+$finProlongee152 = (int) $pdo->query("SELECT banned_until FROM member_moderation WHERE account_id = $prol152")->fetchColumn();
+$sansRepriseProlongee152 = [
+    $divergente152($prol152, static fn () => Moderate::getReputation($pdo, $prol152)),
+    $divergente152($prol152, static fn () => Moderate::bansEnCours($pdo, 100000)),
+];
+$diag152(static fn () => Moderate::migrerBans($pdo));
+$luProlongee152 = $divergente152($prol152, static fn () => Moderate::getReputation($pdo, $prol152));
+$ligneProlongee152 = $peines152($prol152);
+$ligneProlongee152 = is_array($ligneProlongee152) ? ($ligneProlongee152[0] ?? []) : ['erreur' => $ligneProlongee152];
+$diag152(static fn () => Moderate::adminLever($pdo, $prol152, idDe($pdo, 'arbitre-banc'), motif()));
+$divergence152 = $sansRepriseReposee152 === ['divergente', 'divergente'] && $sansRepriseProlongee152 === ['divergente', 'divergente']
+    && $luProlongee152 === 'passé' && $repriseAvant152 === false
+    && ($ligneProlongee152['reprise'] ?? null) === true && ($ligneProlongee152['echeance'] ?? null) === $finProlongee152;
+$troisieme152 = $reposee152 === 'passé' && is_array($apresReposee152) && count($apresReposee152) === 2
     && $apresReposee152[1]['fin_cause'] === 'hors_moteur' && $apresReposee152[0]['fin'] === null
     && $apresReposee152[0]['debut'] === $debut152 && $apresReposee152[0]['echeance'] === $fin152
-    && ($apresProlongee152[0]['echeance'] ?? null) === $fin152 + 600 && count($apresProlongee152) === 2;
+    && is_array($apresProlongee152) && ($apresProlongee152[0]['echeance'] ?? null) === $fin152 + 600 && count($apresProlongee152) === 2;
 Moderate::setJournal($journalAvant152);
-$avant152 === ['ban' => 'nommée', 'auto' => 'nommée', 'console' => 'nommée'] && $inscrits152 === 0 && $troisieme152
+$avant152 === ['ban' => 'nommée', 'auto' => 'nommée', 'console' => 'nommée'] && $inscrits152 === 0 && $troisieme152 && $divergence152
     && $repare152 === 1 && $fermee152 === 'hors_moteur' && $apres152 === 'passé' && $rouvre152 === 'passé'
-    && str_contains($lecture152, 'fermée hors du moteur') && count($lignes152) === 1 && $lignes152[0]['fin'] === null
+    && str_contains($lecture152, 'fermée hors du moteur') && is_array($lignes152) && count($lignes152) === 1 && $lignes152[0]['fin'] === null
     && $lignes152[0]['arbitre'] === ['id' => idDe($pdo, 'arbitre-un'), 'nom' => 'arbitre-un']
-    ? ok('⭐ une peine orpheline se refuse au ban et à la console en nommant migrerBans(), qui la ferme ; une ligne fermée à la main est rouverte, sans seconde ligne ; un ban reposé ou prolongé hors du moteur retrouve sa ligne')
+    ? ok('⭐ une peine orpheline se refuse au ban et à la console en nommant migrerBans(), qui la ferme ; une ligne fermée à la main est rouverte, sans seconde ligne ; un ban reposé ou prolongé hors du moteur se refuse jusqu\'à la reprise, puis retrouve sa ligne, marquée `reprise` quand l\'échéance est recalée')
     : nok('⭐ l\'historique et les bans divergent sans réparation : ' . json_encode([
         'avant' => $avant152, 'inscrits' => $inscrits152, 'repare' => $repare152, 'fermee' => $fermee152, 'apres' => $apres152,
         'lecture' => $lecture152, 'rouvre' => $rouvre152, 'lignes' => $lignes152,
         'reposee' => [$reposee152, $apresReposee152, $apresProlongee152 ?? null],
+        'divergente' => [$sansRepriseReposee152, $sansRepriseProlongee152, $luProlongee152, $repriseAvant152, $ligneProlongee152, $finProlongee152],
     ], JSON_UNESCAPED_UNICODE));
 
 // ── 153. ⭐ La dernière décision dit son auteur ─────────────────────────────────
@@ -6100,6 +6164,27 @@ $route156 = $csrf156 !== null
 $profil156 = $csrf156 !== null
     ? requeteLab($serveur156, '/api/admin.php', $session156, $csrf156, ['action' => 'profile', 'account_id' => idDe($pdo, 'arbitre-banc')])
     : ['code' => 0, 'corps' => ''];
+// Le balayage de tout le site annule les votes d'une meute : c'est de la modération.
+$balayer156 = static fn (): array => $csrf156 !== null
+    ? requeteLab($serveur156, '/api/detect_abuse.php', $session156, $csrf156)
+    : ['code' => 0, 'corps' => ''];
+$balayage156 = $balayer156();
+// Un ban d'origine inconnue peut être un ban d'arbitre : le lab le lit comme le moteur.
+$pdo->prepare('UPDATE member_moderation SET ban_origine = NULL WHERE account_id = ?')->execute([idDe($pdo, 'admin-banni-156')]);
+$pageInconnue156 = requeteLab($serveur156, '/admin.php', $session156);
+$balayageInconnu156 = $balayer156();
+// Une reprise manquante sur le compte de l'administrateur se dit sur la console, qui
+// ne tombe pas.
+$pdo->prepare('DELETE FROM mod_peines WHERE account_id = ? AND fin IS NULL')->execute([idDe($pdo, 'admin-banni-156')]);
+$pageReprise156 = requeteLab($serveur156, '/admin.php', $session156);
+Moderate::migrerBans($pdo);
+Moderate::adminLever($pdo, idDe($pdo, 'admin-banni-156'), idDe($pdo, 'arbitre-banc'), motif());
+// Banni par la machine, il garde ses gestes : ni bandeau, ni refus du balayage.
+poserReputation($pdo, idDe($pdo, 'admin-banni-156'), 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-156'), 'member', idDe($pdo, 'admin-banni-156'), -1, motif(), 'agressif');
+$auto156 = Moderate::getReputation($pdo, idDe($pdo, 'admin-banni-156'));
+$pageAuto156 = requeteLab($serveur156, '/admin.php', $session156);
+$balayageAuto156 = $balayer156();
 arreterLab($serveur156);
 Moderate::adminLever($pdo, idDe($pdo, 'admin-banni-156'), idDe($pdo, 'arbitre-banc'), motif());
 Moderate::setJournal($journalAvant156);
@@ -6108,49 +6193,116 @@ $libre156['code'] === 200 && !str_contains($libre156['corps'], $bandeau156)
     && $page156['code'] === 200 && str_contains($page156['corps'], $bandeau156)
     && $route156['code'] === 400 && str_contains($route156['corps'], 'sous peine') && $profil156['code'] === 200
     && !Moderate::estBanni($pdo, idDe($pdo, 'arbitre-banc'))
+    && $balayage156['code'] === 403 && str_contains($balayage156['corps'], 'sous peine')
+    && $pageInconnue156['code'] === 200 && str_contains($pageInconnue156['corps'], $bandeau156)
+    && $balayageInconnu156['code'] === 403
+    && $pageReprise156['code'] === 200 && str_contains($pageReprise156['corps'], 'ne peuvent pas s\'afficher')
+    && $auto156['banned'] && $auto156['ban_origine'] === 'auto'
+    && $pageAuto156['code'] === 200 && !str_contains($pageAuto156['corps'], $bandeau156)
+    && $balayageAuto156['code'] === 200 && str_contains($balayageAuto156['corps'], '"ok":true')
     ? ok('⭐ le lab suspend la modération d\'un administrateur banni par un pair, le lui dit, et lui laisse ses autres routes')
     : nok('⭐ le lab ferme trop, ou pas assez, à un administrateur banni par un pair : ' . json_encode([
         'libre' => $libre156['code'], 'page' => [$page156['code'], str_contains($page156['corps'], $bandeau156)],
         'route' => [$route156['code'], substr($route156['corps'], 0, 160)], 'profil' => [$profil156['code'], substr($profil156['corps'], 0, 120)],
+        'balayage' => [$balayage156['code'], substr($balayage156['corps'], 0, 160)],
+        'inconnue' => [$pageInconnue156['code'], str_contains($pageInconnue156['corps'], $bandeau156), $balayageInconnu156['code']],
+        'reprise' => [$pageReprise156['code'], str_contains($pageReprise156['corps'], 'ne peuvent pas s\'afficher'), substr($pageReprise156['corps'], 0, 200)],
+        'auto' => [$auto156['banned'], $auto156['ban_origine'], $pageAuto156['code'], str_contains($pageAuto156['corps'], $bandeau156),
+                   $balayageAuto156['code'], substr($balayageAuto156['corps'], 0, 120)],
     ], JSON_UNESCAPED_UNICODE));
 
-// ── 157. ⭐ La règle de l'arbitre sous peine se lit sous le verrou du geste ──────
+// ── 157. ⭐ La règle de l'arbitre sous peine se lit sous le verrou de chaque geste ─
 // Un pair bannit l'arbitre juste avant que le geste de celui-ci prenne le verrou :
-// lue avant, la règle laissait passer le geste.
+// lue avant, la règle laissait passer le geste. Les six gestes la lisent chacun dans
+// leur transaction ; chacun est joué ici, sa cible dans l'état qu'il demande.
 $journalAvant157 = Moderate::journal();
 $journal157 = new JournalDeBanc();
 Moderate::setJournal($journal157);
 $arb157 = membre($pdo, 'arbitre-157');
 poserReputation($pdo, $arb157, 15);
-$cible157 = membre($pdo, 'cible-157');
-poserReputation($pdo, $cible157, 15);
-$c157 = new PdoAPointDArret('sqlite:' . getenv('LAB_DB_PATH'));
-$c157->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$c157->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-$c157->avantLeVerrou = static function () use ($pdo, $arb157): void {
-    Moderate::adminBan($pdo, $arb157, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+$cible157 = static function (string $nom, string $etat) use ($pdo): int {
+    $id = membre($pdo, $nom);
+    poserReputation($pdo, $id, $etat === 'auto' ? 1 : 15);
+    if ($etat === 'banni') {
+        Moderate::adminBan($pdo, $id, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+    } elseif ($etat === 'auto') {
+        Moderate::applyVote($pdo, membre($pdo, "votant-$nom"), 'member', $id, -1, motif(), 'agressif');
+    } elseif ($etat === 'signal') {
+        planterSignal($pdo, $id, 'salve_rapide');
+    }
+    rattraper($pdo, $id);   // rien ne reste à rattraper : le premier verrou est celui du geste
+
+    return $id;
 };
-$c157->verrous = 0;
-try {
-    $geste157 = Moderate::adminBan($c157, $cible157, $arb157, motif());
-} catch (Throwable $e) {
-    $geste157 = ['ok' => false, 'message' => get_class($e) . ' : ' . $e->getMessage()];
-}
-$verrous157 = $c157->verrous;
-$c157 = null;
-$actes157 = count($journal157->de($cible157, 'ban_debut'));
-$cibleBannie157 = Moderate::estBanni($pdo, $cible157);
-Moderate::adminLever($pdo, $arb157, idDe($pdo, 'arbitre-banc'), motif());
-Moderate::setJournal($journalAvant157);
-if ($verrous157 !== 1) {
-    nok('le contrôle 157 ne mesure plus rien : verrous pris par le geste ' . $verrous157 . ', le pair n\'agit plus juste avant le verrou');
-} else {
-    !$geste157['ok'] && str_contains($geste157['message'], 'sous peine') && $actes157 === 0 && !$cibleBannie157
-        ? ok('⭐ un arbitre banni par un pair pendant son geste voit ce geste refusé, sans acte')
-        : nok('⭐ un arbitre banni pendant son geste le voit passer : ' . json_encode([
-            'geste' => $geste157, 'actes' => $actes157, 'cible_bannie' => $cibleBannie157,
+$gestes157 = [
+    'adminBan'       => ['libre',  static fn (PDO $c, int $id): array => Moderate::adminBan($c, $id, $arb157, motif())],
+    'adminPardon'    => ['banni',  static fn (PDO $c, int $id): array => Moderate::adminPardon($c, $id, $arb157, motif())],
+    'adminLever'     => ['banni',  static fn (PDO $c, int $id): array => Moderate::adminLever($c, $id, $arb157, motif())],
+    'adminProlonger' => ['banni',  static fn (PDO $c, int $id): array => Moderate::adminProlonger($c, $id, $arb157, motif(), 600)],
+    'adminMaintenir' => ['auto',   static fn (PDO $c, int $id): array => Moderate::adminMaintenir($c, $id, $arb157, motif())],
+    'adminClasser'   => ['signal', static fn (PDO $c, int $id): array => Moderate::adminClasser($c, $id, $arb157, motif())],
+];
+foreach ($gestes157 as $geste157 => [$etat157, $faire157]) {
+    $vise157 = $cible157(strtolower($geste157) . '-157', $etat157);
+    $avant157 = etatBan($pdo, $vise157);
+    $actesAvant157 = count(array_filter($journal157->actes, static fn (array $a): bool => $a['compte'] === $vise157));
+    $c157 = new PdoAPointDArret('sqlite:' . getenv('LAB_DB_PATH'));
+    $c157->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $c157->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $c157->avantLeVerrou = static function () use ($pdo, $arb157): void {
+        Moderate::adminBan($pdo, $arb157, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+    };
+    $c157->verrous = 0;
+    try {
+        $r157 = $faire157($c157, $vise157);
+    } catch (Throwable $e) {
+        $r157 = ['ok' => false, 'message' => get_class($e) . ' : ' . $e->getMessage()];
+    }
+    $verrous157 = $c157->verrous;
+    $c157 = null;
+    $actes157 = count(array_filter($journal157->actes, static fn (array $a): bool => $a['compte'] === $vise157)) - $actesAvant157;
+    $intacte157 = etatBan($pdo, $vise157) === $avant157;
+    Moderate::adminLever($pdo, $arb157, idDe($pdo, 'arbitre-banc'), motif());
+    if (in_array($etat157, ['banni', 'auto'], true)) {
+        Moderate::adminLever($pdo, $vise157, idDe($pdo, 'arbitre-banc'), motif());
+    }
+    if ($verrous157 !== 1) {
+        nok("le contrôle 157 ne mesure plus rien pour $geste157 : verrous pris par le geste " . $verrous157 . ', le pair n\'agit plus juste avant le verrou');
+        continue;
+    }
+    !$r157['ok'] && str_contains($r157['message'], 'sous peine') && $actes157 === 0 && $intacte157
+        ? ok("⭐ $geste157 : un arbitre banni par un pair pendant son geste voit ce geste refusé, sans acte")
+        : nok("⭐ $geste157 : un arbitre banni pendant son geste le voit passer : " . json_encode([
+            'geste' => $r157, 'actes' => $actes157, 'cible_intacte' => $intacte157,
         ], JSON_UNESCAPED_UNICODE));
 }
+Moderate::setJournal($journalAvant157);
+
+// ── 158. ⭐ Deux arbitres bannis par la machine se lèvent l'un l'autre, et c'est signé ─
+// Des votants ne coupent pas la modération : banni par la machine, un arbitre garde
+// ses gestes, celui de lever un pair banni comme lui compris. Le README écrit ce
+// prix ; chaque levée est signée de son arbitre.
+$journalAvant158 = Moderate::journal();
+$journal158 = new JournalDeBanc();
+Moderate::setJournal($journal158);
+[$a158, $b158] = [membre($pdo, 'auto-a-158'), membre($pdo, 'auto-b-158')];
+foreach ([$a158, $b158] as $i158 => $id158) {
+    poserReputation($pdo, $id158, 1);
+    Moderate::applyVote($pdo, membre($pdo, "votant-$i158-158"), 'member', $id158, -1, motif(), 'agressif');
+}
+$origines158 = [Moderate::getReputation($pdo, $a158)['ban_origine'], Moderate::getReputation($pdo, $b158)['ban_origine']];
+$aLeveB158 = Moderate::adminLever($pdo, $b158, $a158, motif());
+$bLeveA158 = Moderate::adminLever($pdo, $a158, $b158, motif());
+$signes158 = array_map(static fn (array $a): array => [$a['compte'], $a['arbitre_id'] ?? null],
+    array_merge($journal158->de($b158, 'ban_leve'), $journal158->de($a158, 'ban_leve')));
+$libres158 = [Moderate::estBanni($pdo, $a158), Moderate::estBanni($pdo, $b158)];
+Moderate::setJournal($journalAvant158);
+$origines158 === ['auto', 'auto'] && $aLeveB158['ok'] && $bLeveA158['ok']
+    && $signes158 === [[$b158, $a158], [$a158, $b158]] && $libres158 === [false, false]
+    ? ok('⭐ deux arbitres bannis par la machine se lèvent l\'un l\'autre, chaque levée signée de son arbitre')
+    : nok('⭐ la levée croisée de deux arbitres bannis par la machine ne tient pas ce que le README écrit : ' . json_encode([
+        'origines' => $origines158, 'a_leve_b' => $aLeveB158, 'b_leve_a' => $bLeveA158, 'signes' => $signes158, 'bannis' => $libres158,
+    ], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

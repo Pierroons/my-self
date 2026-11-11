@@ -137,6 +137,21 @@ function require_admin(\PDO $pdo): array
     return $acc;
 }
 
+/**
+ * La modération suspendue d'un administrateur : banni par un autre arbitre, ou sous
+ * un ban d'origine inconnue, il ne fait aucun geste de modération — la règle du
+ * moteur, que la console annonce et que la route de balayage applique. Banni par la
+ * machine, il garde ses gestes. Une reprise manquante sur son compte se lève
+ * (`RepriseManquante`) : à l'appelant de la dire.
+ */
+function moderation_suspendue(\PDO $pdo, array $compte): bool
+{
+    // Le moteur, pas la façade du lab : lire un état n'a rien à traduire, et chaque
+    // route qui charge ce fichier n'a pas à charger la modération.
+    $etat = \Pierroons\SelfModerate\Moderate::getReputation($pdo, (int) $compte['id']);
+    return $etat['banned'] && $etat['ban_origine'] !== 'auto';
+}
+
 /** Token de session courant (cookie), ou null. */
 function session_token(): ?string
 {

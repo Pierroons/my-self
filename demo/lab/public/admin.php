@@ -24,11 +24,6 @@ if (!$account || empty($account['is_admin'])) {
     render_footer();
     exit;
 }
-// Banni par un autre arbitre, un administrateur ne signe aucun geste de modération (le
-// moteur les refuse) ; la console reste ouverte, et le lui dit.
-$monEtat = Moderate::getReputation($pdo, (int) $account['id']);
-$gestesSuspendus = $monEtat['banned'] && $monEtat['ban_origine'] === 'admin';
-
 $stats   = Admin::stats($pdo);
 $comptes = Admin::accounts($pdo);
 $fails   = Admin::failedLogins($pdo);
@@ -49,7 +44,11 @@ try {
 // Une reprise oubliée (`RepriseManquante`) se dit ici, au niveau du site, plutôt
 // que de se lire « rien à revoir ».
 $repriseManquante = null;
+$gestesSuspendus = false;
 try {
+    // Banni par un autre arbitre, un administrateur ne signe aucun geste de modération (le
+    // moteur les refuse) ; la console reste ouverte, et le lui dit.
+    $gestesSuspendus = moderation_suspendue($pdo, $account);
     $bans     = Moderate::bansEnCours($pdo);
     // Une page par cause, la plus ancienne en tête : un flot de salves remplit la sienne
     // sans pousser les autres hors de la vue. Le ban automatique se lit avec les bans.

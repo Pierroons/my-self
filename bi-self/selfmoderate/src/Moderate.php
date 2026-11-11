@@ -348,9 +348,10 @@ class Moderate
      * La ligne de modération d'un compte, ou null s'il n'en a pas encore. Elle
      * dit si un signal est ouvert sur lui, sans le lire : un compte calme se lit
      * en une requête, et la lecture ne se fie pas au résumé de la case. Elle le
-     * confronte seulement aux tables : une case ouverte sans aucun signal, ou
-     * un ban en cours sans sa ligne dans `mod_peines`, dit qu'une reprise n'a
-     * pas été faite, et la lecture refuse.
+     * confronte seulement aux tables : une case ouverte sans aucun signal, un
+     * ban en cours sans sa ligne dans `mod_peines`, ou dont la ligne ouverte
+     * porte un autre début ou une autre échéance, dit qu'une reprise n'a pas été
+     * faite, et la lecture refuse.
      */
     private static function ligne(PDO $pdo, int $accountId): ?array
     {
@@ -358,7 +359,9 @@ class Moderate
             'SELECT reputation, strikes, strikes_admin, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
                     convalescent, last_regen_at, vote_muted_until, needs_review,
                     EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id) AS signale,
-                    EXISTS (SELECT 1 FROM mod_peines p WHERE p.account_id = m.account_id AND p.fin IS NULL) AS peine_ouverte
+                    EXISTS (SELECT 1 FROM mod_peines p WHERE p.account_id = m.account_id AND p.fin IS NULL) AS peine_ouverte,
+                    EXISTS (SELECT 1 FROM mod_peines p WHERE p.account_id = m.account_id AND p.fin IS NULL
+                               AND p.debut = m.ban_debut AND p.echeance = m.banned_until) AS peine_accordee
                FROM member_moderation m WHERE account_id = ?'
         );
         $stmt->execute([$accountId]);
@@ -366,7 +369,10 @@ class Moderate
         if ($row !== false && (int) $row['needs_review'] && !(int) $row['signale']) {
             throw self::repriseManquante($accountId);
         }
-        if ($row !== false && (int) $row['banned_until'] > 0 && !(int) $row['peine_ouverte']) {
+        if ($row !== false && (int) $row['banned_until'] > 0 && !(int) $row['peine_accordee']) {
+            if ((int) $row['peine_ouverte']) {
+                throw self::repriseManquante($accountId, 'divergente');
+            }
             $fermee = $pdo->prepare('SELECT 1 FROM mod_peines WHERE account_id = ? AND debut = ? AND debut > 0');
             $fermee->execute([$accountId, (int) $row['ban_debut']]);
             $reprise = $fermee->fetchColumn() !== false ? 'fermee' : 'peines';
@@ -2130,15 +2136,27 @@ class Moderate
         if ($compte !== false) {
             throw self::repriseManquante((int) $compte, 'orpheline');
         }
+        $divergente = $pdo->prepare(
+            'SELECT p.account_id FROM mod_peines p JOIN member_moderation m ON m.account_id = p.account_id
+              WHERE p.fin IS NULL AND m.banned_until > 0
+                AND (p.debut <> m.ban_debut OR p.echeance <> m.banned_until)
+              LIMIT 1'
+        );
+        $divergente->execute();
+        $compte = $divergente->fetchColumn();
+        if ($compte !== false) {
+            throw self::repriseManquante((int) $compte, 'divergente');
+        }
     }
 
     /**
      * Ce qui manque, dit à qui peut le réparer. `peines` : un ban d'avant la 0.9.0 ;
      * `fermee` : un ban dont la ligne a été fermée hors du moteur ; `orpheline` : une
-     * ligne ouverte sans ban, laissée par un écrivain hors du moteur. `migrerBans()`
-     * répare les trois.
+     * ligne ouverte sans ban, laissée par un écrivain hors du moteur ; `divergente` :
+     * une ligne ouverte qui ne dit plus le ban en cours, levé puis reposé ou
+     * prolongé hors du moteur. `migrerBans()` répare les quatre.
      *
-     * @param 'signaux'|'peines'|'fermee'|'orpheline' $reprise
+     * @param 'signaux'|'peines'|'fermee'|'orpheline'|'divergente' $reprise
      */
     private static function repriseManquante(int $accountId, string $reprise = 'signaux'): RepriseManquante
     {
@@ -2150,6 +2168,9 @@ class Moderate
             'orpheline' => 'SelfModerate : le compte %d porte une peine ouverte dans mod_peines et aucun ban en cours — '
                 . 'une peine ne s\'ouvre pas sur une autre ; elle a été fermée hors du moteur (une montée faite service en marche, '
                 . 'une écriture SQL) : appelle Moderate::migrerBans(), qui la ferme.',
+            'divergente' => 'SelfModerate : le compte %d a un ban en cours que sa ligne ouverte dans mod_peines ne dit plus — '
+                . 'un autre début ou une autre échéance, posés hors du moteur (une montée faite service en marche, une écriture SQL) : '
+                . 'appelle Moderate::migrerBans(), qui la met d\'accord.',
             default     => 'SelfModerate : le compte %d a une case de signalement ouverte et aucun signal dans mod_signaux — '
                 . 'la reprise n\'a pas été faite : appelle Moderate::migrerSignaux() une fois, juste après avoir créé la table.',
         }, $accountId), $accountId);
@@ -2213,7 +2234,7 @@ class Moderate
      * juste après avoir créé la table, et de nouveau si une montée s'est faite
      * service en marche : tant qu'ils divergent, le moteur refuse le compte et
      * nomme cette fonction. Rejouée sur une base d'accord, elle ne fait rien.
-     * Rend le nombre de lignes ouvertes, rouvertes ou fermées.
+     * Rend le nombre de lignes ouvertes, rouvertes, fermées ou recalées.
      *
      * - Un ban sans ligne ouverte : la ligne fermée qui porte son début est
      *   rouverte ; sans elle, une ligne s'ouvre, et ce que la base ne savait pas
@@ -2225,7 +2246,8 @@ class Moderate
      *   l'instant de la reprise, cause `hors_moteur` ; l'instant réel de sa fin
      *   n'est pas connu.
      * - Une ligne ouverte dont l'échéance n'est plus celle du ban (prolongé hors du
-     *   moteur) reçoit l'échéance de l'état.
+     *   moteur) reçoit l'échéance de l'état, et `reprise = 1` : la prolongation
+     *   n'est pas connue.
      */
     public static function migrerBans(PDO $pdo): int
     {
@@ -2268,7 +2290,8 @@ class Moderate
             }
             $recalees = $pdo->prepare(
                 'UPDATE mod_peines
-                    SET echeance = (SELECT m.banned_until FROM member_moderation m WHERE m.account_id = mod_peines.account_id)
+                    SET echeance = (SELECT m.banned_until FROM member_moderation m WHERE m.account_id = mod_peines.account_id),
+                        reprise = 1
                   WHERE fin IS NULL
                     AND echeance <> (SELECT m.banned_until FROM member_moderation m WHERE m.account_id = mod_peines.account_id)'
             );
@@ -2572,10 +2595,12 @@ class Moderate
     /**
      * L'arbitre d'un geste est un compte de l'hôte, désigné par son identifiant
      * (`accounts.id`) : un nom se prend, un identifiant non. Il ne fait aucun geste
-     * sur son propre compte, ni aucun tant qu'un **autre arbitre** l'a banni —
-     * sans quoi deux arbitres bannis se lèveraient l'un l'autre. Banni par la
-     * machine, il garde ses gestes : des votants ne coupent pas la modération. Lu
-     * sous le verrou du geste : un ban posé sur l'arbitre pendant ce geste est vu.
+     * sur son propre compte, ni aucun tant qu'un **autre arbitre** l'a banni : un
+     * pair coupe la modération, et c'est signé. Un ban d'origine inconnue peut en
+     * être un, et compte comme tel. Banni par la machine, il garde ses gestes :
+     * des votants ne coupent pas la modération ; deux arbitres bannis par la
+     * machine peuvent donc se lever l'un l'autre, par deux gestes signés. Lu sous
+     * le verrou du geste : un ban posé sur l'arbitre pendant ce geste est vu.
      *
      * @return array{id: int, nom: string}|string le compte, ou le refus
      */
@@ -2595,7 +2620,7 @@ class Moderate
         if ((int) $compte['id'] === $accountId) {
             return static::t('Un arbitre ne fait aucun geste sur son propre compte.');
         }
-        if ((int) $compte['banned_until'] > self::maintenant() && $compte['ban_origine'] === 'admin') {
+        if ((int) $compte['banned_until'] > self::maintenant() && $compte['ban_origine'] !== 'auto') {
             return static::t('Un arbitre sous peine ne fait aucun geste d\'arbitre.');
         }
 
