@@ -25,12 +25,18 @@ fenêtre d'incréments avait seulement roulé.
   de `build_jade_db.py` affirmait que le global de JADE porte la même date figée que celui de LEGI — la DILA le
   republie, à une cadence qu'elle n'annonce pas.
 - `build_jade_db.py` retient désormais la dernière lecture **rattrapée** de la fenêtre — un passage qui l'a lue
-  entière et a appliqué tout ce qu'elle portait, fenêtre vide comprise. Si le plus ancien incrément publié est
-  né après cette lecture, rien n'a pu paraître et disparaître entre les deux, et la collecte reprend. Sinon le
-  refus tient.
+  entière et a appliqué tout ce qu'elle portait, fenêtre vide comprise — **et le nom du fonds global publié ce
+  jour-là**. La collecte reprend quand le plus ancien incrément publié est né après cette lecture et que le
+  global n'a pas été republié depuis. Sinon le refus tient.
 - **Une lecture qui n'a pas rattrapé la fenêtre ne prouve rien** : ancrer la preuve sur toute lecture, même
-  refusée, refermerait un vrai trou en trois nuits, chaque refus repoussant l'ancre jusqu'à ce que les
+  refusée, refermerait un vrai trou en quelques nuits, chaque refus repoussant l'ancre jusqu'à ce que les
   incréments suivants soient tous nés après elle.
+- **« Né après la lecture » ne suffirait pas non plus**, et c'est la condition du global qui ferme ce trou : un
+  incrément peut paraître après une lecture et disparaître avant la suivante, et la fenêtre du lendemain ne
+  porterait alors que des incréments nés après l'ancre. La seule condition de temps accorderait la preuve
+  par-dessus la lacune. Comme la republication du global est la seule purge mesurée, un global inchangé établit
+  que la fenêtre n'a rien perdu entre les deux lectures — ce que la borne de 25 heures ne pouvait pas établir,
+  puisqu'elle borne l'intervalle entre deux lectures et non la durée de vie d'un incrément.
 - La preuve expire au bout de 25 heures, soit 45 minutes de marge sur la cadence du timer et sa dispersion. Une
   nuit manquée annule donc la preuve et le refus revient : la borne est une prudence, pas une profondeur de
   fenêtre mesurée.
@@ -38,7 +44,8 @@ fenêtre d'incréments avait seulement roulé.
   jour du dump, et le premier incrément qui suit est toujours postérieur à ce minuit, donc la reprise
   automatique retombait sur le même refus. Le message nomme maintenant le global **et** les incréments de la
   fenêtre dans un seul appel.
-- `diffs_disponibles()` refuse un index qui ne nomme ni incrément ni fonds global, en source indisponible. Une
+- `fonds_publie()` — l'ancienne `diffs_disponibles()`, qui rend désormais aussi le nom du fonds global — refuse
+  un index qui ne nomme ni incrément ni global, en source indisponible. Une
   page de courtoisie servie en HTTP 200 rendait la même liste vide qu'une vraie fenêtre vide ; depuis que la
   fenêtre vide fait preuve, cette confusion en ferait une preuve tirée d'une source qu'on n'a pas lue.
 - Le banc `sanity_jade_collecteur.py` éprouve ces propriétés sur des fenêtres fabriquées, dont l'incident,

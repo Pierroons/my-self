@@ -104,27 +104,34 @@ def etat_de(db, cle):
     return r[0] if r else None
 
 
-def antidater(db, heures):
-    """Recule la dernière lecture rattrapée : le banc ne peut pas attendre un jour."""
-    quand = horodate(-heures)
+def graver(db, cle, valeur):
+    """Écrit une clé de `jade_etat` : le banc ne peut attendre ni un jour ni une
+    republication du fonds global."""
     c = sqlite3.connect(db)
-    c.execute("INSERT OR REPLACE INTO jade_etat VALUES ('fenetre_lue_le', ?)", (quand,))
+    c.execute("INSERT OR REPLACE INTO jade_etat VALUES (?,?)", (cle, valeur))
     c.commit()
     c.close()
-    return quand
+    return valeur
 
 
-def fonds(chemin, *increments):
+def antidater(db, heures):
+    """Recule la dernière lecture rattrapée : le banc ne peut pas attendre un jour."""
+    return graver(db, "fenetre_lue_le", horodate(-heures))
+
+
+GLOBAL_TEMOIN = "Freemium_jade_global_20260101-140000.tar.gz"
+
+
+def fonds(chemin, *increments, global_nom=GLOBAL_TEMOIN):
     """Un répertoire servi comme la DILA sert le fonds JADE : son tarball global,
     et une fenêtre d'incréments qui peut être vide.
 
     🔑 Le global y est toujours, même quand la fenêtre est vide : c'est ce qui
     permet de distinguer une fenêtre vide d'une page qui n'est pas l'index du
-    fonds. La mesure est dans `diffs_disponibles()`.
+    fonds. La mesure est dans `fonds_publie()`.
     """
     chemin.mkdir()
-    archive(chemin / "Freemium_jade_global_20260101-140000.tar.gz",
-            une_decision("CETATEXT000001"))
+    archive(chemin / global_nom, une_decision("CETATEXT000001"))
     for nom in increments:
         archive(chemin / nom, une_decision("CETATEXT9" + nom[5:13]))
     return chemin
@@ -318,9 +325,12 @@ def main():
         archive(tmp / reference, une_decision("CETATEXT9" + reference[5:13]))
 
         def base_prete(nom):
-            """Une base dont le dernier appliqué a 30 h, et qui n'a aucune ancre."""
+            """Une base dont le dernier appliqué a 30 h, sans ancre de lecture, et
+            qui a vu le fonds global témoin — pour que ce soit la condition éprouvée
+            par chaque cas qui refuse, et non le global qui manque."""
             d = tmp / nom
             lancer(d, "--diff", str(tmp / reference))
+            graver(d, "global_vu", GLOBAL_TEMOIN)
             return d
 
         def passage(db, repertoire):
@@ -370,6 +380,22 @@ def main():
         verdict(code != 0 and etat_de(pdb5, "dernier_diff") == reference,
                 "passé la mémoire de la fenêtre, la même situation redevient un "
                 "trou (code %d)" % code)
+
+        # 🔑 Le trou que la seule condition de temps laisserait ouvert : un
+        # incrément paraît APRÈS la dernière lecture et disparaît AVANT la
+        # suivante. La fenêtre du lendemain ne porte alors que des incréments nés
+        # après l'ancre, et « né après la lecture » accorderait la preuve
+        # par-dessus. Ce qui l'interdit est la republication du fonds global, la
+        # seule purge mesurée : un global changé depuis l'ancre annule la preuve.
+        pdb8 = base_prete("preuve-global-republie.sqlite")
+        antidater(pdb8, 24)
+        republie = fonds(tmp / "fonds-republie", neuf,
+                         global_nom="Freemium_jade_global_20261108-140000.tar.gz")
+        code, sortie = passage(pdb8, republie)
+        verdict(code != 0 and "trou possible" in sortie.lower()
+                and etat_de(pdb8, "dernier_diff") == reference,
+                "un fonds global republié depuis la dernière lecture annule la "
+                "preuve : un incrément a pu y être purgé sans témoin (code %d)" % code)
 
         # ⚠️ Nom et cache propres à ce cas : `telecharger()` rend un fichier déjà
         # présent dans le cache sans le retélécharger, donc réutiliser le nom d'un
