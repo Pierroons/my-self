@@ -10,6 +10,14 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Outils de SelfRecover — l'ancienne copie de la porte « appareil » est retirée — 10 novembre 2026
+
+`bi-self/selfrecover/tools/reference/device_handlers.php` venait de la démo supprimée en août : rien ne l'incluait,
+aucun banc ne l'exécutait, et la comparaison pour laquelle on la gardait avait eu lieu. Elle portait encore le
+comportement que la 0.13.4 corrige (un défi rangé pour tout appareil inconnu), dans un dossier nommé « référence » où
+un intégrateur pouvait la recopier. Le récit de la prise de compte du 13 août 2026, qu'elle gardait, est dans
+`src/Titulaire.php`, le modèle de menace et ce journal ; l'historique Git garde le fichier.
+
 ### SelfRecover 0.13.4 — la demande de défi ne range plus rien pour un identifiant mal formé ou inconnu — 10 novembre 2026
 
 Correctif d'un déni de service signalé par un joueur du lab CTF. `Device::ouvrirDefi()` se joint sans session ni

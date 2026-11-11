@@ -1,7 +1,7 @@
 # SelfRecover — outils
 
-Ce dossier rassemble des pages autonomes, un moteur de calcul client, un fichier
-gardé pour référence, et un outil de purge. Aucune page n'est servie en
+Ce dossier rassemble des pages autonomes, un moteur de calcul client et un outil
+de purge. Aucune page n'est servie en
 production : elles s'ouvrent depuis un disque. `purger.php` fait exception — il
 se lance en ligne de commande, exige un DSN PDO vers la base du déploiement et
 efface des lignes.
@@ -12,7 +12,6 @@ efface des lignes.
 | `offline-validator/` | vérification d'une passphrase hors ligne | autonome, zéro requête |
 | `comparison.html` | comparatif des méthodes de récupération | page statique |
 | `mesure-epreuve.html` | ce que coûte l'épreuve du niveau 3 dans le navigateur qui l'ouvre | autonome, zéro requête |
-| `reference/` | une implémentation conservée pour lecture | non exécuté |
 | `purger.php` | dossiers de niveau 3 périmés, lignes d'échec anciennes | CLI, `SELFRECOVER_DSN` requis, efface |
 
 ## entropy-lab
@@ -46,35 +45,3 @@ un raccordement.
 Page HTML autonome : aucune ressource externe, aucune requête. Elle se copie sur
 une clé et s'ouvre sur une machine hors ligne, ce qui est le seul usage
 défendable pour vérifier une passphrase qu'on garde sur papier.
-
-## reference
-
-`device_handlers.php` vient de la démo supprimée. Rien ne l'inclut, et aucun
-banc ne l'exécute.
-
-Il porte le flux d'enrôlement d'appareil en deux temps — défi de 32 octets à
-usage unique, vérification de signature ECDSA P-256. `src/Device/Device.php`
-porte désormais ce mécanisme dans la bibliothèque, et `demo/lab/lib/device.php`
-l'implémente au-dessus : la comparaison pour laquelle ce fichier était gardé a
-eu lieu.
-
-Ce qu'il garde de propre, et pourquoi il reste : **le récit écrit de la prise de
-compte du 13/08/2026**, en tête de `handleDeviceEnroll()` — la chaîne
-`enroll → auth-begin → auth-finish` qui réécrivait un mot de passe sans qu'aucun
-secret soit vérifié, le correctif appliqué au lab le 02/08 et jamais ici, et les
-deux contraintes qui la ferment. C'est le compte rendu le plus complet de cet
-incident dans le dépôt, attaché au code qu'il concerne.
-
-Le code est corrigé, pas seulement commenté : l'enrôlement exige une session et
-refuse un nom de compte divergent. Il hache par `Hashing::hash()`, comme le reste
-du dépôt — il a longtemps appelé une constante `ARGON2_OPTIONS` que rien ne
-définissait, défaut qu'aucun contrôle ne voyait puisque la ligne ne s'exécute
-nulle part.
-
-`su_audit.php` a quitté ce dossier le 20/08/2026 : le journal SU redevient du
-code vivant, dans `demo/lab/lib/su_audit.php`. Il n'en reste pas de copie ici —
-une implémentation figée à côté d'une corrigée finit par être reprise à la place
-de la bonne.
-
-La chronologie du correctif d'enrôlement qu'il documentait a été reportée dans
-`demo/lab/lib/device.php`, à l'endroit où on la relira.
