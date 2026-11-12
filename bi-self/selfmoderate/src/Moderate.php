@@ -123,13 +123,20 @@ class Moderate
 
     /**
      * Un vote exprimé, en filtre SQL sur `mod_votes` : un vote qui porte, ou
-     * qu'un croisement ou sa trêve ont fait tomber. Les plafonds de son auteur
-     * le comptent — sans quoi un membre qui riposte contre chacun de ses
-     * critiques n'aurait aucune borne —, sa cible en lit le motif, et le graphe
-     * de meute le garde. Public : une page de l'hôte qui compte des votes reçus
-     * compte les mêmes.
+     * qu'un croisement, la riposte qui le fait ou sa trêve ont fait tomber. Les
+     * plafonds de son auteur le comptent — sans quoi un membre qui riposte
+     * contre chacun de ses critiques n'aurait aucune borne —, et la meute comme
+     * la salve le gardent.
      */
-    public const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))";
+    private const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))";
+
+    /**
+     * Un vote qui a porté : compté, ou croisé après avoir compté. C'est ce que sa
+     * cible en voit — son motif, et sa place parmi les votes reçus. Une riposte
+     * ou un vote de trêve n'ont jamais porté : montrés, un motif apparu sans
+     * point perdu désignerait leur auteur. Au croisement, aucune page ne change.
+     */
+    private const VOTE_RECU = "(blocked = 0 OR blocked_reason = 'vote_croise')";
 
     /**
      * Une durée en clair : l'unité suit l'ordre de grandeur, et la durée n'est
@@ -1249,8 +1256,9 @@ class Moderate
         }
 
         // Deux membres qui votent l'un contre l'autre se croisent : les deux votes
-        // tombent, dans cette transaction (`croiser()`). La réponse est celle d'un
-        // vote compté : elle ne nomme pas la règle.
+        // tombent, dans cette transaction (`croiser()`). Le message est celui d'un
+        // vote compté ; `blocked` et sa raison sont pour l'hôte, dont la route ne
+        // les rend pas au votant.
         if ($value === -1) {
             $croise = self::croiser($pdo, $voterId, $author);
             if ($croise !== null) {
@@ -1293,22 +1301,24 @@ class Moderate
      *   tentative : un membre qui revoterait sans cesse ne s'abriterait pas des
      *   votes de l'autre.
      * - **Croisement** : `$cible` a contre `$votant` un vote négatif qui porte
-     *   encore, posé dans la même fenêtre ; le plus récent tombe avec le vote de
-     *   `$votant` (`vote_croise`) — un vote contre un vote, quel que soit le
-     *   message visé. Le point qu'il avait retiré revient à `$votant`.
+     *   encore, posé dans la même fenêtre ; le plus récent tombe (`vote_croise`),
+     *   et le vote de `$votant` avec lui (`riposte`) — un vote contre un vote,
+     *   quel que soit le message visé. Le point qu'il avait retiré revient à
+     *   `$votant`. La riposte est posée à l'instant du croisement : la trêve
+     *   part d'elle.
      *
      * Aucune peine n'est levée : un croisement n'est pas une injustice réparée,
      * et une peine causée entre-temps reste à l'arbitre. Les deux votes restent
      * comptés dans les plafonds de leur auteur (`VOTE_EXPRIME`).
      *
-     * @return 'treve'|'vote_croise'|null la raison qui fait tomber le vote, ou null s'il porte
+     * @return 'treve'|'riposte'|null la raison qui fait tomber le vote, ou null s'il porte
      */
     private static function croiser(PDO $pdo, int $votant, int $cible): ?string
     {
         $depuis = self::maintenant() - self::config()->fenetreCroiseeSecondes;
         $treve = $pdo->prepare(
             "SELECT 1 FROM mod_votes
-              WHERE blocked_reason = 'vote_croise' AND created_at >= ?
+              WHERE blocked_reason = 'riposte' AND created_at >= ?
                 AND ((voter_id = ? AND target_author = ?) OR (voter_id = ? AND target_author = ?))
               LIMIT 1"
         );
@@ -1336,7 +1346,7 @@ class Moderate
         }
         self::restoreAfterCancel($pdo, $votant, [(int) $vote], leverLaPeine: false);
 
-        return 'vote_croise';
+        return 'riposte';
     }
 
     /**
@@ -1666,15 +1676,17 @@ class Moderate
         $minVotants = (int) self::config()->salveVotantsMin;
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
-             WHERE value = -1 AND blocked = 0 AND created_at >= ?$surCible
+             WHERE value = -1 AND " . self::VOTE_EXPRIME . " AND created_at >= ?$surCible
           GROUP BY target_author HAVING COUNT(DISTINCT voter_id) >= $minVotants
         ");
         $stmt->execute(array_merge([$sinceSalve], $deLaCible));
 
         foreach ($stmt->fetchAll() as $row) {
             $author = (int) $row['target_author'];
+            // Un vote croisé, une riposte ou un vote de trêve restent dans la salve,
+            // comme dans le graphe de meute : tombés, ils ont été émis.
             $vs = $pdo->prepare('SELECT voter_id, created_at FROM mod_votes
-                                  WHERE target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?
+                                  WHERE target_author = ? AND value = -1 AND ' . self::VOTE_EXPRIME . ' AND created_at >= ?
                                   ORDER BY created_at ASC');
             $vs->execute([$author, $sinceSalve]);
             $votes = $vs->fetchAll();
@@ -2623,7 +2635,7 @@ class Moderate
                 'origine' => 'auto',
                 'episode' => $episode,
                 'dont_arbitre' => (int) $etat['strikes_admin'],
-                'duree'   => $duree,
+                'duree'   => $jusqua - $maintenant,
                 'debut'   => $maintenant,
                 'jusqu_a' => $jusqua,
                 'sans_fin' => self::estSansFin($jusqua),
@@ -2878,6 +2890,22 @@ class Moderate
     }
 
     /**
+     * Le nombre de votes qu'un membre a reçus et qui ont porté — compté, ou
+     * croisé après avoir compté : ceux dont `reasonsFor()` rend le motif. Une
+     * page de l'hôte qui affiche des votes reçus compte ceux-ci : une riposte ou
+     * un vote de trêve, comptés, désigneraient leur auteur.
+     */
+    public static function votesRecus(PDO $pdo, int $accountId): int
+    {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . self::VOTE_RECU);
+        $stmt->execute([$accountId]);
+        $n = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+
+        return $n;
+    }
+
+    /**
      * Les motifs qu'un membre a reçus. Le protocole veut qu'il voie les raisons
      * sans voir qui a voté : aucune colonne de votant ne sort d'ici.
      *
@@ -2895,9 +2923,10 @@ class Moderate
      */
     public static function reasonsFor(PDO $pdo, int $accountId, int $limit = 50): array
     {
-        // Le motif d'un vote croisé, ou tombé pendant sa trêve, reste à sa cible :
-        // le retirer lui dirait lequel venait de l'autre.
-        $recus = "FROM mod_votes WHERE target_author = ? AND " . self::VOTE_EXPRIME . " AND reason IS NOT NULL AND reason <> ''";
+        // Un vote qui a porté garde son motif, même croisé ensuite : le retirer
+        // dirait à sa cible lequel venait de l'autre. Une riposte ou un vote de
+        // trêve n'ont jamais porté, et ne se montrent pas (`VOTE_RECU`).
+        $recus = "FROM mod_votes WHERE target_author = ? AND " . self::VOTE_RECU . " AND reason IS NOT NULL AND reason <> ''";
         // Sous ce nombre de votants, un motif peut désigner son auteur : rien n'est rendu.
         if (self::config()->motifsVotantsMin > 1) {
             $votants = $pdo->prepare("SELECT COUNT(DISTINCT voter_id) $recus");

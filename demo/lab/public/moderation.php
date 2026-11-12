@@ -11,11 +11,11 @@ use Pierroons\MySelfLab\Auth;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 $estArbitre = $account && !empty($account['is_admin']);
-// Un vote croisé, ou tombé pendant sa trêve, ne se publie pas : la ligne dirait à
-// chacun des deux que l'autre a voté contre lui. Il s'écarte dans la requête, avant
-// la limite : retiré après, il ferait baisser le compte, qui le daterait. L'arbitre
-// les voit.
-$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'treve']);
+// Un vote croisé, sa riposte ou un vote tombé pendant la trêve ne se publient pas :
+// la ligne dirait à chacun des deux que l'autre a voté contre lui. Ils s'écartent
+// dans la requête, avant la limite : retirés après, ils feraient baisser le compte,
+// qui les daterait. L'arbitre les voit.
+$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'riposte', 'treve']);
 
 // Le protocole veut qu'on voie les motifs sans voir qui a voté : Moderate::reasonsFor()
 // arrondit même la date au jour pour qu'un recoupement ne désigne pas l'auteur. Les

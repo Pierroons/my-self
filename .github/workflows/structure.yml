@@ -3733,8 +3733,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 245/245 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 245 contrôles"; exit 1; }
+          grep -qx '✅ 246/246 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 246 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3745,8 +3745,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 245/245 contrôles passés' <<< "$sortie" \
-            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 245 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          grep -qx '✅ 246/246 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 246 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3902,24 +3902,26 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 245/245 contrôles passés' <<< "$sortie" \
-            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 245 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          grep -qx '✅ 246/246 contrôles passés' <<< "$sortie" \
+            || { tail -5 <<< "$sortie"; echo "::error::le banc de modération intact ne joue pas ses 246 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, le graphe
           # de meute et la fin réelle d'un ban dans le moteur ; la route de vote, la page
           # publique, les votes reçus, les fins de ban et le blocage dans le lab. Chaque
           # fichier est restauré avant la plantation suivante ; chaque plantation est
           # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
-          FICHIERS="bi-self/selfmoderate/src/Moderate.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php demo/lab/public/profile.php demo/lab/lib/forum.php demo/lab/lib/profile.php"
+          FICHIERS="bi-self/selfmoderate/src/Moderate.php bi-self/selfmoderate/src/Config.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php demo/lab/public/profile.php demo/lab/lib/forum.php demo/lab/lib/profile.php"
           for f in $FICHIERS; do cp "$f" "/tmp/croise.$(tr / _ <<< "$f").intact"; done
           restaurer() { for f in $FICHIERS; do cp "/tmp/croise.$(tr / _ <<< "$f").intact" "$f"; done; }
           echecs=0
           cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_rendu route_brute publique
                      limite_publique emis fin_exacte refus_exact profil blocage_envoi envoi_en_vol blocage_masque
-                     convalescence motifs_croises recus fin_reelle meute_croisee forum_fin profil_save_fin"
+                     convalescence motifs_face motifs_riposte recus recus_moteur fin_reelle meute_croisee forum_fin profil_save_fin
+                     riposte_raison treve_ancre salve_croisee duree_journal pas_palier"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
           import os
           M = 'bi-self/selfmoderate/src/Moderate.php'
+          C = 'bi-self/selfmoderate/src/Config.php'
           V = 'demo/lab/public/api/vote.php'
           O = 'demo/lab/public/moderation.php'
           F = 'demo/lab/lib/moderate.php'
@@ -3933,8 +3935,12 @@ jobs:
           FIN = "✗ ⭐ la fin d'un ban redonne l'instant du vote décisif"
           BLOC = "✗ ⭐ un blocage laisse un message entrer dans dm, ou efface"
           REFUS = "✗ ⭐ un refus du lab dit la fin exacte d'un ban automatique"
+          PAGE = "✗ ⭐ un croisement se lit sur la page d'un des deux"
+          RECUS = "✗ ⭐ le compteur des votes reçus bouge au croisement"
+          FIN_REELLE = "✗ ⭐ la fin réelle d'un ban automatique redonne la seconde du vote"
+          MOTIFS = "$recus = \"FROM mod_votes WHERE target_author = ? AND \" . self::VOTE_RECU . \" AND reason IS NOT NULL AND reason <> ''\";"
           RENDU = "json_out(['ok' => (bool) $result['ok'], 'message' => (string) $result['message']], $result['ok'] ? 200 : 400);"
-          LISTE = "$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'treve']);"
+          LISTE = "$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'riposte', 'treve']);"
           GARDE = "                                 WHERE (bloqueur_id = ? AND bloque_id = ?) OR (bloqueur_id = ? AND bloque_id = ?))'\n"
           SANS_GARDE = "                                 WHERE 0 AND ((bloqueur_id = ? AND bloque_id = ?) OR (bloqueur_id = ? AND bloque_id = ?)))'\n"
           INSERTION = ("        $insert = $pdo->prepare(\n            'INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at)\n"
@@ -3946,8 +3952,8 @@ jobs:
                                   "        $pdo->prepare(\"UPDATE mod_votes SET blocked = 1, blocked_reason = 'vote_croise' WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?\")\n"
                                   "            ->execute([$cible, $votant, $depuis]);\n",
                                "✗ ⭐ le croisement déborde de sa règle"),
-              'plafonds':     (M, "public const VOTE_EXPRIME = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'treve'))\";",
-                                  "public const VOTE_EXPRIME = \"(blocked = 0)\";", TREVE),
+              'plafonds':     (M, "private const VOTE_EXPRIME = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))\";",
+                                  "private const VOTE_EXPRIME = \"(blocked = 0)\";", TREVE),
               'leve_la_peine': (M, "[(int) $vote], leverLaPeine: false);", "[(int) $vote], leverLaPeine: true);",
                                "✗ ⭐ un croisement lève une peine"),
               'user_vote':    (M, "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?'",
@@ -3957,7 +3963,7 @@ jobs:
               'score_rendu':  (V, RENDU, RENDU.replace("(string) $result['message']]", "(string) $result['message'], 'score' => Moderate::score($pdo, $targetType, $targetId)]"), ROUTE),
               'route_brute':  (V, RENDU, "json_out($result, $result['ok'] ? 200 : 400);", ROUTE),
               'publique':     (O, LISTE, "$blocked = Moderate::blockedVotes($pdo, 30);", "✗ ⭐ la page publique publie un croisement"),
-              'limite_publique': (O, LISTE, "$blocked = array_values(array_filter(Moderate::blockedVotes($pdo, 30), static fn (array $v): bool => $estArbitre || !in_array($v['blocked_reason'], ['vote_croise', 'treve'], true)));",
+              'limite_publique': (O, LISTE, "$blocked = array_values(array_filter(Moderate::blockedVotes($pdo, 30), static fn (array $v): bool => $estArbitre || !in_array($v['blocked_reason'], ['vote_croise', 'riposte', 'treve'], true)));",
                                "✗ ⭐ la page publique écarte les croisements après sa limite"),
               'emis':         (P, "$cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ?')", "$cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND blocked = 0')", ROUTE),
               'fin_exacte':   (M, "        return $origine === 'auto' ? self::arrondirFin($bannedUntil) : $bannedUntil;", "        return $bannedUntil;", FIN),
@@ -3971,17 +3977,24 @@ jobs:
               'blocage_masque': (D, "               AND NOT EXISTS (SELECT 1 FROM dm_blocages b WHERE b.bloqueur_id = d.recipient_id AND b.bloque_id = d.sender_id)\n", "", BLOC),
               'convalescence': (M, "        if ($leverLaPeine && $rep['reputation'] >= self::config()->entreeConvalescenceSous()) {",
                                   "        if ($rep['reputation'] >= self::config()->entreeConvalescenceSous()) {", "✗ ⭐ un croisement ferme la convalescence"),
-              'motifs_croises': (M, "$recus = \"FROM mod_votes WHERE target_author = ? AND \" . self::VOTE_EXPRIME . \" AND reason IS NOT NULL AND reason <> ''\";",
-                                  "$recus = \"FROM mod_votes WHERE target_author = ? AND blocked = 0 AND reason IS NOT NULL AND reason <> ''\";",
-                               "✗ ⭐ le motif d'un vote croisé quitte la page de sa cible"),
-              'recus':        (P, "$cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . Moderate::VOTE_EXPRIME);",
-                                  "$cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');", "✗ ⭐ le compteur des votes reçus baisse au croisement"),
-              'fin_reelle':   (M, "        $jusqua  = self::arrondirFin($maintenant + $duree);", "        $jusqua  = $maintenant + $duree;",
-                               "✗ ⭐ la fin réelle d'un ban automatique redonne la seconde du vote"),
+              'motifs_face':  (M, MOTIFS, MOTIFS.replace("self::VOTE_RECU", "'blocked = 0'"), PAGE),
+              'motifs_riposte': (M, MOTIFS, MOTIFS.replace("self::VOTE_RECU", "self::VOTE_EXPRIME"), PAGE),
+              'recus':        (P, "$nbVotesRecus = Moderate::votesRecus($pdo, $myId);",
+                                  "$nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');", RECUS),
+              'recus_moteur': (M, "'SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . self::VOTE_RECU",
+                                  "'SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . self::VOTE_EXPRIME", RECUS),
+              'fin_reelle':   (M, "        $jusqua  = self::arrondirFin($maintenant + $duree);", "        $jusqua  = $maintenant + $duree;", FIN_REELLE),
               'meute_croisee': (M, "        $enJeu = \"value = -1 AND (\" . self::VOTE_EXPRIME . \" OR blocked_reason = 'pack_voting')\";",
                                   "        $enJeu = \"value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')\";", "✗ ⭐ un vote croisé sort du graphe de meute"),
               'forum_fin':    (FO, "            Moderate::finDeBan($etat)\n", "            date('d/m/Y H:i', (int) $etat['banned_until'])\n", REFUS),
               'profil_save_fin': (LP, "            Moderate::finDeBan($etat)\n", "            date('d/m/Y H:i', (int) $etat['banned_until'])\n", REFUS),
+              'riposte_raison': (M, "        return 'riposte';\n    }\n", "        return 'vote_croise';\n    }\n", CROISE),
+              'treve_ancre':  (M, "              WHERE blocked_reason = 'riposte' AND created_at >= ?\n", "              WHERE blocked_reason = 'vote_croise' AND created_at >= ?\n", TREVE),
+              'salve_croisee': (M, "             WHERE value = -1 AND \" . self::VOTE_EXPRIME . \" AND created_at >= ?$surCible\n",
+                                  "             WHERE value = -1 AND blocked = 0 AND created_at >= ?$surCible\n", "✗ ⭐ un vote croisé sort de la salve"),
+              'duree_journal': (M, "                'duree'   => $jusqua - $maintenant,\n", "                'duree'   => $duree,\n", FIN_REELLE),
+              'pas_palier':   (C, "        if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {", "        if (false) {",
+                               "✗ le pas d'arrondi passe hors de ses bornes"),
           }[os.environ['CAS']]
           s = open(f, encoding='utf-8').read()
           assert s.count(avant) == 1, 'plantation impossible'

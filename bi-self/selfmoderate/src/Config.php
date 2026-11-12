@@ -84,7 +84,8 @@ final class Config
      * @param int      $arrondiFinBanSecondes La fin d'un ban automatique se pose au multiple
      *                                        suivant de cette durée (UTC) : sa fin moins son
      *                                        palier redonnerait la seconde du vote décisif.
-     *                                        1 la laisse exacte ; au plus un jour.
+     *                                        1 la laisse exacte ; au plus un jour, et au plus le
+     *                                        plus court palier de `dureesBan`.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -152,6 +153,9 @@ final class Config
         }
         if ($this->arrondiFinBanSecondes < 1 || $this->arrondiFinBanSecondes > 86400) {
             throw new InvalidArgumentException('arrondiFinBanSecondes est un pas d\'arrondi : 1 seconde au moins, un jour au plus.');
+        }
+        if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
+            throw new InvalidArgumentException('arrondiFinBanSecondes dépasse le plus court palier de dureesBan : l\'arrondi allongerait la peine de plus qu\'elle ne dure.');
         }
     }
 

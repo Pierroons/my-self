@@ -902,11 +902,11 @@ Moderate::rangDe($pdo, $seulA) === 1 && $modSeulA['review_reason'] !== 'meute_re
 // lisant ses propres constantes pour tout le reste. `SANS_FIN` n'en est pas
 // un : c'est l'échéance sentinelle d'un ban sans fin, qu'aucune config ne règle.
 // `DUREE_MAX` non plus : c'est la plus longue échéance qui se lise encore comme
-// une échéance, et non comme `SANS_FIN`. `VOTE_EXPRIME` est un filtre SQL —
-// les votes exprimés —, sans nombre à régler.
+// une échéance, et non comme `SANS_FIN`. `VOTE_EXPRIME` et `VOTE_RECU` sont des
+// filtres SQL — les votes exprimés, les votes qui ont porté —, sans nombre à régler.
 $jumelles = array_values(array_filter(
     array_keys((new ReflectionClass(Moteur::class))->getConstants()),
-    static fn (string $c): bool => !str_starts_with($c, 'REASON_') && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_EXPRIME'], true)
+    static fn (string $c): bool => !str_starts_with($c, 'REASON_') && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_EXPRIME', 'VOTE_RECU'], true)
 ));
 $jumelles === []
     ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
@@ -1215,6 +1215,11 @@ $journal = new JournalDeBanc();
 Moderate::setJournal($journal);
 
 // ── 26. À zéro, avec journal : ban gradué, écrit avant la base ──────────────
+// La durée inscrite est la peine : le palier, plus moins d'un pas d'arrondi de sa fin.
+$peineDuPalier = static fn (array $acte, int $episode): bool =>
+    $acte['duree'] === $acte['jusqu_a'] - $acte['debut']
+    && $acte['duree'] >= Moderate::config()->dureeBanPourEpisode($episode)
+    && $acte['duree'] < Moderate::config()->dureeBanPourEpisode($episode) + Moderate::config()->arrondiFinBanSecondes;
 $banni = membre($pdo, 'banni-auto');
 poserReputation($pdo, $banni, 1);
 $vx = membre($pdo, 'votant-x');
@@ -1223,8 +1228,8 @@ $e = Moderate::getReputation($pdo, $banni);
 $debut = $journal->de($banni, 'ban_debut');
 $e['banned'] && $e['ban_origine'] === 'auto' && $e['strikes'] === 1 && count($debut) === 1
     && $debut[0]['origine'] === 'auto' && $debut[0]['motif'] === 'reputation_zero'
-    && $debut[0]['duree'] === Moderate::config()->dureeBanPourEpisode(1)
-    ? ok('à zéro, le ban automatique tombe pour ' . Moderate::dureeEnClair($debut[0]['duree']) . ', et le journal l\'a reçu')
+    && $peineDuPalier($debut[0], 1)
+    ? ok('à zéro, le ban automatique tombe pour ' . Moderate::dureeEnClair(Moderate::config()->dureeBanPourEpisode(1)) . ', et le journal l\'a reçu')
     : nok('ban automatique absent ou non tracé : ' . json_encode([$e, $debut]));
 
 $vy = membre($pdo, 'votant-y');
@@ -1257,8 +1262,8 @@ poserReputation($pdo, $banni, 1);
 $vz = membre($pdo, 'votant-z');
 Moderate::applyVote($pdo, $vz, 'member', $banni, -1, motif(), 'agressif');
 $second = $journal->de($banni, 'ban_debut');
-count($second) === 2 && $second[1]['episode'] === 2 && $second[1]['duree'] === Moderate::config()->dureeBanPourEpisode(2)
-    ? ok('le ban suivant monte d\'un palier : ' . Moderate::dureeEnClair($second[1]['duree']))
+count($second) === 2 && $second[1]['episode'] === 2 && $peineDuPalier($second[1], 2)
+    ? ok('le ban suivant monte d\'un palier : ' . Moderate::dureeEnClair(Moderate::config()->dureeBanPourEpisode(2)))
     : nok('le second ban n\'a pas monté d\'un palier : ' . json_encode($second));
 
 // ── 28. Le balayage referme ce que personne n'a regardé ─────────────────────
@@ -6348,7 +6353,7 @@ $croisement159 = [
     'reponses' => [$premier159['message'], $riposte159['message'], $riposte159['blocked'] ?? null],
     'mes_votes' => [Moderate::userVote($pdo, $a159, 'post', $messagesB159[0]), Moderate::userVote($pdo, $b159, 'post', $messagesA159[0])],
 ];
-$croisement159 === ['reputations' => [15, 15], 'b_apres_le_premier' => 14, 'sorts' => [['vote_croise'], ['vote_croise']],
+$croisement159 === ['reputations' => [15, 15], 'b_apres_le_premier' => 14, 'sorts' => [['vote_croise'], ['riposte']],
                     'reponses' => ['Vote enregistré.', 'Vote enregistré.', true], 'mes_votes' => [-1, -1]]
     ? ok('⭐ deux membres qui votent l\'un contre l\'autre se croisent : les deux votes tombent dans la transaction du second, chacun rend son point, la réponse est celle d\'un vote compté, et chacun garde son vote sur sa page')
     : nok('⭐ le croisement rate : ' . json_encode($croisement159, JSON_UNESCAPED_UNICODE));
@@ -6359,16 +6364,20 @@ $treve159 = [
     $raison159(Moderate::applyVote($pdo, $b159, 'post', $messagesA159[1], -1, motif())),
 ];
 $repsTreve159 = [reputation($pdo, $a159), reputation($pdo, $b159)];
-$t159 += $fenetre159;   // la trêve court depuis le croisement : elle est passée
+// La trêve court depuis le croisement, pas depuis le vote de face, posé 60 s plus
+// tôt : une seconde avant sa fin, elle tient encore.
+$t159 += $fenetre159 - 61;
+$bordTreve159 = $raison159(Moderate::applyVote($pdo, $b159, 'post', message($pdo, $a159, 'fil 159 a3'), -1, motif()));
+$t159 += 61;   // la trêve est passée
 $apresTreve159 = $raison159(Moderate::applyVote($pdo, $a159, 'post', $messagesB159[2], -1, motif()));
 $bApresTreve159 = reputation($pdo, $b159);
 // Trois votes de A contre B dans la fenêtre longue — tombé, tombé, compté : le plafond est plein.
 $plafond159 = $raison159(Moderate::applyVote($pdo, $a159, 'member', $b159, -1, motif()));
-$treve159 === ['treve', 'treve'] && $repsTreve159 === [15, 15] && $apresTreve159 === 'porte' && $bApresTreve159 === 14
+$treve159 === ['treve', 'treve'] && $repsTreve159 === [15, 15] && $bordTreve159 === 'treve' && $apresTreve159 === 'porte' && $bApresTreve159 === 14
     && $plafond159 === 'downvote_farming'
     ? ok('⭐ une trêve suit le croisement : pendant elle, aucun des deux ne vote contre l\'autre ; après elle, le vote porte ; et les votes tombés comptent dans les plafonds')
     : nok('⭐ la trêve ou les plafonds ratent : ' . json_encode([
-        'treve' => $treve159, 'reputations' => $repsTreve159, 'apres' => $apresTreve159, 'b' => $bApresTreve159, 'plafond' => $plafond159,
+        'treve' => $treve159, 'reputations' => $repsTreve159, 'bord' => $bordTreve159, 'apres' => $apresTreve159, 'b' => $bApresTreve159, 'plafond' => $plafond159,
     ], JSON_UNESCAPED_UNICODE));
 
 [$c159, $d159] = [membre($pdo, 'hors-c-159'), membre($pdo, 'hors-d-159')];
@@ -6445,7 +6454,7 @@ $heure160 = 1_800_000_000 - 1_800_000_000 % 3600;
 $pas160 = Moderate::config()->arrondiFinBanSecondes;
 $fins160 = [
     Moderate::finAffichee($heure160 + 1, 'auto') === $heure160 + $pas160,
-    sousConfig(new Config(arrondiFinBanSecondes: 3600), static fn (): int => Moderate::finAffichee($heure160 + 1, 'auto')) === $heure160 + 3600,
+    sousConfig(new Config(dureesBan: [7200], arrondiFinBanSecondes: 3600), static fn (): int => Moderate::finAffichee($heure160 + 1, 'auto')) === $heure160 + 3600,
     Moderate::finAffichee($heure160, 'auto') === $heure160,
     Moderate::finAffichee($heure160 + 1, 'admin') === $heure160 + 1,
     Moderate::finAffichee($heure160 + 1, null) === $heure160 + 1,
@@ -6522,6 +6531,7 @@ $codeCroise161 === 200 && $croise161 === ['ok' => true, 'message' => 'Vote enreg
 $publique161 = requeteLab($serveur161, '/moderation.php');
 $arbitrale161 = requeteLab($serveur161, '/moderation.php', sessionArbitre($pdo, 'arbitre-moderation-161'));
 $publique161['code'] === 200 && !str_contains($publique161['corps'], 'vote_croise') && !str_contains($publique161['corps'], 'treve')
+    && !str_contains($publique161['corps'], 'riposte')
     && $arbitrale161['code'] === 200 && str_contains($arbitrale161['corps'], 'vote_croise')
     ? ok('⭐ la page publique ne liste ni vote croisé ni trêve ; l\'arbitre les voit')
     : nok('⭐ la page publique publie un croisement : ' . json_encode([
@@ -6608,33 +6618,49 @@ $apres162 = [
 ];
 Moderate::setHorloge(null);
 Moderate::setJournal($journalAvant162);
-($riposte162['blocked_reason'] ?? null) === 'vote_croise' && $avant162 === 5
+($riposte162['blocked_reason'] ?? null) === 'riposte' && $avant162 === 5
     && $apres162 === ['reputation' => 6, 'convalescent' => 1, 'chute' => true]
     ? ok('⭐ un convalescent qui riposte retrouve son point, et reste convalescent, le signal de sa chute avec lui')
     : nok('⭐ un croisement ferme la convalescence : ' . json_encode([$riposte162, $avant162, $apres162], JSON_UNESCAPED_UNICODE));
 
-// ── 163. ⭐ Le motif d'un vote croisé, ou tombé en trêve, reste à sa cible ───────
-// Retiré de la liste, il dirait à la cible lequel de ses motifs venait de l'autre.
-// Le seuil des votants le compte, comme un vote compté.
-[$a163, $b163, $f163] = [membre($pdo, 'motif-a-163'), membre($pdo, 'motif-b-163'), membre($pdo, 'motif-f-163')];
-foreach ([$a163, $b163, $f163] as $m163) {
+// ── 163. ⭐ Au croisement, aucune page ne change ────────────────────────────────
+// Le vote de face, qui avait porté, garde son motif et sa place parmi les votes
+// reçus de sa cible. La riposte et un vote de trêve n'ont jamais porté : montrés,
+// un motif apparu sans point perdu désignerait leur auteur. Le seuil des votants
+// ne se franchit pas par eux.
+[$a163, $b163, $f163, $g163] = [membre($pdo, 'motif-a-163'), membre($pdo, 'motif-b-163'), membre($pdo, 'motif-f-163'), membre($pdo, 'motif-g-163')];
+foreach ([$a163, $b163, $f163, $g163] as $m163) {
     poserReputation($pdo, $m163, 15);
 }
-$motifs163 = ['a' => motif(), 'b' => motif(), 'treve' => motif(), 'f' => motif()];
+$motifs163 = ['a' => motif(), 'b' => motif(), 'treve' => motif(), 'f' => motif(), 'g' => motif()];
+$page163 = static function (int $id) use ($pdo): array {
+    $lus = array_column(Moderate::reasonsFor($pdo, $id), 'reason');
+    sort($lus);
+    return [$lus, Moderate::votesRecus($pdo, $id)];
+};
 Moderate::applyVote($pdo, $a163, 'post', message($pdo, $b163, 'fil 163 b1'), -1, $motifs163['a']);
+$pages163 = ['face' => [$page163($a163), $page163($b163)]];
 Moderate::applyVote($pdo, $b163, 'post', message($pdo, $a163, 'fil 163 a1'), -1, $motifs163['b']);
+$pages163['riposte'] = [$page163($a163), $page163($b163)];
 Moderate::applyVote($pdo, $a163, 'post', message($pdo, $b163, 'fil 163 b2'), -1, $motifs163['treve']);
+$pages163['treve'] = [$page163($a163), $page163($b163)];
 Moderate::applyVote($pdo, $f163, 'post', message($pdo, $b163, 'fil 163 b3'), -1, $motifs163['f']);
-$sorts163 = array_column($pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = $a163 AND target_author = $b163 ORDER BY id")->fetchAll(), 'blocked_reason');
-$lusB163 = array_column(Moderate::reasonsFor($pdo, $b163), 'reason');
-sort($lusB163);
-$attendusB163 = [$motifs163['a'], $motifs163['treve'], $motifs163['f']];
-sort($attendusB163);
-$lusA163 = array_column(Moderate::reasonsFor($pdo, $a163), 'reason');
-$seuil163 = sousConfig(new Config(motifsVotantsMin: 2), static fn (): int => count(Moderate::reasonsFor($pdo, $b163)));
-$sorts163 === ['vote_croise', 'treve'] && $lusB163 === $attendusB163 && $lusA163 === [$motifs163['b']] && $seuil163 === 3
-    ? ok('⭐ la cible lit le motif d\'un vote croisé et celui d\'un vote tombé en trêve, et le seuil des votants les compte')
-    : nok('⭐ le motif d\'un vote croisé quitte la page de sa cible : ' . json_encode([$sorts163, $lusB163, $lusA163, $seuil163], JSON_UNESCAPED_UNICODE));
+Moderate::applyVote($pdo, $g163, 'post', message($pdo, $a163, 'fil 163 a2'), -1, $motifs163['g']);
+$sorts163 = [
+    array_column($pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = $a163 AND target_author = $b163 ORDER BY id")->fetchAll(), 'blocked_reason'),
+    array_column($pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = $b163 AND target_author = $a163 ORDER BY id")->fetchAll(), 'blocked_reason'),
+];
+$attenduB163 = [$motifs163['a'], $motifs163['f']];
+sort($attenduB163);
+$finB163 = $page163($b163);
+// Sous un seuil de deux votants : B en a deux qui ont porté (la face et F), A un seul (G) — la riposte ne compte pas.
+$seuil163 = sousConfig(new Config(motifsVotantsMin: 2), static fn (): array => [count(Moderate::reasonsFor($pdo, $b163)), count(Moderate::reasonsFor($pdo, $a163))]);
+$immobile163 = [[[], 0], [[$motifs163['a']], 1]];
+$sorts163 === [['vote_croise', 'treve'], ['riposte']]
+    && $pages163 === ['face' => $immobile163, 'riposte' => $immobile163, 'treve' => $immobile163]
+    && $finB163 === [$attenduB163, 2] && $seuil163 === [2, 0]
+    ? ok('⭐ au croisement, aucune page ne change : la face garde son motif et sa place, la riposte et la trêve ne se montrent pas, ni au seuil des votants')
+    : nok('⭐ un croisement se lit sur la page d\'un des deux : ' . json_encode([$sorts163, $pages163, $finB163, $seuil163], JSON_UNESCAPED_UNICODE));
 
 // ── 164. ⭐ La fin réelle d'un ban automatique s'arrondit dès la pose ──────────
 // Sa fin moins son palier redonnait la seconde du vote décisif, et le compte qui
@@ -6647,7 +6673,7 @@ $journal164 = new JournalDeBanc();
 Moderate::setJournal($journal164);
 $fins164 = [];
 foreach ([60, 3600] as $pas164) {
-    $fins164[$pas164] = sousConfig(new Config(arrondiFinBanSecondes: $pas164), static function () use ($pdo, $pas164, &$t164, $journal164): array {
+    $fins164[$pas164] = sousConfig(new Config(dureesBan: [7200], arrondiFinBanSecondes: $pas164), static function () use ($pdo, $pas164, &$t164, $journal164): array {
         $debut = $t164;
         $chute = membre($pdo, "fin-reelle-164-$pas164");
         poserReputation($pdo, $chute, 1);
@@ -6658,6 +6684,7 @@ foreach ([60, 3600] as $pas164) {
             'multiple'   => $fin % $pas164 === 0,
             'borne'      => $fin > $debut + $palier && $fin < $debut + $palier + $pas164,
             'journal'    => ($journal164->de($chute, 'ban_debut')[0]['jusqu_a'] ?? null) === $fin,
+            'duree'      => ($journal164->de($chute, 'ban_debut')[0]['duree'] ?? null) === $fin - $debut,
             'historique' => (Moderate::peinesDe($pdo, $chute, precis: true)[0]['echeance'] ?? null) === $fin,
             'affichee'   => Moderate::finAffichee($fin, 'auto') === $fin,
         ];
@@ -6672,21 +6699,22 @@ foreach ([60, 3600] as $pas164) {
 }
 Moderate::setHorloge(null);
 Moderate::setJournal($journalAvant164);
-$attendu164 = ['multiple' => true, 'borne' => true, 'journal' => true, 'historique' => true, 'affichee' => true, 'avant' => true, 'a_la_fin' => false];
+$attendu164 = ['multiple' => true, 'borne' => true, 'journal' => true, 'duree' => true, 'historique' => true, 'affichee' => true, 'avant' => true, 'a_la_fin' => false];
 $fins164 === [60 => $attendu164, 3600 => $attendu164]
     ? ok('⭐ la fin d\'un ban automatique se pose arrondie — ligne, journal et historique d\'accord —, et la peine cède à elle, à la minute comme à l\'heure')
     : nok('⭐ la fin réelle d\'un ban automatique redonne la seconde du vote : ' . json_encode($fins164, JSON_UNESCAPED_UNICODE));
 $bornes164 = [];
-foreach ([0, 1, 86400, 86401] as $valeur164) {
+foreach ([[0, 120], [1, 120], [120, 120], [121, 120], [86400, 86400], [86401, 86400]] as [$pas164, $palier164]) {
     try {
-        new Config(arrondiFinBanSecondes: $valeur164);
-        $bornes164[$valeur164] = 'acceptée';
+        new Config(dureesBan: [$palier164], arrondiFinBanSecondes: $pas164);
+        $bornes164["$pas164/$palier164"] = 'acceptée';
     } catch (InvalidArgumentException) {
-        $bornes164[$valeur164] = 'refusée';
+        $bornes164["$pas164/$palier164"] = 'refusée';
     }
 }
-$bornes164 === [0 => 'refusée', 1 => 'acceptée', 86400 => 'acceptée', 86401 => 'refusée']
-    ? ok('le pas d\'arrondi d\'une fin de ban se borne entre une seconde et un jour')
+$bornes164 === ['0/120' => 'refusée', '1/120' => 'acceptée', '120/120' => 'acceptée', '121/120' => 'refusée',
+                '86400/86400' => 'acceptée', '86401/86400' => 'refusée']
+    ? ok('le pas d\'arrondi d\'une fin de ban se borne entre une seconde et un jour, et ne dépasse pas le plus court palier')
     : nok('le pas d\'arrondi passe hors de ses bornes : ' . json_encode($bornes164));
 
 // ── 165. ⭐ Un vote croisé reste dans le graphe de meute ────────────────────────
@@ -6769,8 +6797,8 @@ for ($i167 = 0; $i167 < 15; $i167++) {
     Moderate::applyVote($pdo, $x167, 'member', $y167, -1, motif());
     Moderate::applyVote($pdo, $y167, 'member', $x167, -1, motif());
 }
-$croises167 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE blocked_reason = 'vote_croise' AND created_at = $t167")->fetchColumn();
-$attendu167 = (int) $pdo->query("SELECT COUNT(*) FROM (SELECT 1 FROM mod_votes WHERE blocked = 1 AND blocked_reason NOT IN ('vote_croise', 'treve') ORDER BY created_at DESC LIMIT 30)")->fetchColumn();
+$croises167 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE blocked_reason IN ('vote_croise', 'riposte') AND created_at = $t167")->fetchColumn();
+$attendu167 = (int) $pdo->query("SELECT COUNT(*) FROM (SELECT 1 FROM mod_votes WHERE blocked = 1 AND blocked_reason NOT IN ('vote_croise', 'riposte', 'treve') ORDER BY created_at DESC LIMIT 30)")->fetchColumn();
 $publique167 = requeteLab($serveur167, '/moderation.php')['corps'];
 $arbitrale167 = requeteLab($serveur167, '/moderation.php', sessionArbitre($pdo, 'arbitre-liste-167'))['corps'];
 $croises167 === 30 && $attendu167 > 0 && str_contains($publique167, t('mod.blocked.h2', $attendu167))
@@ -6789,9 +6817,10 @@ Moderate::applyVote($pdo, $s167, 'post', message($pdo, $r167, 'fil 167 r'), -1, 
 Moderate::applyVote($pdo, $r167, 'post', message($pdo, $s167, 'fil 167 s'), -1, motif());
 $pageR167 = requeteLab($serveur167, '/profile.php', $sessionR167)['corps'];
 $recus167 = preg_match('#' . preg_quote(t('prf.act.got'), '#') . '</span><br><strong[^>]*>(\d+)</strong>#u', $pageR167, $mR167) === 1 ? (int) $mR167[1] : null;
-$recus167 === 1
-    ? ok('⭐ le compteur des votes reçus garde le vote croisé dont le membre lit le motif')
-    : nok('⭐ le compteur des votes reçus baisse au croisement : ' . json_encode($recus167));
+$recusS167 = Moderate::votesRecus($pdo, $s167);
+$recus167 === 1 && $recusS167 === 0
+    ? ok('⭐ le compteur des votes reçus garde la face croisée, et ne compte pas la riposte')
+    : nok('⭐ le compteur des votes reçus bouge au croisement : ' . json_encode([$recus167, $recusS167]));
 
 $banni167 = membre($pdo, 'refus-banni-167');
 poserReputation($pdo, $banni167, 1);
@@ -6807,6 +6836,31 @@ Moderate::setJournal($journalAvant167);
     && ($profil167['error'] ?? null) === 'compte_banni' && str_contains($profil167['message'] ?? '', $fin167)
     ? ok('⭐ publier et enregistrer son profil disent à un banni par la machine la fin arrondie, « au plus tard »')
     : nok('⭐ un refus du lab dit la fin exacte d\'un ban automatique : ' . json_encode([$fin167, $forum167, $profil167], JSON_UNESCAPED_UNICODE));
+
+// ── 168. ⭐ Un vote croisé reste dans la salve ───────────────────────────────────
+// Comme dans le graphe de meute : tombé, il a été émis. Sans lui, trois votants sans
+// lien dont l'un est croisé n'étaient plus une salve.
+$t168 = time() + 7200;
+Moderate::setHorloge(static fn (): int => $t168);
+$journalAvant168 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$cible168 = membre($pdo, 'salve-cible-168');
+poserReputation($pdo, $cible168, 15);
+$votants168 = [membre($pdo, 'salve-a-168'), membre($pdo, 'salve-b-168'), membre($pdo, 'salve-c-168')];
+// La riposte tombe avant les deux autres votes : la salve ne se voit qu'avec le vote croisé.
+Moderate::applyVote($pdo, $votants168[0], 'post', message($pdo, $cible168, 'fil 168 0'), -1, motif());
+Moderate::applyVote($pdo, $cible168, 'post', message($pdo, $votants168[0], 'fil 168 riposte'), -1, motif());
+foreach ([1, 2] as $i168) {
+    Moderate::applyVote($pdo, $votants168[$i168], 'post', message($pdo, $cible168, "fil 168 $i168"), -1, motif());
+}
+$balaye168 = balayerLeSite($pdo);
+$sortA168 = $pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = {$votants168[0]} AND target_author = $cible168")->fetchColumn();
+$causes168 = causes($pdo, $cible168);
+Moderate::setHorloge(null);
+Moderate::setJournal($journalAvant168);
+!isset($balaye168['erreur']) && $sortA168 === 'vote_croise' && in_array('salve_rapide', $causes168, true)
+    ? ok('⭐ trois votants sans lien dont l\'un est croisé forment encore une salve')
+    : nok('⭐ un vote croisé sort de la salve : ' . json_encode([$balaye168['erreur'] ?? null, $sortA168, $causes168], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

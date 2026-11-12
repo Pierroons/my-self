@@ -159,9 +159,9 @@ $nbThreads    = $cnt('SELECT COUNT(*) FROM threads WHERE account_id = ?');
 // Ses votes émis comptent tous : un vote croisé ou annulé qui sortirait du compte
 // dirait à son auteur ce qu'en a fait le moteur (`userVote()` le rend de même).
 $nbVotesEmis  = $cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ?');
-// Ses votes reçus sont ceux dont il lit les motifs (`reasonsFor()`) : un vote croisé
-// ou tombé en trêve y reste, sinon le compte baisserait au croisement.
-$nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . Moderate::VOTE_EXPRIME);
+// Ses votes reçus sont ceux qui ont porté, dont il lit les motifs : au croisement,
+// le compte ne bouge pas (`votesRecus()`).
+$nbVotesRecus = Moderate::votesRecus($pdo, $myId);
 [$canVote, $whyNot] = Moderate::canVote($pdo, $myId);
 
 // 🔑 L'âge de la passphrase de secours. Il INFORME — rien n'expire, et c'est une

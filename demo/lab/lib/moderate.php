@@ -52,8 +52,8 @@ final class Moderate extends Engine
 
     /**
      * La fin d'un ban telle que la voit le compte banni. Pour un ban automatique, le
-     * moteur l'arrondit à l'heure suivante (`finAffichee()`) — sans quoi elle redonne
-     * l'instant du vote décisif —, et la page dit « au plus tard ».
+     * moteur l'arrondit au pas de la config, dès la pose (`finAffichee()`) — sans quoi
+     * elle redonne l'instant du vote décisif —, et la page dit « au plus tard ».
      *
      * @param array{banned_until: int, ban_origine: ?string} $etat ce que rend `getReputation()`
      */
