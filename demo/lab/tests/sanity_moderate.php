@@ -903,10 +903,12 @@ Moderate::rangDe($pdo, $seulA) === 1 && $modSeulA['review_reason'] !== 'meute_re
 // un : c'est l'échéance sentinelle d'un ban sans fin, qu'aucune config ne règle.
 // `DUREE_MAX` non plus : c'est la plus longue échéance qui se lise encore comme
 // une échéance, et non comme `SANS_FIN`. `VOTE_EXPRIME` et `VOTE_RECU` sont des
-// filtres SQL — les votes exprimés, les votes qui ont porté —, sans nombre à régler.
+// filtres SQL — les votes exprimés, les votes qui ont porté —, sans nombre à régler ;
+// `RAISONS_DU_CROISEMENT` est une liste de noms.
 $jumelles = array_values(array_filter(
     array_keys((new ReflectionClass(Moteur::class))->getConstants()),
-    static fn (string $c): bool => !str_starts_with($c, 'REASON_') && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_EXPRIME', 'VOTE_RECU'], true)
+    static fn (string $c): bool => !str_starts_with($c, 'REASON_')
+        && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_EXPRIME', 'VOTE_RECU', 'RAISONS_DU_CROISEMENT'], true)
 ));
 $jumelles === []
     ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
@@ -6533,9 +6535,10 @@ $arbitrale161 = requeteLab($serveur161, '/moderation.php', sessionArbitre($pdo, 
 $publique161['code'] === 200 && !str_contains($publique161['corps'], 'vote_croise') && !str_contains($publique161['corps'], 'treve')
     && !str_contains($publique161['corps'], 'riposte')
     && $arbitrale161['code'] === 200 && str_contains($arbitrale161['corps'], 'vote_croise')
-    ? ok('⭐ la page publique ne liste ni vote croisé ni trêve ; l\'arbitre les voit')
+    ? ok('⭐ la page publique ne liste ni vote croisé, ni riposte, ni trêve ; l\'arbitre les voit')
     : nok('⭐ la page publique publie un croisement : ' . json_encode([
-        'publique' => [$publique161['code'], str_contains($publique161['corps'], 'vote_croise'), str_contains($publique161['corps'], 'treve')],
+        'publique' => [$publique161['code'], str_contains($publique161['corps'], 'vote_croise'), str_contains($publique161['corps'], 'riposte'),
+            str_contains($publique161['corps'], 'treve')],
         'arbitre' => [$arbitrale161['code'], str_contains($arbitrale161['corps'], 'vote_croise')],
     ], JSON_UNESCAPED_UNICODE));
 
@@ -6861,6 +6864,42 @@ Moderate::setJournal($journalAvant168);
 !isset($balaye168['erreur']) && $sortA168 === 'vote_croise' && in_array('salve_rapide', $causes168, true)
     ? ok('⭐ trois votants sans lien dont l\'un est croisé forment encore une salve')
     : nok('⭐ un vote croisé sort de la salve : ' . json_encode([$balaye168['erreur'] ?? null, $sortA168, $causes168], JSON_UNESCAPED_UNICODE));
+
+// La riposte complète la salve : sa détection passe à ce vote, sans balayage.
+$tb168 = $t168 + 3600;
+Moderate::setHorloge(static fn (): int => $tb168);
+Moderate::setJournal(new JournalDeBanc());
+[$cibleB168, $z168] = [membre($pdo, 'salve-cible-b-168'), membre($pdo, 'salve-z-168')];
+poserReputation($pdo, $cibleB168, 15);
+poserReputation($pdo, $z168, 15);
+Moderate::applyVote($pdo, $cibleB168, 'post', message($pdo, $z168, 'fil 168 z'), -1, motif());
+foreach (['salve-x1-168', 'salve-x2-168'] as $nomB168) {
+    Moderate::applyVote($pdo, membre($pdo, $nomB168), 'post', message($pdo, $cibleB168, "fil 168 $nomB168"), -1, motif());
+}
+$avantB168 = causes($pdo, $cibleB168);
+Moderate::applyVote($pdo, $z168, 'post', message($pdo, $cibleB168, 'fil 168 riposte z'), -1, motif());
+$sortZ168 = $pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = $z168 AND target_author = $cibleB168")->fetchColumn();
+$apresB168 = causes($pdo, $cibleB168);
+Moderate::setHorloge(null);
+Moderate::setJournal($journalAvant168);
+$sortZ168 === 'riposte' && !in_array('salve_rapide', $avantB168, true) && in_array('salve_rapide', $apresB168, true)
+    ? ok('⭐ une riposte qui complète une salve la fait signaler à son vote, sans balayage')
+    : nok('⭐ une salve complétée par une riposte attend un balayage : ' . json_encode([$sortZ168, $avantB168, $apresB168], JSON_UNESCAPED_UNICODE));
+
+// ── 169. ⭐ Les raisons qu'une page publique tait sont celles des votes tombés et émis ─
+// Une page publique écarte `RAISONS_DU_CROISEMENT` ; le moteur compte ces votes
+// comme émis par `VOTE_EXPRIME`. Une raison présente dans l'un et absente de
+// l'autre serait publiée, ou sortirait des plafonds, de la meute et de la salve.
+$exprime169 = (string) (new ReflectionClass(Moteur::class))->getConstant('VOTE_EXPRIME');
+$raisons169 = preg_match('#blocked_reason IN \(([^)]*)\)#', $exprime169, $m169) === 1
+    ? array_map(static fn (string $r): string => trim($r, " '"), explode(',', $m169[1]))
+    : [];
+$publiques169 = Moderate::RAISONS_DU_CROISEMENT;
+sort($raisons169);
+sort($publiques169);
+$raisons169 !== [] && $raisons169 === $publiques169
+    ? ok('⭐ les raisons qu\'une page publique écarte sont exactement celles que VOTE_EXPRIME compte comme émises')
+    : nok('⭐ RAISONS_DU_CROISEMENT et VOTE_EXPRIME divergent : ' . json_encode([$publiques169, $raisons169, $exprime169]));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

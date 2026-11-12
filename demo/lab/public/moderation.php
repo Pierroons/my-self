@@ -15,7 +15,7 @@ $estArbitre = $account && !empty($account['is_admin']);
 // la ligne dirait à chacun des deux que l'autre a voté contre lui. Ils s'écartent
 // dans la requête, avant la limite : retirés après, ils feraient baisser le compte,
 // qui les daterait. L'arbitre les voit.
-$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : ['vote_croise', 'riposte', 'treve']);
+$blocked = Moderate::blockedVotes($pdo, 30, $estArbitre ? [] : Moderate::RAISONS_DU_CROISEMENT);
 
 // Le protocole veut qu'on voie les motifs sans voir qui a voté : Moderate::reasonsFor()
 // arrondit même la date au jour pour qu'un recoupement ne désigne pas l'auteur. Les

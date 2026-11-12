@@ -131,6 +131,14 @@ class Moderate
     private const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))";
 
     /**
+     * Les raisons d'un vote tombé par croisement : le vote de face, la riposte,
+     * la trêve. Une page publique les tait — la ligne dirait à chacun des deux que
+     * l'autre a voté contre lui — et les écarte dans la requête
+     * (`blockedVotes(…, saufRaisons: self::RAISONS_DU_CROISEMENT)`).
+     */
+    public const RAISONS_DU_CROISEMENT = ['vote_croise', 'riposte', 'treve'];
+
+    /**
      * Un vote qui a porté : compté, ou croisé après avoir compté. C'est ce que sa
      * cible en voit — son motif, et sa place parmi les votes reçus. Une riposte
      * ou un vote de trêve n'ont jamais porté : montrés, un motif apparu sans
@@ -1263,6 +1271,9 @@ class Moderate
             $croise = self::croiser($pdo, $voterId, $author);
             if ($croise !== null) {
                 self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $croise);
+                // Tombé, le vote a été émis : il peut compléter une salve, et la
+                // détection passe comme au vote compté.
+                self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')];
             }
         }
@@ -2869,7 +2880,8 @@ class Moderate
      *
      * `$saufRaisons` écarte ces raisons dans la requête, avant la limite : une
      * page publique qui les retirerait après verrait son compte baisser à chaque
-     * vote écarté, et le daterait.
+     * vote écarté, et le daterait. Une page publique passe
+     * `RAISONS_DU_CROISEMENT`, et retire les noms.
      *
      * @param string[] $saufRaisons
      */

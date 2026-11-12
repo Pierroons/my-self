@@ -155,7 +155,11 @@ final class Config
             throw new InvalidArgumentException('arrondiFinBanSecondes est un pas d\'arrondi : 1 seconde au moins, un jour au plus.');
         }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
-            throw new InvalidArgumentException('arrondiFinBanSecondes dépasse le plus court palier de dureesBan : l\'arrondi allongerait la peine de plus qu\'elle ne dure.');
+            throw new InvalidArgumentException(sprintf(
+                'arrondiFinBanSecondes (%d s, 60 par défaut) dépasse le plus court palier de dureesBan (%d s) : l\'arrondi allongerait la peine de plus qu\'elle ne dure.',
+                $this->arrondiFinBanSecondes,
+                min($this->dureesBan)
+            ));
         }
     }
 
