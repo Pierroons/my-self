@@ -111,10 +111,10 @@
         <code>Device::estCleDerivee()</code> refuse tout ce qui n'a pas la forme <code>^[0-9a-f]{64}$</code>.</p>
       <pre class="code"><span class="cm">// client/sr-derive.js</span>
 const message = materiel(opts.mode, opts.label) + '|' + VERSION + sel;
-const cle = await crypto.subtle.importKey(
+const cle = await global.crypto.subtle.importKey(
   'raw', new TextEncoder().encode(mot),
   { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(message)));</pre>
+return hex(await global.crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(message)));</pre>
       <p class="source">Sources&nbsp;: <code>client/sr-derive.js</code>, vecteurs figés <code>tests/vecteurs-derivation.json</code>
         (7 valides, 4 refus), whitepaper v1.6.</p>
     </div>
@@ -181,8 +181,9 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       années après, et aucun email ne pourrait te prévenir d'une échéance. Le revers&nbsp;: un papier volé ouvre le
       compte une fois, et tu t'en aperçois quand ton mot de passe ne marche plus.</p>
     <div class="dev">
-      <p><code>engendrerPassphrase(?Langue $langue)</code> = <code>Wordlist::generate(6, …)</code> dans la liste de la
-        langue du déploiement (EFF anglaise ou <code>diceware-fr-alt</code>), tirage par
+      <p><code>engendrerPassphrase(?Langue $langue = null)</code> = <code>Wordlist::generate(6, …)</code> dans la
+        liste de la langue du déploiement (EFF anglaise ou <code>diceware-fr-alt</code>) — les quatre chemins de la
+        bibliothèque passent la leur, un appelant qui l'omet reçoit l'anglaise. Tirage par
         <code>random_int(0, 7775)</code> (77,55 bits). Vérification par
         <code>parPassphrase()</code>&nbsp;: identifiant en <code>strtolower(trim)</code>, espaces réduits, casse
         conservée, hachage factice si le compte est inconnu. Succès&nbsp;: mot de passe et passphrase neufs, empreintes
@@ -241,10 +242,14 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <h2>En option, ton appareil remplace le code. Jamais ton mot.</h2>
     <p class="lead">Ton navigateur crée une paire de clés&nbsp;; le serveur n'en garde que la moitié publique. La clé
       privée reste chez toi, chiffrée par ton mot. Pour récupérer ton compte, ton navigateur signe un défi aléatoire,
-      valable 5 minutes et une seule fois. Enrôler un appareil demande une session déjà ouverte.</p>
+      valable 5 minutes et une seule fois. Enrôler un appareil demande une session déjà ouverte <strong>et la preuve
+      de ton mot</strong>&nbsp;: sans les deux, qui connaît ton mot enrôlerait son propre appareil et te prendrait le
+      compte. La session, elle, est <strong>déclarée</strong> par le site&nbsp;: la bibliothèque ne sait pas en lire
+      une, donc elle ne peut pas la vérifier — elle exige que le site l'affirme, à un endroit qu'une revue retrouve.</p>
     <p class="lead">Sur ce chemin, le serveur ne vérifie pas ton mot&nbsp;: il vérifie une signature. Qui vole le fichier
       chiffré peut essayer des mots chez lui, sans limite, au seul coût du calcul&nbsp;: cette voie demande un mot
-      robuste. Derrière Tor, elle est à désactiver, car le stockage local n'y survit pas.</p>
+      robuste. Derrière Tor, elle est à désactiver, car le stockage local n'y survit pas&nbsp;: c'est au site de le
+      faire, rien ne la désactive tout seul aujourd'hui.</p>
     <div class="dev">
       <p>ECDSA P-256 (WebCrypto), clé publique en SPKI, signature SHA-256 au format P1363 convertie en DER puis
         <code>openssl_verify</code>. Clé privée PKCS#8 chiffrée par <code>srKdfChiffrer</code>&nbsp;: Argon2id au
@@ -252,7 +257,19 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         blob) puis AES-GCM, IV de 12 octets. Défi&nbsp;:
         <code>random_bytes(32)</code>, <code>DEFI_TTL = 300</code>, supprimé avant la vérification. Succès&nbsp;: un mot
         de passe neuf de 16 caractères, sessions révoquées&nbsp;; la passphrase et les codes ne changent pas.</p>
-      <p class="source">Sources&nbsp;: <code>src/Device/Device.php</code>, <code>client/sr-kdf.js</code>, <code>client/argon2id.js</code> (vérifié sur 7 vecteurs libsodium)&nbsp;; pour le profil, <code>self-security/selfdataguard/src/Crypto/Primitives.php</code>.</p>
+      <p>Depuis la 0.13.4, cette demande de défi se joint toujours sans session ni secret, mais elle ne range plus rien
+        pour n'importe qui&nbsp;: l'identifiant doit avoir la forme qu'impose l'enrôlement
+        (<code>^[A-Za-z0-9_-]{16,64}$</code>, sinon un refus dont le message est
+        <code>appareil.identifiant_invalide</code> — un message, non un code d'erreur comme ceux cités plus haut), et
+        un défi n'est
+        <strong>rangé</strong> que pour un appareil déjà enrôlé — un identifiant inconnu reçoit un défi de même forme,
+        que rien ne retient, et la réponse ne dit pas s'il existe. La purge des défis expirés ne tourne plus qu'au
+        moment où l'on en range un. Le motif est un déni de service signalé par un joueur du lab&nbsp;: sur la 0.13.3,
+        200 identifiants inconnus de 1&nbsp;Mo écrivaient 200&nbsp;Mo en 0,63&nbsp;s, sans un refus. Ce qui reste est
+        déclaré&nbsp;: un chronomètre distingue le défi rangé de l'autre — encore faut-il deviner un identifiant tiré
+        au hasard par un navigateur —, et qui en tient un fait écrire une ligne par appel, que seul un frein devant la
+        route borne.</p>
+      <p class="source">Sources&nbsp;: <code>src/Device/Device.php</code>, <code>client/sr-kdf.js</code>, <code>client/argon2id.js</code> (vérifié sur 7 vecteurs libsodium)&nbsp;; pour le profil, <code>self-security/selfdataguard/src/Crypto/Primitives.php</code>&nbsp;; pour l'export de la clé privée en PKCS#8, qui appartient à l'intégration et non à <code>client/</code>, <code>demo/lab/public/js/sr-device.js</code>.</p>
     </div>
   </div></section>
 
@@ -267,7 +284,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       de passe et ton nouveau mot&nbsp;; le serveur te remet dix codes neufs et une passphrase — tirée, ou celle que tu
       apportes, qui doit différer de ton mot de passe et de l'ancienne —, puis retire les appareils.</p>
     <p class="lead">Et si quelqu'un d'autre a convaincu l'arbitre à ta place, tu as une fenêtre pour revenir&nbsp;:
-      14&nbsp;jours par défaut, que le service règle de 7 à 30. Tes secrets d'avant y valent encore, pour un seul
+      14&nbsp;jours par défaut, que le service règle de 7 à 30 — ou aucune&nbsp;: depuis la 0.13.3, l'arbitre peut
+      accorder un niveau 3 <strong>sans retour</strong>, et la fenêtre naît alors déjà échue. Ce n'est pas un réglage du
+      service mais une décision écrite avec l'accord lui-même, et elle se réserve au cas où le compte a visiblement été
+      pris. Tes secrets d'avant y valent encore, pour un seul
       retour — ta passphrase au niveau 1, ou un code papier encore inutilisé avec ton mot au niveau 2&nbsp;; ton ancien
       mot de passe, non. Le premier que tu sers te rend le compte et ferme la fenêtre&nbsp;: des secrets neufs, ton mot
       d'avant, à changer, et les sessions et appareils de l'autre retirés. Le revers est déclaré&nbsp;: si tu es passé
@@ -287,7 +307,11 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         bibliothèque ne vérifie pas qui a le droit de trancher&nbsp;: c'est l'application.</p>
       <p>Fenêtre&nbsp;: <code>fenetreDuree</code>, 14&nbsp;jours par défaut, bornée par <code>FENETRE_MINIMUM</code>
         (7&nbsp;jours) et <code>FENETRE_MAXIMUM</code> (30), ouverte dans la transaction de <code>reEnroler()</code>, qui
-        rend <code>fenetre_jusqua</code>. Un retour rend <code>titulaire_reprend</code>, un lot de codes neuf et
+        rend <code>fenetre_jusqua</code>. Un accord <code>sansRetour: true</code> (0.13.3) la fait naître échue
+        (<code>$fin = $sansRetour ? $maintenant : $maintenant + $this-&gt;fenetreDuree</code>)&nbsp;; ce geste est refusé
+        (<code>fenetre_ouverte</code>) sur une fenêtre encore ouverte et non reprise&nbsp;: elle garde les secrets de qui
+        tenait le compte avant le niveau 3 qui l'a ouverte — la bibliothèque ne sait pas qui est le vrai titulaire —,
+        et une fenêtre de durée nulle ne ferait que la prolonger. Un retour rend <code>titulaire_reprend</code>, un lot de codes neuf et
         <code>mot_memorise_a_changer</code>, et efface les autres secrets d'avant. Le dossier du niveau 3 a été clos par
         <code>reEnroler()</code>&nbsp;; c'est la fenêtre qui passe à l'état <code>reprise</code>
         (<code>lecture_seule</code>) et y reste jusqu'à <code>cloreFenetre()</code>, geste de l'arbitre et jamais de
@@ -295,7 +319,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         refuse en <code>reprise_en_cours</code>, et l'arbitre apprend là qu'il doit clore d'abord. Sur une fenêtre
         encore <code>ouverte</code>, un nouvel accord ne la remplace pas davantage&nbsp;: il la <strong>prolonge</strong>
         (<code>UPDATE l3_fenetres SET ferme_le = MAX(ferme_le, ?)</code>). <code>Escalade::fenetre()</code> dit l'état (<code>aucune</code>,
-        <code>ouverte</code>, <code>reprise</code>, <code>close</code>, <code>echue</code>)&nbsp;;
+        <code>ouverte</code>, <code>reprise</code>, <code>close</code>, <code>echue</code>) et porte
+        <code>sans_retour</code> (<code>ouverte_le === ferme_le</code>), que l'état seul ne dirait pas&nbsp;: une
+        fenêtre née sans retour est <code>echue</code> comme une fenêtre expirée, et <code>lecture_admin_permise</code>
+        y passe à vrai aussitôt&nbsp;;
         <code>purgerFenetres()</code> efface les secrets d'une fenêtre échue, et c'est au déploiement de l'appeler
         (<code>tools/purger.php</code>). Chaque niveau 3, chaque retour et chaque clôture émettent un ticket dans leur
         transaction.</p>
@@ -367,6 +394,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <h2>Une clé pour tes données, trois serrures pour la garder.</h2>
     <p class="lead">Tes données personnelles sont chiffrées par une clé propre à ton compte, jamais rangée en clair.
       Cette clé est enfermée sous trois serrures&nbsp;: n'importe laquelle la rouvre.</p>
+    <p class="lead">Les deux dernières sont facultatives&nbsp;: c'est le site qui les pose, et trois serrures est le cas
+      de l'intégration avec SelfRecover. Posé sur le seul mot de passe, le coffre fonctionne — jusqu'au jour où une
+      récupération de niveau 1 ou 2 remplace ce mot de passe&nbsp;: elle rend alors le coffre illisible pour de bon, et
+      cela ne se découvre qu'au moment où son titulaire a déjà un problème.</p>
     <div class="enveloppe">
       <div class="cle-donnees">clé de tes données · 256 bits tirés au hasard</div>
       <div class="serrure"><b>mot de passe</b>Argon2id</div>
@@ -398,13 +429,21 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <code>Argon2id(empreinte, SHA-256(sel ‖ "/dataguard")[0:16])</code>,
         <code>Argon2id(passphrase, SHA-256(sel ‖ "/dataguard/passphrase")[0:16])</code> — libsodium
         <code>opslimit 3</code>, <code>memlimit 64 Mio</code>. Enveloppes et champs en XChaCha20-Poly1305 (nonce de
-        24 octets), AAD <code>userId</code> ou <code>userId|champ</code>.</p>
+        24 octets). AAD depuis la 0.7.0&nbsp;: <code>Aad::of('vault-wrap', userId)</code> pour une enveloppe,
+        <code>Aad::of('field', userId, champ)</code> pour un champ — chaque segment <strong>préfixé par sa
+        longueur</strong>, sous un tag de domaine (<code>SDG3</code> suivi d'un octet nul), pour que deux listes de
+        segments ne puissent pas s'encoder pareil. Les AAD plats d'avant (<code>userId</code>,
+        <code>userId|champ</code>) ne servent plus qu'à relire les anciens blobs&nbsp;: le chiffrement les refuse.</p>
       <p>Pourquoi le coût égal&nbsp;: avant la 0.3.0, la serrure du mot était un simple HMAC&nbsp;; c'est la 0.3.0 qui
-        apporte Argon2id. Mesuré par le module sur un hôte de déploiement&nbsp;: 213,7&nbsp;ms par essai Argon2id contre
-        0,0027&nbsp;ms par essai HMAC, un facteur de 78&nbsp;100 (sur l'hôte de développement, 47,9&nbsp;ms contre
-        0,0064&nbsp;ms, soit 7&nbsp;492). Les index aveugles retrouvent une valeur sans rien déchiffrer, mais révèlent
-        quand deux comptes ont la même&nbsp;; leur clé, lue sur un serveur compromis, permet d'y retrouver par
-        dictionnaire les valeurs qui s'énumèrent, sur tous les comptes.</p>
+        apporte Argon2id. Mesuré par le module sur deux machines&nbsp;: 213,7&nbsp;ms par essai Argon2id contre
+        0,0027&nbsp;ms par essai HMAC, un facteur de 78&nbsp;100&nbsp;; et 47,9&nbsp;ms contre 0,0064&nbsp;ms, soit
+        7&nbsp;492.</p>
+      <p>Les index aveugles retrouvent une valeur sans rien déchiffrer, et un index y nomme <strong>un</strong>
+        compte&nbsp;: <code>saveFields()</code> refuse un second porteur de la même valeur
+        (<code>DuplicateIndexException</code>) — sauf pour un champ déclaré partagé, et là seulement l'égalité entre
+        comptes devient visible à qui lit la table. Leur clé est un secret du serveur, jamais dérivée de
+        l'utilisateur&nbsp;; lue sur un serveur compromis, elle permet d'y retrouver par dictionnaire les valeurs qui
+        s'énumèrent, sur tous les comptes.</p>
       <p>Niveau 3&nbsp;: <code>reEnroll()</code> range l'ancien coffre en archive, sans péremption, et en crée un neuf.
         Retour du titulaire&nbsp;: <code>reinstateArchive()</code> remet l'archive en service, index et séquestre compris,
         et range le coffre du demandeur en archive, en une transaction&nbsp;; <code>freeze()</code> le tient en lecture
@@ -484,7 +523,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>La base du site fuite</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-part">En partie — des hachages Argon2id, coûteux un par un&nbsp;; un mot faible reste attaquable</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — des hachages Argon2id, coûteux un par un&nbsp;; un mot faible reste attaquable. Mais la fuite livre aussi <strong>en clair</strong> l'adresse de chaque tentative récente, quand le déploiement la voit, et les réponses et messages des dossiers de niveau&nbsp;3&nbsp;: aucune clé d'utilisateur ne les protège, et ce sont des faits personnels. Le sel du déploiement, qui sert à retrouver un code papier sans rien déchiffrer, ne doit pas fuir avec le reste</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-part">En partie — selon que le service hache ses jetons</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : database breaches.</p>
@@ -500,7 +539,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>Quelqu'un cherche si ton compte existe</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-part">En partie — fermé aux niveaux 1 et 2&nbsp;; ouvert au niveau 3, où seul le coût s'y oppose</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — fermé au niveau&nbsp;1, au niveau&nbsp;2 et à l'enrôlement d'un appareil&nbsp;: aucun des trois ne nomme un compte inconnu, chacun à sa façon — un refus unique et générique au niveau&nbsp;1, aucun identifiant demandé au niveau&nbsp;2, des échecs comptés sous le nom soumis à l'enrôlement. Ouvert au niveau&nbsp;3, où seul le coût s'y oppose. Le niveau&nbsp;2 déclare toutefois une fuite d'un autre genre&nbsp;: un refus nomme un état — une suspension ne peut pas être décrite à son titulaire sans se dire —, ce qui apprend à qui tient déjà un code que ce code désigne un compte réel, et sans payer les deux Argon2id. Nul n'énumère avec cela, il faut un code d'abord&nbsp;; mais un code à moitié illisible se complète à ce prix, et derrière un service caché, sans frein par adresse, un tel refus ne peut venir que du compte</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : enumeration.</p>
@@ -508,7 +547,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>Quelqu'un se fait passer pour toi au niveau 3</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-part">En partie — pendant la fenêtre, 14&nbsp;jours par défaut, un secret d'avant te rend le compte&nbsp;; ensuite, il ne te reste qu'un nouveau dossier</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — pendant la fenêtre, 14&nbsp;jours par défaut, un secret d'avant te rend le compte&nbsp;: ta passphrase au niveau&nbsp;1, ou un code papier inutilisé avec ton mot au niveau&nbsp;2 — ton ancien mot de passe, non. Ensuite, il ne te reste qu'un nouveau dossier&nbsp;; et un niveau&nbsp;3 accordé sans retour ouvre une fenêtre déjà échue&nbsp;: aucun retour</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : a fraudulent level 3, undone within a window.</p>
@@ -584,7 +623,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>On te contraint physiquement</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — aucun protocole n'y résiste</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — hors périmètre, et déclaré comme tel&nbsp;: aucune dénégation plausible n'est fournie. Pour un stockage conscient de la contrainte, l'écosystème désigne SelfGuard</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-ko">Exposés</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: README : coercition hors périmètre.</p>
