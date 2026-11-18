@@ -247,11 +247,12 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       robuste. Derrière Tor, elle est à désactiver, car le stockage local n'y survit pas.</p>
     <div class="dev">
       <p>ECDSA P-256 (WebCrypto), clé publique en SPKI, signature SHA-256 au format P1363 convertie en DER puis
-        <code>openssl_verify</code>. Clé privée PKCS#8 chiffrée par <code>srKdfChiffrer</code>&nbsp;: Argon2id
-        (<code>t=3, m=65536, p=1</code>, sel de 16 octets propre au blob) puis AES-GCM, IV de 12 octets. Défi&nbsp;:
+        <code>openssl_verify</code>. Clé privée PKCS#8 chiffrée par <code>srKdfChiffrer</code>&nbsp;: Argon2id au
+        profil <strong>défini par SelfDataGuard</strong> (<code>t=3, m=65536, p=1</code>, sel de 16 octets propre au
+        blob) puis AES-GCM, IV de 12 octets. Défi&nbsp;:
         <code>random_bytes(32)</code>, <code>DEFI_TTL = 300</code>, supprimé avant la vérification. Succès&nbsp;: un mot
         de passe neuf de 16 caractères, sessions révoquées&nbsp;; la passphrase et les codes ne changent pas.</p>
-      <p class="source">Sources&nbsp;: <code>src/Device/Device.php</code>, <code>client/sr-kdf.js</code>, <code>client/argon2id.js</code> (vérifié sur 7 vecteurs libsodium).</p>
+      <p class="source">Sources&nbsp;: <code>src/Device/Device.php</code>, <code>client/sr-kdf.js</code>, <code>client/argon2id.js</code> (vérifié sur 7 vecteurs libsodium)&nbsp;; pour le profil, <code>self-security/selfdataguard/src/Crypto/Primitives.php</code>.</p>
     </div>
   </div></section>
 

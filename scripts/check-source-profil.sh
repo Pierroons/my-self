@@ -73,9 +73,16 @@ FAUTIFS=(
 #    signale ; ici elle rendrait le canari muet — il plante dans un fichier, pas
 #    dans l'index — et ferait passer un envoi dont l'arbre de travail est fautif.
 #    `git ls-files` donne le périmètre, `grep` lit le contenu réel.
+# ⚠️ `*.html` est entré dans les trois volets le 18/11/2026 : `web/` était hors
+#    de portée des deux recherches ET de la liste de porteurs, et c'est là que la
+#    faute s'est produite — `web/selfrecover.fr/comprendre/index.html` attribuait
+#    le profil à `client/sr-kdf.js` pendant que ce contrôle rendait vert. Un
+#    contrôle juste qui ne regarde pas la surface servie ne mesure rien de ce qui
+#    est publié. Mesuré avant l'ajout : 18 fichiers HTML suivis, aucune
+#    formulation fautive, aucune mémoire en unité décimale.
 trouve_fautif=0
 for motif in "${FAUTIFS[@]}"; do
-    lignes=$(git ls-files -z -- '*.php' '*.md' '*.js' '*.txt' \
+    lignes=$(git ls-files -z -- '*.php' '*.md' '*.js' '*.txt' '*.html' \
              | xargs -0 -r grep -nF "$motif" /dev/null 2>/dev/null \
              | grep -v '^scripts/check-source-profil.sh:')
     if [ -n "$lignes" ]; then
@@ -111,6 +118,11 @@ PORTEURS=(
     # l'énoncé d'avant replanté, ce contrôle rend 1.
     'bi-self/selfrecover/README.fr.md'
     'bi-self/selfrecover/README.md'
+    # Ajoutée par la conv Projet perso le 18/11/2026 : cette page décrit le profil
+    # du navigateur à un lecteur public, et elle l'attribuait à `client/sr-kdf.js`
+    # — la faute même que ce contrôle nomme. Éprouvé au canari : l'attribution
+    # d'avant replantée, ce contrôle rend 1.
+    'web/selfrecover.fr/comprendre/index.html'
 )
 printf '\n▸ 2. Porteurs déclarés : chaque énoncé nomme-t-il SelfDataGuard ?\n\n'
 
@@ -182,7 +194,7 @@ printf '\n▸ 3. Unité de la mémoire : Mio / MiB, jamais Mo / MB\n\n'
 # sauterait les arbres assemblés), ni `xargs` (qui ne sait pas lancer un
 # builtin, et rend alors un zéro silencieux — mesuré le 10/10/2026).
 mauvaises=$(git grep -nE '(64|%[0-9$]*d)(&nbsp;| )(Mo|MB)\b' \
-            -- '*.php' '*.md' '*.js' '*.sql' '*.conf' '*.txt' '*.yml' 2>/dev/null \
+            -- '*.php' '*.md' '*.js' '*.sql' '*.conf' '*.txt' '*.yml' '*.html' 2>/dev/null \
             | grep -vE '^(CHANGELOG\.md|scripts/check-source-profil\.sh):' || true)
 if [ -z "$mauvaises" ]; then
     ok "aucune mention de la mémoire en unité décimale"
