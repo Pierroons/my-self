@@ -3,25 +3,26 @@
 #
 # Le gabarit est servi tel quel par un nginx jetable, sans privilège et sans PHP. Aucun
 # ouvrier n'écoute derrière : ce banc ne mesure pas ce que PHP répond, il lit dans le journal
-# ce que nginx a FAIT de chaque requête — la file appliquée (`$limit_req_status`, vide quand
-# il n'y en a pas) et les ouvriers visés (`$upstream_addr`, vide quand la requête n'y est
-# pas allée). Relire les `location` à la main, ou les rejouer par expressions régulières,
-# donne ce qu'on croit que nginx choisit ; ceci donne ce qu'il choisit.
+# ce que nginx a FAIT de chaque requête — la file appliquée (`$limit_req_status`) et les
+# ouvriers visés (`$upstream_addr`). Relire les `location` à la main, ou les rejouer par
+# expressions régulières, donne ce qu'on croit que nginx choisit ; ceci donne ce qu'il choisit.
 #
 #   bash deploy/ctf-s2/tests/test_freins_vhost.sh
 #   GABARIT=<fichier>    éprouve un autre gabarit — c'est par là que passent les canaris
 #   BIN_NGINX=<binaire>  sinon celui du PATH — ⚠️ jamais `NGINX` : nginx lit lui-même cette variable
 #   NGINX_ETC=<dossier>  d'où viennent mime.types, fastcgi.conf et les snippets du paquet
 #
-# ⚠️ Les deux listes ci-dessous sont des inventaires, pas des devinettes : une route y entre
-# quand on a MESURÉ qu'elle hache. Une route neuve qui hacherait sans y figurer garde au
-# moins la file commune à toute l'API (cas 2) ; ce banc ne peut pas le deviner pour elle.
+# ⚠️ Les trois listes ci-dessous sont des inventaires, pas des devinettes : une route y entre
+# quand on a MESURÉ qu'elle hache, ou qu'elle fait attendre son ouvrier avant de refuser. Une
+# route neuve qui hacherait sans y figurer garde au moins la file commune à toute l'API
+# (cas 2) ; ce banc ne peut pas le deviner pour elle.
 set -u
 
 LOURDES="register attack"
 CALCUL="login recover device_enroll device_auth_begin device_auth_finish dm_send dm_inbox
-        profile_save flag_submit report_status redteam_report sel
+        profile_save flag_submit report_status redteam_report
         recover_l3 recover_l3_init recover_l3_reset dispute_chat"
+PAGES_CALCUL="profile messages recover"
 
 RACINE=$(cd "$(dirname "$0")/../../.." && pwd)
 GABARIT=${GABARIT:-$RACINE/deploy/ctf-s2/nginx-ctf.conf}
@@ -84,27 +85,32 @@ if ! "$BIN_NGINX" -p "$D" -c "$D/nginx.conf" 2> "$D/lancement.log"; then
 fi
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$D/nginx.pid" ] && break; sleep 0.2; done
 
-# Chaque requête part d'une adresse de 127.0.0.0/8 qui n'a pas encore servi : un /24 et un
-# /16 neufs, donc aucune file déjà entamée — ce banc lit un routage, pas un débit.
+# Chaque requête part d'une adresse de 127.0.0.0/8 dont ni le /24 ni le /16 n'ont servi :
+# aucune file n'est entamée, ni celle d'un préfixe ni celle d'un fournisseur — ce banc lit
+# un routage, pas un débit.
 n=0
 demander() {
     n=$(( n + 1 ))
-    curl -s -o /dev/null -m 10 --interface "127.$(( n / 200 + 1 )).$(( n % 200 )).1" "$@" || true
+    curl -s -o /dev/null -m 10 --interface "127.$(( n % 250 + 1 )).$(( n / 250 )).1" "$@" || true
 }
 U=http://127.0.0.1:$PORT
 for f in "$PUBLIC"/api/*.php; do
     r=/api/$(basename "$f")
     demander "$U$r?nu"
     demander "$U$r/x.php?reste"
+    demander -H 'Sec-Fetch-Site: same-origin' "$U$r?du-lab"
     demander -H 'Sec-Fetch-Site: cross-site' "$U$r?tiers"
     demander -H 'Sec-Fetch-Site: same-site' "$U$r?voisin"
 done
 for f in "$PUBLIC"/*.php; do
     r=/$(basename "$f")
+    demander "$U$r?page"
     demander "$U$r/x.php?reste"
     demander -H 'Sec-Fetch-Site: cross-site' "$U$r?page-tiers"
 done
 demander "$U/api/zz_route_que_personne_n_a_ecrite.php?neuve"
+demander "$U/api/zz-avec-un-tiret.php?neuve"
+demander "$U/api/v2/zz_dans_un_sous_dossier.php?neuve"
 
 kill "$(cat "$D/nginx.pid")" 2>/dev/null
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$D/nginx.pid" ] || break; sleep 0.2; done
@@ -126,33 +132,50 @@ verdict() {    # verdict <libellé> <lignes fautives>
 
 routes=$(grep -c '?nu|' "$J")
 [ "$routes" -ge 20 ] || { echo "❌ $routes route(s) d'API seulement au journal : le banc n'a pas parcouru le lab."; exit 1; }
+[ "$(grep -c '?neuve|' "$J")" -eq 3 ] || { echo "❌ les trois routes inventées ne sont pas toutes au journal."; exit 1; }
 
 verdict "chacune des $routes routes d'API passe par une file" \
     "$(awk -F'|' '$1 ~ /\?nu$/ && $3 == "-"' "$J")"
-verdict "une route d'API que personne n'a écrite tombe dans une file" \
+verdict "une route d'API que personne n'a écrite tombe dans une file, quels que soient son nom et son dossier" \
     "$(awk -F'|' '$1 ~ /\?neuve$/ && $3 == "-"' "$J")"
 verdict "un reste de chemin n'atteint jamais PHP" \
     "$(awk -F'|' '$1 ~ /\?reste$/ && ($2 != 404 || $4 != "-")' "$J")"
 verdict "un appel d'API venu d'un autre site, sous-domaine voisin compris, est refusé avant PHP" \
     "$(awk -F'|' '$1 ~ /\?(tiers|voisin)$/ && ($2 != 403 || $4 != "-")' "$J")"
+verdict "un appel d'API parti d'une page du lab atteint PHP" \
+    "$(awk -F'|' '$1 ~ /\?du-lab$/ && ($2 == 403 || $4 == "-")' "$J")"
 verdict "une page ouverte depuis un autre site reste servie" \
     "$(awk -F'|' '$1 ~ /\?page-tiers$/ && ($2 == 403 || $4 == "-")' "$J")"
 
 mal_rangees=""
-for r in $LOURDES; do
-    grep -q "^/api/$r\.php?nu|[^|]*|[^|]*|.*/php8\.4-fpm-lourd\.sock" "$J" || mal_rangees="$mal_rangees
-/api/$r.php : attendue chez les ouvriers « lourd » — $(grep "^/api/$r\.php?nu|" "$J" || echo 'absente du journal')"
-done
-for r in $CALCUL; do
-    grep -q "^/api/$r\.php?nu|[^|]*|[^|]*|.*/php8\.4-fpm-calcul\.sock" "$J" || mal_rangees="$mal_rangees
-/api/$r.php : attendue chez les ouvriers « calcul » — $(grep "^/api/$r\.php?nu|" "$J" || echo 'absente du journal')"
-done
-verdict "les routes qui hachent vont aux ouvriers qui hachent, jamais à ceux des pages" "${mal_rangees#$'\n'}"
+attendre() {   # attendre <chemin et marque, en expression régulière> <groupe d'ouvriers>
+    grep -q "^$1|[^|]*|[^|]*|.*/php8\.4-fpm-$2\.sock" "$J" || mal_rangees="$mal_rangees
+$1 : attendue chez les ouvriers « $2 » — $(grep "^$1|" "$J" || echo 'absente du journal')"
+}
+for r in $LOURDES;      do attendre "/api/$r\.php?nu" lourd; done
+for r in $CALCUL;       do attendre "/api/$r\.php?nu" calcul; done
+for r in $PAGES_CALCUL; do attendre "/$r\.php?page" calcul; done
+verdict "les routes et les pages qui hachent vont aux ouvriers qui hachent, jamais à ceux des pages" "${mal_rangees#$'\n'}"
+
+# Le journal dit QU'une file s'est appliquée, pas lesquelles. Les deux files communes — la
+# somme d'un préfixe, la part d'un fournisseur — se lisent donc dans le gabarit : tout bloc
+# qui confie aux ouvriers qui hachent doit les nommer toutes les deux.
+sans_part=$(awk '
+    /^[[:space:]]*location .*\{[[:space:]]*$/ { bloc = $0; texte = ""; dedans = 1; next }
+    dedans && /^[[:space:]]*\}[[:space:]]*$/ {
+        dedans = 0
+        if (texte ~ /fpm-calcul\.sock/ && !(texte ~ /zone=lab_calcul / && texte ~ /zone=lab_calcul_fournisseur /)) print bloc
+        if (texte ~ /fpm-lourd\.sock/  && !(texte ~ /zone=lab_lourd /  && texte ~ /zone=lab_lourd_fournisseur /))  print bloc
+        next
+    }
+    dedans { texte = texte "\n" $0 }
+' "$GABARIT")
+verdict "tout bloc qui confie aux ouvriers qui hachent compte par préfixe ET par fournisseur" "$sans_part"
 
 echo
 if [ "$echecs" -eq 0 ]; then
-    echo "✅ 6/6 — chaque route du lab est derrière ses freins"
+    echo "✅ 8/8 — chaque route du lab est derrière ses freins"
 else
-    echo "❌ $echecs propriété(s) sur 6 ne tiennent pas"
+    echo "❌ $echecs propriété(s) sur 8 ne tiennent pas"
     exit 1
 fi

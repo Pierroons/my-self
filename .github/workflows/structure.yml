@@ -454,13 +454,13 @@ jobs:
           sortie=$(bash deploy/ctf-s2/tests/test_freins_vhost.sh)
           echo "$sortie"
           # Le compte est écrit en dur : c'est un inventaire, pas un seuil.
-          echo "$sortie" | grep -qF '✅ 6/6 — chaque route du lab est derrière ses freins' \
-            || { echo "::error::le banc des freins n'a pas établi ses 6 propriétés"; exit 1; }
+          echo "$sortie" | grep -qF '✅ 8/8 — chaque route du lab est derrière ses freins' \
+            || { echo "::error::le banc des freins n'a pas établi ses 8 propriétés"; exit 1; }
 
-      - name: Canari — le banc des freins rougit quand un reste de chemin ou une origine tierce repasse
+      - name: Canari — le banc des freins rougit sur chacun des quatre défauts qu'on lui plante
         run: |
           # @plante
-          # Deux plantations, chacune sur une copie du gabarit dans /tmp : le dépôt
+          # Quatre plantations, chacune sur une copie du gabarit dans /tmp : le dépôt
           # n'est pas modifié. Chacune doit faire rougir le banc SUR SA LIGNE — un
           # banc qui ne démarre plus rougit aussi, et ne prouverait rien.
           planter() {   # planter <nom> <programme awk> <ligne rouge exigée>
@@ -476,8 +476,9 @@ jobs:
               || { echo "$sortie"; echo "::error::le banc a rougi, mais PAS sur « $3 »"; exit 1; }
             echo "✓ $1 : le banc rougit sur « $3 »"
           }
-          # Le bloc générique redevient celui d'avant — le snippet du paquet, qui
-          # découpe le chemin — et le refus placé en tête disparaît.
+          # Les deux blocs qui n'exécutent que le chemin demandé redeviennent ceux
+          # d'avant — le snippet du paquet, qui découpe le chemin — et le refus placé
+          # en tête disparaît.
           planter reste-de-chemin '
             /location ~ \\\.php\/ \{ return 404; \}/ { next }
             /^        try_files \$uri =404;$/ { next }
@@ -488,6 +489,17 @@ jobs:
             /^    if \(\$appel_tiers\) \{ return 403; \}$/ { next }
             { print }' \
             "❌ un appel d'API venu d'un autre site"
+          # Une faute de frappe dans la table des origines : plus aucun navigateur
+          # n'est reconnu comme une page du lab, et toute l'API lui rend 403.
+          planter origine-du-lab '
+            { sub(/\(same-origin\|none\)/, "(same_origin|none)"); print }' \
+            "❌ un appel d'API parti d'une page du lab atteint PHP"
+          # La connexion perd sa part par fournisseur : un bloc loué redevient
+          # autant de files que de préfixes.
+          planter part-du-fournisseur '
+            /zone=lab_calcul_fournisseur burst/ && !fait { fait = 1; next }
+            { print }' \
+            "❌ tout bloc qui confie aux ouvriers qui hachent compte par préfixe ET par fournisseur"
 
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php

@@ -73,9 +73,10 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
     par porte — connexion, inscription, simulateur d'attaques, niveau 3, consoles
     d'arbitrage, routes qui dérivent une clé — et une dernière pour **toute autre
     route de l'API**, si bien qu'une route neuve naît avec une file. Chacune compte
-    par préfixe (`/64`, `/24`) ; les routes qui hachent sont comptées une seconde
-    fois **par fournisseur** (`/32`, `/16`), pour que mille préfixes loués d'un
-    bloc ne fassent pas mille files. Elles bornent un débit, pas un volume : rien
+    par préfixe (`/64`, `/24`). Les routes qui hachent sont comptées deux fois
+    de plus : **ensemble, par préfixe**, pour qu'un même préfixe n'additionne pas
+    leurs files ; et **par fournisseur** (`/32`, `/16`), pour que mille préfixes
+    loués d'un bloc ne fassent pas mille files. Elles bornent un débit, pas un volume : rien
     ne plafonne le nombre de messages qu'un compte envoie ;
   - le **refus d'origine tierce**, décidé une fois pour toute l'API : un appel
     qu'un navigateur annonce comme venant d'un autre site, sous-domaine voisin
@@ -94,13 +95,22 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
   pose avant le vhost** — celui-ci nomme leurs sockets, et `nginx -t` ne vérifie
   pas qu'ils existent : un vhost posé seul rendrait `503` sur la connexion et
   l'inscription. Dans l'ordre :
-  1. comparer au groupe `www` de la machine et **reporter ici ses lignes
-     `env[...]`, `php_admin_value[...]`, `php_value[...]`** s'il en porte : des
-     ouvriers sans les mêmes prises liraient une autre base ou feraient naître un
-     autre secret ;
-  2. poser le fichier, `php-fpm8.4 -t`, `systemctl reload php8.4-fpm`, puis
-     vérifier que `/run/php/php8.4-fpm-calcul.sock` et `-lourd.sock` existent ;
-  3. poser le vhost (`deploy-vhost-ctf.sh`), puis **lire un profil et un message
+  1. lire ce que le groupe `www` de la machine règle en plus des siens —
+     `grep -vE '^[[:space:]]*(;|$|\[|listen|pm[. =])' /etc/php/8.4/fpm/pool.d/www.conf`
+     — et **reporter chaque ligne rendue dans les deux groupes** : `clear_env`,
+     `env[...]`, `php_admin_value[...]`, `php_value[...]`,
+     `security.limit_extensions`. Des ouvriers sans les mêmes prises liraient une
+     autre base ou feraient naître un autre secret, et tourneraient sans le
+     durcissement du reste du site ;
+  2. poser le fichier, `php-fpm8.4 -t`, `systemctl reload php8.4-fpm`, vérifier
+     que `/run/php/php8.4-fpm-calcul.sock` et `-lourd.sock` existent, puis comparer
+     les trois groupes dans la sortie de `php-fpm8.4 -tt` : mêmes `env`, mêmes
+     `php_admin_value`, même `clear_env` ;
+  3. **avant de poser le vhost**, lire une donnée chiffrée par le socket neuf, si
+     `cgi-fcgi` (paquet `libfcgi-bin`) est sur la machine — le profil public d'un
+     membre qui en a un doit sortir lisible. Sans cet outil, la lecture se fait à
+     l'étape suivante, retour arrière sous la main ;
+  4. poser le vhost (`deploy-vhost-ctf.sh`), puis **lire un profil et un message
      privé déjà existants** : c'est ce qui prouve que les nouveaux ouvriers
      tiennent la même clé que les anciens.
   Retour arrière : le vhost d'abord, le fichier ensuite.
