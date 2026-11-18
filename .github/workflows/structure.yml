@@ -445,6 +445,50 @@ jobs:
                  exit 1; }
           echo "✓ le banc rougit, et il rougit SUR LA CLÉ CHANGÉE"
 
+      # Les freins du lab se posent route par route, dans le vhost : une route
+      # oubliée n'a ni file ni refus d'origine, et rien ne le dit. Ce banc sert le
+      # gabarit par un nginx jetable et lit au journal ce que nginx a fait de chaque
+      # route — il ne rejoue pas les `location`, il les fait jouer.
+      - name: Garde-fou — chaque route du lab est derrière ses freins
+        run: |
+          sortie=$(bash deploy/ctf-s2/tests/test_freins_vhost.sh)
+          echo "$sortie"
+          # Le compte est écrit en dur : c'est un inventaire, pas un seuil.
+          echo "$sortie" | grep -qF '✅ 6/6 — chaque route du lab est derrière ses freins' \
+            || { echo "::error::le banc des freins n'a pas établi ses 6 propriétés"; exit 1; }
+
+      - name: Canari — le banc des freins rougit quand un reste de chemin ou une origine tierce repasse
+        run: |
+          # @plante
+          # Deux plantations, chacune sur une copie du gabarit dans /tmp : le dépôt
+          # n'est pas modifié. Chacune doit faire rougir le banc SUR SA LIGNE — un
+          # banc qui ne démarre plus rougit aussi, et ne prouverait rien.
+          planter() {   # planter <nom> <programme awk> <ligne rouge exigée>
+            awk "$2" deploy/ctf-s2/nginx-ctf.conf > /tmp/gabarit-"$1".conf
+            cmp -s deploy/ctf-s2/nginx-ctf.conf "/tmp/gabarit-$1.conf" \
+              && { echo "::error::la plantation « $1 » n'a rien changé — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(GABARIT="/tmp/gabarit-$1.conf" bash deploy/ctf-s2/tests/test_freins_vhost.sh 2>&1); then
+              echo "$sortie"
+              echo "::error::le banc reste VERT alors que le défaut « $1 » est planté"
+              exit 1
+            fi
+            echo "$sortie" | grep -qF "$3" \
+              || { echo "$sortie"; echo "::error::le banc a rougi, mais PAS sur « $3 »"; exit 1; }
+            echo "✓ $1 : le banc rougit sur « $3 »"
+          }
+          # Le bloc générique redevient celui d'avant — le snippet du paquet, qui
+          # découpe le chemin — et le refus placé en tête disparaît.
+          planter reste-de-chemin '
+            /location ~ \\\.php\/ \{ return 404; \}/ { next }
+            /^        try_files \$uri =404;$/ { next }
+            /^        include fastcgi\.conf;$/ { print "        include snippets/fastcgi-php.conf;"; next }
+            { print }' \
+            "❌ un reste de chemin n'atteint jamais PHP"
+          planter origine-tierce '
+            /^    if \(\$appel_tiers\) \{ return 403; \}$/ { next }
+            { print }' \
+            "❌ un appel d'API venu d'un autre site"
+
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 
