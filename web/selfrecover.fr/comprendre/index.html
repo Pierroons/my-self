@@ -145,8 +145,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <div class="dev">
       <p>Profil serveur unique&nbsp;: <code>Hashing::ARGON2</code> = <code>memory_cost 65536</code> (Kio),
         <code>time_cost 4</code>, <code>threads 2</code>, appliqué par <code>password_hash(PASSWORD_ARGON2ID)</code>.
-        Le profil du navigateur (blob de l'appareil) est <code>t=3, m=65536, p=1</code>, défini dans
-        <code>client/sr-kdf.js</code>&nbsp;: c'est lui que mesure le bouton ci-dessus.</p>
+        Le profil du navigateur (blob de l'appareil) est <code>t=3, m=65536, p=1</code>&nbsp;: il est
+        <strong>défini par SelfDataGuard</strong> (<code>Primitives::ARGON2_OPSLIMIT</code> et
+        <code>ARGON2_MEMLIMIT</code>), et <code>client/sr-kdf.js</code> le reprend — c'est lui que mesure le bouton
+        ci-dessus.</p>
       <p>Hachés en Argon2id&nbsp;: <code>pw_hash</code>, <code>passphrase_hash</code>, <code>recovery_hash</code>
         (l'empreinte du mot), <code>code_hash</code>. Pas en Argon2id&nbsp;: <code>recovery_salt</code> et
         <code>derivation_host</code> en clair&nbsp;; <code>code_lookup = HMAC-SHA256(clé = sel du déploiement, message = lower(trim(code)))</code>&nbsp;;
@@ -169,12 +171,12 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
   <section id="niveau1"><div class="wrap">
     <p class="repere">03 — niveau 1</p>
     <h2>La passphrase papier&nbsp;: un seul usage, jamais d'échéance.</h2>
-    <p class="lead">Six mots au moins, tirés par le serveur dans la liste de sa langue — l'anglaise de l'EFF ou la
+    <p class="lead">Six mots, tirés par le serveur dans la liste de sa langue — l'anglaise de l'EFF ou la
       française d'Arthur Pons, 7&nbsp;776 mots chacune&nbsp;: cinq dés désignent un mot, et six mots font
       ≈&nbsp;77,5&nbsp;bits. Tu peux aussi apporter la tienne, tirée aux dés dans l'une des deux listes&nbsp;: la
-      bibliothèque contrôle sa forme, jamais que les dés ont été jetés. Tu la gardes sur papier, avec ton identifiant.
-      Elle ne sert qu'une fois&nbsp;: tu reçois aussitôt un mot de passe neuf, et une passphrase neuve — tirée, ou celle
-      que tu apportes, qui doit différer de l'ancienne, même dans un autre ordre.</p>
+      bibliothèque contrôle sa forme — six mots au moins —, jamais que les dés ont été jetés. Tu la gardes sur
+      papier, avec ton identifiant. Elle ne sert qu'une fois&nbsp;: tu reçois aussitôt un mot de passe neuf, et une
+      passphrase neuve — tirée, ou celle que tu apportes, qui doit différer de l'ancienne, même dans un autre ordre.</p>
     <p class="lead">Elle n'expire jamais, et c'est voulu&nbsp;: elle sert quand tout le reste est perdu, parfois des
       années après, et aucun email ne pourrait te prévenir d'une échéance. Le revers&nbsp;: un papier volé ouvre le
       compte une fois, et tu t'en aperçois quand ton mot de passe ne marche plus.</p>
@@ -288,7 +290,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <code>mot_memorise_a_changer</code>, et efface les autres secrets d'avant. Le dossier du niveau 3 a été clos par
         <code>reEnroler()</code>&nbsp;; c'est la fenêtre qui passe à l'état <code>reprise</code>
         (<code>lecture_seule</code>) et y reste jusqu'à <code>cloreFenetre()</code>, geste de l'arbitre et jamais de
-        l'horloge, ou jusqu'à un nouveau niveau 3 accordé, qui la remplace. <code>Escalade::fenetre()</code> dit l'état (<code>aucune</code>,
+        l'horloge&nbsp;: depuis la 0.13.2, aucun second niveau 3 ne la remplace d'ici là — <code>trancher()</code>
+        refuse en <code>reprise_en_cours</code>, et l'arbitre apprend là qu'il doit clore d'abord. Sur une fenêtre
+        encore <code>ouverte</code>, un nouvel accord ne la remplace pas davantage&nbsp;: il la <strong>prolonge</strong>
+        (<code>UPDATE l3_fenetres SET ferme_le = MAX(ferme_le, ?)</code>). <code>Escalade::fenetre()</code> dit l'état (<code>aucune</code>,
         <code>ouverte</code>, <code>reprise</code>, <code>close</code>, <code>echue</code>)&nbsp;;
         <code>purgerFenetres()</code> efface les secrets d'une fenêtre échue, et c'est au déploiement de l'appeler
         (<code>tools/purger.php</code>). Chaque niveau 3, chaque retour et chaque clôture émettent un ticket dans leur
@@ -314,7 +319,8 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       prix, sans te fermer la porte. Un plafond de 500 demandes par heure, pour tout le service, reste en dernier
       recours.</p>
     <p class="lead">Sur le web ordinaire comme derrière Tor, un dossier ouvert par quelqu'un d'autre à ton nom occupe
-      pourtant la place 24&nbsp;heures, et peut se renouveler&nbsp;: c'est l'arbitre qui la libère, et chaque demande
+      pourtant la place 24&nbsp;heures&nbsp;: passé ce délai, l'horloge la libère seule, et insister demande d'en
+      ouvrir un neuf. L'arbitre ne fait qu'anticiper cette libération, en abandonnant le dossier&nbsp;; chaque demande
       refusée pendant ce temps lui est montrée.</p>
     <p class="lead">Un refus ne dit pas quel facteur était faux, et un refus ordinaire prend un délai. Les freins par
       adresse des trois niveaux répondent sans délai, délibérément&nbsp;: ils tombent avant toute recherche de compte,
