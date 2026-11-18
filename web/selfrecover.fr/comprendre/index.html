@@ -116,7 +116,7 @@ const cle = await crypto.subtle.importKey(
   { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
 return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(message)));</pre>
       <p class="source">Sources&nbsp;: <code>client/sr-derive.js</code>, vecteurs figés <code>tests/vecteurs-derivation.json</code>
-        (7 valides, 4 refus), whitepaper v1.5.</p>
+        (7 valides, 4 refus), whitepaper v1.6.</p>
     </div>
   </div></section>
 
@@ -195,9 +195,12 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <code>parCode()</code> et <code>Escalade::reEnroler()</code>. <code>Recovery::validerPassphraseApportee()</code>
         juge la forme avant tout frein, dans cet ordre&nbsp;: 1&nbsp;024 octets au plus, six mots au moins, chaque mot
         dans l'une des deux listes, aucun mot répété. Acceptée, elle rend sa forme <code>canonique</code>&nbsp;:
-        minuscules, une espace entre les mots. Rien ne mesure le hasard — des mots choisis de tête passent. Au niveau 1, le
-        refus <code>passphrase_deja_servie</code> compare les deux ensembles de mots, sans tenir compte de l'ordre&nbsp;;
-        aux niveaux 2 et 3, il compare la passphrase telle quelle.</p>
+        minuscules, une espace entre les mots. Rien ne mesure le hasard — des mots choisis de tête passent. Le
+        refus <code>passphrase_deja_servie</code> suit deux règles, selon ce que le serveur détient&nbsp;: contre une
+        passphrase qu'il a en clair, il compare les deux ensembles de mots, <strong>sans tenir compte de
+        l'ordre</strong>&nbsp;; contre celle qu'il ne connaît que par son empreinte, il compare <strong>à
+        l'identique</strong>. Au retour, les deux s'appliquent ensemble&nbsp;: ni la passphrase d'avant — celle qu'on
+        vient de servir, et dont le vol a souvent mené au niveau 3 — ni celle du demandeur ne peut être resservie.</p>
       <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Diceware/Wordlist.php</code>, modèle de menace.</p>
     </div>
   </div></section>
@@ -227,7 +230,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         code d'avant reçoit le sel d'avant, que <code>selDeDerivation()</code> cherche elle-même&nbsp;; pour tout code bien
         formé — en place, d'avant ou inconnu —, elle fait les mêmes trois lectures. La bibliothèque fournit la garde&nbsp;;
         la route reste à l'intégrateur.</p>
-      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Storage/SelParCodeInterface.php</code>, whitepaper v1.5.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Storage/SelParCodeInterface.php</code>, whitepaper v1.6.</p>
     </div>
   </div></section>
 
@@ -290,7 +293,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         <code>purgerFenetres()</code> efface les secrets d'une fenêtre échue, et c'est au déploiement de l'appeler
         (<code>tools/purger.php</code>). Chaque niveau 3, chaque retour et chaque clôture émettent un ticket dans leur
         transaction.</p>
-      <p class="source">Sources&nbsp;: <code>src/Recovery/Escalade.php</code>, <code>src/Recovery/Recovery.php</code>, modèle de menace, whitepaper v1.5.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Escalade.php</code>, <code>src/Recovery/Recovery.php</code>, modèle de menace, whitepaper v1.6.</p>
     </div>
   </div></section>
 
@@ -348,7 +351,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
         d'après un niveau 3, les codes d'avant sont comptés sous leur propre étiquette
         (<code>Etiquette::PREFIXE_L2_RETOUR</code>), que seule l'ouverture de la fenêtre réarme&nbsp;: un compteur ne se
         réarme que par les gestes de qui tient les secrets qu'il juge.</p>
-      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Recovery/Escalade.php</code>, <code>src/ProfilDeploiement.php</code>, <code>client/sr-epreuve.js</code>, modèle de menace, whitepaper v1.5.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Recovery/Escalade.php</code>, <code>src/ProfilDeploiement.php</code>, <code>client/sr-epreuve.js</code>, modèle de menace, whitepaper v1.6.</p>
     </div>
   </div></section>
 
@@ -378,8 +381,9 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <p class="lead">Au niveau 3, l'application met ton coffre de côté, scellé sous ses anciennes serrures, et en crée
       un neuf&nbsp;: qui a convaincu l'arbitre sans détenir aucune de ces serrures ne lit pas tes données. Si tu reviens
       pendant la fenêtre avec un secret d'avant, elle peut remettre ton coffre en service et ranger celui de l'autre en
-      archive, puis le tenir en lecture seule jusqu'à ce que l'arbitre close le dossier&nbsp;: SelfRecover lui en donne
-      l'ordre et le ticket, SelfDataGuard les gestes.</p>
+      archive, puis le tenir en lecture seule jusqu'à ce que l'arbitre close la <strong>fenêtre</strong>&nbsp;: le
+      dossier, lui, est clos dès le ré-enrôlement. SelfRecover donne l'ordre et le ticket, SelfDataGuard les gestes.
+      Tant que la fenêtre n'est pas close, aucun second niveau&nbsp;3 ne la remplace.</p>
     <div class="dev">
       <p><code>data_master_key = random_bytes(32)</code>, sel du coffre <code>random_bytes(16)</code> en clair.
         Clés d'encapsulage&nbsp;: <code>Argon2id(mot de passe, sel)</code>,
@@ -448,7 +452,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
           <div><dt>SelfRecover</dt><dd class="v-ok">Protégé, sauf au niveau 1 derrière Tor — 12 échecs par adresse en 15 minutes sur le web ordinaire, 5 par compte au niveau 2 et à l'enrôlement, puis suspension du niveau 2 après 20&nbsp;; derrière Tor, au niveau 1, seuls le coût d'Argon2id et l'entropie de ta passphrase s'y opposent</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: whitepaper v1.5 ; Recovery.php.</p>
+        <p class="source dev">Source&nbsp;: whitepaper v1.6 ; Recovery.php.</p>
       </article>
       <article class="carte hud">
         <h4>Quelqu'un écoute le réseau</h4>
@@ -539,7 +543,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>On trouve ta feuille de passphrase</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte&nbsp;; si tu as refait ton compte au niveau 3 à cause de ce vol, le voleur peut te le reprendre tant que la fenêtre dure</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte. Si tu as refait ton compte au niveau&nbsp;3 à cause de ce vol, il peut te le reprendre pendant la fenêtre&nbsp;; depuis la 0.13.3, l'arbitre peut accorder ce niveau&nbsp;3 <strong>sans</strong> rouvrir de retour à celui qu'il écarte, ce qui ferme le cycle où le voleur revenait à chaque tour</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase ; a fraudulent level 3, the price.</p>
@@ -584,7 +588,7 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <p class="repere">10 — aller plus loin</p>
     <h2>Les textes de référence.</h2>
     <ul class="liste-docs">
-      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md">Whitepaper SelfRecover (FR)</a> · <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md">EN</a> — v1.5 (édition du 16 octobre 2026), décrit la version 0.13.1.</li>
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md">Whitepaper SelfRecover (FR)</a> · <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md">EN</a> — v1.6 (édition du 10 novembre 2026), décrit la version 0.13.4.</li>
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/threat-model.md">Modèle de menace</a> (en anglais) — ce qui est couvert, en partie, ou hors de portée.</li>
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/architecture.md">Architecture</a> — les flux, étape par étape.</li>
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/README.fr.md">README de SelfRecover</a> — le protocole, son intégration, ses limites.</li>
