@@ -3,8 +3,8 @@
 #
 # À lancer depuis un VRAI terminal : `sudo` du serveur a besoin d'un TTY, et le
 # canal de Claude Code n'en fournit pas (« a terminal is required to read the
-# password »). Rien ne bascule sans la confirmation demandée plus bas, et
-# `nginx -t` garde la pose.
+# password »). Rien ne bascule sans la confirmation demandée plus bas, et un
+# `nginx -t` qui échoue REMET le gabarit précédent avant de rendre la main.
 #
 #   CTF_SSH_LECTURE=<alias> CTF_SSH_ADMIN=<alias> bash deploy/ctf-s2/deploy-vhost-ctf.sh
 #
@@ -64,12 +64,34 @@ echo
 read -r -p "Poser ce vhost par un $GESTE, sauvegarde en $VHOST.$SUFFIXE ? [oui/N] " REPONSE
 [ "$REPONSE" = "oui" ] || { echo "⏹ rien n'est fait."; exit 0; }
 
-echo "▸ 6. Sauvegarde, pose, test, $GESTE — le test garde la pose"
+echo "▸ 6. Sauvegarde, pose, test, $GESTE — un test en échec REMET le précédent"
 POSE=$(date +%s)
+# 🔑 La pose précède forcément le test : `nginx -t` lit la configuration SUR LE
+# DISQUE, il ne sait pas juger un fragment qui n'est pas en place. Ce qui doit
+# donc être garanti n'est pas l'ordre des gestes, c'est l'état LAISSÉ : ou le
+# candidat est valide et chargé, ou le précédent est rétabli.
+#
+# Avant le 18/11/2026, un `nginx -t` en échec laissait le fragment fautif posé
+# et `set -e` rendait la main : le service continuait sur sa configuration en
+# MÉMOIRE, donc rien ne paraissait cassé. C'est le rechargement suivant —
+# un autre déploiement, une rotation de certificat, un redémarrage, des jours
+# plus tard — qui mettait le lab à terre, sans que personne relie les deux.
+# Signalé par la session hors canal du 18/11, sur le lab en saison.
 ssh -t "$ADMIN" "set -e
   sudo cp -a '$VHOST' '$VHOST.$SUFFIXE'
   sudo install -m 644 -o root -g root /tmp/lab-vhost-candidat.conf '$VHOST'
-  sudo /usr/sbin/nginx -t
+  if ! sudo /usr/sbin/nginx -t; then
+    echo \"   ❌ nginx refuse ce gabarit — je remets le précédent\"
+    sudo cp -a '$VHOST.$SUFFIXE' '$VHOST'
+    if sudo /usr/sbin/nginx -t; then
+      echo \"   ✓ gabarit précédent rétabli et valide : l'instance est dans l'état d'avant\"
+    else
+      echo \"   🔴 le gabarit précédent NE PASSE PAS NON PLUS : la cause est ailleurs dans /etc/nginx,\"
+      echo \"      et le prochain rechargement de nginx échouera. À traiter avant toute autre pose.\"
+    fi
+    rm -f /tmp/lab-vhost-candidat.conf
+    exit 1
+  fi
   sudo systemctl $GESTE nginx
   rm -f /tmp/lab-vhost-candidat.conf"
 
