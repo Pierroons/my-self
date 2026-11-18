@@ -381,9 +381,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     <p class="lead">Au niveau 3, l'application met ton coffre de côté, scellé sous ses anciennes serrures, et en crée
       un neuf&nbsp;: qui a convaincu l'arbitre sans détenir aucune de ces serrures ne lit pas tes données. Si tu reviens
       pendant la fenêtre avec un secret d'avant, elle peut remettre ton coffre en service et ranger celui de l'autre en
-      archive, puis le tenir en lecture seule jusqu'à ce que l'arbitre close la <strong>fenêtre</strong>&nbsp;: le
-      dossier, lui, est clos dès le ré-enrôlement. SelfRecover donne l'ordre et le ticket, SelfDataGuard les gestes.
-      Tant que la fenêtre n'est pas close, aucun second niveau&nbsp;3 ne la remplace.</p>
+      archive, puis tenir <strong>ton coffre rendu</strong> en lecture seule jusqu'à ce que l'arbitre close la
+      <strong>fenêtre</strong>&nbsp;: le dossier, lui, est clos dès le ré-enrôlement. SelfRecover donne l'ordre et le
+      ticket, SelfDataGuard les gestes. Et une fenêtre <strong>que son titulaire a reprise</strong> n'est pas
+      remplacée par un second niveau&nbsp;3&nbsp;: l'arbitre doit d'abord la clore.</p>
     <div class="dev">
       <p><code>data_master_key = random_bytes(32)</code>, sel du coffre <code>random_bytes(16)</code> en clair.
         Clés d'encapsulage&nbsp;: <code>Argon2id(mot de passe, sel)</code>,
@@ -543,10 +544,10 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
       <article class="carte hud">
         <h4>On trouve ta feuille de passphrase</h4>
         <dl class="verdicts">
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte. Si tu as refait ton compte au niveau&nbsp;3 à cause de ce vol, il peut te le reprendre pendant la fenêtre&nbsp;; depuis la 0.13.3, l'arbitre peut accorder ce niveau&nbsp;3 <strong>sans</strong> rouvrir de retour à celui qu'il écarte, ce qui ferme le cycle où le voleur revenait à chaque tour</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte. Si tu as refait ton compte au niveau&nbsp;3 à cause de ce vol, il peut te le reprendre pendant la fenêtre. Depuis la 0.13.3, l'arbitre peut accorder un niveau&nbsp;3 <strong>sans</strong> en rouvrir un — mais il doit d'abord clore la fenêtre que l'autre a reprise, et ce geste se réserve à un dossier qui montre que le compte a été pris&nbsp;: un arbitre trompé qui l'emploie retire au vrai titulaire son seul retour</dd></div>
           <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase ; a fraudulent level 3, the price.</p>
+        <p class="source dev">Sources&nbsp;: threat-model : stolen L1 passphrase ; a fraudulent level 3, the price · CHANGELOG, SelfRecover 0.13.3 (le geste sans retour et sa réserve).</p>
       </article>
       <article class="carte hud">
         <h4>Un proche connaît ton mot et prend tes codes ou ton appareil</h4>
