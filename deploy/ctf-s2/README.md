@@ -15,6 +15,7 @@ commentaires réécrits pour être publiés.
 | `nginx-ctf.conf` | `/etc/nginx/sites-available/lab` (lien dans `sites-enabled/`) | `644 root:root` |
 | `snippets/lab-deny-backups.conf` | `/etc/nginx/snippets/` | `644 root:root` |
 | `snippets/lab-entetes-statiques.conf` | `/etc/nginx/snippets/` | `644 root:root` |
+| `php-fpm-calcul.conf` | `/etc/php/8.4/fpm/pool.d/lab-calcul.conf` — **à poser avant le vhost** (voir plus bas) | `644 root:root` |
 | `ctf-s2-annonces`, `ctf-s2-anonymiser-journaux`, `ctf-s2-exporter`, `ctf-s2-integrite`, `ctf-s2-sauvegarde`, `ctf-s2-sortie-deposer`, `ctf-s2-veille` | `/usr/local/sbin/` | `750 root:root` |
 | `ctf-s2-purge-empreintes` | `/usr/local/sbin/` | `750 root:www-data` — son service tourne en `www-data` |
 | `ctf-s2-sortie-lire` | `/usr/local/bin/` — commande forcée de la clé qui rapatrie l'archive | `755 root:root` |
@@ -68,14 +69,41 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
   - la `map` qui **tronque l'adresse source** (`/24` et `/48`) avant de l'écrire.
     Ce serveur est fait pour être attaqué : ses journaux sont ce que quelqu'un
     lira s'il obtient un accès, et ils ne doivent désigner personne ;
-  - les quatre zones de lissage — 10 req/s sur l'authentification, et **2 req/s en
-    file** (sans `nodelay`) devant les portes du niveau 3 et les consoles
-    d'arbitrage, qui écrivent en base, et devant les routes qui dérivent une clé ;
-    plus un `429` au lieu du `503` par défaut, qu'un chercheur rapporterait comme un
-    déni de service qu'il aurait provoqué. ⚠️ Les files comptent par adresse : en
-    IPv6, chaque adresse d'un même `/64` a la sienne. Elles bornent un débit, pas un
-    volume : rien ne plafonne le nombre de messages qu'un compte envoie ;
+  - les **files** (`limit_req`), toutes en `429` au lieu du `503` par défaut : une
+    par porte — connexion, inscription, simulateur d'attaques, niveau 3, consoles
+    d'arbitrage, routes qui dérivent une clé — et une dernière pour **toute autre
+    route de l'API**, si bien qu'une route neuve naît avec une file. Chacune compte
+    par préfixe (`/64`, `/24`) ; les routes qui hachent sont comptées une seconde
+    fois **par fournisseur** (`/32`, `/16`), pour que mille préfixes loués d'un
+    bloc ne fassent pas mille files. Elles bornent un débit, pas un volume : rien
+    ne plafonne le nombre de messages qu'un compte envoie ;
+  - le **refus d'origine tierce**, décidé une fois pour toute l'API : un appel
+    qu'un navigateur annonce comme venant d'un autre site, sous-domaine voisin
+    compris, reçoit `403` ; les pages, elles, s'ouvrent de partout ;
+  - le **refus d'un reste de chemin** (`/api/x.php/y.php` rend `404`) : sans lui,
+    le bloc générique exécute la route hors de sa file, de son refus d'origine et
+    de ses ouvriers ;
+  - le **partage des ouvriers PHP** : les routes qui hachent vont aux groupes
+    `calcul` et `lourd`, les pages gardent le groupe `www`. Quand les ouvriers qui
+    hachent sont tous pris et leur file d'attente pleine, l'appel reçoit `503` en
+    JSON et l'invitation à revenir ;
   - puis la racine, le routage PHP et l'inclusion des deux snippets.
+- **`php-fpm-calcul.conf`** — les deux groupes d'ouvriers qui hachent, en nombre
+  fixe. C'est la seule borne qui tienne quelle que soit l'origine des requêtes :
+  les files donnent à chacun sa part, ce fichier plafonne le total. ⚠️ **Il se
+  pose avant le vhost** — celui-ci nomme leurs sockets, et `nginx -t` ne vérifie
+  pas qu'ils existent : un vhost posé seul rendrait `503` sur la connexion et
+  l'inscription. Dans l'ordre :
+  1. comparer au groupe `www` de la machine et **reporter ici ses lignes
+     `env[...]`, `php_admin_value[...]`, `php_value[...]`** s'il en porte : des
+     ouvriers sans les mêmes prises liraient une autre base ou feraient naître un
+     autre secret ;
+  2. poser le fichier, `php-fpm8.4 -t`, `systemctl reload php8.4-fpm`, puis
+     vérifier que `/run/php/php8.4-fpm-calcul.sock` et `-lourd.sock` existent ;
+  3. poser le vhost (`deploy-vhost-ctf.sh`), puis **lire un profil et un message
+     privé déjà existants** : c'est ce qui prouve que les nouveaux ouvriers
+     tiennent la même clé que les anciens.
+  Retour arrière : le vhost d'abord, le fichier ensuite.
 - **`lab-deny-backups.conf`** — 46 extensions qui ne doivent jamais être
   servies. ⚠️ Ni `txt` ni `asc` : `security.txt` et la clé PGP du canal de
   signalement passent par là. Les refus sont journalisés à part, parce que ce
