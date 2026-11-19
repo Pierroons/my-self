@@ -920,7 +920,7 @@ jobs:
           # un qualificatif ajouté après une valeur, et un chiffre glissé dans la
           # phrase d'un champ déclaré non promis.
           for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
-                     meuteLiensMin meuteVotantsMax meuteEpisodeCooldown fenetreFarmingJours \
+                     ageEtabliSecondes quorumNoeudsMax quorumAuxSeuils fenetreFarmingJours \
                      farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
                      ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal balayageFiletMax \
                      prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
@@ -936,6 +936,7 @@ jobs:
           speciaux = {
               'dureesBan':                    ('$dureesBan = [120, 600, 1800]', '$dureesBan = [120, 600, 3600]'),
               'plancherFraction':             ('$plancherFraction = 1 / 3', '$plancherFraction = 1 / 2'),
+              'quorumAuxSeuils':              ('$quorumAuxSeuils = true,', '$quorumAuxSeuils = false,'),
               'prod:fenetreSalveSecondes':    ('fenetreSalveSecondes: 300,', 'fenetreSalveSecondes: 600,'),
               'prod:ageMinPourVoterSecondes': ('ageMinPourVoterSecondes: 86400,', 'ageMinPourVoterSecondes: 3600,'),
               'prod:dureesBan':               ('dureesBan: [86400, 604800, 2592000]', 'dureesBan: [86400, 604800, 1296000]'),
@@ -3733,8 +3734,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 255 contrôles"; exit 1; }
+          grep -qx '✅ 228/228 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 228 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3745,14 +3746,14 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 228/228 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 255 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 228 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
           # après l'échec d'une autre, et doit rougir sur ce qui la nomme.
-          # Les quatre fermetures de peine (échéance, levée, grâce, meute) sont arrêtées
+          # Les trois fermetures de peine (échéance, levée, grâce) sont arrêtées
           # plus tôt par la garde du moteur, qui refuse d'ouvrir une peine sur une ligne
           # restée ouverte : leur rouge est ce refus, nommé. Une prolongation qui n'écrit
           # pas l'historique l'est de même : la ligne ne dit plus l'échéance, et le geste
@@ -3765,7 +3766,7 @@ jobs:
           for f in "$M" "$P" "$D" "$A" "$B"; do cp "$f" "/tmp/socle.$(basename "$f").intact"; done
           restaurer() { for f in "$M" "$P" "$D" "$A" "$B"; do cp "/tmp/socle.$(basename "$f").intact" "$f"; done; }
           echecs=0
-          cas_liste="horloge causes prolongation console soi inconnu ouverture reprise meute arbitre_id siecle
+          cas_liste="horloge causes prolongation console soi inconnu ouverture reprise arbitre_id siecle
                      instant sous_peine jour decide_par horloge_invalide orphelines rouvrir console_orphelines
                      console_peines garde_auto fin_echeance fin_levee fin_grace borne_prolonger tout_ban
                      hors_verrou_ban hors_verrou_pardon hors_verrou_lever hors_verrou_prolonger hors_verrou_maintenir
@@ -3817,7 +3818,6 @@ jobs:
                                "✗ ⭐ une peine s'ouvre sur une autre"),
               'reprise':      (M, "            throw self::repriseManquante($accountId, $reprise);\n", "",
                                "✗ ⭐ un ban sans sa ligne passe en silence, ou la reprise le rate"),
-              'meute':        (M, "            self::fermerPeine($pdo, $author, self::maintenant(), 'meute_detectee', null);\n", "", ORPH),
               'arbitre_id':   (M, "                'arbitre_id' => $qui['id'],\n                'raison'  => $etat['review_reason'],",
                                   "                'raison'  => $etat['review_reason'],",
                                "✗ ⭐ un acte omet une clé que la table du journal lui promet"),
@@ -3903,11 +3903,10 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 228/228 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 255 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
-          # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, le graphe
-          # de meute, la salve, les raisons qu'une page publique tait et la fin réelle
+                 echo "::error::le banc de modération intact ne joue pas ses 228 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, la salve, les raisons qu'une page publique tait et la fin réelle
           # d'un ban dans le moteur ; la route de vote, la page
           # publique, les votes reçus, les fins de ban et le blocage dans le lab. Chaque
           # fichier est restauré avant la plantation suivante ; chaque plantation est
@@ -3918,7 +3917,7 @@ jobs:
           echecs=0
           cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_rendu route_brute publique
                      limite_publique emis fin_exacte refus_exact profil blocage_envoi envoi_en_vol blocage_masque
-                     convalescence motifs_face motifs_riposte recus recus_moteur fin_reelle meute_croisee forum_fin profil_save_fin
+                     convalescence motifs_face motifs_riposte recus recus_moteur fin_reelle forum_fin profil_save_fin
                      riposte_raison treve_ancre salve_croisee duree_journal pas_palier salve_derniere raisons_moteur"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
@@ -3957,7 +3956,8 @@ jobs:
                                "✗ ⭐ le croisement déborde de sa règle"),
               'plafonds':     (M, "private const VOTE_EXPRIME = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve', 'comptes_recents'))\";",
                                   "private const VOTE_EXPRIME = \"(blocked = 0)\";", TREVE),
-              'leve_la_peine': (M, "[(int) $vote], leverLaPeine: false);", "[(int) $vote], leverLaPeine: true);",
+              'leve_la_peine': (M, "        $rendu = -min(0, (int) $stmt->fetchColumn());\n",
+                                  "        $rendu = -min(0, (int) $stmt->fetchColumn());\n        $pdo->prepare('UPDATE member_moderation SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, strikes = MAX(0, strikes - 1) WHERE account_id = ?')->execute([$author]);\n",
                                "✗ ⭐ un croisement lève une peine"),
               'user_vote':    (M, "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?'",
                                   "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ? AND blocked = 0'", CROISE),
@@ -3978,8 +3978,8 @@ jobs:
                                   "            return ['ok' => false, 'error' => 'bloque', 'message' => 'Ce membre ne reçoit pas tes messages.'];\n        }\n"
                                   + INSERTION + SANS_GARDE, "✗ ⭐ un message en vol entre dans dm après le blocage"),
               'blocage_masque': (D, "               AND NOT EXISTS (SELECT 1 FROM dm_blocages b WHERE b.bloqueur_id = d.recipient_id AND b.bloque_id = d.sender_id)\n", "", BLOC),
-              'convalescence': (M, "        if ($leverLaPeine && $rep['reputation'] >= self::config()->entreeConvalescenceSous()) {",
-                                  "        if ($rep['reputation'] >= self::config()->entreeConvalescenceSous()) {", "✗ ⭐ un croisement ferme la convalescence"),
+              'convalescence': (M, "            $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);\n",
+                                  "            $pdo->prepare('UPDATE member_moderation SET voting_rights = 1, convalescent = 0 WHERE account_id = ?')->execute([$author]);\n", "✗ ⭐ un croisement ferme la convalescence"),
               'motifs_face':  (M, MOTIFS, MOTIFS.replace("self::VOTE_RECU", "'blocked = 0'"), PAGE),
               'motifs_riposte': (M, MOTIFS, MOTIFS.replace("self::VOTE_RECU", "self::VOTE_EXPRIME"), PAGE),
               'recus':        (P, "$nbVotesRecus = Moderate::votesRecus($pdo, $myId);",
@@ -3987,8 +3987,6 @@ jobs:
               'recus_moteur': (M, "'SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . self::VOTE_RECU",
                                   "'SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND ' . self::VOTE_EXPRIME", RECUS),
               'fin_reelle':   (M, "        $jusqua  = self::arrondirFin($maintenant + $duree);", "        $jusqua  = $maintenant + $duree;", FIN_REELLE),
-              'meute_croisee': (M, "        $enJeu = \"value = -1 AND (\" . self::VOTE_EXPRIME . \" OR blocked_reason = 'pack_voting')\";",
-                                  "        $enJeu = \"value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')\";", "✗ ⭐ un vote croisé sort du graphe de meute"),
               'forum_fin':    (FO, "            Moderate::finDeBan($etat)\n", "            date('d/m/Y H:i', (int) $etat['banned_until'])\n", REFUS),
               'profil_save_fin': (LP, "            Moderate::finDeBan($etat)\n", "            date('d/m/Y H:i', (int) $etat['banned_until'])\n", REFUS),
               'riposte_raison': (M, "        return 'riposte';\n    }\n", "        return 'vote_croise';\n    }\n", CROISE),
@@ -4037,9 +4035,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 228/228 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 255 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 228 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La part elle-même, son solde net, les votes tombés qu'elle ne compte pas,
           # l'âge au moment du vote, sa fenêtre en jours, la salve et le signal qu'elle
           # laisse voir, et sa place parmi les votes émis. Chaque plantation est jugée, même après l'échec
@@ -4225,21 +4223,22 @@ jobs:
       - name: Canari — SelfModerate interroge la base une fois par paire de votants
         run: |
           # @plante
-          # La lecture des liens en une requête est remplacée par l'ancienne
-          # boucle, qui teste chaque paire par `areLinked()` : le coût d'un vote
-          # redevient le carré de ses votants, et le banc doit rougir sur ce cas.
+          # La lecture des liens du quorum en une requête est remplacée par une
+          # boucle qui teste chaque paire par `areLinked()` : le coût d'un vote qui
+          # passe un seuil devient le carré de ses votants, et le banc doit rougir
+          # sur ce cas.
           M=bi-self/selfmoderate/src/Moderate.php
           cp "$M" /tmp/moderate.paires.intact
           python3 - "$M" <<'PY'
           import sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
-          lu = "        foreach (self::mutualPairs($pdo, $voters) as [$a, $b]) {\n            $parent[$find($a)] = $find($b);\n        }\n"
-          boucle = ("        $n = count($voters);\n"
-                    "        for ($i = 0; $i < $n; $i++) {\n"
-                    "            for ($k = $i + 1; $k < $n; $k++) {\n"
-                    "                if ($find($voters[$i]) !== $find($voters[$k]) && self::areLinked($pdo, $voters[$i], $voters[$k])) {\n"
-                    "                    $parent[$find($voters[$i])] = $find($voters[$k]);\n"
+          lu = "        $paires = self::mutualPairs($pdo, $etablis, $t);\n"
+          boucle = ("        $paires = [];\n"
+                    "        foreach ($etablis as $i => $a) {\n"
+                    "            foreach (array_slice($etablis, $i + 1) as $b) {\n"
+                    "                if (self::areLinked($pdo, $a, $b)) {\n"
+                    "                    $paires[] = [$a, $b];\n"
                     "                }\n"
                     "            }\n"
                     "        }\n")
@@ -4264,7 +4263,7 @@ jobs:
           # @plante
           # Trois défauts replantés tour à tour, chacun restauré avant le suivant :
           # le vote qui rebalaie tout le site doit rougir sur le coût ; le
-          # balayage qui ne se déclenche jamais, sur la meute liée après coup ; le
+          # balayage qui ne se déclenche jamais, sur le premier vote de la tranche ; le
           # refus de clé non rattrapé, sur la course perdue.
           M=bi-self/selfmoderate/src/Moderate.php
           for cas in global jamais course; do
@@ -4297,7 +4296,7 @@ jobs:
             fi
             case $cas in
               global) attendu='le coût d.un downvote suit l.activité du site' ;;
-              jamais) attendu='une meute liée après coup n.est pas rattrapée' ;;
+              jamais) attendu='le balayage ne tombe pas sur le seul premier vote de la tranche' ;;
               course) attendu='la course ou la table absente est mal tenue' ;;
             esac
             grep -q "$attendu" <<< "$sortie" \
@@ -4305,28 +4304,24 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate rend à une meute annulée plus qu'elle n'a pris
+      - name: Canari — SelfModerate rend au croisement plus que le vote n'a pris
         run: |
           # @plante
-          # Trois gardes de l'annulation retirées tour à tour, chacune restaurée
-          # avant la suivante : sans la causalité, des votes posés après le début
-          # d'un ban le lèvent sans l'avoir causé ; sans la borne d'un strike, la
-          # levée efface l'escalade ; sans la remise des effets à zéro, la fin
-          # d'un ban et l'annulation rendent deux fois les mêmes points.
+          # Deux gardes de la restitution, retirées tour à tour, chacune restaurée
+          # avant la suivante : sans la remise des effets à zéro, la fin d'un ban et
+          # le croisement qui la suit rendent deux fois les mêmes points ; lu sans
+          # son effet, un vote d'avant la colonne rend un point qu'il n'a jamais pris.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in causalite strikes remise; do
+          for cas in remise migration; do
             cp "$M" /tmp/moderate.effet.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'causalite': ("        if ($leverLaPeine && $rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []\n",
-                            "        if ($leverLaPeine && $rep['banned'] && $rep['ban_origine'] === 'auto'\n"),
-              'strikes':   ("                        strikes = MAX(0, strikes - 1),\n",
-                            "                        strikes = 0,\n"),
               'remise':    ("                $effacer            = true;\n                array_push($tombentFin, 'ban_auto', 'reputation_zero');\n",
                             "                array_push($tombentFin, 'ban_auto', 'reputation_zero');\n"),
+              'migration': ("SELECT COALESCE(effet, 0) FROM mod_votes WHERE id = ?", "SELECT COALESCE(effet, value) FROM mod_votes WHERE id = ?"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -4341,35 +4336,27 @@ jobs:
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              causalite) attendu='✗ ⭐ un ban levé par des votes postérieurs à son début' ;;
-              strikes)   attendu='✗ ⭐ levée sur meute mal bornée' ;;
               remise)    attendu='✗ ⭐ points rendus deux fois' ;;
+              migration) attendu='✗ ⭐ des votes d.avant la colonne rendent un point au croisement' ;;
             esac
             grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate fait peser une meute plus qu'un membre seul, laisse glisser l'épisode, ou ignore la grâce
+      - name: Canari — SelfModerate ignore la grâce sur un rang de meute d'avant la 0.9.0
         run: |
           # @plante
-          # Trois gardes de la meute retirées tour à tour, chacune restaurée avant
-          # la suivante : sans le premier votant gardé, un groupe perd tous ses
-          # votes ; compté depuis la dernière détection, l'épisode d'une meute
-          # réglée sous le délai ne finit jamais ; sans la ligne de grâce, le rang
-          # survit au geste de l'arbitre.
+          # Les rangs de meute que la 0.9.0 n'écrit plus restent lus : sans la ligne
+          # de grâce, le rang survivrait au geste de l'arbitre.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in premier episode grace; do
+          for cas in grace; do
             cp "$M" /tmp/moderate.meute.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'premier': ("                $premier = (int) $votes[0]['voter_id'];\n",
-                          "                $premier = -1;\n"),
-              'episode': ('                "SELECT rang, MIN(detected_at) AS debut FROM mod_pack_flags\n',
-                          '                "SELECT rang, MAX(detected_at) AS debut FROM mod_pack_flags\n'),
               'grace':   ("                                            WHERE voter_id = ? AND action = 'grace')\"\n",
                           "                                            WHERE voter_id = ? AND action = 'jamais')\"\n"),
           }[os.environ['CAS']]
@@ -4386,8 +4373,6 @@ jobs:
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              premier) attendu='✗ la meute n.a pas été ramenée à un membre seul' ;;
-              episode) attendu='✗ ⭐ l.épisode glisse' ;;
               grace)   attendu='✗ ⭐ la grâce laisse la suspension ou le rang' ;;
             esac
             grep -q "$attendu" <<< "$sortie" \
@@ -4436,36 +4421,62 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate coupe les votants récents, ou tait la troncature
+      - name: Canari — SelfModerate, le quorum aux seuils
         run: |
           # @plante
-          # Deux gardes de la borne du graphe, retirées tour à tour : l'ordre qui
-          # garde les votants les plus récents, et le signalement de la troncature.
+          # Les gardes du quorum, retirées tour à tour, chacune restaurée avant la
+          # suivante : la classe des comptes récents comptée par compte ; une borne
+          # remplie dans l'ordre d'arrivée ; une recherche gloutonne au lieu d'exacte ;
+          # le quorum sauté ; la chute sans quorum posée en comportement ; le balayage
+          # sourd à une chute remontée par des votes ; la remontée qui ne la lève pas ;
+          # le budget de la recherche ignoré ; les votes neutralisés comptés en voix.
+          # La fenêtre des liens et celle des voix ont leur canari d'unité.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in ordre silence; do
-            cp "$M" /tmp/moderate.borne.intact
+          for cas in classe borne glouton saute famille balai remontee budget neutralises; do
+            cp "$M" /tmp/moderate.quorum.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'ordre':   ('                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC");\n',
-                          '                               GROUP BY voter_id ORDER BY voter_id ASC");\n'),
-              'silence': ("                self::signaler($pdo, $author, 'votants_tronques');\n", ""),
+              'classe':      ('        $classe = min(1, $recents);\n', '        $classe = $recents;\n'),
+              'borne':       ("           GROUP BY v.voter_id'\n        );\n        $stmt->execute([$cible, $t - self::config()->fenetreFarmingJours",
+                              "           GROUP BY v.voter_id ORDER BY MIN(v.created_at) LIMIT 200'\n        );\n        $stmt->execute([$cible, $t - self::config()->fenetreFarmingJours"),
+              'glouton':     ('            $explorer(array_diff_key($reste, [$v => true]), $pris);\n', ''),
+              'saute':       ("        $quorum = static fn (int $seuil): bool => $voix === null || $voix['voix'] >= self::config()->voixPourSanction($seuil);",
+                              "        $quorum = static fn (int $seuil): bool => true;"),
+              'famille':     (", 'ban_sans_fin', 'chute_sans_quorum'];", ", 'ban_sans_fin'];"),
+              'balai':       ("(voting_rights = 0 OR EXISTS (\n                                                   SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'chute_sans_quorum'))",
+                              "(voting_rights = 0)"),
+              'remontee':    ("array_push($tombentRegen, 'droit_de_vote_perdu', 'chute_sans_quorum');", "$tombentRegen[] = 'droit_de_vote_perdu';"),
+              'budget':      ('            if (++$noeuds > self::config()->quorumNoeudsMax) {', '            if (++$noeuds > PHP_INT_MAX) {'),
+              'neutralises': ('WHERE v.target_author = ? AND v.value = -1 AND v.blocked = 0 AND v.created_at BETWEEN ? AND ?',
+                              'WHERE v.target_author = ? AND v.value = -1 AND v.created_at BETWEEN ? AND ?'),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
           PY
-            [ $? -eq 0 ] || { cp /tmp/moderate.borne.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            [ $? -eq 0 ] || { cp /tmp/moderate.quorum.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
             if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
-              cp /tmp/moderate.borne.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+              cp /tmp/moderate.quorum.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
             fi
-            cp /tmp/moderate.borne.intact "$M"
-            cmp -s /tmp/moderate.borne.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
+            cp /tmp/moderate.quorum.intact "$M"
+            cmp -s /tmp/moderate.quorum.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            # La chute sans quorum posée en comportement fait refuser à `designaler()` de la
+            # lever : le banc s'arrête sur cette `LogicException`, qui la nomme.
+            if [ "$cas" != famille ] && grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
-            grep -q '✗ ⭐ la troncature cache la meute ou se tait' <<< "$sortie" \
+            case $cas in
+              famille)     attendu='seul un arbitre ferme un signal de comportement (chute_sans_quorum)' ;;
+              classe|neutralises) attendu='✗ ⭐ la classe des récents compte mal' ;;
+              borne)       attendu='✗ ⭐ une borne cache les critiques' ;;
+              glouton)     attendu="✗ ⭐ la recherche n.est pas exacte" ;;
+              saute)       attendu='✗ ⭐ une clique a sanctionné' ;;
+              balai|remontee) attendu='✗ ⭐ la chute sans quorum survit à son état' ;;
+              budget)      attendu='✗ ⭐ une recherche épuisée a sanctionné' ;;
+            esac
+            grep -q "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
@@ -4552,27 +4563,20 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate perd un meneur annulé, annule deux fois, fait monter qui n'a pas revoté, ou rouvre un ban pendant une panne
+      - name: Canari — SelfModerate garde la panne du journal à la clôture, ou rouvre un ban pendant une panne
         run: |
           # @plante
-          # Les gardes posées après l'audit du lot, retirées tour à tour : le
-          # graphe qui garde les votes déjà annulés pour meute ; l'annulation qui
-          # ne prend qu'un vote encore actif ; l'épisode qui exige un vote neuf ;
-          # l'effet inconnu d'un vote d'avant la colonne ; la panne du journal
-          # levée avec la clôture de la peine ; aucun ban avant la clôture du précédent.
+          # Deux gardes de la clôture, retirées tour à tour : la panne
+          # du journal levée avec la clôture de la peine ; aucun ban avant la
+          # clôture du précédent.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in chaine course tiers migration panne attente; do
+          for cas in panne attente; do
             cp "$M" /tmp/moderate.audit.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'chaine':    ("        $enJeu = \"value = -1 AND (\" . self::VOTE_EXPRIME . \" OR blocked_reason = 'pack_voting')\";\n",
-                            "        $enJeu = \"value = -1 AND \" . self::VOTE_EXPRIME;\n"),
-              'course':    ("'pack_voting' WHERE id = ? AND blocked = 0\");\n", "'pack_voting' WHERE id = ?\");\n"),
-              'tiers':     ("            if ($neuf->fetchColumn() === false) {\n", "            if (false) {\n"),
-              'migration': ("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes", "SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes"),
               'panne':     ("            $tombentFin[]      = 'journal_en_panne';\n", ""),
               'attente':   ("        if ((int) $etat['banned_until'] > 0) {\n", "        if ((int) $etat['banned_until'] > self::maintenant()) {\n"),
           }[os.environ['CAS']]
@@ -4589,10 +4593,6 @@ jobs:
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              chaine)    attendu='✗ ⭐ le meneur annulé ne relie plus sa meute' ;;
-              course)    attendu='✗ ⭐ le second passage annule encore' ;;
-              tiers)     attendu='✗ ⭐ un tiers fait monter le rang du premier votant' ;;
-              migration) attendu='✗ ⭐ des votes d.avant la colonne lèvent un ban' ;;
               panne)     attendu='✗ ⭐ un journal en panne fait tomber la lecture ou referme sans trace' ;;
               attente)   attendu='✗ ⭐ panne du journal' ;;
             esac
@@ -4609,8 +4609,8 @@ jobs:
           # chaque seuil sous une config différente, et doit rougir sur CE seuil.
           M=bi-self/selfmoderate/src/Moderate.php
           for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreSalveSecondes \
-                     salveVotantsMin fenetreMeuteJours meuteLiensMin meuteVotantsMax balayagePeriodeSecondes \
-                     meuteEpisodeCooldown fenetreFarmingJours farmingUpvotesMax farmingDownvotesMax \
+                     salveVotantsMin fenetreMeuteJours balayagePeriodeSecondes \
+                     fenetreFarmingJours farmingUpvotesMax farmingDownvotesMax \
                      ciblesParVotantMax ageMinPourVoterSecondes intervalleConvalescenceSecondes \
                      dureesBan dureeBanAdminSecondes plancherFraction bansArbitreSignal balayageFiletMax \
                      banAutomatique signalPerteDuVote messagesPourVoterAvantAge motifsVotantsMin; do
@@ -4636,7 +4636,6 @@ jobs:
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              meuteVotantsMax)                 attendu='✗ ⭐ la troncature cache la meute ou se tait' ;;
               ageMinPourVoterSecondes)         attendu='✗ anti-Sybil sourd à la config' ;;
               intervalleConvalescenceSecondes) attendu='✗ convalescence sourde à la config' ;;
               *)                               attendu="✗ seuil sourd à la config ($cas)" ;;
@@ -4649,7 +4648,7 @@ jobs:
       - name: Canari — SelfModerate lit le contenu des messages privés, ou date et range mal les motifs reçus
         run: |
           # @plante
-          # Trois promesses sans chiffre : la détection lit le contenu des
+          # Trois promesses sans chiffre : le quorum lit le contenu des
           # messages privés, nommé ou par `SELECT *` ; les motifs sortent dans leur
           # ordre d'arrivée ; ils sont datés au mois, ou portent leur horodatage
           # sous un autre nom ; le jour se compte en UTC et non dans le fuseau de
@@ -4684,7 +4683,7 @@ jobs:
               echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
             fi
             case $cas in
-              contenu|tout) attendu='✗ la détection lit le contenu des messages privés' ;;
+              contenu|tout) attendu='✗ le quorum lit le contenu des messages privés' ;;
               utc|borne)    attendu='✗ ⭐ le jour des motifs suit UTC, ou la limite coupe dans l.ordre d.arrivée' ;;
               *)            attendu='✗ motifs mal datés ou rangés dans leur ordre d.arrivée' ;;
             esac
@@ -4697,8 +4696,8 @@ jobs:
         run: |
           # @plante
           # Des défauts qu'un seuil lu au bon endroit laisse passer : une fenêtre
-          # en jours comptée en heures — pour l'échange qui lie une meute, pour
-          # ses votes, pour les quatre lecteurs du farming plantés ensemble — et
+          # en jours comptée en heures — pour l'échange qui lie deux votants, pour
+          # les voix du quorum, pour les quatre lecteurs du farming plantés ensemble — et
           # l'horloge de convalescence avancée au pas de la démonstration plutôt
           # qu'à celui de la config. Le banc vise ces fenêtres des deux côtés de
           # leur borne, et doit rougir sur son cas. Celle du farming ne l'est que
@@ -4713,10 +4712,10 @@ jobs:
           s = open(p, encoding='utf-8').read()
           cas = os.environ['CAS']
           avant, apres, n = {
-              'lien':    ('[self::maintenant() - self::config()->fenetreMeuteJours * 86400], $voters, $voters',
-                          '[self::maintenant() - self::config()->fenetreMeuteJours * 3600], $voters, $voters', 1),
-              'votes':   ('$sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 86400;',
-                          '$sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 3600;', 1),
+              'lien':    ('[$t - self::config()->fenetreMeuteJours * 86400, $t], $voters, $voters',
+                          '[$t - self::config()->fenetreMeuteJours * 3600, $t], $voters, $voters', 1),
+              'votes':   ('$stmt->execute([$cible, $t - self::config()->fenetreFarmingJours * 86400, $t]);',
+                          '$stmt->execute([$cible, $t - self::config()->fenetreFarmingJours * 3600, $t]);', 1),
               'farming': ('self::maintenant() - self::config()->fenetreFarmingJours * 86400',
                           'self::maintenant() - self::config()->fenetreFarmingJours * 3600', 4),
               'horloge': ('$last + $gagnes * self::config()->intervalleConvalescenceSecondes',
@@ -4736,7 +4735,7 @@ jobs:
             fi
             case $cas in
               lien)    attendu='✗ seuil sourd à la config (fenetreMeuteJours) : lien' ;;
-              votes)   attendu='✗ seuil sourd à la config (fenetreMeuteJours) : votes' ;;
+              votes)   attendu='✗ seuil sourd à la config (fenetreFarmingJours) : voix' ;;
               farming) attendu='✗ seuil sourd à la config (fenetreFarmingJours)' ;;
               horloge) attendu='✗ convalescence sourde à la config' ;;
             esac
@@ -4810,17 +4809,17 @@ jobs:
           # quand aucun journal n'est branché — avec l'appel qui tolère un
           # journal absent, sans quoi le geste échouerait au lieu de passer en
           # silence ; le ban d'arbitre qui efface la revue ouverte ; la
-          # transaction du balayage ; le verrou pris dans la transaction d'un hôte ; le refus d'une peine qui attend sa fin ; la
-          # décision sur l'état relu sous le verrou ; les rangs avant la
-          # restitution ; le refus des gestes dans la transaction d'un hôte ; le
-          # ban automatique qui ne s'y arme pas ; le refus d'un compte inexistant ;
-          # les bans d'arbitre comptés à part, et leur enchaînement signalé.
-          # Le banc doit rougir sur son cas. Un geste ou une meute sortis de leur
-          # transaction n'ont plus de cas : ils lisent l'état par `etat()`, qui
-          # refuse hors d'une écriture du moteur — la garde les rend bruyants par
-          # construction, et le canari « écrit sur une lecture » plante cette garde.
+          # transaction du balayage ; le verrou pris dans la transaction d'un
+          # hôte ; le refus d'une peine qui attend sa fin ; la décision sur l'état
+          # relu sous le verrou ; le refus des gestes dans la transaction d'un
+          # hôte ; le ban automatique qui ne s'y arme pas ; le refus d'un compte
+          # inexistant ; les bans d'arbitre comptés à part, et leur enchaînement
+          # signalé. Le banc doit rougir sur son cas. Un geste sorti de sa
+          # transaction n'a pas de cas ici : il lit l'état par `etat()`, qui
+          # refuse hors d'une écriture du moteur — la garde le rend bruyant par
+          # construction, et le canari « écrit sur une lecture » la plante.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in journal revue balayage hote attente relecture ordre hote-geste hote-vote inconnu enchaine compteur; do
+          for cas in journal revue balayage hote attente relecture hote-geste hote-vote inconnu enchaine compteur; do
             cp "$M" /tmp/moderate.arbitrage.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -4837,8 +4836,6 @@ jobs:
                             ('$enAttente  = self::refusFinEnAttente($etat);', '$enAttente  = null;', 1)],
               'relecture': [('        self::rattraperSeul($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $seconds, $sansFin): array {\n            $etat = self::etat($pdo, $accountId);',
                              '        self::rattraperSeul($pdo, $accountId);\n        $etatLu = self::getReputation($pdo, $accountId);\n\n        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $seconds, $sansFin, $etatLu): array {\n            self::etat($pdo, $accountId);\n            $etat = $etatLu;', 1)],
-              'ordre':     [('                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);\n                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);\n',
-                             '                        self::restoreAfterCancel($pdo, $author, $voteIds, $etatAuRefus);\n                        $rangs = self::consignerMeute($pdo, $groupe, $author, $voteIds, $voteSur, $sautes);\n', 1)],
               'hote-geste': [('$dansLHote = self::refusTransactionDeLHote($pdo);', '$dansLHote = null;', 6)],
               'hote-vote':  [('if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {', 'if (self::$journal === null) {', 1)],
               'inconnu':    [("return $connu ? null : ['ok' => false, 'message' => static::t('Compte introuvable.')];", 'return null;', 1)],
@@ -4866,7 +4863,6 @@ jobs:
               hote)      attendu="un acte s'inscrit dans la transaction d'un hôte sans le verrou" ;;
               attente)   attendu='un geste passe par-dessus une peine qui attend sa fin' ;;
               relecture) attendu="un geste décide sur l'état lu avant le verrou" ;;
-              ordre)     attendu="une levée de ban s'inscrit pour une meute défaite" ;;
               hote-geste) attendu="un geste d'arbitre passe dans la transaction d'un hôte" ;;
               hote-vote)  attendu="un vote arme le ban automatique dans la transaction d'un hôte" ;;
               inconnu)    attendu="un geste sur un compte inexistant échoue autrement qu'en refus" ;;
@@ -4885,8 +4881,8 @@ jobs:
           # qui rattrape en base ; le refus de la lecture à un écrivain du moteur ;
           # le filet qui balaie au premier vote négatif d'une tranche, et qui
           # s'abstient dans la transaction d'un hôte ; les convalescences dues que
-          # le balayage prend ; le rattrapage qui précède la restitution d'une
-          # meute ; le vote refusé tant que le journal refuse une fin de peine ;
+          # le balayage prend ; le rattrapage qui précède la restitution d'un
+          # croisement ; le vote refusé tant que le journal refuse une fin de peine ;
           # les états qu'une lecture montre tombés ; le rattrapage qui ne prend pas
           # le verrou quand rien n'est dû, et qui le prend avant de lire dans la
           # transaction d'un hôte ; le balayage qui contient un refus, n'appelle
@@ -4919,7 +4915,7 @@ jobs:
                                    "ORDER BY banned_until = 0"),
               'logique':       (1, 'if (!$contenir || $e instanceof LectureDansUneEcriture) {', 'if (!$contenir) {'),
               'classe':        (1, '|| $e instanceof LectureDansUneEcriture', '|| $e instanceof \\LogicException'),
-              'seuil-vote':    (1, 'OR (reputation >= :vote AND voting_rights = 0)', 'OR (0 AND reputation >= :vote AND voting_rights = 0)'),
+              'seuil-vote':    (1, 'OR (reputation >= :vote AND (voting_rights = 0 OR EXISTS (', 'OR (reputation >= :vote AND (0 AND voting_rights = 0 OR EXISTS ('),
               'borne':         (2, 'if ($this->balayageFiletMax < 0) {', 'if (false) {'),
           }[os.environ['CAS']]
           p = sys.argv[fichier]
@@ -4943,7 +4939,7 @@ jobs:
               garde)         attendu='un écrivain du moteur peut décider sur la lecture' ;;
               filet|filet-hote) attendu='le filet sans planificateur ne tient pas' ;;
               balayage-conv) attendu='un compte guéri garde sa chute en base' ;;
-              restitution)   attendu='une levée pour meute rend deux fois les mêmes points' ;;
+              restitution)   attendu='un croisement rend deux fois les mêmes points' ;;
               panne-vote)    attendu='un journal en panne fait tomber la lecture' ;;
               verrou)        attendu="un refus décidé par la lecture prend le verrou d'écriture" ;;
               hote-lecture)  attendu="dans la transaction d'un hôte, un vote lit avant de prendre le verrou" ;;
@@ -4998,7 +4994,7 @@ jobs:
             case $cas in
               rythme)  attendu='la convalescence annonce un rythme écrit en dur' ;;
               unite)   attendu="une durée se lit dans une unité qui ne lui va pas" ;;
-              meute-*) attendu='les trois votes de la meute sont acceptés, puis tous sauf le premier annulés' ;;
+              meute-*) attendu='« packvoting » : les 21 votes de la meute portent' ;;
             esac
             grep -qF "$attendu" <<< "$sortie" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
@@ -5028,7 +5024,7 @@ jobs:
           # détections que porte l'acte ; la chute pendant un ban d'arbitre,
           # signalée avec ou sans journal.
           for cas in orphelin filet jeton replie etendu liste grace maintien resume ordre file comptes bans reprise migration \
-                     lecture pose arbitre debut illisible balayage balai tronque etat cible borne anterieur machine fermedet \
+                     lecture pose arbitre debut illisible balayage balai etat cible borne anterieur machine fermedet \
                      chute chute-hote; do
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/db.php; do cp "$f" "/tmp/signaux.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
@@ -5039,8 +5035,8 @@ jobs:
               'filet':     (M, "'UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?'",
                                "'UPDATE mod_signaux SET detections = detections + 1, derniere_le = ' . self::maintenant() . ' WHERE account_id = ? AND cause = ?'", 1),
               'jeton':     (M, "                return $s['detections'] === (int) ($vu['detections'] ?? 0)\n", "                return true\n", 1),
-              'replie':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))) {\n", "        if ($suite->rowCount() === 1) {\n", 1),
-              'etendu':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))) {\n", "        if (true) {\n", 1),
+              'replie':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'comptes_recents'], true))) {\n", "        if ($suite->rowCount() === 1) {\n", 1),
+              'etendu':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'comptes_recents'], true))) {\n", "        if (true) {\n", 1),
               'liste':     (M, "                'ouverts'   => self::causesEnTexte($signaux),\n", "                'ouverts'   => array_column($signaux, 'cause'),\n", 1),
               'ordre':     (M, "           ORDER BY s.ouvert_le, s.id LIMIT ?'", "           ORDER BY s.ouvert_le DESC, s.id LIMIT ?'", 1),
               'file':      (M, "              WHERE s.cause = ? AND s.vu_le IS NULL\n", "              WHERE s.cause = ?\n", 1),
@@ -5062,17 +5058,16 @@ jobs:
                                "'ban_auto', ban_debut, ban_debut,", 1),
               'illisible': (M, "JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);\n    }\n\n    /**\n     * Les signaux qu'un acte",
                                "JSON_THROW_ON_ERROR);\n    }\n\n    /**\n     * Les signaux qu'un acte", 1),
-              'balayage':  (M, "($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))",
-                               "!in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true)", 1),
+              'balayage':  (M, "($neuf && !in_array($cause, ['votant_etendu', 'comptes_recents'], true))",
+                               "!in_array($cause, ['votant_etendu', 'comptes_recents'], true)", 1),
               'balai':     (M, "self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);",
                                "(self::balayageDu($pdo) ? self::detecter($pdo, null, null) : self::detecter($pdo, $author, $author));", 3),
-              'tronque':   (M, "!in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true)", "$cause !== 'votant_etendu'", 1),
               'etat':      (M, "        if (self::famille($cause) === 'etat') {\n            return;\n        }\n        $suite", "        $suite", 1),
               'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
                                "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),
               'borne':     (M, "AND cause = ? AND derniere_le <= ?'", "AND cause = ? AND derniere_le < ?'", 1),
-              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin'];",
-                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'signal_anterieur'];", 1),
+              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'chute_sans_quorum'];",
+                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'chute_sans_quorum', 'signal_anterieur'];", 1),
               'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
                                "                continue;\n", 1),
               'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
@@ -5118,7 +5113,6 @@ jobs:
               arbitre|debut)   attendu='la migration perd un signal, en invente un, ou se rejoue' ;;
               illisible)       attendu='une cause illisible fige le compte' ;;
               balayage|balai)  attendu='le balayage périme un affichage sans vote neuf, ou laisse passer une salve repliée' ;;
-              tronque)         attendu="la troncature prive l'arbitre du classement à chaque vote" ;;
               etat|cible|borne) attendu="le compte d'un signal suit autre chose que ses faits" ;;
               anterieur|machine) attendu='une cause inconnue reste en base une fois classée, ou la machine ferme un comportement' ;;
               fermedet)        attendu="le signal compte les détections, ou l'arbitre ferme ce qu'il n'a pas vu" ;;
@@ -5129,32 +5123,22 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
-      - name: Canari — SelfModerate tait une reprise oubliée à l'arbitre, fait tomber le vote d'un tiers, perd en silence une levée refusée, ou laisse le journal fermer un geste
+      - name: Canari — SelfModerate tait une reprise oubliée à l'arbitre, fait tomber le vote d'un tiers, ou laisse le journal fermer un geste
         run: |
           # @plante
           # Les gardes de la 0.7.1, retirées tour à tour : la sonde des listes de
           # l'arbitre ; la prise du balayage sur un compte que le vote ne vise pas,
-          # pour une reprise oubliée, pour un refus du journal, pour une exception
-          # ordinaire, et ce qu'elle laisse remonter — une erreur d'intégration, une
-          # Error, une transaction défaite, celle du vote ou du planificateur ; la levée
-          # refusée signalée pour toute classe de refus, nommée, relue sous le verrou
-          # avant d'être posée, sur les strikes et la peine du refus — faite par un
-          # autre passage, sur la même meute ou une meute rétrécie, graciée, suivie
-          # d'une peine neuve, ou due encore quand sa peine échoit entre-temps, que
-          # ses votes soient ensuite annulés ou non, qu'un ban d'arbitre la suive ou
-          # que sa fin attende le journal —, levée quand celle de sa peine est
-          # faite et seulement elle, fermée quand elle est classée ; le compte de la
-          # reprise oubliée nommé, lui seul ; le saut qui ne se dit pas d'un vote ; la
-          # récidive d'un votant attendue sur un autre compte ; le votant de la meute
-          # de la cible ; la reprise oubliée sautée par le balayage ; la file des
-          # signalés rangée par leur dernier refus, et la date de ce refus ; la
-          # valeur texte rendue lisible avant le journal ; le motif refusé s'il n'est
-          # pas du texte ; la ligne du votant que le rattrapage d'un hôte ne crée
-          # pas ; le balayage qui refuse la transaction d'un hôte ; la page
-          # tamponnée du lab, décidée sur le script servi ; la console qui ne dit
-          # pas ses listes vides ; le planificateur qui dit une panne de la base, et
-          # la page qui le lance, ce qu'il a sauté.
-          for cas in listes autrui levee logique exception classe-levee lecture perdue propre signal saute nomme consigne lance relue votes echue retrecie neuve borne meme-peine double faite peine classer cible recidive rayon tour date lisible utf8 ligne hote page script console base page-mod; do
+          # pour une reprise oubliée et pour un refus de la base, et ce qu'elle
+          # laisse remonter — une transaction défaite, celle du vote ou du
+          # planificateur ; le compte sauté nommé, une fois ; la reprise oubliée
+          # sautée par le balayage ; la file des signalés rangée par leur dernier
+          # refus, et la date de ce refus ; la valeur texte rendue lisible avant le
+          # journal ; le motif refusé s'il n'est pas du texte ; la ligne du votant que
+          # le rattrapage d'un hôte ne crée pas ; le balayage qui refuse la
+          # transaction d'un hôte ; la page tamponnée du lab, décidée sur le script
+          # servi ; la console qui ne dit pas ses listes vides ; le planificateur qui
+          # dit une panne de la base, et la page qui le lance, ce qu'il a sauté.
+          for cas in listes autrui refus logique perdue propre saute double rayon tour date lisible utf8 ligne hote page script console base page-mod; do
             for f in bi-self/selfmoderate/src/Moderate.php demo/lab/lib/bootstrap.php demo/lab/public/admin.php demo/lab/public/api/detect_abuse.php demo/lab/public/moderation.php; do cp "$f" "/tmp/autrui.$(basename "$f").intact"; done
             CAS="$cas" python3 - <<'PY'
           import os
@@ -5163,36 +5147,14 @@ jobs:
           fichier, avant, apres, n = {
               'listes':  (M, "        self::exigerRepriseFaite($pdo);\n        $maintenant = self::maintenant();\n", "        $maintenant = self::maintenant();\n", 1),
               'autrui':  (M, "        if ($compte === $voteSur) {\n            return $geste();\n        }\n", "        if (true) {\n            return $geste();\n        }\n", 1),
-              'levee':   (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
+              'refus':   (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
                              "        } catch (LectureDansUneEcriture | \\RuntimeException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
               'logique': (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
                              "        } catch (LectureDansUneEcriture | \\LogicException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
-              'exception': (M, "        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
-                               "        } catch (\\Throwable $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
-              'lecture': (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
-                             "        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
               'perdue':  (M, "            if ($e === self::$transactionDefaitePar) {\n                throw $e;\n            }\n", "", 1),
               'propre':  (M, "                    self::$transactionDefaitePar = $e;\n", "                    if (!$propre) {\n                        self::$transactionDefaitePar = $e;\n                    }\n", 1),
-              'signal':  (M, "                    if ($etatAuRefus !== null) {\n                        self::surAutrui(", "                    if (false) {\n                        self::surAutrui(", 1),
               'saute':   (M, "            if (!in_array($saut, $sautes, true)) {\n                $sautes[] = $saut;\n            }\n", "", 1),
-              'consigne': (M, "            error_log(sprintf('SelfModerate : le balayage saute le compte %d — %s', $compte, $e->getMessage()));\n", "", 1),
-              'lance':   (M, "le balayage saute le compte %d — %s', $compte,", "le balayage saute le compte %d, sans défaire le vote qui le lance — %s', $compte,", 1),
-              'nomme':   (M, "                'compte' => $e instanceof RepriseManquante ? $e->compte : $compte,\n", "                'compte' => $compte,\n", 1),
               'double':  (M, "                $sautes[] = $saut;\n", "                $sautes[] = $saut;\n                if ($e instanceof RepriseManquante) {\n                    $sautes[] = ['compte' => $compte, 'raison' => 'refus'];\n                }\n", 1),
-              'relue':   (M, "                            if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {\n                                return false;\n                            }\n", "", 1),
-              'votes':   (M, "static function () use ($pdo, $author, $etatAuRefus): bool {\n                            $etat = self::etat($pdo, $author);\n",
-                             "static function () use ($pdo, $author, $etatAuRefus, $aAnnuler): bool {\n                            $encore = $pdo->prepare('SELECT COUNT(*) FROM mod_votes WHERE id IN (' . implode(',', array_fill(0, count($aAnnuler), '?')) . ') AND blocked = 0');\n                            $encore->execute($aAnnuler);\n                            if ((int) $encore->fetchColumn() === 0) {\n                                return false;\n                            }\n                            $etat = self::etat($pdo, $author);\n", 1),
-              'echue':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if (!$etat['banned']) {", 1),
-              'retrecie': (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] === 0) {", 1),
-              'neuve':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] < $etatAuRefus['strikes']) {", 1),
-              'borne':   (M, "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 1 : 0)) {", "if ($etat['strikes'] < $etatAuRefus['strikes'] + ($peineNeuve ? 2 : 0)) {", 1),
-              'meme-peine': (M, "$peineNeuve = $etat['ban_debut'] !== 0 && $etat['ban_debut'] !== $etatAuRefus['ban_debut'];", "$peineNeuve = $etat['ban_debut'] !== 0;", 1),
-              'classe-levee': (M, "            } catch (\\Exception $e) {\n                $etatAuRefus = ['strikes'", "            } catch (\\RuntimeException $e) {\n                $etatAuRefus = ['strikes'", 1),
-              'faite':   (M, "            self::designaler($pdo, $author, 'ban_auto', ...array_column($attente, 'cause'));\n", "            self::designaler($pdo, $author, 'ban_auto');\n", 1),
-              'peine':   (M, "                static fn (array $s): bool => $s['ouvert_le'] >= $rep['ban_debut']));\n", "                static fn (array $s): bool => true));\n", 1),
-              'classer': (M, "            if ($vise['cause'] === 'levee_en_attente') {\n                self::designaler(", "            if (false) {\n                self::designaler(", 1),
-              'cible':   (M, "                $author === $voteSur ? self::surAutrui($voter, $voteSur, $recidive, $sautes) : $recidive();\n", "                $recidive();\n", 1),
-              'recidive': (M, "                $author === $voteSur ? self::surAutrui($voter, $voteSur, $recidive, $sautes) : $recidive();\n", "                self::surAutrui($voter, $voteSur, $recidive, $sautes);\n", 1),
               'rayon':   (M, "            } catch (RepriseManquante $e) {\n                $sansReprise ??= $e;\n", "            } catch (\\DomainException $e) {\n                $sansReprise ??= $e;\n", 1),
               'tour':    (M, "                    (SELECT s.derniere_le FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),\n", "", 1),
               'date':    (M, "                $pdo->prepare(\"UPDATE mod_signaux SET derniere_le = ? WHERE account_id = ? AND cause = 'journal_en_panne'\")\n                    ->execute([$t, $accountId]);\n", "", 1),
@@ -5227,31 +5189,12 @@ jobs:
             case $cas in
               listes)  attendu="une liste de l'arbitre tait une reprise oubliée" ;;
               autrui)  attendu="la reprise oubliée d'un compte fait tomber le vote d'un tiers" ;;
-              levee)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers" ;;
-              logique) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
-              exception) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
-              classe-levee) attendu="le balayage prend un défaut de code pour un refus, ou un refus pour un défaut" ;;
-              lecture) attendu="le balayage saute une erreur d'intégration comme un refus" ;;
+              refus)   attendu="le planificateur tait un compte sauté" ;;
+              logique) attendu="la reprise oubliée d'un compte fait tomber le vote d'un tiers" ;;
               perdue)  attendu="le balayage avale une erreur qui a défait la transaction du vote" ;;
               propre)  attendu="le balayage avale une erreur qui a défait la transaction du vote, ou celle du planificateur" ;;
-              signal)  attendu="une levée refusée se perd en silence quand la peine échoit" ;;
-              saute)   attendu="une levée refusée se perd en silence quand la peine échoit" ;;
-              consigne) attendu="un refus de levée pour meute fait tomber le vote d'un tiers, ou la levée se perd" ;;
-              nomme)   attendu="ou perd sa récidive sur un autre compte" ;;
-              lance)   attendu="le journal d'erreurs parle d'un vote sous le planificateur" ;;
-              relue)   attendu="une course pose une levée en attente sur un compte déjà levé" ;;
-              votes)   attendu="une peine échue puis balayée entre le refus et la pose du signal perd la levée en attente" ;;
-              echue)   attendu="une peine échue entre le refus et la pose du signal perd la levée en attente" ;;
-              retrecie) attendu="une course pose une levée en attente sur un compte levé par une meute rétrécie" ;;
-              neuve)   attendu="une course pose une levée en attente sur la seconde peine d'un compte levé" ;;
-              borne)   attendu="une peine échue suivie d'un ban d'arbitre perd la levée en attente" ;;
-              meme-peine) attendu="une levée refusée se perd en silence quand la peine échoit" ;;
-              double)  attendu="ou perd sa récidive sur un autre compte" ;;
-              faite)   attendu="un refus de levée pour meute fait tomber le vote d'un tiers, ou la levée se perd" ;;
-              peine)   attendu="une levée suivante efface la levée en attente d'une peine antérieure" ;;
-              classer) attendu="une levée refusée se perd en silence quand la peine échoit" ;;
-              cible)   attendu="la reprise oubliée d'un votant fait tomber le vote sur la cible de sa meute" ;;
-              recidive) attendu="ou perd sa récidive sur un autre compte" ;;
+              saute)   attendu="le planificateur tait un compte sauté" ;;
+              double)  attendu="la reprise oubliée d'un compte fait tomber le vote d'un tiers" ;;
               rayon)   attendu="une reprise oubliée arrête le balayage" ;;
               tour)    attendu="un compte refusé à chaque passe retient les signalés qui le suivent" ;;
               date)    attendu="un compte refusé à chaque passe retient les signalés qui le suivent" ;;

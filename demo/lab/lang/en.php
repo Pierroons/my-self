@@ -92,7 +92,7 @@ return [
     'sec.5.body' => '<ul>'
         . '<li>Per-member reputation (starting at %1$d/%2$d), ±1 votes on posts <em>and</em> on members, a reason required for a downvote.</li>'
         . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no contribution cannot vote.</li>'
-        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target weigh no more than a single member → the first keeps their votes, the others\' are cancelled, and the target gets back what they took. Nobody is punished for a link; a repeat is flagged to an arbiter. <strong>Burst</strong> of unlinked votes → flagged to an arbiter, nothing cancelled.</li>'
+        . '<li><strong>Links</strong>: two members who have written to each other privately, both ways, are linked. A link cancels no vote and punishes nobody; it counts at the thresholds, where losing the right to vote takes %5$d voters with no link between them, and a ban %6$d. Below that, nothing is sanctioned, and an arbiter is notified. <strong>Burst</strong> of close votes → flagged to an arbiter, nothing cancelled.</li>'
         . '<li><strong>Anti-farming</strong>: repeated votes from one member to another are neutralised. Graduated sanctions — loss of voting rights, then a ban of %4$s; the last tier repeats, never permanent, and every ban is written to the moderation journal.</li>'
         . '</ul>',
 
@@ -101,7 +101,6 @@ return [
         . '<div class="ok"><h4>✅ Mitigated</h4><ul>'
         . '<li>Database exfiltration (dump, stolen disk) — blobs only</li>'
         . '<li>Password brute-forcing (rate limiting)</li>'
-        . '<li>Moderation manipulation (Sybil, pack-voting)</li>'
         . '<li>CSRF, clickjacking, passive session theft</li>'
         . '<li>Memo theft, <strong>even with root access</strong> (E2E at rest)</li>'
         . '</ul></div>'
@@ -109,6 +108,7 @@ return [
         . '<li>Profiles and private messages readable by whoever obtains the server key (<code>.blindkey</code>), for instance through an RCE — not through the admin panel</li>'
         . '<li><em>Persistently</em> compromised server → tampering with the served code</li>'
         . '<li>Metadata is not encrypted (who talks to whom, and when)</li>'
+        . '<li>Moderation manipulation (Sybil, pile-on): <strong>mitigated</strong>, not neutralised — old accounts with no link between them each carry their voice; a pile-on of linked accounts brings its target down without getting it sanctioned, and an arbiter is notified</li>'
         . '</ul></div>'
         . '</div>',
 
@@ -327,10 +327,10 @@ return [
     'mod.how.body' => '<li><strong>Reputation</strong>: every member starts at %1$d/%2$d. ▲▼ votes on their posts and profile make it move; a ▼ vote requires a reason.</li>'
         . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no post at all cannot vote.</li>'
         . '<li><strong>Anti-farming</strong>: beyond %4$d votes from one member to another over %5$d days, the next ones are neutralised.</li>'
-        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target weigh no more than a single member: the first keeps their votes, the others\' votes are cancelled, and the target gets back what they took. Nobody is punished for a link; a repeat is flagged to an arbiter. <strong>Burst</strong>: several unlinked votes in the same window are not cancelled — the target is flagged to an arbiter.</li>'
-        . '<li><strong>Graduated sanctions</strong>: reputation &lt;%6$d → loss of voting rights; at 0 → a ban of %7$s, the last tier repeats, never permanent. A ban blocks voting and posting; private messages stay open. When the ban ends, reputation goes back to %1$d.</li>',
+        . '<li><strong>Links</strong>: two members who have written to each other privately, both ways, are linked. A link cancels no vote and punishes nobody. <strong>Burst</strong>: several votes in the same window are not cancelled — the target is flagged to an arbiter.</li>'
+        . '<li><strong>Graduated sanctions</strong>: reputation &lt;%6$d → loss of voting rights; at 0 → a ban of %7$s, the last tier repeats, never permanent. Each one requires the fall to be carried by enough voters with no link between them — %8$d for the loss of voting rights, %9$d for a ban; otherwise nothing is sanctioned, and an arbiter is notified. A ban blocks voting and posting; private messages stay open. When the ban ends, reputation goes back to %1$d.</li>',
     'mod.detect.h2'   => 'Run abuse detection',
-    'mod.detect.note' => 'Analyses recent votes: cancels what a pack adds to a single member\'s vote, flags bursts.',
+    'mod.detect.note' => 'Analyses recent votes: flags bursts to an arbiter and closes expired penalties. No vote is cancelled.',
     'mod.detect.btn'  => '🔍 Detect abuse now',
     'mod.detect.login' => 'Every downvote has its target re-examined; the first one in each period of %s re-examines the whole site. Triggering it by hand is reserved to administrators.',
     'mod.blocked.h2'  => 'Neutralised votes (%d)',
@@ -341,9 +341,9 @@ return [
     'mod.col.target'  => 'Target',
     'mod.col.type'    => 'Type',
     'mod.col.reason'  => 'Reason',
-    'mod.js.cancelled' => 'vote(s) cancelled. Pack(s):',
+    'mod.js.salves'    => 'burst(s) flagged:',
     'mod.js.target'    => 'target',
-    'mod.js.none'      => 'No pack-voting detected over the recent period.',
+    'mod.js.none'      => 'No burst over the recent period.',
     'mod.js.sautes'    => 'Accounts skipped by the detection, to review in the console:',
     'mod.js.fins'      => 'Some penalty ends are waiting for the journal: see the console.',
 
@@ -359,7 +359,7 @@ return [
     'atk.dump.obj'  => 'Steal private messages and personal data by dumping the database.',
     'atk.brute.h3'  => '🔓 Login brute-force',
     'atk.brute.obj' => 'Guess a password by brute force.',
-    'atk.pack.h3'   => '👥 Sybil + pack-voting',
+    'atk.pack.h3'   => '👥 Sybil and pile-on',
     'atk.pack.obj'  => 'Coordinated fake accounts to bury a member.',
     'atk.csrf.h3'   => '🕸️ CSRF + phishing',
     'atk.csrf.obj'  => 'Force a cross-site action or hijack the recovery flow.',
@@ -367,6 +367,7 @@ return [
     'atk.js.goal'    => '🎯 Attacker goal:',
     'atk.js.verdict' => '🛡️ Attack neutralised — data preserved',
     'atk.js.verdict.non' => '⚠️ Defence not demonstrated by this run',
+    'atk.js.verdict.attenue' => '🟠 Attack mitigated — a fall without sanction, flagged to an arbiter',
     'atk.js.defense' => 'Defence:',
     'atk.js.error'   => 'Error:',
 
@@ -478,8 +479,8 @@ return [
     'prf.convalescent'  => 'recovering',
     'prf.mod.conv.h'    => 'Recovering',
     'prf.mod.conv.txt'  => 'Your reputation dropped below the voting threshold. It climbs back one point per quiet period of %2$s, up to %1$d. Nothing to prove, just time.',
-    'prf.mod.meute.h'   => 'Took part in a pile-on',
-    'prf.mod.meute.warn' => 'Your votes joined those of someone you exchange private messages with, on the same target. A group weighs no more than a single member: only the votes of whoever in the group voted first are kept; the others\' were cancelled. Nothing is taken from you; if it happens again, the situation will be flagged to an arbiter.',
+    'prf.mod.meute.h'   => 'Pile-on episode (history)',
+    'prf.mod.meute.warn' => 'A pile-on episode is recorded on your account: before version 0.9.0 of the moderation, when your votes joined those of someone you exchange private messages with, on the same target, some of them were cancelled. This no longer happens: a link cancels no vote, and nothing is taken from you.',
     'prf.mod.meute.mute' => 'Your right to vote is suspended until %s. The rest of the forum stays open: you can write, reply and start a topic.',
     'prf.reasons.h2'    => '💬 Reasons you received',
     'prf.reasons.anon'  => 'Without their author\'s name, and dated to the day: that is what the protocol promises the person concerned.',

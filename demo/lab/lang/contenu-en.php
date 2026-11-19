@@ -105,8 +105,7 @@ return [
     '⚠️ Section la plus sensible : failles non corrigées. D\'où cette reproduction fictive.'
         => '⚠️ The most sensitive section: unfixed vulnerabilities. Hence this fictitious reproduction.',
     'bruteforce ?' => 'brute force?',
-    'Sybil / pack' => 'Sybil / pack',
-    'pack-voting' => 'pack voting',
+    'Sybil / plafonds' => 'Sybil / caps',
 
     // ── SU console: L3 bundle of signals ──────────────────────────────────
     'IP déjà utilisée par ce compte' => 'IP already used by this account',
@@ -162,29 +161,31 @@ return [
     'Dump SQL brut (ce que voit l\'attaquant)' => 'Raw SQL dump (what the attacker sees)',
     'Alice connectée (ce que conserve le propriétaire)' => 'Alice logged in (what the owner still holds)',
     'neutralisé' => 'neutralised',
-    'non neutralisé' => 'not neutralised',
+    'atténué' => 'mitigated',
+    'non atténué' => 'not mitigated',
     'SelfDataGuard (XChaCha20-Poly1305, clé dérivée d\'un secret serveur hors base)'
         => 'SelfDataGuard (XChaCha20-Poly1305, key derived from a server secret held outside the database)',
 
-    // ── Attack simulator: Sybil and pack voting ───────────────────────────
-    'Sybil + pack-voting (enterrement coordonné)' => 'Sybil and pack voting (coordinated burial)',
+    // ── Attack simulator: Sybil and pile-on ────────────────────────────────
+    'Sybil + meute (enterrement coordonné)' => 'Sybil and pile-on (coordinated burial)',
     'Créer de faux comptes pour faire chuter la réputation d\'un membre par un downvote coordonné.'
         => 'Create fake accounts to sink a member\'s reputation through coordinated downvotes.',
     'Un membre honnête soutient la cible (+1)' => 'An honest member supports the target (+1)',
     'réputation : %d' => 'reputation: %d',
-    '3 faux comptes, liés par des messages privés, downvotent la cible avec un motif'
-        => '3 fake accounts, linked by private messages, downvote the target with a reason',
-    '%1$d votes acceptés sur %2$d' => '%1$d votes accepted out of %2$d',
-    'Détection de meute, à chaque vote négatif' => 'Pack detection, on every negative vote',
-    '%1$d votes annulés, le premier garde le sien ; réputation : %2$d' => '%1$d votes cancelled, the first keeps its own; reputation: %2$d',
+    '7 faux comptes, tous liés par des messages privés, downvotent chacun des 3 messages de la cible avec un motif'
+        => '7 fake accounts, all linked by private messages, each downvote the target\'s 3 posts with a reason',
+    '%1$d votes acceptés sur %2$d ; réputation : %3$d' => '%1$d votes accepted out of %2$d; reputation: %3$d',
+    'Quorum aux seuils : les votants sans lien entre eux' => 'Quorum at the thresholds: voters with no link between them',
+    '%1$d voix sans lien, il en faut %2$d pour bannir : ni ban ni perte du vote, et la chute est signalée à un arbitre'
+        => '%1$d unlinked voice(s), %2$d needed for a ban: no ban, no loss of voting rights, and the fall is flagged to an arbiter',
+    '%1$d voix sans lien : une sanction est tombée' => '%1$d unlinked voice(s): a sanction was applied',
     'Un compte créé à l\'instant tente de voter' => 'A freshly created account tries to vote',
-    'Impact net sur la réputation : %d (le poids d\'un membre seul : -1)' => 'Net impact on reputation: %d (the weight of a single member: -1)',
     'Modération communautaire honnête' => 'Honest community moderation',
-    'Réputation finale de la cible : %d' => 'Target\'s final reputation: %d',
-    'Une meute pèse ce que pèse un membre seul ; les votes honnêtes restent comptés.'
-        => 'A pack weighs what a single member weighs; honest votes still count.',
-    'SelfModerate (détection pack-voting + anti-Sybil par seuils)'
-        => 'SelfModerate (pack voting detection and threshold-based anti-Sybil)',
+    'La chute est signalée à un arbitre, qui décide' => 'The fall is flagged to an arbiter, who decides',
+    'Aucun signal à l\'arbitre' => 'No flag to an arbiter',
+    'Aucun vote n\'est annulé : un lien ne retire rien à personne.' => 'No vote is cancelled: a link takes nothing away from anyone.',
+    'SelfModerate (quorum de votants sans lien aux seuils + anti-Sybil par ancienneté)'
+        => 'SelfModerate (a quorum of unlinked voters at the thresholds, and age-based anti-Sybil)',
 
     // ── Attack simulator: CSRF and recovery phishing ──────────────────────
     'CSRF + phishing de récupération' => 'CSRF and recovery phishing',
@@ -217,13 +218,15 @@ return [
     'La donnée est intégralement conservée et utilisable par Alice — mais l\'attaquant ne récupère que du bruit chiffré.'
         => 'The data stays whole and usable for Alice — the attacker walks away with encrypted noise.',
     'Vote du membre établi : ✓ conservé (+1)' => 'Established member\'s vote: ✓ kept (+1)',
-    'Une meute pèse ce que pèse un membre seul : le premier garde son vote, les suivants sont annulés, et les votes honnêtes restent comptés.'
-        => 'A pack weighs what a single member weighs: the first keeps its vote, the next ones are cancelled, and honest votes still count.',
+    'Une meute de comptes liés fait tomber sa cible sans la faire sanctionner : chaque seuil exige assez de votants sans lien entre eux, et un arbitre est saisi de la chute.'
+        => 'A pile-on of linked accounts brings its target down without getting it sanctioned: each threshold requires enough voters with no link between them, and an arbiter is notified of the fall.',
     'L\'action légitime passe ; l\'attaquant cross-site échoue, et un clone qui ne recopie pas le vrai label dérive une clé inutile.'
         => 'The legitimate action goes through; the cross-site attacker fails, and a clone that does not copy the real label derives a useless key.',
 
     // ── Remaining content strings ────────────────────────────────────────
-    '3 downvotes coordonnés → %d annulés (pack_voting)' => '3 coordinated downvotes → %d cancelled (pack voting)',
+    '%1$d downvotes coordonnés → réputation %2$d, sans ban ni perte du vote' => '%1$d coordinated downvotes → reputation %2$d, with no ban and no loss of voting rights',
+    'Sept comptes liés pèsent une voix au quorum : %d votants sans lien sont exigés pour un ban'
+        => 'Seven linked accounts weigh one voice at the quorum: %d unlinked voters are required for a ban',
     'Faux compte neuf → %s' => 'Brand-new fake account → %s',
     'a pu voter' => 'was able to vote',
     'BLOQUÉ (anti-Sybil)' => 'BLOCKED (anti-Sybil)',

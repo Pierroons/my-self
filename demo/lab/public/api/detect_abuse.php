@@ -10,7 +10,7 @@ require_method('POST');
 require_csrf();
 $pdo = Db::pdo();
 $admin = require_admin($pdo);
-// Le balayage de tout le site est un geste d'arbitre : il annule les votes d'une meute.
+// Le balayage de tout le site est un geste d'arbitre : il signale les salves et referme les peines échues.
 if (moderation_suspendue($pdo, $admin)) {
     json_out(['ok' => false, 'error' => 'forbidden', 'message' => tc('Un arbitre sous peine ne fait aucun geste d\'arbitre.')], 403);
 }

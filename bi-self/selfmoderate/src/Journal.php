@@ -46,7 +46,8 @@ interface Journal
      *   arbitre_id identifiant de ce compte (`accounts.id`), celui que l'hôte a
      *              passé au geste ; null quand c'est la machine. Le nom peut
      *              changer, l'identifiant reste
-     *   motif      `reputation_zero` ou `meute_detectee` pour la machine, texte validé
+     *   motif      `reputation_zero` pour la machine (`meute_detectee` dans les actes
+     *              d'avant la 0.9.0), texte validé
      *              par `validateReason()` pour un arbitre ; le même au début et à la
      *              fin d'un ban
      *   episode    numéro d'épisode (1 = premier)              ban_debut, ban_fin
@@ -62,8 +63,9 @@ interface Journal
      *   de         l'échéance que la prolongation repousse     ban_prolonge
      *   observe_a  instant où la fin s'est inscrite : la       ban_fin
      *              première écriture qui a touché le compte, ou le balayage
-     *   cause      `grace` | `levee` | `meute_detectee`        ban_leve ; `levee` arrête la peine sans
-     *              effacer la récidive, `grace` remet tout au départ
+     *   cause      `grace` | `levee`                         ban_leve ; `levee` arrête la peine sans
+     *              effacer la récidive, `grace` remet tout au départ ;
+     *              `meute_detectee` dans les actes d'avant la 0.9.0
      *   anticipee  levée avant le plancher de la peine         ban_leve
      *   reste      secondes de peine qui restaient ; null      ban_leve
      *              pour un ban sans fin
@@ -97,13 +99,9 @@ interface Journal
      * un premier refus, et le fait remonter en fin de passe ; le début d'un ban
      * d'arbitre le fait remonter aussitôt. Au début d'un ban automatique, le
      * refus ne défait pas le vote qui l'a causé : la chute est signalée avec le
-     * ban dû (`ban_en_attente`), et le vote négatif suivant le retente. Et quand
-     * le balayage du site, celui d'un vote ou du planificateur, lève pour meute
-     * le ban d'un compte autre que la cible du vote, le refus ne défait pas le
-     * vote : la levée attend le balayage suivant, le compte est signalé
-     * (`levee_en_attente`), et `detectPackVoting()` le nomme. Un refus se lève par
-     * n'importe quelle exception ; sur le chemin du balayage, une `\Error` est un
-     * défaut, et remonte.
+     * ban dû (`ban_en_attente`), et le vote négatif suivant le retente. Un refus
+     * se lève par n'importe quelle exception ; sur le chemin du balayage, une
+     * `\Error` est un défaut, et remonte.
      *
      * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
      * d'une de ses écritures, où la lecture d'un compte par le moteur

@@ -232,8 +232,9 @@ render_header(t('prf.title'), $account);
     </div>
   <?php endif; ?>
   <?php
-  // Visible sur son propre profil seulement : ailleurs, une pastille « a fait
-  // partie d'une meute » serait une peine publique que personne n'a décidée.
+  // Un épisode de meute consigné avant la 0.9.0. Visible sur son propre profil
+  // seulement : ailleurs, une pastille « a fait partie d'une meute » serait une
+  // peine publique que personne n'a décidée.
   $rangMeute = Moderate::rangDe($pdo, $myId);
   if ($rangMeute > 0): ?>
     <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d96459;background:var(--elev);border-radius:0 6px 6px 0">

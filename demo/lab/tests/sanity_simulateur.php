@@ -111,7 +111,7 @@ foreach (AttackSimulator::SCENARIOS as $scenario) {
     // l'inverse. `bruteforce` annonçait « neutralisé » en affichant que le
     // titulaire avec son bon mot de passe échouait, parce que l'inscription
     // avait été refusée en amont.
-    if (($resultat['verdict'] ?? '') === 'neutralisé') {
+    if (in_array($resultat['verdict'] ?? '', ['neutralisé', 'atténué'], true)) {
         $lignes = [];
         foreach (['cote_attaquant', 'cote_legitime'] as $cote) {
             foreach ((array) ($resultat[$cote]['lignes'] ?? []) as $l) {
@@ -120,7 +120,7 @@ foreach (AttackSimulator::SCENARIOS as $scenario) {
         }
         $texte = implode(' | ', $lignes);
         verifier(
-            "« $scenario » annonce « neutralisé » sans qu'une ligne contredise la défense",
+            "« $scenario » annonce « {$resultat['verdict']} » sans qu'une ligne contredise la défense",
             $texte === '' || !preg_match('/\b(échec|echec|erreur|undefined|Error)\b/iu', $texte),
             substr($texte, 0, 120)
         );
@@ -128,20 +128,22 @@ foreach (AttackSimulator::SCENARIOS as $scenario) {
 }
 
 echo "\n▸ la meute du simulateur\n";
-// 🔑 La démonstration annonçait « neutralisé » sans rien avoir neutralisé : ses votes
-// sans motif étaient refusés, et ses faux comptes, sans lien entre eux, ne formaient
-// aucune meute. Ce qu'elle annonce se compte maintenant, et le verdict en découle.
+// 🔑 Le scénario doit jouer une vraie meute : des votes avec motif (sans motif, ils
+// sont refusés) et des faux comptes liés dans les deux sens (sans réciprocité, aucun
+// lien). Ce qu'il annonce se compte en base, et le verdict en découle : des comptes
+// liés font tomber la cible sans la faire sanctionner, et l'arbitre est saisi.
 $meute = AttackSimulator::run('packvoting');
 $mesures = $meute['mesures'] ?? [];
 verifier(
-    '⭐ « packvoting » : les trois votes de la meute sont acceptés, puis tous sauf le premier annulés',
-    ($mesures['acceptes'] ?? null) === 3 && ($mesures['annules'] ?? null) === 2 && ($mesures['impact'] ?? null) === -1,
+    '⭐ « packvoting » : les 21 votes de la meute portent, la cible tombe à 0 sans ban ni perte du vote, et la chute est signalée',
+    ($mesures['acceptes'] ?? null) === 21 && ($mesures['annules'] ?? null) === 0 && ($mesures['reputation'] ?? null) === 0
+        && ($mesures['sans_sanction'] ?? null) === true && ($mesures['signalee'] ?? null) === true && ($mesures['voix'] ?? null) === 1,
     json_encode($mesures)
 );
 verifier(
     '⭐ « packvoting » : le verdict dit ce que les comptes rendent',
-    ($meute['neutralise'] ?? null) === true && ($meute['verdict'] ?? '') === 'neutralisé',
-    json_encode(['neutralise' => $meute['neutralise'] ?? null, 'verdict' => $meute['verdict'] ?? null], JSON_UNESCAPED_UNICODE)
+    ($meute['neutralise'] ?? null) === true && ($meute['attenue'] ?? null) === true && ($meute['verdict'] ?? '') === 'atténué',
+    json_encode(['neutralise' => $meute['neutralise'] ?? null, 'attenue' => $meute['attenue'] ?? null, 'verdict' => $meute['verdict'] ?? null], JSON_UNESCAPED_UNICODE)
 );
 
 echo "\n▸ la base du site\n";

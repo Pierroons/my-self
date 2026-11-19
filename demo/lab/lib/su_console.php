@@ -350,9 +350,9 @@ final class SuConsole
                      'lignes' => [['demandeur_fictif', '203.0.113.4', '01/08 15:47'],
                                   ['demandeur_fictif', '203.0.113.4', '01/08 15:43']]],
 
-                    ['titre' => '🗳️ Votes neutralisés', 'hint' => 'Sybil / pack', 'demi' => true,
+                    ['titre' => '🗳️ Votes neutralisés', 'hint' => 'Sybil / plafonds', 'demi' => true,
                      'colonnes' => ['Votant', 'Cible', 'Raison', 'Quand'],
-                     'lignes' => [['compte_a', 'compte_b', 'pack-voting', 'hier']]],
+                     'lignes' => [['compte_a', 'compte_b', 'comptes_recents', 'hier']]],
 
                     ['titre' => '👥 Comptes',
                      'colonnes' => ['ID', 'Identifiant', 'Réputation', 'Créé', 'Profil déchiffré', 'Modération'],

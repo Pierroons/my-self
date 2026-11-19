@@ -70,13 +70,14 @@ try {
 $causes = [
     'reputation_zero' => 'réputation à zéro',
     'salve_rapide'    => 'salve de votes sans lien',
-    'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus)',
-    'votants_tronques' => 'trop de votants pour la détection de meute',
+    'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus), signalée avant la 0.9.0',
+    'votants_tronques' => 'trop de votants pour la détection de meute, signalé avant la 0.9.0',
+    'chute_sans_quorum' => 'chute sous un seuil sans assez de votants sans lien entre eux : aucune sanction automatique, à arbitrer',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
     'comptes_recents' => 'comptes récents qui ont voulu peser plus qu\'un membre établi sur ce compte',
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
-    'levee_en_attente' => 'meute reconnue, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',
+    'levee_en_attente' => 'meute reconnue avant la 0.9.0, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',
     'ban_en_attente'  => 'réputation à zéro, ban automatique non inscrit : le journal l\'a refusé — le vote négatif suivant le retente',
     'droit_de_vote_perdu' => 'droit de vote perdu : réputation sous le seuil du vote',
     'ban_sans_fin'    => 'ban d\'arbitre sans fin en cours',
@@ -145,7 +146,7 @@ table.adm tr:last-child td{border-bottom:none}
     </table><?php endif; ?>
   </div>
   <div class="card">
-    <h2>⚖️ Votes neutralisés <span class="muted" style="font-size:12px">(Sybil / pack)</span></h2>
+    <h2>⚖️ Votes neutralisés <span class="muted" style="font-size:12px">(plafonds, comptes récents, croisements)</span></h2>
     <?php if (!$blocked): ?><p class="muted">Aucun vote bloqué.</p><?php else: ?>
     <table class="adm"><tr><th>Votant</th><th>Cible</th><th>Raison</th><th>Quand</th></tr>
       <?php foreach ($blocked as $b): ?>
@@ -158,7 +159,7 @@ table.adm tr:last-child td{border-bottom:none}
 
 <!-- Épisodes de meute -->
 <div class="card">
-  <h2>🐺 Épisodes de meute <span class="muted" style="font-size:12px">(rang par votant, pas par cible)</span></h2>
+  <h2>🐺 Épisodes de meute <span class="muted" style="font-size:12px">(historique d'avant la 0.9.0 : plus aucun ne s'inscrit)</span></h2>
   <?php if (!$episodes): ?><p class="muted">Aucun épisode enregistré.</p><?php else: ?>
   <table class="adm"><tr><th>Votant</th><th>Cible</th><th>Rang</th><th>Suite donnée</th><th>Quand</th></tr>
     <?php foreach ($episodes as $e): ?>

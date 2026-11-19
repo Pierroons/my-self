@@ -114,7 +114,7 @@ final class Admin
         return $stmt->fetchAll();
     }
 
-    /** Votes neutralisés par SelfModerate (signal Sybil / pack-voting). */
+    /** Votes tombés : plafonds, part des comptes récents, croisements ; `pack_voting` dans les données d'avant la 0.9.0. */
     public static function blockedVotes(PDO $pdo, int $limit = 20): array
     {
         $stmt = $pdo->prepare(
@@ -128,7 +128,8 @@ final class Admin
     }
 
     /**
-     * Épisodes de meute, du plus récent au plus ancien. Une ligne par votant et
+     * Épisodes de meute consignés avant la 0.9.0, du plus récent au plus ancien ;
+     * aucun ne s'inscrit plus. Une ligne par votant et
      * par cible : un même épisode en laisse plusieurs quand le groupe a frappé
      * plusieurs personnes le même jour, et c'est voulu — le rang ne dit pas
      * l'ampleur, seulement le nombre de fois où l'on a recommencé.

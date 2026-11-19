@@ -90,7 +90,7 @@ return [
     'sec.5.body' => '<ul>'
         . '<li>Réputation par membre (départ %1$d/%2$d), vote ±1 sur les messages <em>et</em> les membres, motif exigé au vote négatif.</li>'
         . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans contribution ne peut pas voter.</li>'
-        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible ne pèsent pas plus qu\'un membre seul → le premier garde ses votes, ceux des autres sont annulés, et la cible récupère ce qu\'ils lui avaient pris. Personne n\'est puni pour un lien ; une récidive est signalée à un arbitre. <strong>Salve</strong> de votes sans lien → signalée à un arbitre, rien n\'est annulé.</li>'
+        . '<li><strong>Liens</strong> : deux membres qui se sont écrit en privé dans les deux sens sont liés. Un lien n\'annule aucun vote et ne punit personne ; il compte aux seuils, où la perte du vote exige %5$d votants sans lien entre eux, et le ban %6$d. En dessous, rien n\'est sanctionné, et un arbitre est saisi. <strong>Salve</strong> de votes rapprochés → signalée à un arbitre, rien n\'est annulé.</li>'
         . '<li><strong>Anti-farming</strong> : votes répétés d\'un membre vers un même autre neutralisés. Sanctions graduées : perte du vote, puis ban de %4$s — le dernier palier se reconduit, jamais définitif, et chaque ban s\'écrit au journal de modération.</li>'
         . '</ul>',
 
@@ -99,7 +99,6 @@ return [
         . '<div class="ok"><h4>✅ Neutralisé</h4><ul>'
         . '<li>Exfiltration de la base (dump, disque volé) — blobs</li>'
         . '<li>Bruteforce de mot de passe (rate-limit)</li>'
-        . '<li>Manipulation de la modération (Sybil, pack-voting)</li>'
         . '<li>CSRF, clickjacking, vol de session passif</li>'
         . '<li>Vol du mémo, <strong>même avec un accès root</strong> (E2E au repos)</li>'
         . '</ul></div>'
@@ -107,6 +106,7 @@ return [
         . '<li>Profil &amp; DM lisibles par qui obtient la clé serveur (<code>.blindkey</code>), par exemple via un RCE — pas par le panneau admin</li>'
         . '<li>Serveur compromis <em>persistant</em> → altération du code servi (« code servi »)</li>'
         . '<li>Métadonnées non chiffrées (qui parle à qui, quand)</li>'
+        . '<li>Manipulation de la modération (Sybil, meute) : <strong>atténuée</strong>, pas neutralisée — des comptes anciens et sans lien entre eux pèsent chacun leur voix ; une meute de comptes liés fait tomber sa cible sans la faire sanctionner, et un arbitre est saisi</li>'
         . '</ul></div>'
         . '</div>',
 
@@ -326,10 +326,10 @@ return [
     'mod.how.body' => '<li><strong>Réputation</strong> : chaque membre démarre à %1$d/%2$d. Les votes ▲▼ sur ses posts et son profil la font évoluer ; un vote ▼ exige un motif.</li>'
         . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans aucun message ne peut pas voter.</li>'
         . '<li><strong>Anti-farming</strong> : au-delà de %4$d votes d\'un même membre vers un même autre sur %5$d jours, les suivants sont neutralisés.</li>'
-        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible ne pèsent pas plus qu\'un membre seul : le premier garde ses votes, ceux des autres sont annulés, et la cible récupère ce qu\'ils lui avaient pris. Personne n\'est puni pour un lien ; une récidive est signalée à un arbitre. <strong>Salve</strong> : plusieurs votes sans lien dans la même fenêtre ne sont pas annulés — la cible est signalée à un arbitre.</li>'
-        . '<li><strong>Sanctions graduées</strong> : réputation &lt;%6$d → perte du droit de vote ; à 0 → ban de %7$s, le dernier palier se reconduit, jamais définitif. Un ban bloque le vote et la publication ; les messages privés restent ouverts. À la fin du ban, la réputation revient à %1$d.</li>',
+        . '<li><strong>Liens</strong> : deux membres qui se sont écrit en privé dans les deux sens sont liés. Un lien n\'annule aucun vote et ne punit personne. <strong>Salve</strong> : plusieurs votes dans la même fenêtre ne sont pas annulés — la cible est signalée à un arbitre.</li>'
+        . '<li><strong>Sanctions graduées</strong> : réputation &lt;%6$d → perte du droit de vote ; à 0 → ban de %7$s, le dernier palier se reconduit, jamais définitif. Chacune exige que la chute soit portée par assez de votants sans lien entre eux — %8$d pour la perte du vote, %9$d pour le ban ; sinon rien n\'est sanctionné, et un arbitre est saisi. Un ban bloque le vote et la publication ; les messages privés restent ouverts. À la fin du ban, la réputation revient à %1$d.</li>',
     'mod.detect.h2'   => 'Lancer la détection d\'abus',
-    'mod.detect.note' => 'Analyse les votes récents : annule ce qu\'une meute ajoute au vote d\'un membre seul, signale les salves.',
+    'mod.detect.note' => 'Analyse les votes récents : signale les salves à un arbitre et referme les peines échues. Aucun vote n\'est annulé.',
     'mod.detect.btn'  => '🔍 Détecter les abus maintenant',
     'mod.detect.login' => 'Chaque vote négatif fait réexaminer sa cible ; le premier de chaque période de %s réexamine tout le site. Le déclenchement manuel est réservé aux administrateurs.',
     'mod.blocked.h2'  => 'Votes neutralisés (%d)',
@@ -340,9 +340,9 @@ return [
     'mod.col.target'  => 'Cible',
     'mod.col.type'    => 'Type',
     'mod.col.reason'  => 'Raison',
-    'mod.js.cancelled' => 'vote(s) annulé(s). Pack(s) :',
+    'mod.js.salves'    => 'salve(s) signalée(s) :',
     'mod.js.target'    => 'cible',
-    'mod.js.none'      => 'Aucun pack-voting détecté sur la période récente.',
+    'mod.js.none'      => 'Aucune salve sur la période récente.',
     'mod.js.sautes'    => 'Comptes sautés par la détection, à revoir dans la console :',
     'mod.js.fins'      => 'Des fins de peine attendent le journal : voir la console.',
 
@@ -358,7 +358,7 @@ return [
     'atk.dump.obj'  => 'Voler DM et données perso en dumpant la base.',
     'atk.brute.h3'  => '🔓 Bruteforce login',
     'atk.brute.obj' => 'Deviner un mot de passe par force brute.',
-    'atk.pack.h3'   => '👥 Sybil + pack-voting',
+    'atk.pack.h3'   => '👥 Sybil + meute',
     'atk.pack.obj'  => 'Faux comptes coordonnés pour enterrer un membre.',
     'atk.csrf.h3'   => '🕸️ CSRF + phishing',
     'atk.csrf.obj'  => 'Forcer une action cross-site ou détourner la récupération.',
@@ -366,6 +366,7 @@ return [
     'atk.js.goal'    => '🎯 Objectif attaquant :',
     'atk.js.verdict' => '🛡️ Attaque neutralisée — donnée conservée',
     'atk.js.verdict.non' => '⚠️ Défense non démontrée par ce passage',
+    'atk.js.verdict.attenue' => '🟠 Attaque atténuée — chute sans sanction, signalée à un arbitre',
     'atk.js.defense' => 'Défense :',
     'atk.js.error'   => 'Erreur :',
 
@@ -477,8 +478,8 @@ return [
     'prf.convalescent'  => 'en convalescence',
     'prf.mod.conv.h'    => 'En convalescence',
     'prf.mod.conv.txt'  => 'Ta réputation est passée sous le seuil de vote. Elle remonte d\'un point par période de calme de %2$s, jusqu\'à %1$d. Rien à prouver, juste du temps.',
-    'prf.mod.meute.h'   => 'Participation à une meute',
-    'prf.mod.meute.warn' => 'Tes votes ont rejoint ceux d\'une personne avec qui tu échanges en privé, sur la même cible. Un groupe ne pèse pas plus qu\'un membre seul : seuls les votes de la première personne du groupe à avoir voté sont gardés, ceux des autres ont été annulés. Rien ne t\'est retiré ; si cela se reproduit, la situation sera signalée à un arbitre.',
+    'prf.mod.meute.h'   => 'Épisode de meute (historique)',
+    'prf.mod.meute.warn' => 'Un épisode de meute est inscrit à ton compte : avant la version 0.9.0 de la modération, quand tes votes rejoignaient ceux d\'une personne avec qui tu échanges en privé, sur une même cible, une partie d\'entre eux était annulée. Ce n\'est plus le cas : un lien n\'annule plus aucun vote, et rien ne t\'est retiré.',
     'prf.mod.meute.mute' => 'Ton droit de vote est suspendu jusqu\'au %s. Le reste du forum reste ouvert : tu peux écrire, répondre et ouvrir un sujet.',
     'prf.reasons.h2'    => '💬 Les motifs reçus',
     'prf.reasons.anon'  => 'Sans le nom de leur auteur, et datés au jour : c\'est ce que le protocole promet à la personne visée.',

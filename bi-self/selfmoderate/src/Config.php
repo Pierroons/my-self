@@ -25,19 +25,12 @@ final class Config
      *                                        dans ce délai, SANS lien entre les votants.
      *                                        Le plus souvent une réaction spontanée au
      *                                        même message : elle signale, elle n'annule rien.
-     * @param int      $fenetreMeuteJours     Meute : des votants LIÉS ENTRE EUX qui frappent
-     *                                        la même cible. Le lien seul déclenche
-     *                                        l'annulation, sur une fenêtre longue — une
-     *                                        meute prend son temps.
-     * @param int      $meuteVotantsMax       Borne du graphe des votants d'une cible : au-delà,
-     *                                        les plus récents sont gardés et la cible est
-     *                                        signalée à l'arbitre.
+     * @param int      $fenetreMeuteJours     Deux comptes sont liés quand chacun a écrit à l'autre
+     *                                        en privé sur cette fenêtre. Au quorum, des votants
+     *                                        liés entre eux ne comptent que pour une voix.
      * @param int      $balayagePeriodeSecondes Un balayage de tout le site par tranche de
      *                                        cette durée, payé par le premier downvote qui
      *                                        y tombe ; les autres ne regardent que leur cible.
-     * @param int      $meuteEpisodeCooldown  Un épisode de meute par votant sur ce délai,
-     *                                        compté depuis le début de l'épisode : trois
-     *                                        victimes le même soir restent un épisode.
      * @param int      $farmingDownvotesMax   Plafond de downvotes d'un votant vers un même
      *                                        auteur sur la fenêtre : casse l'érosion lente
      *                                        d'un votant patient qui vise chaque message.
@@ -92,6 +85,15 @@ final class Config
      *                                        `fenetreFarmingJours`, le plafond qu'un votant seul a
      *                                        dans chaque sens (`farmingDownvotesMax`,
      *                                        `farmingUpvotesMax`). 0 l'éteint.
+     * @param bool     $quorumAuxSeuils       La perte du vote et le ban automatique attendent un
+     *                                        quorum de votants sans lien entre eux
+     *                                        (`voixPourSanction()`) ; sans lui, la chute est
+     *                                        signalée à l'arbitre et rien n'est sanctionné. Faux :
+     *                                        la réputation seule décide.
+     * @param int      $quorumNoeudsMax       Nœuds que la recherche du quorum visite au plus.
+     *                                        Épuisée avant de décider, elle ne sanctionne que ce
+     *                                        que portent les voix déjà trouvées ; la chute est
+     *                                        signalée, et `compositionChute()` la dit indécise.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -101,10 +103,7 @@ final class Config
         public readonly int $fenetreSalveSecondes = 60,
         public readonly int $salveVotantsMin = 3,
         public readonly int $fenetreMeuteJours = 30,
-        public readonly int $meuteLiensMin = 2,
-        public readonly int $meuteVotantsMax = 200,
         public readonly int $balayagePeriodeSecondes = 3600,
-        public readonly int $meuteEpisodeCooldown = 86400,
         public readonly int $fenetreFarmingJours = 60,
         public readonly int $farmingUpvotesMax = 3,
         public readonly int $farmingDownvotesMax = 3,
@@ -123,6 +122,8 @@ final class Config
         public readonly int $fenetreCroiseeSecondes = 600,
         public readonly int $arrondiFinBanSecondes = 60,
         public readonly int $ageEtabliSecondes = 3600,
+        public readonly bool $quorumAuxSeuils = true,
+        public readonly int $quorumNoeudsMax = 2000,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -163,6 +164,9 @@ final class Config
         }
         if ($this->ageEtabliSecondes < 0 || $this->ageEtabliSecondes > Moderate::DUREE_MAX) {
             throw new InvalidArgumentException('ageEtabliSecondes est une durée : 0 l\'éteint, et elle tient en un siècle au plus (Moderate::DUREE_MAX).');
+        }
+        if ($this->quorumNoeudsMax < 1) {
+            throw new InvalidArgumentException('quorumNoeudsMax compte des nœuds de recherche : 1 ou plus.');
         }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
             throw new InvalidArgumentException(sprintf(
@@ -241,6 +245,17 @@ final class Config
     public function plancherDe(int $debut, int $fin): int
     {
         return $debut + (int) ceil($this->plancherFraction * max(0, $fin - $debut));
+    }
+
+    /**
+     * Les voix sans lien qu'une sanction exige au seuil `$seuil` : autant que de
+     * votants au plafond (`farmingDownvotesMax`) pour descendre du point de départ
+     * jusqu'à lui : le ban se lit à `banA`, la perte du vote à
+     * `perteDroitDeVoteSous - 1`.
+     */
+    public function voixPourSanction(int $seuil): int
+    {
+        return (int) ceil(max(0, $this->reputationInitiale - $seuil) / max(1, $this->farmingDownvotesMax));
     }
 
     /** La remontée s'arrête au point de départ, jamais au-delà. */

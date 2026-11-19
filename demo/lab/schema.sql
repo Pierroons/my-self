@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     voting_rights  INTEGER NOT NULL DEFAULT 1,
     banned_until   INTEGER NOT NULL DEFAULT 0,
     ban_debut      INTEGER NOT NULL DEFAULT 0,  -- début de la peine en cours : le plancher en dépend
-    ban_origine    TEXT,                        -- 'auto' | 'admin' — seul un ban 'auto' se lève sur meute détectée
+    ban_origine    TEXT,                        -- 'auto' | 'admin'
     ban_motif      TEXT,                        -- le même au journal, au début et à la fin
     needs_review   INTEGER NOT NULL DEFAULT 0,  -- résumé de mod_signaux, tenu par le moteur pour qui lit la base :
     review_reason  TEXT,                        -- un signal à voir existe ; le premier comportement, sinon le dernier état
@@ -179,11 +179,9 @@ CREATE INDEX IF NOT EXISTS idx_modvotes_target ON mod_votes(target_type, target_
 CREATE INDEX IF NOT EXISTS idx_modvotes_author ON mod_votes(target_author, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_modvotes_unique ON mod_votes(voter_id, target_type, target_id);
 
--- SelfModerate — épisodes de meute, un enregistrement par votant et par cible.
--- Le rang compte les récidives, qui partent en revue humaine : il appartient au
--- VOTANT, pas à la cible. Compté sur la cible, un groupe changeant de proie
--- resterait éternellement au rang 1, et une victime visée par plusieurs groupes
--- ferait signaler des primo-délinquants.
+-- SelfModerate — épisodes de meute consignés avant la 0.9.0, une ligne par votant
+-- et par cible ; le rang appartient au VOTANT. Seule la grâce y écrit encore : sa
+-- ligne efface le rang qui la précède.
 CREATE TABLE IF NOT EXISTS mod_pack_flags (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     voter_id      INTEGER NOT NULL,
@@ -213,10 +211,11 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
     account_id  INTEGER NOT NULL,
     cause       TEXT NOT NULL,     -- état : 'reputation_zero' | 'ban_auto' | 'journal_en_panne' |
-                                   -- 'levee_en_attente' | 'ban_en_attente' | 'droit_de_vote_perdu' |
-                                   -- 'ban_sans_fin' ; comportement :
-                                   -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' |
-                                   -- 'comptes_recents' | 'bans_arbitre' ;
+                                   -- 'ban_en_attente' | 'droit_de_vote_perdu' | 'ban_sans_fin' |
+                                   -- 'chute_sans_quorum' ; comportement :
+                                   -- 'salve_rapide' | 'votant_etendu' | 'comptes_recents' | 'bans_arbitre' ;
+                                   -- avant la 0.9.0 : 'levee_en_attente' (état), 'meute_recidive' et
+                                   -- 'votants_tronques' (comportements) ;
                                    -- 'signal_anterieur' : une case ouverte sans cause, reprise à la migration
     ouvert_le   INTEGER NOT NULL,
     derniere_le INTEGER NOT NULL,  -- dernière occurrence comptée ; pour `journal_en_panne`, le dernier refus
@@ -252,7 +251,7 @@ CREATE TABLE IF NOT EXISTS mod_peines (
     decide_par_nom    TEXT,
     prolongations     INTEGER NOT NULL DEFAULT 0,
     fin               INTEGER,           -- NULL tant qu'elle court ; l'échéance quand le temps l'a close
-    fin_cause         TEXT,              -- 'echeance' | 'levee' | 'grace' | 'meute_detectee' |
+    fin_cause         TEXT,              -- 'echeance' | 'levee' | 'grace' | 'meute_detectee' (avant la 0.9.0) |
                                          -- 'hors_moteur' : fermée par migrerBans(), sa fin réelle inconnue
     fin_arbitre_id    INTEGER,
     fin_arbitre_nom   TEXT,

@@ -33,7 +33,7 @@ render_header(t('mod.title'), $account);
 <div class="card">
   <h2><?= h(t('mod.how.h2')) ?></h2>
   <?php $r = Moderate::regles(); ?>
-  <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px"><?= t('mod.how.body', $r['initiale'], $r['max'], h($r['sybil']), $r['farmingMax'], $r['farmingJours'], $r['perteVote'], h($r['paliers'])) ?></ul>
+  <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px"><?= t('mod.how.body', $r['initiale'], $r['max'], h($r['sybil']), $r['farmingMax'], $r['farmingJours'], $r['perteVote'], h($r['paliers']), $r['quorumVote'], $r['quorumBan']) ?></ul>
 </div>
 
 <?php if ($account && !empty($account['is_admin'])): ?>
@@ -44,17 +44,16 @@ render_header(t('mod.title'), $account);
   <button class="btn" id="btn-detecter"><?= h(t('mod.detect.btn')) ?></button>
 </div>
 <script nonce="<?= nonce() ?>">
-const MOD_I18N = <?= json_encode(['cancelled'=>t('mod.js.cancelled'),'target'=>t('mod.js.target'),'none'=>t('mod.js.none'),'sautes'=>t('mod.js.sautes'),'fins'=>t('mod.js.fins'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
+const MOD_I18N = <?= json_encode(['salves'=>t('mod.js.salves'),'target'=>t('mod.js.target'),'none'=>t('mod.js.none'),'sautes'=>t('mod.js.sautes'),'fins'=>t('mod.js.fins'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
 function detecter(){
   labPost('/api/detect_abuse.php',{}).then(d=>{
     const m=document.getElementById('dmsg');
     if(d.ok){
-      if(d.pack_detected){
-        let html='<div class="toast ok">✓ '+d.cancelled_votes+' '+MOD_I18N.cancelled+'<ul>';
-        d.packs.forEach(p=>{html+='<li>'+MOD_I18N.target+' #'+p.target_author+' — '+p.voters.join(', ')+' ('+p.cancelled+' '+MOD_I18N.cancelled+')</li>';});
+      if((d.salves||[]).length){
+        let html='<div class="toast ok">✓ '+d.salves.length+' '+MOD_I18N.salves+'<ul>';
+        d.salves.forEach(s=>{html+='<li>'+MOD_I18N.target+' #'+Number(s.target_author)+' — '+s.voters.map(Number).join(', ')+'</li>';});
         html+='</ul></div>';
         m.innerHTML=html;
-        setTimeout(()=>location.reload(),2500);
       } else {
         m.innerHTML='<div class="toast ok">'+MOD_I18N.none+'</div>';
       }
