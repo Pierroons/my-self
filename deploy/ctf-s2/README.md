@@ -95,13 +95,27 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
   pose avant le vhost** — celui-ci nomme leurs sockets, et `nginx -t` ne vérifie
   pas qu'ils existent : un vhost posé seul rendrait `503` sur la connexion et
   l'inscription. Dans l'ordre :
-  1. lire ce que le groupe `www` de la machine règle en plus des siens —
-     `grep -vE '^[[:space:]]*(;|$|\[|listen|pm[. =])' /etc/php/8.4/fpm/pool.d/www.conf`
-     — et **reporter chaque ligne rendue dans les deux groupes** : `clear_env`,
-     `env[...]`, `php_admin_value[...]`, `php_value[...]`,
+  1. lire ce que le groupe `www` de la machine règle en plus des siens, et
+     **reporter dans les deux groupes les lignes dont ces routes ont besoin** :
+     `clear_env`, `env[...]`, `php_admin_value[...]`, `php_value[...]`,
      `security.limit_extensions`. Des ouvriers sans les mêmes prises liraient une
      autre base ou feraient naître un autre secret, et tourneraient sans le
-     durcissement du reste du site ;
+     durcissement du reste du site.
+
+     ⚠️ **Demander les NOMS avant les valeurs** : un `grep` de toutes les lignes
+     affiche les `env[...]`, donc les secrets du pool. Celui-ci donne les noms
+     seuls, et suffit à décider quoi reporter :
+
+     ```
+     sudo grep -oE '^[[:space:]]*(env\[[A-Z_]+\]|clear_env|php_admin_value\[[a-z_.]+\]|php_value\[[a-z_.]+\]|security\.limit_extensions|user|group)' /etc/php/8.4/fpm/pool.d/www.conf | sort -u
+     ```
+
+     ✅ **Mesuré sur le VPS du lab le 19/11/2026 à 07:09 : rien à reporter.** Son
+     `www.conf` ne déclare que `user` et `group`, et aucun `env[...]`,
+     `php_admin_value[...]`, `clear_env` ni `security.limit_extensions`. Son
+     `pm.max_children` est de **20**, donc les trois ouvriers de `calcul` et
+     `lourd` y sont modestes. Cette étape est donc levée pour cette machine — à
+     refaire sur une autre ;
   2. poser le fichier, `php-fpm8.4 -t`, `systemctl reload php8.4-fpm`, vérifier
      que `/run/php/php8.4-fpm-calcul.sock` et `-lourd.sock` existent, puis comparer
      les trois groupes dans la sortie de `php-fpm8.4 -tt` : mêmes `env`, mêmes

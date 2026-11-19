@@ -19,12 +19,29 @@ gabarit, et il sait tourner par SSH sur un hôte qui a nginx
    sudo grep -vE '^[[:space:]]*(;|$|\[|listen|pm[. =])' /etc/php/8.4/fpm/pool.d/www.conf
    ```
 
-   **Reporter chaque ligne rendue dans `php-fpm-flux.conf`** : `clear_env`,
-   `env[...]`, `php_admin_value[...]`, `php_value[...]`,
-   `security.limit_extensions`, et `user`/`group` s'ils diffèrent. Des ouvriers
-   sans les mêmes prises liraient une autre base, ou tourneraient sans le
-   durcissement du reste du site. ⚠️ Ce fichier n'est **pas lisible** par un
-   compte sans privilège : la lecture demande `sudo`, donc un terminal.
+   **Reporter dans `php-fpm-flux.conf` les lignes dont CE flux a besoin** :
+   `clear_env`, `env[...]`, `php_admin_value[...]`, `php_value[...]`,
+   `security.limit_extensions`, et `user`/`group` s'ils diffèrent.
+
+   🔑 **Reporter « tout par prudence » est une faute, pas une précaution.** Un
+   groupe d'ouvriers partage ses ouvriers, mais aussi ses **secrets** : toute
+   application servie par un pool peut lire ses `env[...]` par `getenv()`.
+   Mesuré le 19/11/2026 sur la machine de production : son groupe partagé
+   déclarait quatre `env[...]`, dont **la clé d'API d'un service amont qui ne
+   concerne pas cette démonstration** — et `events.php` n'en lit aucune des
+   quatre. Un pool neuf qui ne porte pas un secret est un pool qui ne peut pas
+   le fuiter.
+
+   ⚠️ **Demander les NOMS avant les valeurs.** La commande ci-dessus affiche les
+   valeurs, donc les secrets. Celle-ci donne les noms seuls, et suffit à décider
+   quoi reporter :
+
+   ```
+   sudo grep -oE '^[[:space:]]*(env\[[A-Z_]+\]|clear_env|php_admin_value\[[a-z_.]+\]|php_value\[[a-z_.]+\]|security\.limit_extensions|user|group)' /etc/php/8.4/fpm/pool.d/www.conf | sort -u
+   ```
+
+   ⚠️ Ce fichier n'est **pas lisible** par un compte sans privilège : la lecture
+   demande `sudo`, donc un terminal.
 
 2. **Poser le groupe**, puis `php-fpm8.4 -t`, `systemctl reload php8.4-fpm`, et
    vérifier que `/run/php/php8.4-fpm-flux.sock` existe. Comparer ensuite les
