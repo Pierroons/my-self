@@ -73,6 +73,7 @@ $causes = [
     'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus)',
     'votants_tronques' => 'trop de votants pour la détection de meute',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
+    'comptes_recents' => 'comptes récents qui ont voulu peser plus qu\'un membre établi sur ce compte',
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
     'levee_en_attente' => 'meute reconnue, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',

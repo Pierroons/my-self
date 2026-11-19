@@ -6890,16 +6890,154 @@ $sortZ168 === 'riposte' && !in_array('salve_rapide', $avantB168, true) && in_arr
 // Une page publique écarte `RAISONS_DU_CROISEMENT` ; le moteur compte ces votes
 // comme émis par `VOTE_EXPRIME`. Une raison présente dans l'un et absente de
 // l'autre serait publiée, ou sortirait des plafonds, de la meute et de la salve.
+// Une seule raison émise reste publique, et elle est nommée ici : la part des
+// comptes récents, qui ne dit rien d'un croisement.
 $exprime169 = (string) (new ReflectionClass(Moteur::class))->getConstant('VOTE_EXPRIME');
 $raisons169 = preg_match('#blocked_reason IN \(([^)]*)\)#', $exprime169, $m169) === 1
     ? array_map(static fn (string $r): string => trim($r, " '"), explode(',', $m169[1]))
     : [];
-$publiques169 = Moderate::RAISONS_DU_CROISEMENT;
+$attendues169 = [...Moderate::RAISONS_DU_CROISEMENT, 'comptes_recents'];
 sort($raisons169);
-sort($publiques169);
-$raisons169 !== [] && $raisons169 === $publiques169
-    ? ok('⭐ les raisons qu\'une page publique écarte sont exactement celles que VOTE_EXPRIME compte comme émises')
-    : nok('⭐ RAISONS_DU_CROISEMENT et VOTE_EXPRIME divergent : ' . json_encode([$publiques169, $raisons169, $exprime169]));
+sort($attendues169);
+$raisons169 !== [] && $raisons169 === $attendues169
+    ? ok('⭐ les raisons qu\'une page publique écarte sont celles que VOTE_EXPRIME compte comme émises, plus la seule part des comptes récents, publique')
+    : nok('⭐ RAISONS_DU_CROISEMENT et VOTE_EXPRIME divergent : ' . json_encode([$attendues169, $raisons169, $exprime169]));
+
+// ── 170. ⭐ Les comptes récents pèsent ensemble comme un seul membre ─────────────
+// Sept comptes neufs, trois votes chacun, ne retirent pas plus de points qu'un votant
+// seul, et la cible est signalée ; sept membres établis bannissent encore. La part se
+// lit en solde net des votes qui portent : ni l'aller-retour des comptes de la cible
+// ni un croisement ne la remplissent à vide. Un compte est récent au moment de SON vote.
+$t170 = time() + 6 * 3600;
+Moderate::setHorloge(static function () use (&$t170): int { return $t170; });
+$journalAvant170 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+$recent170 = static function (string $nom) use ($pdo, &$t170): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', $t170 - 600]);
+    return (int) $pdo->lastInsertId();
+};
+$cibleDe170 = static function (string $nom) use ($pdo): array {
+    $id = membre($pdo, $nom);
+    poserReputation($pdo, $id, 20);
+    return [$id, [message($pdo, $id, "$nom 1"), message($pdo, $id, "$nom 2"), message($pdo, $id, "$nom 3")]];
+};
+$sorts170 = static function (int $cible) use ($pdo): array {
+    $s = $pdo->prepare("SELECT COALESCE(blocked_reason, 'porte') AS r, COUNT(*) AS n FROM mod_votes WHERE target_author = ? GROUP BY r ORDER BY r");
+    $s->execute([$cible]);
+    return array_map('intval', array_column($s->fetchAll(), 'n', 'r'));
+};
+$raison170 = static fn (array $r): string => !$r['ok'] ? 'refus : ' . $r['message'] : ($r['blocked_reason'] ?? 'porte');
+
+[$cibleA170, $postsA170] = $cibleDe170('recents-cible-a-170');
+$neutre170 = null;
+for ($i170 = 0; $i170 < 7; $i170++) {
+    $votant170 = $recent170("recent-a$i170-170");
+    foreach ($postsA170 as $post170) {
+        $r170 = Moderate::applyVote($pdo, $votant170, 'post', $post170, -1, motif());
+        $neutre170 ??= $i170 === 1 ? $r170 : null;
+    }
+}
+$etatA170 = Moderate::getReputation($pdo, $cibleA170);
+$causesA170 = causes($pdo, $cibleA170);
+$mesureA170 = [
+    'rep' => $etatA170['reputation'], 'banni' => $etatA170['banned'], 'sorts' => $sorts170($cibleA170),
+    'signal' => in_array('comptes_recents', $causesA170, true), 'salve' => in_array('salve_rapide', $causesA170, true),
+    'reponse' => [$neutre170['blocked'] ?? null, $neutre170['blocked_reason'] ?? null, str_contains($neutre170['message'] ?? '', 'moins de 1 heure')],
+];
+$mesureA170 === ['rep' => 17, 'banni' => false, 'sorts' => ['comptes_recents' => 18, 'porte' => 3], 'signal' => true, 'salve' => true,
+                 'reponse' => [true, 'comptes_recents', true]]
+    ? ok('⭐ sept comptes récents, trois votes chacun, ne retirent que trois points : dix-huit votes neutralisés, la cible signalée, la salve vue, et le votant lit pourquoi')
+    : nok('⭐ des comptes récents pèsent plus qu\'un membre : ' . json_encode($mesureA170, JSON_UNESCAPED_UNICODE));
+
+// Deux heures plus tard, les premiers comptes sont établis, mais leurs votes ont été
+// posés récents : la part reste pleine pour un compte neuf, pas pour un membre établi.
+$t170 += 2 * 3600;
+$tard170 = $raison170(Moderate::applyVote($pdo, $recent170('recent-tard-170'), 'member', $cibleA170, -1, motif()));
+$etabli170 = $raison170(Moderate::applyVote($pdo, membre($pdo, 'etabli-a-170'), 'member', $cibleA170, -1, motif()));
+[$tard170, $etabli170, reputation($pdo, $cibleA170)] === ['comptes_recents', 'porte', 16]
+    ? ok('⭐ un compte est récent au moment de son vote : la part reste pleine quand ses auteurs vieillissent, et un membre établi vote comme avant')
+    : nok('⭐ la part suit l\'âge présent des comptes : ' . json_encode([$tard170, $etabli170, reputation($pdo, $cibleA170)]));
+
+// Trois jours plus tard, la part tient encore : elle se compte sur la fenêtre du
+// farming, qui est en jours.
+$t170 += 3 * 86400;
+$fenetre170 = $raison170(Moderate::applyVote($pdo, $recent170('recent-fenetre-170'), 'member', $cibleA170, -1, motif()));
+$fenetre170 === 'comptes_recents'
+    ? ok('⭐ la part tient sur sa fenêtre : trois jours après, un compte récent la trouve encore pleine')
+    : nok('⭐ la part oublie sa fenêtre : ' . $fenetre170);
+
+[$cibleB170, $postsB170] = $cibleDe170('etablis-cible-b-170');
+for ($i170 = 0; $i170 < 7; $i170++) {
+    $votant170 = membre($pdo, "etabli-b$i170-170");
+    foreach ($postsB170 as $post170) {
+        Moderate::applyVote($pdo, $votant170, 'post', $post170, -1, motif());
+    }
+}
+$etatB170 = Moderate::getReputation($pdo, $cibleB170);
+$etatB170['banned'] === true && $etatB170['reputation'] === 0 && !array_key_exists('comptes_recents', $sorts170($cibleB170))
+    ? ok('⭐ sept membres établis font encore tomber un membre : la part ne touche que les comptes récents')
+    : nok('⭐ la part retient des membres établis : ' . json_encode([$etatB170['reputation'], $etatB170['banned'], $sorts170($cibleB170)]));
+
+// La cible tente de remplir la part avec ses propres comptes : trois votes contre
+// elle, puis trois pour elle ; puis en croisant le vote d'un de ses comptes.
+[$cibleC170, $postsC170] = $cibleDe170('aller-retour-cible-c-170');
+$autresC170 = [message($pdo, $cibleC170, 'aller-retour 170 a'), message($pdo, $cibleC170, 'aller-retour 170 b'), message($pdo, $cibleC170, 'aller-retour 170 c')];
+foreach ([$recent170('sock-c1-170'), $recent170('sock-c2-170'), $recent170('sock-c3-170')] as $k170 => $sock170) {
+    Moderate::applyVote($pdo, $sock170, 'post', $postsC170[$k170], -1, motif());
+    Moderate::applyVote($pdo, $sock170, 'post', $autresC170[$k170], 1);
+}
+$repAllerRetour170 = reputation($pdo, $cibleC170);
+$critiqueC170 = $recent170('critique-c-170');
+$votesC170 = array_map(static fn (int $p): string => $raison170(Moderate::applyVote($pdo, $critiqueC170, 'post', $p, -1, motif())), $postsC170);
+$suivantC170 = $raison170(Moderate::applyVote($pdo, $recent170('critique-c2-170'), 'post', $postsC170[0], -1, motif()));
+
+[$cibleD170, $postsD170] = $cibleDe170('croise-cible-d-170');
+$sockD170 = $recent170('sock-d-170');
+$postSockD170 = message($pdo, $sockD170, 'fil sock d 170');
+Moderate::applyVote($pdo, $sockD170, 'post', $postsD170[0], -1, motif());
+Moderate::applyVote($pdo, $cibleD170, 'post', $postSockD170, -1, motif());
+$sortSockD170 = $pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = $sockD170 AND target_author = $cibleD170")->fetchColumn();
+$critiqueD170 = $recent170('critique-d-170');
+$votesD170 = array_map(static fn (int $p): string => $raison170(Moderate::applyVote($pdo, $critiqueD170, 'post', $p, -1, motif())), $postsD170);
+$mesureCD170 = [$repAllerRetour170, $votesC170, $suivantC170, reputation($pdo, $cibleC170), $sortSockD170, $votesD170, reputation($pdo, $cibleD170)];
+$mesureCD170 === [20, ['porte', 'porte', 'porte'], 'comptes_recents', 17, 'vote_croise', ['porte', 'porte', 'porte'], 17]
+    ? ok('⭐ la part se lit en solde net des votes qui portent : ni l\'aller-retour des comptes de la cible ni un croisement ne la remplissent')
+    : nok('⭐ la cible remplit la part à vide : ' . json_encode($mesureCD170));
+
+// Dans l'autre sens : des comptes récents ne portent pas un membre plus haut qu'un votant seul.
+[$cibleE170, $postsE170] = $cibleDe170('soutenu-cible-e-170');
+for ($i170 = 0; $i170 < 4; $i170++) {
+    $votant170 = $recent170("ami-e$i170-170");
+    foreach ($postsE170 as $post170) {
+        Moderate::applyVote($pdo, $votant170, 'post', $post170, 1);
+    }
+}
+[reputation($pdo, $cibleE170), $sorts170($cibleE170)] === [23, ['comptes_recents' => 9, 'porte' => 3]]
+    ? ok('⭐ quatre comptes récents ne portent un membre que de trois points : la part vaut dans les deux sens')
+    : nok('⭐ des comptes récents gonflent un membre : ' . json_encode([reputation($pdo, $cibleE170), $sorts170($cibleE170)]));
+
+// À 0, la part est éteinte ; une durée négative est refusée.
+Moderate::setConfig(new Config(ageEtabliSecondes: 0));
+[$cibleF170, $postsF170] = $cibleDe170('eteinte-cible-f-170');
+foreach ([$recent170('recent-f1-170'), $recent170('recent-f2-170')] as $votant170) {
+    foreach ($postsF170 as $post170) {
+        Moderate::applyVote($pdo, $votant170, 'post', $post170, -1, motif());
+    }
+}
+$repF170 = reputation($pdo, $cibleF170);
+Moderate::setConfig(null);
+try {
+    new Config(ageEtabliSecondes: -1);
+    $refusNegatif170 = false;
+} catch (InvalidArgumentException) {
+    $refusNegatif170 = true;
+}
+Moderate::setHorloge(null);
+Moderate::setJournal($journalAvant170);
+$repF170 === 14 && $refusNegatif170
+    ? ok('⭐ ageEtabliSecondes à 0 éteint la part, et une durée négative est refusée')
+    : nok('⭐ la part ne s\'éteint pas, ou accepte une durée négative : ' . json_encode([$repF170, $refusNegatif170]));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

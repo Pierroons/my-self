@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
                                    -- 'levee_en_attente' | 'ban_en_attente' | 'droit_de_vote_perdu' |
                                    -- 'ban_sans_fin' ; comportement :
                                    -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu' |
-                                   -- 'bans_arbitre' ;
+                                   -- 'comptes_recents' | 'bans_arbitre' ;
                                    -- 'signal_anterieur' : une case ouverte sans cause, reprise à la migration
     ouvert_le   INTEGER NOT NULL,
     derniere_le INTEGER NOT NULL,  -- dernière occurrence comptée ; pour `journal_en_panne`, le dernier refus

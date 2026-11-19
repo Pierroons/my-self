@@ -86,6 +86,12 @@ final class Config
      *                                        palier redonnerait la seconde du vote décisif.
      *                                        1 la laisse exacte ; au plus un jour, et au plus le
      *                                        plus court palier de `dureesBan`.
+     * @param int      $ageEtabliSecondes     En deçà de cette ancienneté au moment de son vote, un
+     *                                        compte est récent : les votes qui portent des comptes
+     *                                        récents sur un même auteur partagent, en solde net sur
+     *                                        `fenetreFarmingJours`, le plafond qu'un votant seul a
+     *                                        dans chaque sens (`farmingDownvotesMax`,
+     *                                        `farmingUpvotesMax`). 0 l'éteint.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -116,6 +122,7 @@ final class Config
         public readonly int $motifsVotantsMin = 1,
         public readonly int $fenetreCroiseeSecondes = 600,
         public readonly int $arrondiFinBanSecondes = 60,
+        public readonly int $ageEtabliSecondes = 3600,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -154,6 +161,9 @@ final class Config
         if ($this->arrondiFinBanSecondes < 1 || $this->arrondiFinBanSecondes > 86400) {
             throw new InvalidArgumentException('arrondiFinBanSecondes est un pas d\'arrondi : 1 seconde au moins, un jour au plus.');
         }
+        if ($this->ageEtabliSecondes < 0 || $this->ageEtabliSecondes > Moderate::DUREE_MAX) {
+            throw new InvalidArgumentException('ageEtabliSecondes est une durée : 0 l\'éteint, et elle tient en un siècle au plus (Moderate::DUREE_MAX).');
+        }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
             throw new InvalidArgumentException(sprintf(
                 'arrondiFinBanSecondes (%d s, 60 par défaut) dépasse le plus court palier de dureesBan (%d s) : l\'arrondi allongerait la peine de plus qu\'elle ne dure.',
@@ -179,6 +189,7 @@ final class Config
             intervalleConvalescenceSecondes: 604800,
             fenetreCroiseeSecondes: 259200,
             arrondiFinBanSecondes: 3600,
+            ageEtabliSecondes: 2592000,
         );
     }
 

@@ -123,12 +123,12 @@ class Moderate
 
     /**
      * Un vote exprimé, en filtre SQL sur `mod_votes` : un vote qui porte, ou
-     * qu'un croisement, la riposte qui le fait ou sa trêve ont fait tomber. Les
-     * plafonds de son auteur le comptent — sans quoi un membre qui riposte
-     * contre chacun de ses critiques n'aurait aucune borne —, et la meute comme
-     * la salve le gardent.
+     * qu'un croisement, la riposte qui le fait ou sa trêve ont fait tomber, ou
+     * que la part des comptes récents a neutralisé. Les plafonds de son auteur le
+     * comptent — sans quoi un membre qui riposte contre chacun de ses critiques
+     * n'aurait aucune borne —, et la meute comme la salve le gardent.
      */
-    private const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))";
+    private const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve', 'comptes_recents'))";
 
     /**
      * Les raisons d'un vote tombé par croisement : le vote de face, la riposte,
@@ -1195,6 +1195,46 @@ class Moderate
         return $author;
     }
 
+    /**
+     * Le votant est-il récent, et la part des comptes récents sur cet auteur
+     * est-elle déjà pleine dans le sens de son vote ?
+     *
+     * Un compte est récent au moment de SON vote (`ageEtabliSecondes`) : un vote
+     * reste dans la part quand son auteur vieillit, jusqu'à sortir de la fenêtre.
+     * La part se lit en solde net des votes qui portent : un vote puis son
+     * contraire, ou un vote que la cible fait tomber en le croisant, la laissent
+     * libre — la cible ne la remplit pas à vide avec ses propres comptes. Lue sous
+     * le verrou du vote, sans la dispense par message de `canVote()`.
+     */
+    private static function partDesRecentsPleine(PDO $pdo, int $voterId, int $author, int $value): bool
+    {
+        $ageEtabli = self::config()->ageEtabliSecondes;
+        if ($ageEtabli === 0) {
+            return false;
+        }
+        $stmt = $pdo->prepare('SELECT created_at FROM accounts WHERE id = ?');
+        $stmt->execute([$voterId]);
+        $cree = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if (self::maintenant() - $cree >= $ageEtabli) {
+            return false;
+        }
+        // Le seuil est interpolé, pas lié : comparée à un paramètre arrivé en TEXT,
+        // une différence de colonnes, qui n'a aucune affinité, serait toujours plus
+        // petite sous SQLite, et tout vote passerait pour récent.
+        $stmt = $pdo->prepare(
+            'SELECT COALESCE(SUM(v.value), 0) FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
+              WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ?
+                AND v.created_at - a.created_at < ' . $ageEtabli
+        );
+        $stmt->execute([$author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
+        $solde = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+        $plafond = $value === -1 ? self::config()->farmingDownvotesMax : self::config()->farmingUpvotesMax;
+
+        return $solde * $value >= $plafond;
+    }
+
     /** Le vote lui-même, sous la transaction qu'`applyVote()` tient. */
     private static function inscrireVote(
         PDO $pdo,
@@ -1261,6 +1301,23 @@ class Moderate
                             self::config()->fenetreFarmingJours
                         )];
             }
+        }
+
+        // Les comptes récents, ensemble, ne pèsent pas plus qu'un membre seul sur un
+        // même auteur (`partDesRecentsPleine()`). Avant le croisement : un vote qui
+        // ne pèse pas ne fait tomber personne et n'ouvre aucune trêve.
+        if (self::partDesRecentsPleine($pdo, $voterId, $author, $value)) {
+            self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'comptes_recents');
+            self::signaler($pdo, $author, 'comptes_recents');
+            // Neutralisé, le vote a été émis : il peut compléter une salve.
+            if ($value === -1) {
+                self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
+            }
+            return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'comptes_recents',
+                    'message' => sprintf(
+                        static::t('Vote enregistré mais neutralisé : ton compte a moins de %s, et les comptes aussi récents ont déjà pesé sur ce membre autant qu\'un membre établi.'),
+                        static::dureeEnClair(self::config()->ageEtabliSecondes)
+                    )];
         }
 
         // Deux membres qui votent l'un contre l'autre se croisent : les deux votes
@@ -2051,7 +2108,7 @@ class Moderate
     {
         return match ($cause) {
             'salve_rapide'     => 2 * self::config()->fenetreSalveSecondes,
-            'votants_tronques', 'votant_etendu' => self::config()->balayagePeriodeSecondes,
+            'votants_tronques', 'votant_etendu', 'comptes_recents' => self::config()->balayagePeriodeSecondes,
             default            => 0,
         };
     }
@@ -2095,10 +2152,11 @@ class Moderate
         // l'affichage d'avant : une salve d'autres votants, repliée dans le compte
         // faute d'être un fait neuf, n'en est pas moins arrivée après que l'arbitre a
         // regardé. Un votant étendu ne porte que lui-même, une troncature dit la
-        // taille du graphe et non qui le compose : chez eux, seule une occurrence
-        // comptée fait refuser — sinon chaque vote priverait l'arbitre du classement
-        // aussi longtemps qu'il dure.
-        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))) {
+        // taille du graphe et non qui le compose, et la part des comptes récents
+        // ne change rien à la réputation : chez eux, seule une occurrence comptée
+        // fait refuser — sinon chaque vote priverait l'arbitre du classement aussi
+        // longtemps qu'il dure, et un essaim de comptes neufs le tiendrait à l'écart.
+        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))) {
             $pdo->prepare('UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?')
                 ->execute([$accountId, $cause]);
         }

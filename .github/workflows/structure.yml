@@ -908,8 +908,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 53/53 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 53 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 55/55 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 55 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
@@ -3733,8 +3733,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 248/248 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 248 contrôles"; exit 1; }
+          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 255 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3745,9 +3745,9 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 248/248 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 248 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 255 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3903,9 +3903,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 248/248 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 248 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 255 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, le graphe
           # de meute, la salve, les raisons qu'une page publique tait et la fin réelle
           # d'un ban dans le moteur ; la route de vote, la page
@@ -3955,7 +3955,7 @@ jobs:
                                   "        $pdo->prepare(\"UPDATE mod_votes SET blocked = 1, blocked_reason = 'vote_croise' WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?\")\n"
                                   "            ->execute([$cible, $votant, $depuis]);\n",
                                "✗ ⭐ le croisement déborde de sa règle"),
-              'plafonds':     (M, "private const VOTE_EXPRIME = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))\";",
+              'plafonds':     (M, "private const VOTE_EXPRIME = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve', 'comptes_recents'))\";",
                                   "private const VOTE_EXPRIME = \"(blocked = 0)\";", TREVE),
               'leve_la_peine': (M, "[(int) $vote], leverLaPeine: false);", "[(int) $vote], leverLaPeine: true);",
                                "✗ ⭐ un croisement lève une peine"),
@@ -4030,6 +4030,72 @@ jobs:
           for f in $FICHIERS; do
             cmp -s "/tmp/croise.$(tr / _ <<< "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
           done
+          [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
+
+      - name: Canari — SelfModerate, la part des comptes récents
+        run: |
+          # @plante
+          # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
+          sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+          grep -qx '✅ 255/255 contrôles passés' <<< "$sortie" \
+            || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
+                 echo "::error::le banc de modération intact ne joue pas ses 255 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # La part elle-même, son solde net, les votes tombés qu'elle ne compte pas,
+          # l'âge au moment du vote, sa fenêtre en jours, la salve et le signal qu'elle
+          # laisse voir, et sa place parmi les votes émis. Chaque plantation est jugée, même après l'échec
+          # d'une autre, et doit rougir sur ce qui la nomme.
+          M=bi-self/selfmoderate/src/Moderate.php
+          cp "$M" /tmp/recents.intact
+          echecs=0
+          cas_liste="eteinte tombes pas_net sans_salve age_present fenetre hors_exprime sans_signal"
+          for cas in $cas_liste; do
+            attendu=$(CAS="$cas" python3 - <<'PY'
+          import os
+          M = 'bi-self/selfmoderate/src/Moderate.php'
+          POIDS = "✗ ⭐ des comptes récents pèsent plus qu'un membre"
+          AGE = "✗ ⭐ la part suit l'âge présent des comptes"
+          VIDE = "✗ ⭐ la cible remplit la part à vide"
+          avant, apres, attendu = {
+              'eteinte':      ("        return $solde * $value >= $plafond;", "        return false;", POIDS),
+              'tombes':       ("WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ?",
+                               "WHERE v.target_author = ? AND v.created_at >= ?", VIDE),
+              'pas_net':      ("SELECT COALESCE(SUM(v.value), 0) FROM mod_votes v JOIN accounts a",
+                               "SELECT COALESCE(SUM(CASE WHEN v.value < 0 THEN v.value ELSE 0 END), 0) FROM mod_votes v JOIN accounts a", VIDE),
+              'sans_salve':   ("            // Neutralisé, le vote a été émis : il peut compléter une salve.\n"
+                               "            if ($value === -1) {\n"
+                               "                self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);\n"
+                               "            }\n", "", POIDS),
+              'age_present':  ("AND v.created_at - a.created_at < ' . $ageEtabli",
+                               "AND ' . self::maintenant() . ' - a.created_at < ' . $ageEtabli", AGE),
+              'fenetre':      ("$stmt->execute([$author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);",
+                               "$stmt->execute([$author, self::maintenant() - self::config()->fenetreFarmingJours * 3600]);",
+                               "✗ ⭐ la part oublie sa fenêtre"),
+              'hors_exprime': ("'treve', 'comptes_recents'))\";", "'treve'))\";",
+                               "✗ ⭐ RAISONS_DU_CROISEMENT et VOTE_EXPRIME divergent"),
+              'sans_signal':  ("            self::signaler($pdo, $author, 'comptes_recents');\n", "", POIDS),
+          }[os.environ['CAS']]
+          s = open(M, encoding='utf-8').read()
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(M, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          print(attendu)
+          PY
+            ) || { cp /tmp/recents.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — elle ne prouve rien"; echecs=$((echecs + 1)); continue; }
+            sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+            cp /tmp/recents.intact "$M"
+            if [ "$rc" -eq 0 ]; then
+              echo "::error::le banc reste VERT avec la plantation « $cas »"; echecs=$((echecs + 1)); continue
+            fi
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
+              grep -E 'Fatal error|Uncaught' <<< "$sortie" | head -2 || true
+              echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir"; echecs=$((echecs + 1)); continue
+            fi
+            if ! grep -qF -- "$attendu" <<< "$sortie"; then
+              grep -E '✗' <<< "$sortie" | head -3 || true
+              echo "::error::rouge avec « $cas », mais pas sur ce qui la nomme : $attendu"; echecs=$((echecs + 1)); continue
+            fi
+            echo "✓ plantation « $cas » : le banc rougit, et sur ce qui la nomme"
+          done
+          cmp -s /tmp/recents.intact "$M" || { echo "::error::$M n'a pas été restauré à l'identique"; exit 1; }
           [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
@@ -4632,7 +4698,7 @@ jobs:
           # @plante
           # Des défauts qu'un seuil lu au bon endroit laisse passer : une fenêtre
           # en jours comptée en heures — pour l'échange qui lie une meute, pour
-          # ses votes, pour les trois lecteurs du farming plantés ensemble — et
+          # ses votes, pour les quatre lecteurs du farming plantés ensemble — et
           # l'horloge de convalescence avancée au pas de la démonstration plutôt
           # qu'à celui de la config. Le banc vise ces fenêtres des deux côtés de
           # leur borne, et doit rougir sur son cas. Celle du farming ne l'est que
@@ -4652,7 +4718,7 @@ jobs:
               'votes':   ('$sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 86400;',
                           '$sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 3600;', 1),
               'farming': ('self::maintenant() - self::config()->fenetreFarmingJours * 86400',
-                          'self::maintenant() - self::config()->fenetreFarmingJours * 3600', 3),
+                          'self::maintenant() - self::config()->fenetreFarmingJours * 3600', 4),
               'horloge': ('$last + $gagnes * self::config()->intervalleConvalescenceSecondes',
                           '$last + $gagnes * Config::demo()->intervalleConvalescenceSecondes', 1),
           }[cas]
@@ -4973,8 +5039,8 @@ jobs:
               'filet':     (M, "'UPDATE mod_signaux SET detections = detections + 1 WHERE account_id = ? AND cause = ?'",
                                "'UPDATE mod_signaux SET detections = detections + 1, derniere_le = ' . self::maintenant() . ' WHERE account_id = ? AND cause = ?'", 1),
               'jeton':     (M, "                return $s['detections'] === (int) ($vu['detections'] ?? 0)\n", "                return true\n", 1),
-              'replie':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))) {\n", "        if ($suite->rowCount() === 1) {\n", 1),
-              'etendu':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))) {\n", "        if (true) {\n", 1),
+              'replie':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))) {\n", "        if ($suite->rowCount() === 1) {\n", 1),
+              'etendu':    (M, "        if ($suite->rowCount() === 1 || ($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))) {\n", "        if (true) {\n", 1),
               'liste':     (M, "                'ouverts'   => self::causesEnTexte($signaux),\n", "                'ouverts'   => array_column($signaux, 'cause'),\n", 1),
               'ordre':     (M, "           ORDER BY s.ouvert_le, s.id LIMIT ?'", "           ORDER BY s.ouvert_le DESC, s.id LIMIT ?'", 1),
               'file':      (M, "              WHERE s.cause = ? AND s.vu_le IS NULL\n", "              WHERE s.cause = ?\n", 1),
@@ -4996,11 +5062,11 @@ jobs:
                                "'ban_auto', ban_debut, ban_debut,", 1),
               'illisible': (M, "JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);\n    }\n\n    /**\n     * Les signaux qu'un acte",
                                "JSON_THROW_ON_ERROR);\n    }\n\n    /**\n     * Les signaux qu'un acte", 1),
-              'balayage':  (M, "($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques'], true))",
-                               "!in_array($cause, ['votant_etendu', 'votants_tronques'], true)", 1),
+              'balayage':  (M, "($neuf && !in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true))",
+                               "!in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true)", 1),
               'balai':     (M, "self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);",
-                               "(self::balayageDu($pdo) ? self::detecter($pdo, null, null) : self::detecter($pdo, $author, $author));", 2),
-              'tronque':   (M, "!in_array($cause, ['votant_etendu', 'votants_tronques'], true)", "$cause !== 'votant_etendu'", 1),
+                               "(self::balayageDu($pdo) ? self::detecter($pdo, null, null) : self::detecter($pdo, $author, $author));", 3),
+              'tronque':   (M, "!in_array($cause, ['votant_etendu', 'votants_tronques', 'comptes_recents'], true)", "$cause !== 'votant_etendu'", 1),
               'etat':      (M, "        if (self::famille($cause) === 'etat') {\n            return;\n        }\n        $suite", "        $suite", 1),
               'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
                                "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),

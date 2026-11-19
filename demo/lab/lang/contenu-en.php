@@ -265,6 +265,8 @@ return [
         => 'Reason too long: %d characters at most, this one has %d.',
     'Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'
         => 'Vote recorded but neutralised: you have already voted against %d different members over the last %d days.',
+    'Vote enregistré mais neutralisé : ton compte a moins de %s, et les comptes aussi récents ont déjà pesé sur ce membre autant qu\'un membre établi.'
+        => 'Vote recorded but neutralised: your account is less than %s old, and accounts as new as yours have already weighed on this member as much as one established member.',
     'Droit de vote suspendu jusqu\'au %s (participation à une meute).'
         => 'Voting rights suspended until %s (took part in a pack).',
     'Ce motif n\'est pas du texte lisible : réécris-le.' => 'This reason is not readable text: write it again.',
