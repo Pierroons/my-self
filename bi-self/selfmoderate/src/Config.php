@@ -22,12 +22,15 @@ final class Config
      *                                        aucun vote ne la descend plus bas, et l'atteindre
      *                                        bannit (voir `banAutomatique`).
      * @param int      $fenetreSalveSecondes  Salve rapide : plusieurs downvotes groupés
-     *                                        dans ce délai, que leurs votants soient liés ou non.
-     *                                        Le plus souvent une réaction spontanée au
-     *                                        même message : elle signale, elle n'annule rien.
+     *                                        dans ce délai, que leurs votants soient liés ou non ;
+     *                                        un vote que la part des comptes récents a neutralisé
+     *                                        n'y entre pas. Le plus souvent une réaction spontanée
+     *                                        au même message : elle signale, elle n'annule rien.
      * @param int      $fenetreMeuteJours     Deux comptes sont liés quand chacun a écrit à l'autre
-     *                                        en privé sur cette fenêtre. Au quorum, des votants
-     *                                        liés entre eux ne comptent que pour une voix.
+     *                                        en privé sur cette fenêtre — au quorum, celle qui
+     *                                        précède le plus ancien vote compté de la paire, et
+     *                                        jusqu'à maintenant. Au quorum, des votants liés entre
+     *                                        eux ne comptent que pour une voix.
      * @param int      $balayagePeriodeSecondes Un balayage de tout le site par tranche de
      *                                        cette durée, payé par le premier downvote qui
      *                                        y tombe ; les autres ne regardent que leur cible.
@@ -84,7 +87,8 @@ final class Config
      *                                        récents sur un même auteur partagent, en solde net sur
      *                                        `fenetreFarmingJours`, le plafond qu'un votant seul a
      *                                        dans chaque sens (`farmingDownvotesMax`,
-     *                                        `farmingUpvotesMax`). 0 l'éteint.
+     *                                        `farmingUpvotesMax`) ; un vote qui n'a rien déplacé
+     *                                        compte un dans son sens. 0 l'éteint.
      * @param bool     $quorumAuxSeuils       La perte du vote et le ban automatique attendent un
      *                                        quorum de votants sans lien entre eux
      *                                        (`voixPourSanction()`) ; sans lui, la chute est
@@ -94,11 +98,13 @@ final class Config
      *                                        Épuisée avant de décider, elle ne sanctionne que ce
      *                                        que portent les voix déjà trouvées ; la chute est
      *                                        signalée, et `compositionChute()` la dit indécise.
-     * @param int      $quorumPairesMax       Paires de votants liés que le quorum lit au plus. Au-delà,
-     *                                        seuls les votants liés à personne font des voix ; s'ils
-     *                                        n'atteignent pas le quorum, la chute se dit indécise. La
-     *                                        mémoire d'un vote ne suit plus le graphe qu'un
-     *                                        adversaire construit.
+     * @param int      $quorumMessagesMax     Messages privés entre votants que le quorum lit au plus
+     *                                        pour en tirer leurs liens. Au-delà, seuls les votants
+     *                                        liés à personne font des voix, cherchés compte par
+     *                                        compte ; s'ils n'atteignent pas le quorum, la chute se
+     *                                        dit indécise. La lecture des liens ne suit plus le volume
+     *                                        de messages qu'un adversaire fait échanger entre
+     *                                        votants ; le repli lit la boîte reçue de chacun.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -129,7 +135,7 @@ final class Config
         public readonly int $ageEtabliSecondes = 3600,
         public readonly bool $quorumAuxSeuils = true,
         public readonly int $quorumTravailMax = 200000,
-        public readonly int $quorumPairesMax = 20000,
+        public readonly int $quorumMessagesMax = 200000,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -174,8 +180,8 @@ final class Config
         if ($this->quorumTravailMax < 1) {
             throw new InvalidArgumentException('quorumTravailMax compte des sommets lus : 1 ou plus.');
         }
-        if ($this->quorumPairesMax < 1) {
-            throw new InvalidArgumentException('quorumPairesMax compte des paires de votants liés : 1 ou plus.');
+        if ($this->quorumMessagesMax < 1) {
+            throw new InvalidArgumentException('quorumMessagesMax compte des messages entre votants : 1 ou plus.');
         }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
             throw new InvalidArgumentException(sprintf(

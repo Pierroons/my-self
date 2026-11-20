@@ -86,8 +86,8 @@ $causes = [
 ];
 // Ce que le quorum a lu d'une chute (`compositionChute()`) : l'arbitre décide sur ces faits.
 $quorumEnClair = static fn (array $ch): string => sprintf('%d voix sans lien sur %d votant(s)', $ch['voix_sans_lien'], $ch['votants'])
-    . ($ch['paires_liees'] > Moderate::config()->quorumPairesMax
-        ? sprintf(' · plus de %d paires liées', Moderate::config()->quorumPairesMax)
+    . ($ch['paires_liees'] === null
+        ? ' · liens trop nombreux pour être tous lus : seuls les votants liés à personne comptent'
         : sprintf(' · %d paire(s) liée(s)', $ch['paires_liees']))
     . ($ch['recents'] > 0 ? sprintf(' · %d compte(s) récent(s), une voix à eux tous', $ch['recents']) : '')
     . ($ch['indecis'] ? ' · recherche indécise : seules les voix trouvées comptent' : '');

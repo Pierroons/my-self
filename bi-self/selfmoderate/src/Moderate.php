@@ -122,22 +122,17 @@ class Moderate
     public const DUREE_MAX = 3_155_760_000;
 
     /**
-     * Un vote au plafond de son auteur, en filtre SQL sur `mod_votes` : un vote
-     * qui porte, ou qu'un croisement, la riposte qui le fait ou sa trêve ont fait
-     * tomber — sans quoi un membre qui riposte contre chacun de ses critiques
-     * n'aurait aucune borne. Un vote que la part des comptes récents a neutralisé
-     * n'y est pas : il n'a rien déplacé, et une cible qui remplit la part par ses
-     * propres comptes, le temps de les croiser, ne fait pas taire les comptes
-     * récents qui votent entre-temps pour toute la fenêtre des plafonds
-     * (`fenetreFarmingJours`).
+     * Un vote au plafond de son auteur, et dans la salve, en filtre SQL sur
+     * `mod_votes` : un vote qui porte, ou qu'un croisement, la riposte qui le fait
+     * ou sa trêve ont fait tomber — sans quoi un membre qui riposte contre chacun
+     * de ses critiques n'aurait aucune borne. Un vote que la part des comptes
+     * récents a neutralisé n'y est pas : il n'a rien déplacé ; une cible qui
+     * remplit la part par ses propres comptes, le temps de les croiser, ne fait pas
+     * taire les comptes récents qui votent entre-temps pour toute la fenêtre des
+     * plafonds (`fenetreFarmingJours`) ; et, sans plafond, il relancerait la salve
+     * à chaque message de sa cible.
      */
     private const VOTE_AU_PLAFOND = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))";
-
-    /**
-     * Un vote exprimé, pour la salve : un vote au plafond, ou neutralisé par la
-     * part des comptes récents — émis, il complète une salve comme un autre.
-     */
-    private const VOTE_EXPRIME = "(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve', 'comptes_recents'))";
 
     /**
      * Les raisons d'un vote tombé par croisement : le vote de face, la riposte,
@@ -478,6 +473,7 @@ class Moderate
         $tombentRegen = [];
         $tombentFin   = [];
         $effacer      = false;
+        $solder       = false;
         $horloge      = false;
         $fin          = null;
 
@@ -531,6 +527,7 @@ class Moderate
                 $l['convalescent']  = 0;
                 $l['last_regen_at'] = 0;
                 $effacer            = true;
+                $solder             = true;
                 array_push($tombentFin, 'ban_auto', 'reputation_zero');
             } elseif ((int) $l['reputation'] >= self::config()->perteDroitDeVoteSous) {
                 $l['voting_rights'] = 1;
@@ -555,6 +552,7 @@ class Moderate
             'tombent_regen' => $tombentRegen,
             'tombent_fin'   => $tombentFin,
             'effacer'       => $effacer,
+            'solder'        => $solder,
             'horloge'       => $horloge,
         ];
     }
@@ -640,7 +638,7 @@ class Moderate
             self::fermerPeine($pdo, $accountId, $avance['fin']['jusqu_a'], 'echeance', null);
         }
         if ($avance['effacer']) {
-            self::effacerEffets($pdo, $accountId);
+            self::effacerEffets($pdo, $accountId, $avance['solder']);
         }
         self::designaler($pdo, $accountId, ...$avance['tombent']);
 
@@ -771,18 +769,24 @@ class Moderate
     }
 
     /**
-     * La réputation est revenue au départ : la remise a rendu d'un coup ce que
-     * les votes déjà reçus avaient retiré. Leur effet passe à zéro, pour qu'une
-     * annulation ultérieure ne le rende pas une seconde fois, et la chute est
-     * soldée : ses votants ne sont plus des voix au quorum de la suivante
-     * (`chute_soldee_le`, lu par `voixDeLaChute()`).
+     * La réputation est revenue au départ : ce que les votes déjà reçus avaient
+     * retiré est rendu. Leur effet passe à zéro, pour qu'une annulation ultérieure
+     * ne le rende pas une seconde fois.
+     *
+     * `$solder` : une remise — la fin d'un ban automatique, échu ou levé, une grâce — a rendu
+     * d'un coup le départ, et la chute est soldée : ses votants ne sont plus des
+     * voix au quorum de la suivante (`chute_soldee_le`, lu par `fenetreDesVoix()`).
+     * La sortie de convalescence ne solde rien : une remontée que des soutiens
+     * peuvent hâter n'efface pas les voix des critiques.
      */
-    private static function effacerEffets(PDO $pdo, int $accountId): void
+    private static function effacerEffets(PDO $pdo, int $accountId, bool $solder): void
     {
         $pdo->prepare('UPDATE mod_votes SET effet = 0 WHERE target_author = ? AND (effet IS NULL OR effet <> 0)')
             ->execute([$accountId]);
-        $pdo->prepare('UPDATE member_moderation SET chute_soldee_le = ? WHERE account_id = ?')
-            ->execute([self::maintenant(), $accountId]);
+        if ($solder) {
+            $pdo->prepare('UPDATE member_moderation SET chute_soldee_le = ? WHERE account_id = ?')
+                ->execute([self::maintenant(), $accountId]);
+        }
     }
 
     /** Anti-Sybil + sanctions : ce membre peut-il voter ? Retourne [bool, raison]. */
@@ -1024,6 +1028,9 @@ class Moderate
     /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
     private static ?PDO $transactionOuverteSur = null;
 
+    /** Les connexions dont le schéma est vérifié (`exigerSchema()`). */
+    private static ?\WeakMap $schemaVerifie = null;
+
     /**
      * L'exception après laquelle la base a défait une transaction du moteur, ou
      * celle qui contenait son point de reprise : ce n'est pas un refus, et rien
@@ -1085,6 +1092,7 @@ class Moderate
             if (!$propre) {
                 self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');
             }
+            self::exigerSchema($pdo);
             $resultat = $ecriture();
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
 
@@ -1106,6 +1114,32 @@ class Moderate
                 self::$transactionOuverteSur = null;
             }
         }
+    }
+
+    /**
+     * La colonne de la 0.9.0 que le moteur écrit au solde d'une chute : absente,
+     * l'écriture qui la touche échoue après l'acte qu'elle a déjà inscrit au
+     * journal, et chaque essai en ajoute un. Vérifiée une fois par connexion, sous
+     * le verrou de la première écriture — une lecture avant lui ferait refuser
+     * aussitôt la transaction différée d'un hôte quand un autre écrit — et à la
+     * première lecture des voix d'une chute.
+     */
+    private static function exigerSchema(PDO $pdo): void
+    {
+        self::$schemaVerifie ??= new \WeakMap();
+        if (isset(self::$schemaVerifie[$pdo])) {
+            return;
+        }
+        try {
+            $lu = $pdo->query('SELECT chute_soldee_le FROM member_moderation LIMIT 0');
+        } catch (\PDOException) {
+            $lu = false;
+        }
+        if ($lu === false) {
+            throw new \LogicException('SelfModerate : la base n\'a pas la colonne « member_moderation.chute_soldee_le » — la note de montée vers la 0.9.0 (README) l\'ajoute : ALTER TABLE member_moderation ADD COLUMN chute_soldee_le INTEGER NOT NULL DEFAULT 0.');
+        }
+        $lu->closeCursor();
+        self::$schemaVerifie[$pdo] = true;
     }
 
     /** Un ordre de transaction, dont le refus ne passe jamais inaperçu, même sous un PDO silencieux. */
@@ -1218,10 +1252,13 @@ class Moderate
      * Un compte est récent au moment de SON vote (`ageEtabliSecondes`) : un vote
      * reste dans la part quand son auteur vieillit, jusqu'à sortir de la fenêtre.
      * La part se lit en solde net de ce que les votes qui portent ont déplacé
-     * (`effet`) : un vote qui bute sur une borne n'y pèse rien, et un vote puis son
-     * contraire, ou un vote que la cible fait tomber en le croisant, la laissent
-     * libre — la cible ne la remplit pas à vide avec ses propres comptes. Lue sous
-     * le verrou du vote, sans la dispense par message de `canVote()`.
+     * (`effet`) : un vote puis son contraire, ou un vote que la cible fait tomber en
+     * le croisant, la laissent libre — la cible ne la remplit pas à vide avec ses
+     * propres comptes. Un vote qui porte sans rien déplacer (`effet` à zéro : une
+     * borne de la réputation, ou une remise passée) compte un dans son sens, et rien
+     * dans l'autre : au plafond comme au plancher, la part borne encore les scores
+     * des messages et les motifs, et un vote positif sans effet n'ouvre pas la part négative. Lue
+     * sous le verrou du vote, sans la dispense par message de `canVote()`.
      */
     private static function partDesRecentsPleine(PDO $pdo, int $voterId, int $author, int $value): bool
     {
@@ -1237,10 +1274,13 @@ class Moderate
             return false;
         }
         // Le seuil est interpolé, pas lié : comparée à un paramètre arrivé en TEXT,
-        // une différence de colonnes, qui n'a aucune affinité, serait toujours plus
-        // petite sous SQLite, et tout vote passerait pour récent.
+        // une expression sans affinité serait toujours plus petite sous SQLite, et
+        // tout vote passerait pour récent. Le sens, ±1 calculé ici, l'est avec lui.
+        $sens = $value === -1 ? -1 : 1;
         $stmt = $pdo->prepare(
-            'SELECT COALESCE(SUM(COALESCE(v.effet, v.value)), 0) FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
+            'SELECT COALESCE(SUM(CASE WHEN v.effet = 0 THEN (CASE WHEN v.value = ' . $sens . ' THEN v.value ELSE 0 END)
+                                      ELSE COALESCE(v.effet, v.value) END), 0)
+               FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
               WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ?
                 AND v.created_at - a.created_at < ' . $ageEtabli
         );
@@ -1326,10 +1366,6 @@ class Moderate
         if (self::partDesRecentsPleine($pdo, $voterId, $author, $value)) {
             self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'comptes_recents');
             self::signaler($pdo, $author, 'comptes_recents');
-            // Neutralisé, le vote a été émis : il peut compléter une salve.
-            if ($value === -1) {
-                self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
-            }
             // Le message est celui d'un vote compté : la part se remplit des votes
             // d'autres comptes, et la dire pleine leur apprendrait ces votes.
             return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'comptes_recents', 'message' => static::t('Vote enregistré.')];
@@ -1450,77 +1486,181 @@ class Moderate
 
     /**
      * Les paires de `$voters` liées au sens d'`areLinked()` : un message dans
-     * chaque sens entre `$depuis` (`fenetreMeuteJours` avant `$t` par défaut) et
-     * `$t` (maintenant par défaut). `areLinked()` passe par ici : la définition
-     * du lien n'existe qu'une fois.
+     * chaque sens entre le début de la paire et `$t` (maintenant par défaut). Le
+     * début d'une paire est `fenetreMeuteJours` avant le plus ancien des premiers
+     * votes de ses deux membres (`$premiers`, votant → instant ; `$t` pour chacun
+     * par défaut) : seuls les deux membres d'une paire règlent sa profondeur, et une
+     * clique qui cesse de s'écrire reste une clique tant que ses votes comptent.
+     * `areLinked()` passe par ici : la définition du lien n'existe qu'une fois.
      *
-     * La réciprocité se lit dans la requête, une seule pour tous les votants : une
-     * paire est liée quand ses deux sens y figurent. Les paires se lisent en flux,
-     * gardées jusqu'à `$max` — au-delà, la fonction rend null, et `$lies` reçoit
-     * les votants liés à au moins un autre : la mémoire suit le nombre de votants,
-     * pas le graphe. Instants et identifiants sont interpolés en entiers : liés,
-     * ils arriveraient en TEXT, et une colonne de vue calculée, sans affinité, ne
-     * leur serait jamais égale. Une date de `dm` qui n'est pas un nombre lève,
-     * comme une `dm` absente : elle ne lierait personne, en silence.
+     * Les messages entre votants se lisent en flux, depuis le plus ancien début,
+     * au plus `$max` : au-delà, la fonction rend null — le temps et la mémoire
+     * d'un vote ne suivent pas le graphe. Chaque sens garde sa date la plus
+     * récente, que la paire compare à son début. Instants et identifiants sont
+     * interpolés en entiers : liés, ils arriveraient en TEXT, et une colonne de
+     * vue calculée, sans affinité, ne leur serait jamais égale.
      *
      * @param int[] $voters
-     * @param list<int>|null $lies
+     * @param array<int, int>|null $premiers
      * @return list<array{int, int}>|null paires [a, b] avec a < b, ou null au-delà de `$max`
      */
-    private static function mutualPairs(PDO $pdo, array $voters, ?int $t = null, ?int $depuis = null, ?int $max = null, ?array &$lies = null): ?array
+    private static function mutualPairs(PDO $pdo, array $voters, ?int $t = null, ?array $premiers = null, ?int $max = null): ?array
     {
-        $lies = [];
         if (count($voters) < 2) {
             return [];
         }
         $t ??= self::maintenant();
-        $depuis ??= $t - self::config()->fenetreMeuteJours * 86400;
+        $profondeur = self::config()->fenetreMeuteJours * 86400;
+        $premiers ??= array_fill_keys($voters, $t);
+        $debut = min(array_map(static fn (int $v): int => $premiers[$v], $voters)) - $profondeur;
         $ids = implode(',', array_map('intval', $voters));
+        $date = self::exigerDatesDm($pdo, $ids, $t);
+        $limite = $max === null ? '' : ' LIMIT ' . ($max + 1);
         try {
-            self::exigerDatesDm($pdo);
             $stmt = $pdo->query(
-                "SELECT MIN(sender_id, recipient_id) AS a, MAX(sender_id, recipient_id) AS b
-                   FROM (SELECT DISTINCT sender_id, recipient_id FROM dm
-                          WHERE CAST(created_at AS INTEGER) BETWEEN $depuis AND $t AND sender_id <> recipient_id
-                            AND sender_id IN ($ids) AND recipient_id IN ($ids))
-               GROUP BY a, b
-                 HAVING COUNT(*) = 2"
+                "SELECT sender_id, recipient_id, $date FROM dm
+                  WHERE recipient_id IN ($ids) AND sender_id IN ($ids) AND sender_id <> recipient_id
+                    AND $date BETWEEN $debut AND $t$limite"
             );
         } catch (\PDOException $e) {
             throw self::dmIntrouvable($pdo, $e);
         }
-        $paires = [];
-        $vus = [];
+        $sens = [];
+        $lus = 0;
         while (($r = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
-            $vus[(int) $r[0]] = true;
-            $vus[(int) $r[1]] = true;
-            if ($max === null || count($paires) <= $max) {
-                $paires[] = [(int) $r[0], (int) $r[1]];
+            if ($max !== null && ++$lus > $max) {
+                $stmt->closeCursor();
+
+                return null;
+            }
+            [$de, $vers, $quand] = [(int) $r[0], (int) $r[1], (int) $r[2]];
+            if (($sens[$de][$vers] ?? $quand) <= $quand) {
+                $sens[$de][$vers] = $quand;
             }
         }
         $stmt->closeCursor();
-        $lies = array_keys($vus);
+        $paires = [];
+        foreach ($sens as $de => $versQui) {
+            foreach ($versQui as $vers => $quand) {
+                if ($de < $vers && isset($sens[$vers][$de])
+                    && min($quand, $sens[$vers][$de]) >= min($premiers[$de], $premiers[$vers]) - $profondeur) {
+                    $paires[] = [$de, $vers];
+                }
+            }
+        }
 
-        return $max !== null && count($paires) > $max ? null : $paires;
+        return $paires;
     }
 
     /**
-     * Une date de `dm` écrite en clair (`2026-11-20 06:00:00`) ne se compare à
-     * aucun instant : le quorum ne lirait aucun lien, et chaque votant ferait une
-     * voix. Une ligne le montre pour une colonne d'un seul type, celle d'une table
-     * ou d'une vue ; une colonne qui mélange les deux échappe à la sonde. Un
-     * instant écrit en texte — une vue en `strftime('%s', …)` — se lit comme un
-     * nombre (`mutualPairs()` le convertit).
+     * Les votants de `$voters` liés à personne parmi eux, cherchés compte par
+     * compte quand leurs messages dépassent la borne de lecture de
+     * `mutualPairs()` : pour chacun, sa boîte reçue, puis, pour chaque expéditeur
+     * votant, le sens inverse sur leur paire — la lecture d'un compte s'arrête à
+     * son premier lien. Ils sont des voix les uns pour les autres, quel que soit
+     * le reste du graphe : un minimum exact. La recherche s'arrête à `$assez`.
+     *
+     * @param int[] $voters
+     * @param array<int, int> $premiers
+     * @return list<int>
      */
-    private static function exigerDatesDm(PDO $pdo): void
+    private static function liesAPersonne(PDO $pdo, array $voters, int $t, array $premiers, int $assez): array
     {
-        $ligne = $pdo->query('SELECT created_at, typeof(created_at) FROM dm LIMIT 1')->fetch(PDO::FETCH_NUM);
-        if ($ligne !== false && in_array($ligne[1], ['text', 'blob'], true) && !ctype_digit((string) $ligne[0])) {
-            throw new \LogicException(sprintf(
-                'SelfModerate : « dm.created_at » de l\'hôte n\'est pas un instant Unix (%s) — le quorum des seuils compare des instants.',
-                $ligne[1]
-            ));
+        $seuls = [];
+        if ($assez <= 0) {
+            return $seuls;
         }
+        $profondeur = self::config()->fenetreMeuteJours * 86400;
+        $debut = min(array_map(static fn (int $v): int => $premiers[$v], $voters)) - $profondeur;
+        $date = self::exigerDatesDm($pdo, implode(',', array_map('intval', $voters)), $t);
+        $votant = array_fill_keys($voters, true);
+        try {
+            $recus = $pdo->prepare("SELECT sender_id, $date FROM dm WHERE recipient_id = ? AND $date BETWEEN $debut AND $t");
+            $retour = $pdo->prepare("SELECT 1 FROM dm WHERE recipient_id = ? AND sender_id = ? AND $date BETWEEN ? AND $t LIMIT 1");
+        } catch (\PDOException $e) {
+            throw self::dmIntrouvable($pdo, $e);
+        }
+        foreach ($voters as $v) {
+            $recus->bindValue(1, $v, PDO::PARAM_INT);
+            $recus->execute();
+            $lie = false;
+            $vus = [];
+            while (!$lie && ($r = $recus->fetch(PDO::FETCH_NUM)) !== false) {
+                $x = (int) $r[0];
+                if ($x === $v || !isset($votant[$x]) || isset($vus[$x])) {
+                    continue;
+                }
+                $depuis = min($premiers[$v], $premiers[$x]) - $profondeur;
+                if ((int) $r[1] < $depuis) {
+                    continue;
+                }
+                $vus[$x] = true;
+                $retour->bindValue(1, $x, PDO::PARAM_INT);
+                $retour->bindValue(2, $v, PDO::PARAM_INT);
+                $retour->bindValue(3, $depuis, PDO::PARAM_INT);
+                $retour->execute();
+                $lie = $retour->fetchColumn() !== false;
+                $retour->closeCursor();
+            }
+            $recus->closeCursor();
+            if (!$lie) {
+                $seuls[] = $v;
+                if (count($seuls) >= $assez) {
+                    break;
+                }
+            }
+        }
+
+        return $seuls;
+    }
+
+    /**
+     * La colonne des dates de `dm` que la lecture des liens compare, après une
+     * sonde sur les messages des votants (`$ids`). Un instant en secondes est du
+     * même ordre que maintenant : la sonde cherche, par l'index de la boîte
+     * reçue, une date hors de `[$t / 100, $t × 100]` — des millisecondes sont mille
+     * fois plus grandes, un jour julien plus de cent fois plus petit, et une
+     * date en clair ou un blob se rangent après tout nombre. Aucune : la colonne
+     * se compare telle quelle, et l'index sert. Un instant écrit en chiffres (une
+     * vue en `strftime('%s', …)`) : la colonne se convertit, et tout ce qui n'est
+     * pas un instant à la bonne échelle est refusé. Le reste lève, en le nommant :
+     * le quorum ne lirait aucun lien, et chaque votant ferait une voix.
+     */
+    private static function exigerDatesDm(PDO $pdo, string $ids, int $t): string
+    {
+        $bas = intdiv($t, 100);
+        $haut = $t * 100;
+        try {
+            $hors = $pdo->query(
+                "SELECT created_at, typeof(created_at) FROM dm
+                  WHERE recipient_id IN ($ids) AND sender_id IN ($ids) AND (created_at < $bas OR created_at > $haut)
+                  LIMIT 1"
+            )->fetch(PDO::FETCH_NUM);
+            if ($hors === false) {
+                return 'created_at';
+            }
+            if ($hors[1] === 'text' && ctype_digit((string) $hors[0])) {
+                $hors = $pdo->query(
+                    "SELECT created_at, typeof(created_at) FROM dm
+                      WHERE recipient_id IN ($ids) AND sender_id IN ($ids)
+                        AND (typeof(created_at) = 'blob'
+                             OR (typeof(created_at) = 'text' AND (created_at = '' OR created_at GLOB '*[^0-9]*'))
+                             OR CAST(created_at AS INTEGER) NOT BETWEEN $bas AND $haut)
+                      LIMIT 1"
+                )->fetch(PDO::FETCH_NUM);
+                if ($hors === false) {
+                    return 'CAST(created_at AS INTEGER)';
+                }
+            }
+        } catch (\PDOException $e) {
+            throw self::dmIntrouvable($pdo, $e);
+        }
+        throw new \LogicException(sprintf(
+            'SelfModerate : « dm.created_at » de l\'hôte porte « %s » (%s), qui n\'est pas un instant Unix en secondes, du même ordre que maintenant (%d) — le quorum des seuils compare des instants.',
+            mb_substr((string) $hors[0], 0, 40),
+            $hors[1],
+            $t
+        ));
     }
 
     /** L'erreur d'une lecture de `dm` : la table nommée si elle manque, l'erreur telle quelle sinon. */
@@ -1638,17 +1778,17 @@ class Moderate
         $minVotants = (int) self::config()->salveVotantsMin;
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
-             WHERE value = -1 AND " . self::VOTE_EXPRIME . " AND created_at >= ?$surCible
+             WHERE value = -1 AND " . self::VOTE_AU_PLAFOND . " AND created_at >= ?$surCible
           GROUP BY target_author HAVING COUNT(DISTINCT voter_id) >= $minVotants
         ");
         $stmt->execute(array_merge([$sinceSalve], $deLaCible));
 
         foreach ($stmt->fetchAll() as $row) {
             $author = (int) $row['target_author'];
-            // Un vote croisé, une riposte, un vote de trêve ou un vote de la part
-            // des comptes récents restent dans la salve : tombés, ils ont été émis.
+            // Un vote croisé, une riposte ou un vote de trêve restent dans la
+            // salve : tombés, ils ont été émis.
             $vs = $pdo->prepare('SELECT voter_id, created_at FROM mod_votes
-                                  WHERE target_author = ? AND value = -1 AND ' . self::VOTE_EXPRIME . ' AND created_at >= ?
+                                  WHERE target_author = ? AND value = -1 AND ' . self::VOTE_AU_PLAFOND . ' AND created_at >= ?
                                   ORDER BY created_at ASC');
             $vs->execute([$author, $sinceSalve]);
             $votes = $vs->fetchAll();
@@ -2348,8 +2488,9 @@ class Moderate
      * graduée et FINIE, visible dès qu'elle tombe (le signal `ban_auto` attend
      * l'arbitre), et ses deux bouts sont inscrits au journal.
      *
-     * `$avant` est la réputation d'avant le vote : une chute que l'arbitre a
-     * classée au seuil du vote lui revient quand elle atteint le plancher.
+     * Une chute que l'arbitre a classée lui revient quand elle s'aggrave : quand
+     * elle atteint le plancher (`$avant`, la réputation d'avant le vote, au-dessus),
+     * ou quand, au plancher, elle retire le droit de vote qu'elle laissait.
      */
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation, int $avant): void
     {
@@ -2359,11 +2500,11 @@ class Moderate
         $auPlancher = $reputation <= self::config()->banA;
         $enPeine = self::enPeineAutomatique($pdo, $accountId);
         $voix = null;
+        $vote = $pdo->prepare('SELECT voting_rights FROM member_moderation WHERE account_id = ?');
+        $vote->execute([$accountId]);
+        $voteEnJeu = (int) $vote->fetchColumn() === 1;
+        $vote->closeCursor();
         if (self::config()->quorumAuxSeuils) {
-            $vote = $pdo->prepare('SELECT voting_rights FROM member_moderation WHERE account_id = ?');
-            $vote->execute([$accountId]);
-            $voteEnJeu = (int) $vote->fetchColumn() === 1;
-            $vote->closeCursor();
             // Le quorum ne se cherche que s'il reste une sanction à décider : une
             // peine automatique EST la sanction du plancher, et un vote déjà retiré
             // celle du seuil du vote.
@@ -2373,11 +2514,12 @@ class Moderate
                     $auPlancher ? self::config()->voixPourSanction(self::config()->banA) : 0
                 ));
                 if ($voix['indecis']) {
-                    error_log(sprintf('SelfModerate : le quorum du compte %d n\'a pas pu décider (travail ou paires liées au-delà de leur borne) ; seules ses %d voix trouvées comptent.', $accountId, $voix['voix']));
+                    error_log(sprintf('SelfModerate : le quorum du compte %d n\'a pas pu décider (travail ou messages entre votants au-delà de leur borne) ; seules ses %d voix trouvées comptent.', $accountId, $voix['voix']));
                 }
             }
         }
         $quorum = static fn (int $seuil): bool => $voix === null || $voix['voix'] >= self::config()->voixPourSanction($seuil);
+        $perdLeVote = $voteEnJeu && $quorum(self::config()->perteDroitDeVoteSous - 1);
 
         if ($quorum(self::config()->perteDroitDeVoteSous - 1)) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
@@ -2398,7 +2540,7 @@ class Moderate
                 self::designaler($pdo, $accountId, 'chute_sans_quorum');
             } else {
                 self::signaler($pdo, $accountId, 'chute_sans_quorum');
-                if ($avant > self::config()->banA) {
+                if ($avant > self::config()->banA || $perdLeVote) {
                     self::rouvrirEtat($pdo, $accountId, 'chute_sans_quorum');
                 }
             }
@@ -2418,17 +2560,21 @@ class Moderate
     /**
      * Ce qui borne les voix d'une chute à l'instant `$t` : la fenêtre des plafonds,
      * et la dernière chute soldée (`effacerEffets()`) — les votants d'une chute que
-     * la fin d'un ban, une grâce ou une levée ont soldée ne portent pas la suivante.
+     * la fin d'un ban automatique, échu ou levé, ou une grâce ont soldée ne portent pas la
+     * suivante.
      * Une remise tombe souvent à la seconde du vote qui l'inscrit : à cette seconde,
      * un vote d'avant elle a perdu son effet, et un vote d'après en a un, la
-     * réputation repartant du départ. Une chute soldée après `$t` ne borne rien :
-     * lue à son début, la composition d'un ban fini est celle de ce ban.
+     * réputation repartant du départ. Une chute soldée après `$t` ne borne rien, et
+     * seule la dernière est gardée : relue après la fin d'un ban qui suivait une
+     * autre chute soldée, la composition de ce ban compte aussi les votants de
+     * celle-ci.
      *
      * @return array{0: int, 1: int, 2: int} [début, fin, soldée] : un vote compte s'il
      *         tombe entre début et fin, après soldée, ou à sa seconde avec un effet
      */
     private static function fenetreDesVoix(PDO $pdo, int $cible, int $t): array
     {
+        self::exigerSchema($pdo);
         $lire = $pdo->prepare('SELECT chute_soldee_le FROM member_moderation WHERE account_id = ?');
         $lire->execute([$cible]);
         $soldee = (int) $lire->fetchColumn();
@@ -2480,40 +2626,38 @@ class Moderate
      * font une part : un votant récent sort du graphe, et sa classe y ajoute une
      * voix.
      *
-     * Les liens se lisent depuis `fenetreMeuteJours` avant le plus ancien vote
-     * compté : une clique qui cesse de s'écrire reste une clique tant que ses
-     * votes comptent.
+     * Les liens d'une paire se lisent depuis `fenetreMeuteJours` avant le plus
+     * ancien vote compté de ses deux membres (`mutualPairs()`).
      *
-     * `voix` est exact sous `$assez`, et vaut au moins `$assez` sinon. `indecis`
-     * dit que la recherche n'a pas pu décider — son travail épuisé
-     * (`quorumTravailMax`), ou plus de `quorumPairesMax` paires liées, où seuls les
-     * votants liés à personne se comptent : `voix` n'est alors qu'un minimum, et la
-     * machine ne sanctionne que ce qu'il porte.
+     * `voix` est exact sous `$assez`, et vaut `$assez` dès qu'il est atteint : la
+     * recherche s'arrête au quorum. `indecis` dit qu'elle n'a pas pu décider — son
+     * travail épuisé (`quorumTravailMax`), ou plus de `quorumMessagesMax` messages
+     * entre votants, où seuls les votants liés à personne se comptent
+     * (`liesAPersonne()`) : `voix` n'est alors qu'un minimum, et la machine ne
+     * sanctionne que ce qu'il porte. `paires_liees` est null quand les messages
+     * n'ont pas été lus en entier.
      *
-     * @return array{voix: int, votants: int, recents: int, paires_liees: int, indecis: bool}
+     * @return array{voix: int, votants: int, recents: int, paires_liees: int|null, indecis: bool}
      */
     private static function voixDeLaChute(PDO $pdo, int $cible, int $t, int $assez): array
     {
         $etablis = [];
+        $premiers = [];
         $recents = 0;
-        $premier = $t;
         foreach (self::votantsDeLaChute($pdo, $cible, $t) as $r) {
             if ((int) $r['recent'] === 1) {
                 $recents++;
             } else {
                 $etablis[] = (int) $r['voter_id'];
-                $premier = min($premier, (int) $r['premier']);
+                $premiers[(int) $r['voter_id']] = (int) $r['premier'];
             }
         }
         $classe = min(1, $recents);
-        $liensDepuis = $premier - self::config()->fenetreMeuteJours * 86400;
-        $paires = self::mutualPairs($pdo, $etablis, $t, $liensDepuis, self::config()->quorumPairesMax, $lies);
+        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumMessagesMax);
         if ($paires === null) {
-            // Les votants liés à personne sont des voix les uns pour les autres, quel
-            // que soit le reste du graphe : un minimum exact.
-            $sansLien = count(array_diff($etablis, $lies));
+            $sansLien = count(self::liesAPersonne($pdo, $etablis, $t, $premiers, $assez - $classe));
             $indecis = $sansLien + $classe < $assez;
-            $pairesLiees = self::config()->quorumPairesMax + 1;
+            $pairesLiees = null;
         } else {
             [$sansLien, $indecis] = self::voixSansLien($etablis, $paires, $assez - $classe);
             $pairesLiees = count($paires);
@@ -2625,6 +2769,9 @@ class Moderate
             $explorer(array_diff_key($reste, [$v => true]), $pris);
         };
         $explorer(array_fill_keys($sommets, true), 0);
+        // La fermeture se tient elle-même (`use (&$explorer)`) : sans ce retrait, chaque
+        // recherche resterait en mémoire jusqu'au passage du ramasse-cycles.
+        $explorer = null;
 
         return [$meilleur, $epuise && $meilleur < $assez];
     }
@@ -3261,7 +3408,7 @@ class Moderate
             }
             self::designaler($pdo, $accountId, ...array_column(self::deFamille($fermes, 'etat'), 'cause'));
             self::retirerDeLaFile($pdo, $accountId, self::deFamille($fermes, 'comportement'));
-            self::effacerEffets($pdo, $accountId);
+            self::effacerEffets($pdo, $accountId, solder: true);
             if ($rangEfface > 0) {
                 $pdo->prepare(
                     "INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
@@ -3364,7 +3511,7 @@ class Moderate
                 ->execute([...array_map(static fn (string $col): mixed => $l[$col], $colonnes), $maintenant, $accountId]);
             self::fermerPeine($pdo, $accountId, $maintenant, 'levee', $qui);
             if ($avance['effacer']) {
-                self::effacerEffets($pdo, $accountId);
+                self::effacerEffets($pdo, $accountId, $avance['solder']);
             }
             self::designaler($pdo, $accountId, ...$tombent);
 
@@ -3659,7 +3806,7 @@ class Moderate
      *                    debut: int, jusqu_a: int, reste: int, sans_fin: bool, plancher: ?int, episode: int,
      *                    a_revoir: bool, revue: ?array{signal: int, detections: int},
      *                    chute: ?array{votants: int, ages_jours: list<int>, etalement: int, voix_sans_lien: int,
-     *                                  recents: int, paires_liees: int, indecis: bool},
+     *                                  recents: int, paires_liees: int|null, indecis: bool},
      *                    peine: int, arbitre: ?array{id: int, nom: string}, echeance_initiale: int,
      *                    prolongations: int, decide_par: ?array{id: int, nom: string}}>
      */
@@ -3784,14 +3931,15 @@ class Moderate
      * qu'un arbitre peut la voir.
      *
      * S'y ajoute ce que le quorum en tire, relu sur la base du moment :
-     * `voix_sans_lien`, exact sous le quorum du ban et au moins ce quorum sinon —
+     * `voix_sans_lien`, exact sous le quorum du ban et égal à ce quorum sinon —
      * un minimum quand `indecis` ;
      * `recents`, les votants que leur âge range dans une seule voix ;
-     * `paires_liees`, les liens entre les autres ; `indecis`, une recherche qui
-     * n'a pas pu décider.
+     * `paires_liees`, les liens entre les autres, null quand leurs messages
+     * dépassent la borne de lecture (`quorumMessagesMax`) ; `indecis`, une
+     * recherche qui n'a pas pu décider.
      *
      * @return array{votants: int, ages_jours: list<int>, etalement: int, voix_sans_lien: int,
-     *               recents: int, paires_liees: int, indecis: bool}
+     *               recents: int, paires_liees: int|null, indecis: bool}
      */
     public static function compositionChute(PDO $pdo, int $accountId, int $debut): array
     {

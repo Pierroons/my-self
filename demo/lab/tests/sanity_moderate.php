@@ -657,14 +657,14 @@ $voteC && $modC['reputation'] === Moderate::config()->reputationInitiale && $por
 // lisant ses propres constantes pour tout le reste. `SANS_FIN` n'en est pas
 // un : c'est l'échéance sentinelle d'un ban sans fin, qu'aucune config ne règle.
 // `DUREE_MAX` non plus : c'est la plus longue échéance qui se lise encore comme
-// une échéance, et non comme `SANS_FIN`. `VOTE_AU_PLAFOND`, `VOTE_EXPRIME` et
-// `VOTE_RECU` sont des filtres SQL — les votes au plafond, les votes exprimés, les
-// votes qui ont porté —, sans nombre à régler ; `RAISONS_DU_CROISEMENT` est une
+// une échéance, et non comme `SANS_FIN`. `VOTE_AU_PLAFOND` et `VOTE_RECU` sont
+// des filtres SQL — les votes au plafond et dans la salve, les votes qui ont
+// porté —, sans nombre à régler ; `RAISONS_DU_CROISEMENT` est une
 // liste de noms.
 $jumelles = array_values(array_filter(
     array_keys((new ReflectionClass(Moteur::class))->getConstants()),
     static fn (string $c): bool => !str_starts_with($c, 'REASON_')
-        && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_AU_PLAFOND', 'VOTE_EXPRIME', 'VOTE_RECU', 'RAISONS_DU_CROISEMENT'], true)
+        && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_AU_PLAFOND', 'VOTE_RECU', 'RAISONS_DU_CROISEMENT'], true)
 ));
 $jumelles === []
     ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
@@ -1524,6 +1524,9 @@ $postQ  = message($pdo, $cibleQ, 'fil-39q');
 votesDeFond($pdo, $cibleQ, $postQ, 16, '39q');
 poserReputation($pdo, $cibleP, Moderate::config()->perteDroitDeVoteSous);
 poserReputation($pdo, $cibleQ, Moderate::config()->perteDroitDeVoteSous);
+// La connexion du compteur écrit une fois avant la mesure : le schéma se vérifie
+// une fois par connexion (`exigerSchema()`), et n'entre pas dans le coût d'un vote.
+Moderate::regenerate($compteur, $cibleP);
 [$sept, $dixSept] = sousConfig(configBanc(quorumAuxSeuils: true), static fn (): array => [
     coutDownvote($compteur, $pdo, $postP, '39p'),
     coutDownvote($compteur, $pdo, $postQ, '39q'),
@@ -5798,20 +5801,20 @@ $sortZ168 === 'riposte' && !in_array('salve_rapide', $avantB168, true) && in_arr
 
 // ── 169. ⭐ Les raisons qu'une page publique tait sont celles des votes tombés et émis ─
 // Une page publique écarte `RAISONS_DU_CROISEMENT` ; le moteur compte ces votes
-// comme émis par `VOTE_EXPRIME`. Une raison présente dans l'un et absente de
-// l'autre serait publiée, ou sortirait des plafonds et de la salve.
-// Une seule raison émise reste publique, et elle est nommée ici : la part des
-// comptes récents, qui ne dit rien d'un croisement.
-$exprime169 = (string) (new ReflectionClass(Moteur::class))->getConstant('VOTE_EXPRIME');
-$raisons169 = preg_match('#blocked_reason IN \(([^)]*)\)#', $exprime169, $m169) === 1
+// au plafond et dans la salve par `VOTE_AU_PLAFOND`. Une raison présente dans
+// l'un et absente de l'autre serait publiée, ou sortirait des plafonds et de la
+// salve. La part des comptes récents n'est dans aucun des deux : publique, elle
+// ne dit rien d'un croisement, et elle n'entre ni aux plafonds ni dans la salve.
+$plafond169 = (string) (new ReflectionClass(Moteur::class))->getConstant('VOTE_AU_PLAFOND');
+$raisons169 = preg_match('#blocked_reason IN \(([^)]*)\)#', $plafond169, $m169) === 1
     ? array_map(static fn (string $r): string => trim($r, " '"), explode(',', $m169[1]))
     : [];
-$attendues169 = [...Moderate::RAISONS_DU_CROISEMENT, 'comptes_recents'];
+$attendues169 = Moderate::RAISONS_DU_CROISEMENT;
 sort($raisons169);
 sort($attendues169);
 $raisons169 !== [] && $raisons169 === $attendues169
-    ? ok('⭐ les raisons qu\'une page publique écarte sont celles que VOTE_EXPRIME compte comme émises, plus la seule part des comptes récents, publique')
-    : nok('⭐ RAISONS_DU_CROISEMENT et VOTE_EXPRIME divergent : ' . json_encode([$attendues169, $raisons169, $exprime169]));
+    ? ok('⭐ les raisons qu\'une page publique écarte sont celles que VOTE_AU_PLAFOND compte aux plafonds et dans la salve, et la part des comptes récents n\'en est pas')
+    : nok('⭐ RAISONS_DU_CROISEMENT et VOTE_AU_PLAFOND divergent : ' . json_encode([$attendues169, $raisons169, $plafond169]));
 
 // ── 170. ⭐ Les comptes récents pèsent ensemble comme un seul membre ─────────────
 // Sept comptes neufs, trois votes chacun, ne retirent pas plus de points qu'un votant
@@ -5855,9 +5858,9 @@ $mesureA170 = [
     'signal' => in_array('comptes_recents', $causesA170, true), 'salve' => in_array('salve_rapide', $causesA170, true),
     'reponse' => [$neutre170['blocked'] ?? null, $neutre170['blocked_reason'] ?? null, $neutre170['message'] ?? null],
 ];
-$mesureA170 === ['rep' => 17, 'banni' => false, 'sorts' => ['comptes_recents' => 18, 'porte' => 3], 'signal' => true, 'salve' => true,
+$mesureA170 === ['rep' => 17, 'banni' => false, 'sorts' => ['comptes_recents' => 18, 'porte' => 3], 'signal' => true, 'salve' => false,
                  'reponse' => [true, 'comptes_recents', 'Vote enregistré.']]
-    ? ok('⭐ sept comptes récents, trois votes chacun, ne retirent que trois points : dix-huit votes neutralisés, la cible signalée, la salve vue, et le votant lit le message d\'un vote compté — la part pleine dirait les votes des autres')
+    ? ok('⭐ sept comptes récents, trois votes chacun, ne retirent que trois points : dix-huit votes neutralisés, la cible signalée, aucune salve faite de votes neutralisés, et le votant lit le message d\'un vote compté — la part pleine dirait les votes des autres')
     : nok('⭐ des comptes récents pèsent plus qu\'un membre : ' . json_encode($mesureA170, JSON_UNESCAPED_UNICODE));
 
 // Deux heures plus tard, les premiers comptes sont établis, mais leurs votes ont été
@@ -6032,7 +6035,7 @@ $q171 = [
     (new Config(farmingDownvotesMax: 4))->voixPourSanction(4),
 ];
 $budget171 = [];
-foreach (['quorumTravailMax', 'quorumPairesMax'] as $cle171) {
+foreach (['quorumTravailMax', 'quorumMessagesMax'] as $cle171) {
     try {
         new Config(...[$cle171 => 0]);
         $budget171[$cle171] = 'accepté';
@@ -6040,7 +6043,7 @@ foreach (['quorumTravailMax', 'quorumPairesMax'] as $cle171) {
         $budget171[$cle171] = 'refusé';
     }
 }
-$q171 === [true, true, 7, 6, 5, 4] && $budget171 === ['quorumTravailMax' => 'refusé', 'quorumPairesMax' => 'refusé']
+$q171 === [true, true, 7, 6, 5, 4] && $budget171 === ['quorumTravailMax' => 'refusé', 'quorumMessagesMax' => 'refusé']
     ? ok('⭐ le quorum est allumé en démonstration et en service : 7 voix pour le ban, 6 pour le vote, 5 et 4 à quatre votes par votant')
     : nok('⭐ le quorum est éteint quelque part, ou ne suit pas la config : ' . json_encode([$q171, $budget171]));
 
@@ -6516,10 +6519,11 @@ $sorts188 === array_fill(0, 10, 'porte') && portent($pdo, $cible188) === 5 && $b
 // ── 189. ⭐ Une clique qui cesse de s'écrire reste une clique tant que ses votes comptent ─
 // Sept amis, liés par des échanges d'il y a une heure, mènent la cible au plancher :
 // une voix. Trente et un jours plus tard, ces échanges sortent de la fenêtre des
-// liens, et deux autres amis votent. Les liens se lisent depuis la fenêtre qui
-// précède le plus ancien vote compté : la clique fait toujours une voix, la paire
-// une autre, rien n'est sanctionné. La convalescence est réglée plus lente que le
-// mois, pour que la cible reste au plancher.
+// liens, et deux autres amis, liés à la même heure, votent. Les liens d'une paire se
+// lisent depuis la fenêtre qui précède le plus ancien vote compté de ses deux
+// membres : la clique fait toujours une voix ; la paire, qui s'est écrit trente et un
+// jours avant ses propres votes, en fait deux. Rien n'est sanctionné. La
+// convalescence est réglée plus lente que le mois, pour que la cible reste au plancher.
 $t189 = time();
 Moderate::setHorloge(static function () use (&$t189): int { return $t189; });
 $cible189 = membre($pdo, 'cible-189');
@@ -6536,8 +6540,8 @@ lierTous($pdo, $paire189);
     return [bilan($pdo, $cible189), Moderate::compositionChute($pdo, $cible189, Moderate::maintenant())];
 }, intervalleConvalescenceSecondes: 40 * 86400);
 Moderate::setHorloge(null);
-$b189['rep'] === 0 && !$b189['banni'] && $b189['vote'] && $c189['voix_sans_lien'] === 2 && $c189['votants'] === 9
-    ? ok('⭐ une clique qui cesse de s\'écrire reste une clique tant que ses votes comptent : un mois de silence ne fait pas sept voix')
+$b189['rep'] === 0 && !$b189['banni'] && $b189['vote'] && $c189['voix_sans_lien'] === 3 && $c189['votants'] === 9
+    ? ok('⭐ une clique qui cesse de s\'écrire reste une clique tant que ses votes comptent : un mois de silence ne fait pas sept voix, et chaque paire lit ses liens depuis ses propres votes')
     : nok('⭐ une clique muette depuis un mois fait des voix : ' . json_encode([$b189, $c189]));
 
 // ── 190. ⭐ Un vote de soutien ne sanctionne personne ─────────────────────────────
@@ -6670,11 +6674,11 @@ $classee194 === [true, false] && $plancher194 === [true, 0, false]
     ? ok('⭐ une chute classée au seuil du vote revient dans la file de l\'arbitre quand elle atteint le plancher')
     : nok('⭐ une chute classée au seuil du vote se tait jusqu\'au plancher : ' . json_encode([$classee194, $plancher194]));
 
-// ── 195. ⭐ Au-delà de quorumPairesMax, seuls les votants liés à personne font des voix ─
-// Sous une borne de trois paires, une clique de quatre (six paires) la dépasse. Sept
-// critiques liés à personne bannissent quand même. Cinq critiques liés à personne et
-// une paire de critiques liés entre eux — sept voix sur le graphe entier — n'en font
-// plus que cinq : la chute se dit indécise, et rien n'est sanctionné.
+// ── 195. ⭐ Au-delà de quorumMessagesMax, seuls les votants liés à personne font des voix ─
+// Sous une borne de six messages, une clique de quatre (six paires, douze messages)
+// la dépasse. Sept critiques liés à personne bannissent quand même. Cinq critiques
+// liés à personne et une paire de critiques liés entre eux — sept voix sur le graphe
+// entier — n'en font plus que cinq : la chute se dit indécise, et rien n'est sanctionné.
 [$cibleA195, $cibleB195] = [membre($pdo, 'cible-195-a'), membre($pdo, 'cible-195-b')];
 poserReputation($pdo, $cibleA195, 20);
 poserReputation($pdo, $cibleB195, 20);
@@ -6692,12 +6696,12 @@ echangePrive($pdo, $critiquesB195[5], $critiquesB195[6]);
 
     return [[bilan($pdo, $cibleA195), Moderate::compositionChute($pdo, $cibleA195, time())],
             [bilan($pdo, $cibleB195), Moderate::compositionChute($pdo, $cibleB195, time())]];
-}, quorumPairesMax: 3);
-$a195[0]['banni'] && $a195[1]['voix_sans_lien'] >= 7 && $a195[1]['paires_liees'] === 4
+}, quorumMessagesMax: 6);
+$a195[0]['banni'] && $a195[1]['voix_sans_lien'] >= 7 && $a195[1]['paires_liees'] === null
     && $b195[0]['rep'] === 0 && !$b195[0]['banni'] && $b195[0]['vote'] && in_array('chute_sans_quorum', $b195[0]['causes'], true)
-    && $b195[1]['voix_sans_lien'] === 5 && $b195[1]['indecis'] && $b195[1]['paires_liees'] === 4
-    ? ok('⭐ au-delà de quorumPairesMax, seuls les votants liés à personne font des voix : sept bannissent, cinq laissent la chute indécise')
-    : nok('⭐ la borne de paires compte mal : ' . json_encode([$a195, $b195]));
+    && $b195[1]['voix_sans_lien'] === 5 && $b195[1]['indecis'] && $b195[1]['paires_liees'] === null
+    ? ok('⭐ au-delà de quorumMessagesMax, seuls les votants liés à personne font des voix : sept bannissent, cinq laissent la chute indécise')
+    : nok('⭐ la borne de lecture compte mal : ' . json_encode([$a195, $b195]));
 
 // ── 196. ⭐ Une `dm` datée en clair se nomme ; une vue à colonnes calculées lie ───
 // Sur une connexion où `dm` est une vue temporaire : datée en clair, elle ne
@@ -6882,6 +6886,364 @@ $renforts200 = membres($pdo, 'renfort-200', 6);
     && str_contains($ferme200, 'chute_sans_quorum')
     ? ok('⭐ la perte du vote ferme la chute sans quorum, et l\'acte du ban qui la remplace la nomme parmi ce qu\'il ferme')
     : nok('⭐ la chute sans quorum survit à la sanction, ou l\'acte du ban la tait : ' . json_encode([$a200, $ferme200], JSON_UNESCAPED_UNICODE));
+
+// ── 201. ⭐ Seuls les deux membres d'une paire règlent la profondeur de ses liens ─
+// Sept critiques se sont tous écrit il y a quatre-vingts jours, plus rien depuis, et
+// votent aujourd'hui ; un compte de la cible a voté contre elle cinquante-cinq jours
+// plus tôt. Lus depuis le vote de ce compte, leurs échanges en feraient une clique, une
+// voix ; lus depuis leurs propres votes, ils font sept voix, et la cible est bannie. Le
+// partage tient au-delà de la borne de lecture, où le repli cherche compte par compte.
+// Témoin : sept critiques qui se sont écrit vingt-cinq jours avant leurs votes restent
+// une clique.
+$t201 = time();
+Moderate::setHorloge(static function () use (&$t201): int { return $t201; });
+$ancien201 = static function (string $nom) use ($pdo, $t201): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', $t201 - 100 * 86400]);
+    return (int) $pdo->lastInsertId();
+};
+$echange201 = static function (array $comptes, int $quand, int $fois = 1) use ($pdo): void {
+    $dm = $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)');
+    foreach ($comptes as $i => $a) {
+        foreach (array_slice($comptes, $i + 1) as $b) {
+            for ($k = 0; $k < $fois; $k++) {
+                $dm->execute([$a, $b, 'chiffre', $quand]);
+                $dm->execute([$b, $a, 'chiffre', $quand]);
+            }
+        }
+    }
+};
+$scenes201 = [];
+foreach (['vieux' => 80, 'recent' => 25, 'repli' => 80] as $nom201 => $jours201) {
+    $cible = membre($pdo, "cible-201-$nom201");
+    poserReputation($pdo, $cible, 20);
+    $comptes = [$ancien201("compte-201-$nom201")];
+    $critiques = array_map(static fn (int $k): int => $ancien201("critique-201-$nom201-$k"), range(1, 7));
+    $echange201($critiques, $t201 - $jours201 * 86400);
+    if ($nom201 === 'repli') {
+        // Deux comptes de la cible s'écrivent plus que la borne de lecture.
+        $comptes[] = $ancien201('autre-201-repli');
+        $echange201($comptes, $t201 - 3600, 6);
+    }
+    $scenes201[$nom201] = sousQuorum(static function () use ($pdo, $cible, $comptes, $critiques, $nom201, &$t201): array {
+        $t201 -= 55 * 86400;
+        frapper($pdo, $cible, $comptes, 1, "201-$nom201-ancien");
+        $t201 += 55 * 86400;
+        frapper($pdo, $cible, $critiques, 3, "201-$nom201");
+
+        return [bilan($pdo, $cible), Moderate::compositionChute($pdo, $cible, Moderate::maintenant())];
+    }, ...($nom201 === 'repli' ? ['quorumMessagesMax' => 10] : []));
+}
+Moderate::setHorloge(null);
+$attendu201 = static fn (array $s, bool $banni, int $voix, ?int $paires): bool => $s[0]['banni'] === $banni
+    && $s[1]['voix_sans_lien'] === $voix && $s[1]['paires_liees'] === $paires;
+$attendu201($scenes201['vieux'], true, 7, 0) && $attendu201($scenes201['repli'], true, 7, null)
+    && $attendu201($scenes201['recent'], false, 2, 21) && $scenes201['recent'][0]['vote']
+    ? ok('⭐ seuls les deux membres d\'une paire règlent la profondeur de ses liens : le vote ancien d\'un compte de la cible n\'en fait pas une clique de sept critiques, au repli compris')
+    : nok('⭐ un tiers règle la profondeur des liens d\'une paire : ' . json_encode($scenes201, JSON_UNESCAPED_UNICODE));
+
+// ── 202. ⭐ La sortie de convalescence ne solde pas la chute ───────────────────────
+// Quatre critiques sans lien mènent la cible de 20 à 8. Dans un ordre, des soutiens la
+// remontent au départ avant toute chute sous 5 ; dans l'autre, quatre votes d'une
+// clique la font passer à 4, sans quorum, et les soutiens la remontent ensuite jusqu'à
+// la sortie de convalescence. Deux critiques neufs, puis la clique, la mènent au
+// plancher : les quatre premiers critiques sont des voix dans les deux ordres, et la
+// cible est bannie. Une remontée que des soutiens hâtent n'efface pas les voix des critiques.
+$scenes202 = [];
+foreach (['avant', 'apres'] as $ordre202) {
+    $cible = membre($pdo, "cible-202-$ordre202");
+    poserReputation($pdo, $cible, 20);
+    $critiques = membres($pdo, "critique-202-$ordre202", 4);
+    $neufs = membres($pdo, "neuf-202-$ordre202", 2);
+    $clique = membres($pdo, "clique-202-$ordre202", 7);
+    lierTous($pdo, $clique);
+    $soutiens = membres($pdo, "soutien-202-$ordre202", 6);
+    $scenes202[$ordre202] = sousQuorum(static function () use ($pdo, $cible, $critiques, $neufs, $clique, $soutiens, $ordre202): array {
+        frapper($pdo, $cible, $critiques, 3, "202-$ordre202-c");
+        $a4 = null;
+        if ($ordre202 === 'apres') {
+            frapper($pdo, $cible, array_slice($clique, 0, 4), 1, "202-$ordre202-k0");
+            $a4 = bilan($pdo, $cible);
+            frapper($pdo, $cible, $soutiens, 3, "202-$ordre202-s", 1);
+        } else {
+            frapper($pdo, $cible, $soutiens, 2, "202-$ordre202-s", 1);
+        }
+        frapper($pdo, $cible, $neufs, 3, "202-$ordre202-n");
+        $soldee = (int) $pdo->query("SELECT chute_soldee_le FROM member_moderation WHERE account_id = $cible")->fetchColumn();
+        frapper($pdo, $cible, $clique, 3, "202-$ordre202-k");
+
+        return [$a4, $soldee, bilan($pdo, $cible)];
+    });
+}
+$scenes202['avant'][2]['banni'] && $scenes202['apres'][2]['banni'] && $scenes202['apres'][1] === 0
+    && $scenes202['apres'][0]['rep'] === 4 && in_array('chute_sans_quorum', $scenes202['apres'][0]['causes'], true)
+    ? ok('⭐ la sortie de convalescence ne solde pas la chute : des soutiens qui remontent la cible au départ n\'effacent pas les voix de ses critiques')
+    : nok('⭐ la sortie de convalescence blanchit la chute : ' . json_encode($scenes202, JSON_UNESCAPED_UNICODE));
+
+// ── 203. ⭐ Un vote que la part neutralise ne relance pas la salve ─────────────────
+// Trois comptes récents votent ensemble contre un membre : la part se remplit, la
+// salve est signalée, et l'arbitre l'affiche. Les mêmes votent contre trois autres de
+// ses messages : leurs votes sont neutralisés, la salve n'est pas redétectée, et le
+// classement de ce que l'arbitre a vu passe.
+$recent203 = static function (string $nom) use ($pdo): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', time() - 600]);
+    return (int) $pdo->lastInsertId();
+};
+$cible203 = membre($pdo, 'cible-203');
+poserReputation($pdo, $cible203, 20);
+$recents203 = array_map(static fn (int $k): int => $recent203("recent-203-$k"), range(1, 3));
+$salve203 = static fn (): array|false => $pdo->query(
+    "SELECT id, detections, occurrences FROM mod_signaux WHERE account_id = $cible203 AND cause = 'salve_rapide'"
+)->fetch();
+[$vue203, $apres203, $classe203, $sorts203] = sousQuorum(static function () use ($pdo, $cible203, $recents203, $salve203): array {
+    frapper($pdo, $cible203, $recents203, 1, '203-a');
+    $vue = $salve203();
+    frapper($pdo, $cible203, $recents203, 3, '203-b');
+    $apres = $salve203();
+    $classe = $vue === false ? ['ok' => false, 'message' => 'aucune salve'] : Moderate::adminClasser(
+        $pdo, $cible203, idDe($pdo, 'arbitre-banc'), motif(), ['signal' => (int) $vue['id'], 'detections' => (int) $vue['detections']]
+    );
+    $sorts = $pdo->query("SELECT COALESCE(blocked_reason, 'porte') AS r, COUNT(*) AS n FROM mod_votes WHERE target_author = $cible203 GROUP BY r ORDER BY r")
+        ->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    return [$vue, $apres, $classe, array_map('intval', $sorts)];
+});
+$vue203 !== false && $apres203 == $vue203 && $classe203['ok'] && $sorts203 === ['comptes_recents' => 9, 'porte' => 3]
+    ? ok('⭐ un vote que la part des comptes récents neutralise ne relance pas la salve : l\'arbitre classe ce qu\'il a vu')
+    : nok('⭐ la part relance la salve, ou l\'arbitre ne peut plus classer : ' . json_encode([$vue203, $apres203, $classe203, $sorts203], JSON_UNESCAPED_UNICODE));
+
+// ── 204. ⭐ Une base sans la colonne de la 0.9.0 se nomme avant d'écrire ─────────
+// Un ban automatique tombe, puis la base perd `chute_soldee_le` — celle d'un hôte qui
+// a monté sans elle. Sur une connexion neuve, la fin de la peine, le vote et la grâce
+// lèvent une erreur qui nomme la colonne, et le journal ne reçoit aucune fin de peine :
+// sans cette garde, chaque essai y en inscrirait une de plus.
+$f204 = dirname((string) getenv('LAB_DB_PATH')) . '/sans-colonne-204.db';
+$a204 = new PDO('sqlite:' . $f204);
+$a204->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$a204->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$a204->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+$cible204 = membre($a204, 'cible-204');
+$sept204 = membres($a204, 'critique-204', 7);
+$arbitre204 = membre($a204, 'arbitre-204');
+$t204 = time();
+Moderate::setHorloge(static function () use (&$t204): int { return $t204; });
+[$banni204, $gestes204, $fins204] = sousQuorum(static function (JournalDeBanc $journal) use ($a204, $f204, $cible204, $sept204, $arbitre204, &$t204): array {
+    frapper($a204, $cible204, $sept204, 3, '204');
+    $banni = Moderate::getReputation($a204, $cible204)['banned'];
+    $a204->exec('ALTER TABLE member_moderation DROP COLUMN chute_soldee_le');
+    $b204 = new PDO('sqlite:' . $f204);
+    $b204->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $b204->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $t204 += Moderate::config()->dureesBan[0] + Moderate::config()->arrondiFinBanSecondes + 1;
+    $gestes = [];
+    foreach ([
+        'balayage' => static fn (): mixed => Moderate::balayerBansEchus($b204),
+        'vote'     => static fn (): mixed => Moderate::applyVote($b204, $sept204[0], 'member', $cible204, -1, motif(), 'agressif'),
+        'grace'    => static fn (): mixed => Moderate::adminPardon($b204, $cible204, $arbitre204, motif()),
+    ] as $geste => $faire) {
+        try {
+            $faire();
+            $gestes[$geste] = 'passé';
+        } catch (LogicException $e) {
+            $gestes[$geste] = str_contains($e->getMessage(), 'chute_soldee_le') ? 'nommée' : $e->getMessage();
+        } catch (Throwable $e) {
+            $gestes[$geste] = get_class($e) . ' : ' . $e->getMessage();
+        }
+    }
+
+    return [$banni, $gestes, count($journal->de($cible204, 'ban_fin'))];
+});
+Moderate::setHorloge(null);
+$a204 = null;
+$banni204 && $gestes204 === ['balayage' => 'nommée', 'vote' => 'nommée', 'grace' => 'nommée'] && $fins204 === 0
+    ? ok('⭐ une base sans chute_soldee_le se nomme à la première écriture d\'une connexion, et le journal ne reçoit aucune fin de peine')
+    : nok('⭐ une base sans chute_soldee_le écrit au journal avant d\'échouer : ' . json_encode([$banni204, $gestes204, $fins204], JSON_UNESCAPED_UNICODE));
+
+// ── 205. ⭐ Une recherche du quorum ne laisse rien en mémoire ──────────────────────
+// Soixante votants tous liés : trente lectures de la composition de leur chute, le
+// ramasse-cycles coupé, ne retiennent pas de mémoire. Un processus qui enchaîne les
+// recherches — la console, un hôte persistant — n'en paie pas la somme.
+$cible205 = membre($pdo, 'cible-205');
+poserReputation($pdo, $cible205, 3);
+votesDeFond($pdo, $cible205, message($pdo, $cible205, 'fil-205'), 60, '205');
+lierTous($pdo, array_map(static fn (int $j): int => idDe($pdo, "fond-205-$j"), range(0, 59)));
+$memoire205 = sousQuorum(static function () use ($pdo, $cible205): int {
+    Moderate::compositionChute($pdo, $cible205, time());
+    gc_collect_cycles();
+    gc_disable();
+    try {
+        $avant = memory_get_usage();
+        for ($i = 0; $i < 30; $i++) {
+            Moderate::compositionChute($pdo, $cible205, time());
+        }
+
+        return memory_get_usage() - $avant;
+    } finally {
+        gc_enable();
+    }
+});
+$memoire205 < 256 * 1024
+    ? ok('⭐ trente recherches du quorum, sans ramasse-cycles, ne retiennent pas de mémoire')
+    : nok('⭐ chaque recherche du quorum reste en mémoire : ' . $memoire205 . ' octets retenus en trente appels');
+
+// ── 206. ⭐ Aux bornes, la part borne encore les votes des comptes récents ──────────
+// Un membre à 30 : six comptes récents votent pour ses trois messages — trois votes
+// portent, sans rien déplacer, et les quinze suivants sont neutralisés ; les scores de
+// ses messages ne montent que de trois points en tout. Au plancher, de même pour
+// dix-huit votes négatifs. Un membre à 30 qui reçoit trois votes positifs puis neuf
+// négatifs de comptes récents ne descend que de trois points : un vote sans effet ne
+// compte pas dans l'autre sens.
+$scenes206 = [];
+foreach (['haut' => [30, [1]], 'bas' => [0, [-1]], 'retour' => [30, [1, -1]]] as $nom206 => [$depart206, $sens206]) {
+    $cible = membre($pdo, "cible-206-$nom206");
+    poserReputation($pdo, $cible, $depart206);
+    $posts = [message($pdo, $cible, "fil-206-$nom206-1"), message($pdo, $cible, "fil-206-$nom206-2"), message($pdo, $cible, "fil-206-$nom206-3")];
+    $scenes206[$nom206] = sousQuorum(static function () use ($pdo, $cible, $posts, $nom206, $sens206, $recent203): array {
+        foreach ($sens206 as $s => $valeur) {
+            $combien = $nom206 === 'retour' ? 3 : 6;
+            foreach (range(1, $combien) as $k) {
+                $votant = $recent203("recent-206-$nom206-$s-$k");
+                foreach ($nom206 === 'retour' && $valeur === 1 ? [$posts[0]] : $posts as $post) {
+                    Moderate::applyVote($pdo, $votant, 'post', $post, $valeur, motif(), 'agressif');
+                }
+            }
+        }
+        $sorts = $pdo->query("SELECT COALESCE(blocked_reason, 'porte') || ' ' || value AS r, COUNT(*) AS n FROM mod_votes WHERE target_author = $cible GROUP BY r ORDER BY r")
+            ->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        return ['rep' => reputation($pdo, $cible), 'banni' => Moderate::getReputation($pdo, $cible)['banned'],
+                'scores' => array_sum(array_map(static fn (int $p): int => Moderate::score($pdo, 'post', $p), $posts)),
+                'sorts' => array_map('intval', $sorts)];
+    });
+}
+$scenes206['haut'] === ['rep' => 30, 'banni' => false, 'scores' => 3, 'sorts' => ['comptes_recents 1' => 15, 'porte 1' => 3]]
+    && $scenes206['bas'] === ['rep' => 0, 'banni' => false, 'scores' => -3, 'sorts' => ['comptes_recents -1' => 15, 'porte -1' => 3]]
+    && $scenes206['retour']['rep'] === 27 && $scenes206['retour']['sorts'] === ['comptes_recents -1' => 6, 'porte -1' => 3, 'porte 1' => 3]
+    ? ok('⭐ aux bornes, la part des comptes récents borne encore leurs votes, et un vote sans effet ne compte pas dans l\'autre sens')
+    : nok('⭐ aux bornes, les comptes récents votent sans borne, ou un vote sans effet ouvre l\'autre sens : ' . json_encode($scenes206, JSON_UNESCAPED_UNICODE));
+
+// ── 207. ⭐ Une date de `dm` qui n'est pas en secondes se nomme ; l'index sert ────
+// Sur une connexion où `dm` est une vue temporaire : datée en millisecondes, en jour
+// julien, ou une colonne dont la première ligne est entière et les autres en clair, la
+// chute qui passe un seuil lève une erreur qui nomme la date fautive — elle ne lierait
+// personne, et chaque votant ferait une voix. Sur la table du lab, la lecture des liens
+// passe par l'index de la boîte reçue, bornée par la date.
+final class PdoEspion extends PDO
+{
+    /** @var list<string> */
+    public array $lus = [];
+
+    public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
+    {
+        if (str_contains($query, 'FROM dm')) {
+            $this->lus[] = $query;
+        }
+
+        return parent::query($query, $fetchMode, ...$fetchModeArgs);
+    }
+}
+$c207 = new PdoEspion('sqlite:' . getenv('LAB_DB_PATH'));
+$c207->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$c207->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$paire207 = membres($pdo, 'paire-207', 2);
+$formes207 = [
+    'millisecondes' => 'quand * 1000',
+    'julien'        => 'julianday(quand, \'unixepoch\')',
+    'melange'       => "CASE WHEN rowid = (SELECT MIN(rowid) FROM dm_207) THEN quand ELSE datetime(quand, 'unixepoch') END",
+];
+$leve207 = sousQuorum(static function () use ($c207, $pdo, $paire207, $formes207): array {
+    $c207->exec('CREATE TEMP TABLE dm_207 (de INTEGER, a INTEGER, quand INTEGER)');
+    $ecrire = $c207->prepare('INSERT INTO dm_207 VALUES (?, ?, ?)');
+    $ecrire->execute([$paire207[0], $paire207[1], time() - 3600]);
+    $ecrire->execute([$paire207[1], $paire207[0], time() - 3600]);
+    $leve = [];
+    foreach ($formes207 as $forme => $date) {
+        $cible = membre($pdo, "cible-207-$forme");
+        poserReputation($pdo, $cible, 6);
+        $c207->exec("CREATE TEMP VIEW dm AS SELECT de AS sender_id, a AS recipient_id, $date AS created_at FROM dm_207");
+        try {
+            frapper($c207, $cible, $paire207, 1, "207-$forme");
+            $leve[$forme] = 'muette';
+        } catch (LogicException $e) {
+            $leve[$forme] = str_contains($e->getMessage(), 'dm.created_at') ? 'nommée' : $e->getMessage();
+        }
+        $c207->exec('DROP VIEW temp.dm');
+    }
+
+    return $leve;
+});
+$plan207 = sousQuorum(static function () use ($c207, $pdo): string {
+    $cible = membre($pdo, 'cible-207-index');
+    poserReputation($pdo, $cible, 6);
+    $c207->lus = [];
+    frapper($c207, $cible, membres($pdo, 'paire-207-index', 2), 1, '207-index');
+    $lecture = array_values(array_filter($c207->lus, static fn (string $q): bool => str_contains($q, 'BETWEEN')));
+    if ($lecture === []) {
+        return 'aucune lecture des liens';
+    }
+
+    return implode(' | ', array_column($c207->query('EXPLAIN QUERY PLAN ' . $lecture[0])->fetchAll(), 'detail'));
+});
+$c207 = null;
+$leve207 === ['millisecondes' => 'nommée', 'julien' => 'nommée', 'melange' => 'nommée']
+    && str_contains($plan207, 'USING INDEX idx_dm_recipient (recipient_id=? AND created_at>? AND created_at<?)')
+    ? ok('⭐ une dm en millisecondes, en jour julien ou mêlée de dates en clair se nomme, et la lecture des liens passe par l\'index borné par la date')
+    : nok('⭐ une dm mal datée se tait, ou la lecture des liens quitte l\'index : ' . json_encode([$leve207, $plan207], JSON_UNESCAPED_UNICODE));
+
+// ── 208. ⭐ La recherche s'arrête au quorum ─────────────────────────────────────────
+// Dix-sept critiques sans lien mènent la cible au plancher : la composition dit sept
+// voix, le quorum du ban, et non dix-sept — la recherche n'a pas lu plus loin.
+$cible208 = membre($pdo, 'cible-208');
+poserReputation($pdo, $cible208, 17);
+$critiques208 = membres($pdo, 'critique-208', 17);
+$c208 = sousQuorum(static function () use ($pdo, $cible208, $critiques208): array {
+    frapper($pdo, $cible208, $critiques208, 1, '208');
+
+    return [bilan($pdo, $cible208)['banni'], Moderate::compositionChute($pdo, $cible208, time())];
+});
+$c208[0] && $c208[1]['votants'] === 17 && $c208[1]['voix_sans_lien'] === Moderate::config()->voixPourSanction(Moderate::config()->banA)
+    ? ok('⭐ la recherche du quorum s\'arrête au quorum : dix-sept votants sans lien se lisent sept voix')
+    : nok('⭐ la recherche du quorum lit au-delà du quorum : ' . json_encode($c208, JSON_UNESCAPED_UNICODE));
+
+// ── 209. ⭐ Classée au plancher, la chute ne revient pas pour un vote qui n'y change rien ─
+// Une clique de sept mène la cible au plancher : une voix, la chute est signalée, et
+// l'arbitre la classe. Un huitième ami, lié à la clique, vote au plancher : rien ne
+// s'aggrave — ni le plancher, déjà atteint, ni le vote, encore là —, et la chute reste
+// classée.
+// ── 210. ⭐ Classée au plancher, la chute revient quand elle retire le droit de vote ─
+// La même scène, puis cinq critiques sans lien votent : six voix, le vote tombe, et la
+// chute revient dans la file de l'arbitre, qui avait classé une chute sans sanction.
+$classees209 = [];
+foreach (['ami' => 1, 'critiques' => 5] as $suite209 => $combien209) {
+    $cible = membre($pdo, "cible-209-$suite209");
+    poserReputation($pdo, $cible, 20);
+    $clique = membres($pdo, "clique-209-$suite209", 7);
+    $suivants = membres($pdo, "suivant-209-$suite209", $combien209);
+    lierTous($pdo, $suite209 === 'ami' ? [...$clique, ...$suivants] : $clique);
+    $file = static fn (): bool => in_array($cible, array_column(
+        array_filter(Moderate::signauxOuverts($pdo), static fn (array $s): bool => $s['cause'] === 'chute_sans_quorum'),
+        'account_id'
+    ), true);
+    $classees209[$suite209] = sousQuorum(static function () use ($pdo, $cible, $clique, $suivants, $suite209, $file): array {
+        frapper($pdo, $cible, $clique, 3, "209-$suite209-k");
+        $s = $pdo->query("SELECT id, detections FROM mod_signaux WHERE account_id = $cible AND cause = 'chute_sans_quorum'")->fetch();
+        $classe = $s === false ? ['ok' => false] : Moderate::adminClasser($pdo, $cible, idDe($pdo, 'arbitre-banc'), motif(),
+            ['signal' => (int) $s['id'], 'detections' => (int) $s['detections']]);
+        frapper($pdo, $cible, $suivants, 1, "209-$suite209-s");
+
+        return [$classe['ok'], $file(), bilan($pdo, $cible)];
+    });
+}
+[$okA209, $fileA209, $bilanA209] = $classees209['ami'];
+$okA209 && !$fileA209 && $bilanA209['rep'] === 0 && $bilanA209['vote'] && !$bilanA209['banni']
+    ? ok('⭐ une chute classée au plancher reste classée quand un vote n\'y change rien')
+    : nok('⭐ une chute classée au plancher revient sans s\'être aggravée : ' . json_encode($classees209['ami'], JSON_UNESCAPED_UNICODE));
+[$okB209, $fileB209, $bilanB209] = $classees209['critiques'];
+$okB209 && $fileB209 && $bilanB209['rep'] === 0 && !$bilanB209['vote'] && !$bilanB209['banni']
+    && in_array('chute_sans_quorum', $bilanB209['causes'], true)
+    ? ok('⭐ une chute classée au plancher revient à l\'arbitre quand elle retire le droit de vote')
+    : nok('⭐ une chute classée au plancher retire le vote sans revenir à l\'arbitre : ' . json_encode($classees209['critiques'], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
