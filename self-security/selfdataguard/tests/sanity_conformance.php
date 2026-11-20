@@ -195,10 +195,33 @@ $broken = [
     WrapAdminOnlyStorage::class        => ['escrow-unreadable-row-named'],
     ParseInReplaceStorage::class       => ['escrow-unreadable-row-named'],
     ParseInRotateStorage::class        => ['escrow-unreadable-row-named'],
+    ArchiveEscrowParsingStorage::class => ['archive-escrow-unreadable'],
+    ArchiveEscrowDroppingStorage::class => ['archive-escrow-unreadable'],
+    UnreadableEscrowDroppingRestoreStorage::class => ['archive-escrow-unreadable'],
+    ReservationIgnoringStorage::class  => ['archive-reserves-its-indexes'],
+    BlindIndexesUnreadStorage::class   => ['archive-reserves-its-indexes'],
+    KeepNothingEraseStorage::class     => ['erase-account-keeps-recovery-archives', 'erase-account-keeps-tickets', 'tickets-applied-once'],
+    NamedArchiveOnlyKeepingStorage::class => ['erase-account-keeps-recovery-archives'],
+    FrozenErasingStorage::class        => ['freeze-refuses-writes'],
+    FrozenArchiveErasingStorage::class => ['freeze-refuses-writes'],
+    Level3TicketErasingStorage::class  => ['erase-account-keeps-tickets', 'tickets-applied-once'],
+    OtherTicketsErasingStorage::class  => ['erase-account-keeps-tickets'],
+    TicketsNotUntiedStorage::class     => ['erase-account-keeps-tickets'],
+    'TicketTakingEraseArchiveStorage'  => ['erase-account-keeps-tickets'],
+    'LiveListingKeptStorage'           => ['erase-account-keeps-tickets'],
+    'FrozenArchiveDeletingStorage'     => ['freeze-refuses-writes'],
 ];
 foreach ($broken as $class => $expected) {
+    if (!class_exists($class)) {
+        ko("{$class} is not declared: the interface it implements does not exist in this version");
+        continue;
+    }
     [$connect, $file, $withCaller, , $unparse] = connection($work, $class);
-    $results = outcomes(Conformance::run($connect, $file, $withCaller, $unparse));
+    // The racing processes run only for a storage that breaks a racing case:
+    // without the connection file, the suite skips them, and the clause a
+    // sequential case names is judged the same.
+    $racing = array_filter($expected, static fn (string $case): bool => str_starts_with($case, 'concurrent-')) !== [];
+    $results = outcomes(Conformance::run($connect, $racing ? $file : null, $withCaller, $unparse));
     $failed = array_keys(array_filter($results, static fn (array $r): bool => $r['outcome'] === 'fail'));
     $missed = array_diff($expected, $failed);
     $missed === []

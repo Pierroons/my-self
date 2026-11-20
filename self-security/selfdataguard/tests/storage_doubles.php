@@ -15,6 +15,7 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
+use Pierroons\SelfDataGuard\Storage\ErasesArchives;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
@@ -798,6 +799,313 @@ final class ParseInRotateStorage extends DelegatingStorage
         } catch (StaleEscrowException $e) {
             $this->inner->loadEscrow($record->userId);
             throw $e;
+        }
+    }
+}
+
+/** loadArchive() of 0.9.0: an archive whose escrow does not parse is refused whole, as its escrow row would be. */
+final class ArchiveEscrowParsingStorage extends DelegatingStorage
+{
+    public function loadArchive(string $u, string $id): ?ArchivedVault
+    {
+        $archive = $this->inner->loadArchive($u, $id);
+        if ($archive?->escrowUnreadable) {
+            throw new UnreadableEscrowException("The escrow row of '{$u}' does not parse");
+        }
+        return $archive;
+    }
+}
+
+/** loadArchive() that reads an escrow that does not parse as no escrow at all. */
+final class ArchiveEscrowDroppingStorage extends DelegatingStorage
+{
+    public function loadArchive(string $u, string $id): ?ArchivedVault
+    {
+        $a = $this->inner->loadArchive($u, $id);
+        return $a === null ? null : new ArchivedVault(
+            $a->archiveId, $a->archivedAt, $a->record, $a->kdfOpslimit, $a->kdfMemlimit, $a->escrow, $a->privateFields,
+            $a->escrowFields, false, $a->blindIndexes, $a->sharedIndexes
+        );
+    }
+}
+
+/** Brings an archive back live, then deletes its escrow row when that row does not parse. */
+final class UnreadableEscrowDroppingRestoreStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    private function dropUnreadable(string $u): void
+    {
+        try {
+            $this->inner->loadEscrow($u);
+        } catch (UnreadableEscrowException) {
+            $this->pdo->prepare('DELETE FROM selfdataguard_escrow WHERE user_id = ?')->execute([$u]);
+        }
+    }
+
+    public function swapWithArchive(VaultGeneration $g, string $id, ?string $t = null): string
+    {
+        $setAside = $this->inner->swapWithArchive($g, $id, $t);
+        $this->dropUnreadable($g->userId);
+        return $setAside;
+    }
+
+    public function restoreArchive(string $u, string $id): void
+    {
+        $this->inner->restoreArchive($u, $id);
+        $this->dropUnreadable($u);
+    }
+}
+
+/** loadArchive() that hands out no blind index: the façade cannot name a field that came back without one. */
+final class BlindIndexesUnreadStorage extends DelegatingStorage
+{
+    public function loadArchive(string $u, string $id): ?ArchivedVault
+    {
+        $a = $this->inner->loadArchive($u, $id);
+        return $a === null ? null : new ArchivedVault(
+            $a->archiveId, $a->archivedAt, $a->record, $a->kdfOpslimit, $a->kdfMemlimit, $a->escrow, $a->privateFields,
+            $a->escrowFields, $a->escrowUnreadable
+        );
+    }
+}
+
+/** eraseAccount() of 0.9.0: every archive and every ticket of the account go, the holder's archive and its level-3 ticket included. */
+final class KeepNothingEraseStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        $erased = $this->inner->eraseAccount($u);
+        $st = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = ?');
+        $st->execute([$u]);
+        $this->pdo->prepare('DELETE FROM selfdataguard_tickets WHERE user_id = ?')->execute([$u]);
+        return $erased + $st->rowCount();
+    }
+}
+
+/** eraseAccount() that keeps the holder's archive, and erases the level-3 ticket: a replay after the erasure goes through. */
+final class Level3TicketErasingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        $erased = $this->inner->eraseAccount($u);
+        $this->pdo->prepare('DELETE FROM selfdataguard_tickets WHERE user_id = ?')->execute([$u]);
+        return $erased;
+    }
+}
+
+/** saveFields() of 0.9.0: an index an archive of another account keeps is given to whoever writes it. */
+final class ReservationIgnoringStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function saveFields(VaultGeneration $g, array $f): void
+    {
+        try {
+            $this->inner->saveFields($g, $f);
+        } catch (DuplicateIndexException $e) {
+            foreach ($f as $name => $data) {
+                if (in_array($name, $e->fields, true) && $this->inner->findUserIdsByIndex((string) $name, (string) $data['blindIndex']) !== []) {
+                    throw $e;
+                }
+            }
+            $upsert = $this->pdo->prepare(
+                'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at, shared_index) VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(user_id, field_name) DO UPDATE SET ciphertext = excluded.ciphertext, blind_index = excluded.blind_index,
+                 updated_at = excluded.updated_at, shared_index = excluded.shared_index'
+            );
+            foreach ($f as $name => $data) {
+                $upsert->execute([$g->userId, $name, $data['ciphertext'], $data['blindIndex'] ?? null, gmdate('c'), $data['sharedIndex'] ?? null]);
+            }
+        }
+    }
+}
+
+/** eraseAccount() that keeps only the archives a level-3 ticket names: the one a swap set aside goes, the holder's vault after a second exchange with it. */
+final class NamedArchiveOnlyKeepingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        $erased = $this->inner->eraseAccount($u);
+        $st = $this->pdo->prepare(
+            "DELETE FROM selfdataguard_archives WHERE user_id = ? AND archive_id NOT IN (
+                 SELECT archive_id FROM selfdataguard_tickets WHERE operation = 'replace-with-archive' AND archive_id IS NOT NULL)"
+        );
+        $st->execute([$u]);
+        return $erased + $st->rowCount();
+    }
+}
+
+/** eraseAccount() that does not look at the freeze: a frozen account is erased, the vault the arbiter has not looked at with it. */
+final class FrozenErasingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        $this->pdo->prepare('UPDATE selfdataguard_vaults SET frozen_by = NULL, frozen_at = NULL WHERE user_id = ?')->execute([$u]);
+        return $this->inner->eraseAccount($u);
+    }
+}
+
+/** eraseAccount() that refuses a frozen account, after erasing its archives: the refusal is not held in one transaction. */
+final class FrozenArchiveErasingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        if ($this->inner->frozenState($u) !== null) {
+            $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = ?')->execute([$u]);
+        }
+        return $this->inner->eraseAccount($u);
+    }
+}
+
+/** eraseAccount() that erases every ticket of the account but the level-3 ones: the freeze and the swap are replayed after it. */
+final class OtherTicketsErasingStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        $this->pdo->prepare("DELETE FROM selfdataguard_tickets WHERE user_id = ? AND operation <> 'replace-with-archive'")->execute([$u]);
+        return $this->inner->eraseAccount($u);
+    }
+}
+
+/** Leaves the tickets naming the userId and its archive once the account holds nothing: whoever registers the name next inherits them. */
+final class TicketsNotUntiedStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+    }
+
+    /** @return list<array{ticket: string, operation: string, archive_id: ?string}> */
+    private function ticketsOf(string $u): array
+    {
+        $st = $this->pdo->prepare('SELECT ticket, operation, archive_id FROM selfdataguard_tickets WHERE user_id = ?');
+        $st->execute([$u]);
+        return $st->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    private function tieAgain(string $u, array $tickets): void
+    {
+        $st = $this->pdo->prepare('UPDATE selfdataguard_tickets SET user_id = ?, archive_id = ? WHERE ticket = ? AND operation = ?');
+        foreach ($tickets as $t) {
+            $st->execute([$u, $t['archive_id'], $t['ticket'], $t['operation']]);
+        }
+    }
+
+    public function eraseAccount(string $u): int
+    {
+        $tickets = $this->ticketsOf($u);
+        $erased = $this->inner->eraseAccount($u);
+        $this->tieAgain($u, $tickets);
+        return $erased;
+    }
+}
+
+// The doubles below implement ErasesArchives: declared only where it exists,
+// so that this file loads on a version without it and its benches report what
+// that version lacks instead of dying.
+if (interface_exists(ErasesArchives::class)) {
+    /** eraseArchive() that takes the level-3 ticket with the archive: a replay after it goes through. */
+    final class TicketTakingEraseArchiveStorage extends DelegatingStorage implements ErasesArchives
+    {
+        public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+        {
+            parent::__construct($inner);
+        }
+
+        public function eraseArchive(string $u, string $id): bool
+        {
+            $this->pdo->prepare('DELETE FROM selfdataguard_tickets WHERE user_id = ? AND archive_id = ?')->execute([$u, $id]);
+            return $this->inner instanceof ErasesArchives && $this->inner->eraseArchive($u, $id);
+        }
+
+        public function keptArchives(?string $u = null): array
+        {
+            return $this->inner instanceof ErasesArchives ? $this->inner->keptArchives($u) : [];
+        }
+    }
+
+    /** eraseArchive() that does not look at the freeze: an archive of a frozen account is erased during the case. */
+    final class FrozenArchiveDeletingStorage extends DelegatingStorage implements ErasesArchives
+    {
+        public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+        {
+            parent::__construct($inner);
+        }
+
+        public function eraseArchive(string $u, string $id): bool
+        {
+            if ($this->inner->frozenState($u) === null) {
+                return $this->inner instanceof ErasesArchives && $this->inner->eraseArchive($u, $id);
+            }
+            $st = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = ? AND archive_id = ?');
+            $st->execute([$u, $id]);
+            return $st->rowCount() > 0;
+        }
+
+        public function keptArchives(?string $u = null): array
+        {
+            return $this->inner instanceof ErasesArchives ? $this->inner->keptArchives($u) : [];
+        }
+    }
+
+    /** keptArchives() that lists every archive, those of an account that holds a live vault included. */
+    final class LiveListingKeptStorage extends DelegatingStorage implements ErasesArchives
+    {
+        public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+        {
+            parent::__construct($inner);
+        }
+
+        public function eraseArchive(string $u, string $id): bool
+        {
+            return $this->inner instanceof ErasesArchives && $this->inner->eraseArchive($u, $id);
+        }
+
+        public function keptArchives(?string $u = null): array
+        {
+            $st = $this->pdo->prepare('SELECT user_id, archive_id, archived_at FROM selfdataguard_archives WHERE (? IS NULL OR user_id = ?) ORDER BY archived_at, rowid');
+            $st->execute([$u, $u]);
+            return array_map(
+                static fn (array $r): array => ['userId' => $r['user_id'], 'id' => $r['archive_id'], 'archivedAt' => new DateTimeImmutable($r['archived_at'])],
+                $st->fetchAll(PDO::FETCH_ASSOC)
+            );
         }
     }
 }

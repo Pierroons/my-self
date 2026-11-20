@@ -17,13 +17,18 @@ require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
 require __DIR__ . '/ceremony_fixture.php';
+require __DIR__ . '/keeper_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
+use Pierroons\SelfDataGuard\Escrow\EscrowEnvelopeMismatchException;
 use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Storage\TicketAlreadyAppliedException;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -863,16 +868,22 @@ try {
 }
 
 $ownerL3 = $dg->reEnroll($dg->generationOf('user-owner'), 'owner-password-0002');
-$dg->setFields($squat, ['email' => 'owner@example.org'], indexed: ['email']);
+try {
+    $dg->setFields($squat, ['email' => 'owner@example.org'], indexed: ['email']);
+    ko('another account took a value the owner\'s archive keeps');
+} catch (DuplicateIndexException $e) {
+    $e->fields === ['email']
+        ? ok('during the level 3, the archive keeps the owner\'s value: another account indexing it is refused, as for a value held live')
+        : ko('refused, naming another field', implode(',', $e->fields));
+}
 $restored = $dg->readArchive($dg->openArchive($ownerL3['unlocked'], $ownerL3['archiveId'], Lock::Password, 'owner-password-0001'));
 try {
     $dg->setFields($ownerL3['unlocked'], $restored['private'], indexed: ['email']);
-    ko('a restore re-indexed a value another account took meanwhile');
+    $dg->findUserByField('email', 'owner@example.org') === 'user-owner'
+        ? ok('a restore through readArchive() indexes the value again, under the owner\'s account')
+        : ko('the restore did not index the value under the owner\'s account');
 } catch (DuplicateIndexException $e) {
-    $dg->setFields($ownerL3['unlocked'], $restored['private'], indexed: array_diff(['email'], $e->fields));
-    ($dg->getFields($ownerL3['unlocked'])['email'] ?? null) === 'owner@example.org'
-        ? ok('a restore whose value was taken during the level 3 names the field, then goes through without that index')
-        : ko('the restore without the taken index lost the field');
+    ko('the restore through readArchive() was refused the value its own archive keeps', implode(',', $e->fields));
 }
 
 // -----------------------------------------------------------------------------
@@ -1166,12 +1177,16 @@ $holderSession = $dg->register('user-back', 'back-password-0001', 'back-memorize
 $dg->setFields($holderSession, ['email' => 'back@example.org', 'note' => 'du titulaire'], indexed: ['email']);
 $taken = $dg->reEnroll($holderSession->generation(), 'back-password-0002');
 $dg->setFields($taken['unlocked'], ['note' => 'du demandeur']);
-$setAside = $dg->reinstateArchive($taken['unlocked']->generation(), $taken['archiveId']);
+$noneLost = ['untouched'];
+$setAside = $dg->reinstateArchive($taken['unlocked']->generation(), $taken['archiveId'], null, $noneLost);
 $back = $dg->loginWithPassword('user-back', 'back-password-0001');
 $dg->getFields($back) === ['email' => 'back@example.org', 'note' => 'du titulaire']
     && $dg->findUserByField('email', 'back@example.org') === 'user-back'
     ? ok('the holder\'s old password opens their vault again, fields and index back')
     : ko('the reinstated vault does not read as the holder left it');
+$noneLost === []
+    ? ok('$restoredWithoutIndex is empty: every index came back')
+    : ko('$restoredWithoutIndex is not an empty list when every index came back', var_export($noneLost, true));
 try {
     $dg->setFields($taken['unlocked'], ['note' => 'encore du demandeur']);
     ko('a session on the requester\'s vault still writes after the swap');
@@ -1258,6 +1273,318 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('An archive whose escrow does not parse opens, reads and comes back; the holder sees a row rewritten, the ceremony refuses it');
+
+/** Archive $archiveId, in the database $pdo, with its escrow rewritten at $path so that it no longer parses. */
+function unparseArchiveEscrow(PDO $pdo, string $archiveId, string $path = '$.escrow.wrap_admin', string $value = "'%%%'"): void
+{
+    $pdo->prepare("UPDATE selfdataguard_archives SET package = json_set(package, '{$path}', {$value}) WHERE archive_id = :id")
+        ->execute([':id' => $archiveId]);
+}
+
+$rawDb = new PDO("sqlite:{$dbPath}");
+$escBad = $dg->register('user-escbad', 'escbad-password-01', 'escbad-memorized', $PH1);
+$dg->setFields($escBad, ['note' => 'note du titulaire']);
+$dg->setEscrowFields($escBad, $admin['publicKey'], ['contact' => 'contact du titulaire']);
+$escBadL3 = $dg->reEnroll($escBad->generation(), 'escbad-password-02');
+unparseArchiveEscrow($rawDb, $escBadL3['archiveId']);
+$escBadOpened = null;
+try {
+    $escBadOpened = $dg->openArchive($escBadL3['unlocked'], $escBadL3['archiveId'], Lock::Password, 'escbad-password-01');
+    ok('openArchive() opens it: an escrow that does not parse does not close the archive');
+} catch (Throwable $e) {
+    ko('openArchive() refused the archive for its escrow', get_class($e) . ': ' . $e->getMessage());
+}
+if ($escBadOpened === null) {
+    ko('readArchive() and archiveEscrowReads() on that archive: not reached — it did not open');
+} else {
+    try {
+        $read = $dg->readArchive($escBadOpened);
+        $read['private'] === ['note' => 'note du titulaire'] && $read['escrow'] === [] && ($read['escrowUnreadable'] ?? null) === true
+            ? ok('readArchive() hands back the private fields, no escrow, and marks the escrow unreadable')
+            : ko('readArchive() does not hand back the fields with the escrow marked unreadable', json_encode($read));
+    } catch (Throwable $e) {
+        ko('readArchive() refused the private fields for the escrow beside them', get_class($e) . ': ' . $e->getMessage());
+    }
+    try {
+        $view = $dg->archiveEscrowReads($escBadOpened);
+        !$view['established'] && $view['reason'] === 'escrow-replaced' && !$view['reseal']
+            ? ok('archiveEscrowReads() says escrow-replaced, as escrowReads() says of a live row that does not parse')
+            : ko('archiveEscrowReads() does not report a row rewritten', json_encode($view));
+    } catch (Throwable $e) {
+        ko('archiveEscrowReads() refused the view', get_class($e) . ': ' . $e->getMessage());
+    }
+}
+
+// Under a keeper that holds a read announced for the archive's escrow: the
+// administrator writes the database, and makes that escrow unreadable.
+$kPdo      = new PDO('sqlite::memory:');
+$kStorage  = new SqliteAdapter($kPdo);
+$kKeeper   = new BenchKeeper(delay: 3600);
+$kDg       = new SelfDataGuard($kStorage, $blindKey, keeper: $kKeeper);
+$carol     = $kDg->register('user-carol', 'carol-password-01');
+$kDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'contact de carol']);
+$carolL3   = $kDg->reEnroll($carol->generation(), 'carol-password-02');
+try {
+    benchCeremony($kStorage, keeper: $kKeeper)->readArchiveEscrow(
+        'user-carol', $carolL3['archiveId'], 'case-carol', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
+    );
+} catch (EscrowAnnouncedException) {
+}
+unparseArchiveEscrow($kPdo, $carolL3['archiveId'], '$.escrow.created_at', "'pas une date'");
+try {
+    $carolOpened = $kDg->openArchive($carolL3['unlocked'], $carolL3['archiveId'], Lock::Password, 'carol-password-01');
+    $view = $kDg->archiveEscrowReads($carolOpened);
+    $view['reason'] === 'escrow-replaced' && in_array('case-carol', array_column($view['pending'], 'case'), true)
+        ? ok('under a keeper, the holder sees the read announced on that escrow, the row named rewritten')
+        : ko('the read announced on the archive\'s escrow is hidden from the holder', json_encode($view));
+    $kDg->objectToArchiveEscrowRead($carolOpened, 'case-carol');
+    array_values(array_filter($kKeeper->pending, static fn (array $p): bool => $p['case'] === 'case-carol'))[0]['objected'] ?? false
+        ? ok('objectToArchiveEscrowRead() goes to the keeper, which records the objection')
+        : ko('the objection did not reach the keeper');
+} catch (Throwable $e) {
+    ko('the holder could not see, or object to, the read of an archive whose escrow does not parse', get_class($e) . ': ' . $e->getMessage());
+}
+
+// A row that reads but does not open — written over before the level 3, or in
+// the package after it — and a field that does not decrypt: the private fields
+// come all the same.
+$other = $dg->register('user-r1-other', 'r1-other-password-1');
+$dg->setEscrowFields($other, $admin['publicKey'], ['contact' => 'contact d\'un autre']);
+$otherRow = $rawDb->query("SELECT wrap_user FROM selfdataguard_escrow WHERE user_id = 'user-r1-other'")->fetchColumn();
+$otherCt  = $rawDb->query("SELECT ciphertext FROM selfdataguard_escrow_fields WHERE user_id = 'user-r1-other'")->fetchColumn();
+foreach ([
+    'the live wrap_user written over before the level 3' => 'live',
+    'escrow.wrap_user written over in the package'       => ['$.escrow.wrap_user', $rawDb->quote((string) $otherRow)],
+    'an escrow field written over in the package'        => ['$.fields.escrow.contact', $rawDb->quote((string) $otherCt)],
+] as $form => $edit) {
+    $uid = 'user-r1-' . substr(md5($form), 0, 8);
+    $r1 = $dg->register($uid, 'r1-password-0001');
+    $dg->setFields($r1, ['note' => "note de {$uid}"]);
+    $dg->setEscrowFields($r1, $admin['publicKey'], ['contact' => "contact de {$uid}"]);
+    if ($edit === 'live') {
+        $rawDb->prepare('UPDATE selfdataguard_escrow SET wrap_user = ? WHERE user_id = ?')->execute([$otherRow, $uid]);
+    }
+    $r1L3 = $dg->reEnroll($dg->generationOf($uid), 'r1-password-0002');
+    if (is_array($edit)) {
+        unparseArchiveEscrow($rawDb, $r1L3['archiveId'], $edit[0], $edit[1]);
+    }
+    try {
+        $read = $dg->readArchive($dg->openArchive($r1L3['unlocked'], $r1L3['archiveId'], Lock::Password, 'r1-password-0001'));
+        $read['private'] === ['note' => "note de {$uid}"] && $read['escrow'] === [] && $read['escrowUnreadable'] === true
+            ? ok("{$form}: readArchive() hands back the private fields, no escrow, the escrow marked unreadable")
+            : ko("{$form}: readArchive() did not mark the escrow unreadable", json_encode($read));
+    } catch (Throwable $e) {
+        ko("{$form}: readArchive() refused the private fields for the escrow beside them", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+
+// The pass of a ceremony records its keeper in the database it seals: it runs on one of its own.
+$keeperPdo = new PDO('sqlite::memory:');
+$keeperDb  = new SqliteAdapter($keeperPdo);
+$keeperDg  = new SelfDataGuard($keeperDb, $blindKey);
+$escKeeper = $keeperDg->register('user-escbad', 'escbad-password-01');
+$keeperDg->setEscrowFields($escKeeper, $admin['publicKey'], ['contact' => 'contact du titulaire']);
+$escKeeperL3 = $keeperDg->reEnroll($escKeeper->generation(), 'escbad-password-02');
+unparseArchiveEscrow($keeperPdo, $escKeeperL3['archiveId']);
+
+foreach ([
+    'the ceremony\'s readArchiveEscrow()' => static fn () => benchCeremony($storage)->readArchiveEscrow(
+        'user-escbad', $escBadL3['archiveId'], 'case-escbad', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
+    ),
+    'the ceremony\'s sealToKeeper()'  => static fn () => benchCeremony($keeperDb, keeper: new BenchKeeper())->sealToKeeper('user-escbad'),
+] as $reader => $call) {
+    try {
+        $call();
+        ko("{$reader} read an escrow that does not parse as no escrow");
+    } catch (UnreadableEscrowException) {
+        ok("{$reader} → UnreadableEscrowException: the administrator reads and seals nothing of it");
+    } catch (Throwable $e) {
+        ko("{$reader} refused otherwise than as an escrow that does not parse", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+
+$escBack = null;
+try {
+    $dg->reinstateArchive($escBadL3['unlocked']->generation(), $escBadL3['archiveId']);
+    $escBack = $dg->loginWithPassword('user-escbad', 'escbad-password-01');
+    $escReads = $dg->escrowReads($escBack);
+    $dg->getFields($escBack) === ['note' => 'note du titulaire'] && $dg->hasEscrow($escBack)
+        && !$escReads['established'] && $escReads['reason'] === 'escrow-replaced'
+        ? ok('reinstateArchive() brings it back: the holder\'s vault is live, its escrow row read as one rewritten (escrow-replaced)')
+        : ko('the vault came back, but its escrow is not reported as rewritten', json_encode($escReads));
+    try {
+        $dg->getEscrowFieldsAsUser($escBack);
+        ko('the escrow fields read under a row that does not parse');
+    } catch (EscrowEnvelopeMismatchException) {
+        ok('reading its escrow fields raises EscrowEnvelopeMismatchException, as for any row rewritten');
+    }
+} catch (Throwable $e) {
+    ko('an escrow that does not parse kept the holder\'s vault from coming back', get_class($e) . ': ' . $e->getMessage());
+}
+if ($escBack === null) {
+    ko('a deposit on the escrow that came back: not reached — the vault did not come back');
+} else {
+    $rowBefore = $rawDb->query("SELECT wrap_admin FROM selfdataguard_escrow WHERE user_id = 'user-escbad'")->fetchColumn();
+    foreach ([
+        'setEscrowFields()' => static fn () => $dg->setEscrowFields($escBack, $admin['publicKey'], ['contact' => 'nouveau contact']),
+        'rotateEscrow()'    => static fn () => $dg->rotateEscrow($escBack, $admin['publicKey']),
+    ] as $deposit => $call) {
+        try {
+            $call();
+            ko("{$deposit} wrote over an escrow row that does not parse");
+        } catch (EscrowEnvelopeMismatchException $e) {
+            $rawDb->query("SELECT wrap_admin FROM selfdataguard_escrow WHERE user_id = 'user-escbad'")->fetchColumn() === $rowBefore
+                && str_contains($e->getMessage(), 'putting back the row that wrote them')
+                ? ok("{$deposit} is refused, nothing written, and the refusal names the way out: the row put back from a backup")
+                : ko("{$deposit} refused, but wrote, or does not name the way out", $e->getMessage());
+        }
+    }
+}
+
+$escRest = $dg->register('user-escrest', 'escrest-password-01');
+$dg->setEscrowFields($escRest, $admin['publicKey'], ['contact' => 'contact du titulaire']);
+$escRestL3 = $dg->reEnroll($escRest->generation(), 'escrest-password-02');
+unparseArchiveEscrow($rawDb, $escRestL3['archiveId'], '$.escrow', "'pas une ligne'");
+$dg->delete($escRestL3['unlocked']->generation());
+try {
+    $dg->restoreArchive('user-escrest', $escRestL3['archiveId']);
+    $dg->hasEscrow($dg->loginWithPassword('user-escrest', 'escrest-password-01'))
+        ? ok('restoreArchive() brings back too an archive whose escrow is not even a row, with a row that does not parse')
+        : ko('restoreArchive() brought the vault back without an escrow row');
+} catch (Throwable $e) {
+    ko('an escrow that is not a row kept the archive from being restored', get_class($e) . ': ' . $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
+section('An archive keeps the holder\'s indexed values from other accounts; one indexed by both before 0.9.1 comes back named and traced');
+
+$vic = $dg->register('user-vic', 'vic-password-0001');
+$dg->setFields($vic, ['email' => 'vic@example.org', 'alias' => 'vic-alias', 'note' => 'de vic'], indexed: ['email', 'alias']);
+$vicL3 = $dg->reEnroll($vic->generation(), 'vic-password-0002');
+try {
+    $dg->setFields($dg->register('user-vic-tiers', 'vic-tiers-password-1'), ['email' => 'vic@example.org'], indexed: ['email']);
+    ko('another account indexed the holder\'s value during the window');
+} catch (DuplicateIndexException $e) {
+    $e->fields === ['email']
+        ? ok('another account indexing the holder\'s value during the window: DuplicateIndexException, as for a value held live')
+        : ko('refused, naming another field', implode(',', $e->fields));
+}
+$vicLost = ['untouched'];
+try {
+    $dg->reinstateArchive($vicL3['unlocked']->generation(), $vicL3['archiveId'], null, $vicLost);
+    $vicLost === [] && $dg->findUserByField('email', 'vic@example.org') === 'user-vic' && $dg->findUserByField('alias', 'vic-alias') === 'user-vic'
+        ? ok('the holder comes back with every index: $restoredWithoutIndex is empty, the values name the holder')
+        : ko('the holder came back without an index', var_export($vicLost, true));
+} catch (Throwable $e) {
+    ko('the holder could not come back', get_class($e) . ': ' . $e->getMessage());
+}
+
+/** A value $userId indexes live while an archive keeps it — what a database written before 0.9.1 may hold. */
+$heldBefore091 = static function (string $userId, string $field, string $value) use ($rawDb, $blindKey): void {
+    $rawDb->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$userId, $field, 'c-before-0.9.1', BlindIndex::compute($value, $blindKey, $field), gmdate('c')]);
+};
+$ole = $dg->register('user-ole', 'ole-password-0001');
+$dg->setFields($ole, ['email' => 'ole@example.org', 'note' => 'de ole'], indexed: ['email']);
+$oleL3 = $dg->reEnroll($ole->generation(), 'ole-password-0002');
+$dg->register('user-ole-tiers', 'ole-tiers-password-1');
+$heldBefore091('user-ole-tiers', 'email', 'ole@example.org');
+try {
+    $dg->reinstateArchive($oleL3['unlocked']->generation(), $oleL3['archiveId'], null);
+    ok('reinstateArchive() called with three arguments goes through over a value the other account holds');
+    $oleBack = $dg->loginWithPassword('user-ole', 'ole-password-0001');
+    $dg->getFields($oleBack) === ['email' => 'ole@example.org', 'note' => 'de ole'] && $dg->findUserByField('email', 'ole@example.org') === 'user-ole-tiers'
+        ? ok('the holder reads every field; the value stays with the other account until the operator settles it')
+        : ko('the fields or the index after the return are wrong');
+    $dg->lostIndexes($oleBack) === ['email'] && ($dg->allLostIndexes()['user-ole'] ?? null) === ['email']
+        ? ok('the call did not ask, and the trace stays: lostIndexes() names the field to the holder, allLostIndexes() to the operator')
+        : ko('no trace names the field that came back without its index');
+} catch (Throwable $e) {
+    ko('a value the other account holds refused the return, or left no trace', get_class($e) . ': ' . $e->getMessage());
+}
+
+$vic2 = $dg->register('user-vic2', 'vic2-password-0001');
+$dg->setFields($vic2, ['email' => 'vic2@example.org'], indexed: ['email']);
+$vic2L3 = $dg->reEnroll($vic2->generation(), 'vic2-password-0002');
+$dg->register('user-vic2-tiers', 'vic2-tiers-password-1');
+$heldBefore091('user-vic2-tiers', 'email', 'vic2@example.org');
+$dg->delete($vic2L3['unlocked']->generation());
+$vic2Lost = ['untouched'];
+try {
+    $dg->restoreArchive('user-vic2', $vic2L3['archiveId'], $vic2Lost);
+    $vic2Lost === ['email']
+        && ($dg->getFields($dg->loginWithPassword('user-vic2', 'vic2-password-0001'))['email'] ?? null) === 'vic2@example.org'
+        ? ok('restoreArchive(): the field comes back without its index, and $restoredWithoutIndex names it')
+        : ko('restoreArchive() did not name the field whose index the other account holds', var_export($vic2Lost, true));
+} catch (Throwable $e) {
+    ko('a value the other account holds refused the restoration', get_class($e) . ': ' . $e->getMessage());
+}
+
+$pre = $dg->register('user-pre08f', 'pre08f-password-01');
+$dg->setFields($pre, ['email' => 'pre08f@example.org', 'note' => 'de pre'], indexed: ['email']);
+$preL3 = $dg->reEnroll($pre->generation(), 'pre08f-password-02');
+$rawDb->prepare("UPDATE selfdataguard_archives SET package = json_remove(package, '$.fields.private.email.blind_index',"
+    . " '$.fields.private.email.shared_index') WHERE archive_id = :id")->execute([':id' => $preL3['archiveId']]);
+$preLost = ['untouched'];
+$dg->reinstateArchive($preL3['unlocked']->generation(), $preL3['archiveId'], null, $preLost);
+$preLost === ['email']
+    ? ok('an archive written before 0.8.0 kept no index: $restoredWithoutIndex names the field it had indexed, and no other')
+    : ko('a field an archive before 0.8.0 indexed came back unnamed', var_export($preLost, true));
+
+$shPdo = new PDO('sqlite::memory:');
+$shDg  = new SelfDataGuard(new SqliteAdapter($shPdo), $blindKey, sharedIndexes: ['phone']);
+$sh = $shDg->register('user-shared', 'shared-password-01');
+$shDg->setFields($sh, ['phone' => '+33 6 00 00 00 00', 'email' => 'shared@example.org'], indexed: ['phone', 'email']);
+$shL3 = $shDg->reEnroll($sh->generation(), 'shared-password-02');
+$shLost = ['untouched'];
+$shDg->reinstateArchive($shL3['unlocked']->generation(), $shL3['archiveId'], null, $shLost);
+$shLost === [] && $shDg->findUsersByField('phone', '+33 6 00 00 00 00') === ['user-shared']
+    ? ok('a field with a shared index comes back with it, unnamed')
+    : ko('a field with a shared index was named, or came back without it', var_export($shLost, true));
+
+$flaky = new class ($storage) extends DelegatingStorage {
+    public bool $down = false;
+
+    public function findUserIdsByIndex(string $f, string $i): array
+    {
+        if ($this->down) {
+            throw new RuntimeException('the storage does not answer');
+        }
+        return parent::findUserIdsByIndex($f, $i);
+    }
+};
+$flakyDg = new SelfDataGuard($flaky, $blindKey);
+$fla = $flakyDg->register('user-flaky', 'flaky-password-01');
+$flakyDg->setFields($fla, ['email' => 'flaky@example.org'], indexed: ['email']);
+$flaL3 = $flakyDg->reEnroll($fla->generation(), 'flaky-password-02');
+$flaky->down = true;
+$flaLost = ['untouched'];
+try {
+    $flaAside = $flakyDg->reinstateArchive($flaL3['unlocked']->generation(), $flaL3['archiveId'], null, $flaLost);
+    $flaLost === null && $storage->loadArchive('user-flaky', $flaAside) !== null && hash_equals($fla->vaultSalt, $storage->loadVault('user-flaky')->userSalt)
+        ? ok('the storage failing after the swap: the archive is live, the caller keeps the id of the vault set aside, $restoredWithoutIndex is null')
+        : ko('after the swap, the lookup that failed was taken for an answer', var_export($flaLost, true));
+} catch (Throwable $e) {
+    ko('a lookup failing after the swap cost the caller the id of the vault set aside', get_class($e) . ': ' . $e->getMessage());
+}
+$flaky->down = false;
+
+$typ = $dg->register('user-typed', 'typed-password-01');
+$typL3 = $dg->reEnroll($typ->generation(), 'typed-password-02');
+$notAList = 'pas une liste';
+try {
+    $dg->reinstateArchive($typL3['unlocked']->generation(), $typL3['archiveId'], null, $notAList);
+    ko('a variable holding a string went through as $restoredWithoutIndex');
+} catch (TypeError) {
+    hash_equals($typL3['unlocked']->vaultSalt, $storage->loadVault('user-typed')->userSalt) && count($storage->listArchives('user-typed')) === 1
+        ? ok('a variable holding a string as $restoredWithoutIndex: TypeError before anything is done')
+        : ko('the TypeError came after the swap');
+}
+
+// -----------------------------------------------------------------------------
+
 section('Given RecoveryTickets, the gestures without a secret need an accepted recovery');
 
 final class TicketsOfTheBench implements Pierroons\SelfDataGuard\RecoveryTickets
@@ -1315,6 +1642,256 @@ $dgT->freeze($gBack, 'arbitre', 't-return') && hash_equals($sT->vaultSalt, $gBac
     && $dgT->unfreeze($gBack, 't-close') && $dgT->frozenState('user-ticket') === null
     ? ok('the return ticket reinstates and freezes, the closure ticket unfreezes')
     : ko('the return or the closure did not go through under their tickets');
+
+// -----------------------------------------------------------------------------
+
+section('eraseAccount() keeps every archive of an account under a level 3 or a freeze; the operator lists them, and erases each with eraseArchive()');
+
+/** $call's result, or the class of what it raised. */
+$attempt = static function (callable $call): mixed {
+    try {
+        return $call();
+    } catch (Throwable $e) {
+        return get_class($e);
+    }
+};
+
+$tickets->issued['t-eve-l3'] = ['userId' => 'user-eve', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::LEVEL_3];
+$eve = $dgT->register('user-eve', 'eve-password-0001');
+$dgT->setFields($eve, ['note' => 'écrite par le titulaire']);
+$eveL3 = $dgT->reEnroll($eve->generation(), 'eve-password-0002', ticket: 't-eve-l3');
+$eveKept = ['untouched'];
+$erased = $dgT->eraseAccount('user-eve', $eveKept);
+$erased === 1 && !$dgT->userExists('user-eve')
+    ? ok('eraseAccount() erases the live vault, without a session or a ticket, and counts it alone')
+    : ko('eraseAccount() did not erase the live vault alone', "erased {$erased}");
+is_array($eveKept) && array_column($eveKept, 'id') === [$eveL3['archiveId']] && array_keys($eveKept[0] ?? []) === ['id', 'archivedAt']
+    ? ok('$kept lists the archive the level-3 ticket set aside, by its id and when it was archived')
+    : ko('$kept does not list the archive kept', var_export($eveKept, true));
+try {
+    $dgT->register('user-eve', 'eve-newcomer-0001');
+    ko('the name registered again over the archive kept for its holder');
+} catch (VaultExistsException $e) {
+    str_contains($e->getMessage(), 'eraseArchive()')
+        ? ok('the name does not register again while the archive is kept, and the refusal names eraseArchive()')
+        : ko('refused without naming eraseArchive()', $e->getMessage());
+}
+$listed = $attempt(static fn () => array_values(array_filter($dgT->keptArchives(), static fn (array $a): bool => $a['userId'] === 'user-eve')));
+is_array($listed) && array_column($listed, 'id') === [$eveL3['archiveId']]
+    ? ok('keptArchives() lists it for the operator, with its account: the erasure is not finished')
+    : ko('keptArchives() does not list the archive eraseAccount() kept', var_export($listed, true));
+try {
+    $dgT->eraseArchive('user-eve', $eveL3['archiveId']) && !$dgT->eraseArchive('user-eve', $eveL3['archiveId'])
+        && $storage->listArchives('user-eve') === []
+        ? ok('eraseArchive() erases the archive kept, then finds nothing more to erase')
+        : ko('eraseArchive() did not erase the archive kept, or erased it twice');
+    $dgT->archiveOfTicket('t-eve-l3') === null && !in_array('user-eve', array_column($dgT->keptArchives(), 'userId'), true)
+        ? ok('the account holds nothing: no archive listed, and its level-3 ticket names no archive any more')
+        : ko('the erased account is still listed, or its ticket still names the archive');
+} catch (Throwable $e) {
+    ko('eraseArchive() failed', get_class($e) . ': ' . $e->getMessage());
+}
+$eveReplay = null;
+try {
+    $newEve = $dgT->register('user-eve', 'eve-newcomer-0001');
+    $dgT->reEnroll($newEve->generation(), 'eve-password-0002', ticket: 't-eve-l3');
+} catch (TicketAlreadyAppliedException $e) {
+    $eveReplay = $e;
+} catch (Throwable $e) {
+    ko('the newcomer could not register, or the replay failed otherwise', get_class($e) . ': ' . $e->getMessage());
+}
+$newcomerHolds = static function () use ($dgT): bool {
+    try {
+        return $dgT->loginWithPassword('user-eve', 'eve-newcomer-0001')->userId === 'user-eve';
+    } catch (Throwable) {
+        return false;
+    }
+};
+$eveReplay !== null && $storage->listArchives('user-eve') === [] && $newcomerHolds()
+    ? ok('the old level-3 ticket, replayed once the account is erased and registered again, is refused: the newcomer keeps the vault')
+    : ko('a level-3 ticket replayed after the erasure archived the vault of whoever registered the name next');
+
+foreach (['t-yan-l3' => 'LEVEL_3', 't-yan-return' => 'HOLDER_RETURN', 't-yan-close' => 'CLOSURE'] as $ticket => $kind) {
+    $tickets->issued[$ticket] = ['userId' => 'user-yan', 'kind' => constant(Pierroons\SelfDataGuard\RecoveryTickets::class . "::{$kind}")];
+}
+$yan = $dgT->register('user-yan', 'yan-password-0001');
+$yanL3 = $dgT->reEnroll($yan->generation(), 'yan-password-0002', ticket: 't-yan-l3');
+$yanAside = $dgT->reinstateArchive($yanL3['unlocked']->generation(), $yanL3['archiveId'], 't-yan-return');
+$dgT->freeze($dgT->generationOf('user-yan'), 'arbitre', 't-yan-return');
+/** What the account holds: its live vault, its archives, its freeze and the archive its level-3 ticket names. */
+$heldBy = static function (string $userId, string $level3) use ($dgT, $storage): array {
+    $frozen = $dgT->frozenState($userId);
+    return [$storage->findVault($userId)?->userSalt, array_column($storage->listArchives($userId), 'id'), $frozen === null ? null : [$frozen['by'], $frozen['at']->format('c')], $dgT->archiveOfTicket($level3)];
+};
+$yanBefore = $heldBy('user-yan', 't-yan-l3');
+$yanKept = ['untouched'];
+try {
+    $erased = $dgT->eraseAccount('user-yan', $yanKept);
+    ko('eraseAccount() of a frozen account went through: the arbiter has not looked at it yet', "erased {$erased}");
+} catch (VaultFrozenException) {
+    $heldBy('user-yan', 't-yan-l3') === $yanBefore && $yanBefore[0] !== null && $yanBefore[1] === [$yanAside] && $yanKept === ['untouched']
+        ? ok('the holder came back, the vault frozen: eraseAccount() → VaultFrozenException, and nothing went — vault, archive, freeze, ticket, $kept')
+        : ko('eraseAccount() refused the frozen account, but erased part of it');
+}
+try {
+    $dgT->unfreeze($dgT->generationOf('user-yan'), 't-yan-close');
+    $yanKept = ['untouched'];
+    $erased = $dgT->eraseAccount('user-yan', $yanKept);
+    $erased === 1 && array_column($yanKept, 'id') === [$yanAside]
+        ? ok('once the window is closed, the request runs: the vault goes, the requester\'s archive stays under the level-3 ticket')
+        : ko('the erasure after the closure did not run as the level 3 asks', "erased {$erased}, kept " . var_export($yanKept, true));
+} catch (Throwable $e) {
+    ko('the erasure after the closure could not run: the frozen vault was already gone', get_class($e) . ': ' . $e->getMessage());
+}
+
+foreach (['t-zoe-l3' => 'LEVEL_3', 't-zoe-return' => 'HOLDER_RETURN', 't-zoe-close' => 'CLOSURE', 't-zoe-return-2' => 'HOLDER_RETURN'] as $ticket => $kind) {
+    $tickets->issued[$ticket] = ['userId' => 'user-zoe', 'kind' => constant(Pierroons\SelfDataGuard\RecoveryTickets::class . "::{$kind}")];
+}
+$zoe = $dgT->register('user-zoe', 'zoe-password-0001');
+$zoeL3 = $dgT->reEnroll($zoe->generation(), 'zoe-password-0002', ticket: 't-zoe-l3');
+$zoeAside = $dgT->reinstateArchive($zoeL3['unlocked']->generation(), $zoeL3['archiveId'], 't-zoe-return');
+$dgT->freeze($dgT->generationOf('user-zoe'), 'arbitre', 't-zoe-return');
+$dgT->unfreeze($dgT->generationOf('user-zoe'), 't-zoe-close');
+$zoeSecond = $dgT->reinstateArchive($dgT->generationOf('user-zoe'), $zoeAside, 't-zoe-return-2');
+$zoeKept = ['untouched'];
+$erased = $dgT->eraseAccount('user-zoe', $zoeKept);
+$erased === 1 && is_array($zoeKept) && array_column($zoeKept, 'id') === [$zoeSecond]
+    && hash_equals($zoe->vaultSalt, (string) $storage->loadArchive('user-zoe', $zoeSecond)?->record->userSalt)
+    ? ok('after a second exchange, the holder\'s vault — set aside by a swap, named by no level-3 ticket — stays')
+    : ko('eraseAccount() erased the holder\'s vault a second exchange set aside', "erased {$erased}, kept " . var_export($zoeKept, true));
+
+$una = $dg->register('user-una', 'una-password-0001');
+$unaL3 = $dg->reEnroll($una->generation(), 'una-password-0002');
+$unaAside = $dg->reinstateArchive($unaL3['unlocked']->generation(), $unaL3['archiveId']);
+$dg->freeze($dg->generationOf('user-una'), 'arbitre');
+$unaKept = ['untouched'];
+try {
+    $erased = $dg->eraseAccount('user-una', $unaKept);
+    ko('without a ticket source, eraseAccount() of a frozen account went through', "erased {$erased}");
+} catch (VaultFrozenException) {
+    $dg->userExists('user-una') && array_column($storage->listArchives('user-una'), 'id') === [$unaAside] && $unaKept === ['untouched']
+        ? ok('without a ticket source, eraseAccount() of a frozen account is refused the same, and nothing went')
+        : ko('without a ticket source, the refused erasure erased part of the account');
+}
+
+foreach (['t-wes-l3' => 'LEVEL_3', 't-wes-return' => 'HOLDER_RETURN', 't-wes-close' => 'CLOSURE'] as $ticket => $kind) {
+    $tickets->issued[$ticket] = ['userId' => 'user-wes', 'kind' => constant(Pierroons\SelfDataGuard\RecoveryTickets::class . "::{$kind}")];
+}
+$wes = $dgT->register('user-wes', 'wes-password-0001');
+$wesL3 = $dgT->reEnroll($wes->generation(), 'wes-password-0002', ticket: 't-wes-l3');
+$wesAside = $dgT->reinstateArchive($wesL3['unlocked']->generation(), $wesL3['archiveId'], 't-wes-return');
+$dgT->freeze($dgT->generationOf('user-wes'), 'arbitre', 't-wes-return');
+$wesBefore = $heldBy('user-wes', 't-wes-l3');
+try {
+    $dgT->eraseArchive('user-wes', $wesAside);
+    ko('eraseArchive() erased an archive of a frozen account: during the case, nothing is erased');
+} catch (VaultFrozenException) {
+    $heldBy('user-wes', 't-wes-l3') === $wesBefore && $wesBefore[1] === [$wesAside]
+        ? ok('the vault frozen, the operator\'s eraseArchive() → VaultFrozenException, and nothing went — vault, archive, freeze, ticket')
+        : ko('eraseArchive() refused the frozen account, but erased part of it');
+} catch (Throwable $e) {
+    ko('eraseArchive() of a frozen account refused otherwise than as frozen', get_class($e) . ': ' . $e->getMessage());
+}
+try {
+    $dgT->unfreeze($dgT->generationOf('user-wes'), 't-wes-close');
+    $dgT->eraseArchive('user-wes', $wesAside);
+    $storage->listArchives('user-wes') === []
+        ? ok('once the window is closed, the operator erases it')
+        : ko('the archive is still there after the closure and eraseArchive()');
+} catch (Throwable $e) {
+    ko('eraseArchive() after the closure failed', get_class($e) . ': ' . $e->getMessage());
+}
+
+$tickets->issued['t-ivy-l3']     = ['userId' => 'user-ivy', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::LEVEL_3];
+$tickets->issued['t-ivy-return'] = ['userId' => 'user-ivy', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::HOLDER_RETURN];
+$ivy = $dgT->register('user-ivy', 'ivy-password-0001');
+$dgT->setFields($ivy, ['note' => 'note d\'ivy']);
+$ivyL3 = $dgT->reEnroll($ivy->generation(), 'ivy-password-0002', ticket: 't-ivy-l3');
+$dgT->eraseAccount('user-ivy');
+try {
+    $dgT->generationOf('user-ivy') === null
+        ? ok('the requester erased the account: no live vault, generationOf() is null')
+        : ko('the account still holds a live vault after eraseAccount()');
+    $dgT->restoreArchive('user-ivy', $ivyL3['archiveId']);
+    $dgT->freeze($dgT->generationOf('user-ivy'), 'arbitre', 't-ivy-return');
+    $dgT->getFields($dgT->loginWithPassword('user-ivy', 'ivy-password-0001')) === ['note' => 'note d\'ivy'] && $dgT->frozenState('user-ivy') !== null
+        ? ok('the holder returns after the erasure: restoreArchive() brings their vault back, freeze() takes the return ticket')
+        : ko('the holder\'s vault did not come back frozen after the erasure');
+} catch (Throwable $e) {
+    ko('the holder could not return after the requester erased the account', get_class($e) . ': ' . $e->getMessage());
+}
+
+$tickets->issued['t-ben-l3'] = ['userId' => 'user-ben', 'kind' => Pierroons\SelfDataGuard\RecoveryTickets::LEVEL_3];
+$ben = $dgT->register('user-ben', 'ben-password-0001');
+$benL3 = $dgT->reEnroll($ben->generation(), 'ben-password-0002', ticket: 't-ben-l3');
+$rawDb->prepare("UPDATE selfdataguard_archives SET package = 'pas du json' WHERE archive_id = ?")->execute([$benL3['archiveId']]);
+$notAList = 'pas une liste';
+try {
+    $dgT->eraseAccount('user-ben', $notAList);
+    ko('a variable holding a string went through as $kept');
+} catch (TypeError) {
+    $dgT->userExists('user-ben')
+        ? ok('a variable holding a string as $kept: TypeError before anything is erased')
+        : ko('the TypeError came after the erasure');
+}
+$benKept = ['untouched'];
+$benFirst = $attempt(static function () use ($dgT, &$benKept) {
+    return $dgT->eraseAccount('user-ben', $benKept);
+});
+$benAgain = $attempt(static fn () => $dgT->eraseAccount('user-ben'));
+$benFirst === 1 && $benAgain === 0 && is_array($benKept) && array_column($benKept, 'id') === [$benL3['archiveId']]
+    ? ok('a kept archive whose package no longer reads: eraseAccount() returns, $kept lists it, and a second call erases nothing')
+    : ko('eraseAccount() raised after erasing, over a kept archive that no longer reads', var_export([$benFirst, $benAgain, $benKept], true));
+$attempt(static fn () => $dgT->eraseArchive('user-ben', $benL3['archiveId']));
+
+// A storage written for 0.9.0 erases a frozen account; the façade asks for the
+// freeze first, and refuses in its place.
+$r5Pdo = new PDO("sqlite:{$dbPath}");
+foreach ([
+    'eraseAccount()' => ['FrozenErasingStorage', static fn (SelfDataGuard $f, string $u, string $a) => $f->eraseAccount($u)],
+    'eraseArchive()' => ['FrozenArchiveDeletingStorage', static fn (SelfDataGuard $f, string $u, string $a) => $f->eraseArchive($u, $a)],
+] as $call => [$class, $run]) {
+    $uid = 'user-r5-' . substr($call, 0, 10);
+    $r5 = $dg->register($uid, 'r5-password-00001');
+    $r5L3 = $dg->reEnroll($r5->generation(), 'r5-password-00002');
+    $dg->freeze($dg->generationOf($uid), 'arbitre');
+    if (!class_exists($class)) {
+        ko("{$call} on a storage that erases under a freeze: {$class} is not declared in this version");
+        continue;
+    }
+    $loose = new SelfDataGuard(new $class($storage, $r5Pdo), $blindKey);
+    try {
+        $run($loose, $uid, $r5L3['archiveId']);
+        ko("{$call} through a storage that erases under a freeze went through");
+    } catch (VaultFrozenException) {
+        $dg->userExists($uid) && array_column($storage->listArchives($uid), 'id') === [$r5L3['archiveId']]
+            ? ok("{$call} on a storage that erases under a freeze: the façade refuses first, and nothing went")
+            : ko("{$call} raised, but the storage had erased part of the account");
+    } catch (Throwable $e) {
+        ko("{$call} through a storage that erases under a freeze failed otherwise", get_class($e) . ': ' . $e->getMessage());
+    }
+}
+
+$noErasing = new class ($storage) extends DelegatingStorage {
+};
+$bare = new SelfDataGuard($noErasing, $blindKey);
+foreach ([
+    'eraseArchive()'    => [static fn () => $bare->eraseArchive('user-yan', str_repeat('0', 32)), 'ErasesArchives'],
+    'keptArchives()'    => [static fn () => $bare->keptArchives(), 'ErasesArchives'],
+    'allLostIndexes()'  => [static fn () => $bare->allLostIndexes(), 'TracesLostIndexes'],
+    'reservedIndexes()' => [static fn () => $bare->reservedIndexes(), 'TracesLostIndexes'],
+] as $call => [$run, $interface]) {
+    try {
+        $run();
+        ko("{$call} went through a storage that does not implement {$interface}");
+    } catch (LogicException $e) {
+        str_contains($e->getMessage(), $interface)
+            ? ok("on a storage without {$interface}, {$call} refuses, naming the interface")
+            : ko("{$call} refused without naming the interface", $e->getMessage());
+    } catch (Throwable $e) {
+        ko("{$call} on a storage without {$interface} failed otherwise", get_class($e) . ': ' . $e->getMessage());
+    }
+}
 
 // -----------------------------------------------------------------------------
 

@@ -102,6 +102,10 @@ $controles = [
         => [(int) (Reprise::RETOUR_TITULAIRE === RecoveryTickets::HOLDER_RETURN), 1],
     'genre de ticket « clôture » identique des deux côtés'
         => [(int) (Reprise::CLOTURE === RecoveryTickets::CLOSURE), 1],
+    // Une archive réserve ses index tant que le titulaire peut revenir : la
+    // fenêtre la plus longue que SelfRecover ouvre après un niveau 3.
+    'fenêtre de retour (secondes) : Escalade::FENETRE_MAXIMUM = RecoveryTickets::RETURN_WINDOW'
+        => [Escalade::FENETRE_MAXIMUM, RecoveryTickets::RETURN_WINDOW],
 ];
 
 $echecs = 0;

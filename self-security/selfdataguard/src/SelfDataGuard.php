@@ -6,6 +6,7 @@ namespace Pierroons\SelfDataGuard;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use LogicException;
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
@@ -25,9 +26,11 @@ use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
-use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
+use Pierroons\SelfDataGuard\Storage\ErasesArchives;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
+use Pierroons\SelfDataGuard\Storage\TracesLostIndexes;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
+use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\RecoveryTicketException;
@@ -440,7 +443,8 @@ final class SelfDataGuard
         if ($this->storage->listArchives($userId) !== []) {
             throw new VaultExistsException(
                 "User '{$userId}' still holds the archives of a deleted vault: they would open to whoever registers "
-                . 'the name with an old secret. eraseAccount() erases them first — an operator\'s decision'
+                . 'the name with an old secret. eraseAccount() erases them first, and eraseArchive() those it keeps — '
+                . 'an operator\'s decision'
             );
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
@@ -515,8 +519,10 @@ final class SelfDataGuard
      * Optionally compute and store blind indexes for lookup-able fields.
      *
      * An indexed value names one account, unless its field is declared shared.
-     * If another account holds it, DuplicateIndexException names the fields and
-     * nothing of the batch is written. Index a value once the account has
+     * If another account holds it — live, or in an archive that can still
+     * come back: made less than RecoveryTickets::RETURN_WINDOW ago, or of an
+     * account whose vault is frozen —, DuplicateIndexException names the
+     * fields and nothing of the batch is written. Index a value once the account has
      * proven it holds it (a confirmation mail, a code): whoever indexes it
      * first keeps it.
      *
@@ -738,24 +744,47 @@ final class SelfDataGuard
      * To restore it, write the private fields back with the fields your
      * application indexes — not a list read from the archive, which whoever
      * writes the database can extend to a field never meant to be looked up.
-     * A DuplicateIndexException names the values another account took since
-     * the archive was made: restore those fields without their index, and
-     * settle who owns the value.
+     * While it can still come back, the archive reserves its values to this
+     * account: a DuplicateIndexException names those another account held
+     * when no reservation stood — restore those fields without their index,
+     * and settle who owns the value.
      *
-     * @return array{private: array<string, string>, escrow: array<string, string>}
+     * An escrow the archive keeps and that does not read — a row that does
+     * not parse, an envelope that does not open, a field that does not
+     * decrypt — is not handed out: the private fields come all the same,
+     * `escrow` is empty and `escrowUnreadable` true.
+     *
+     * @return array{private: array<string, string>, escrow: array<string, string>, escrowUnreadable: bool}
+     * @throws LegacyCipherUnavailableException an escrow field written before 0.4.0, on a machine without its cipher
      */
     public function readArchive(UnlockedArchive $opened): array
     {
         $archive = $opened->archive;
+        $record  = $this->archiveEscrow($archive);
         $fields  = array_diff_key($archive->privateFields, [EscrowVault::WRAP_AAD_TAG => true]);
         $private = $opened->decryptFields(array_map(static fn (array $f): string => $f['ciphertext'], $fields));
         $escrow  = [];
-        if ($archive->escrow !== null) {
-            $unlocked = $opened->openEscrow($archive->escrow);
-            $escrow   = EscrowFieldCrypter::decryptBatch($unlocked, $archive->escrowFields);
-            $unlocked->lock();
+        $read    = $record !== false;
+        if ($record instanceof EscrowRecord) {
+            try {
+                $unlocked = $opened->openEscrow($record);
+            } catch (Throwable) {
+                $unlocked = null;
+                $read     = false;
+            }
+            if ($unlocked !== null) {
+                try {
+                    $escrow = EscrowFieldCrypter::decryptBatch($unlocked, $archive->escrowFields);
+                } catch (LegacyCipherUnavailableException $e) {
+                    throw $e;
+                } catch (Throwable) {
+                    $read = false;
+                } finally {
+                    $unlocked->lock();
+                }
+            }
         }
-        return ['private' => $private, 'escrow' => $escrow];
+        return ['private' => $private, 'escrow' => $escrow, 'escrowUnreadable' => !$read];
     }
 
     /**
@@ -781,41 +810,73 @@ final class SelfDataGuard
      * as its opening would be. One taken before 0.7.0, without a seal, comes
      * back unsealed, and opens to no one until sealProfile().
      *
+     * While it can come back, the archive reserves its blind indexes to this
+     * account (setFields()), so every value comes back with its index — but
+     * one another account held when no reservation stood (an archive older
+     * than RecoveryTickets::RETURN_WINDOW, brought back by an operator, or a
+     * database written before 0.9.1): that field comes back without its index,
+     * the other account keeps the value, and the storage keeps a trace of it
+     * (lostIndexes()). $restoredWithoutIndex names the fields the archive
+     * indexed and that came back without an index — those, and the indexed
+     * fields of an archive written before 0.8.0, which kept no index. Settle
+     * who owns each value, then index it again with setFields().
+     *
+     * An escrow the archive keeps and that does not parse comes back as a row
+     * that does not parse, and reads as a row rewritten (escrowReads():
+     * escrow-replaced). Its fields then open to no one, and a deposit is
+     * refused (EscrowEnvelopeMismatchException) until the operator puts back,
+     * from a backup, the escrow row that wrote them.
+     *
+     * With no live vault left — the account was erased while its archive was
+     * kept —, generationOf() is null: the archive comes back by restoreArchive().
+     *
+     * @param list<string>|null $restoredWithoutIndex set, once the archive is live, to those fields; null when the
+     *        storage could not be asked which indexes came back — the archive is live all the same. A variable that
+     *        holds something else than an array or null raises TypeError before anything is done
      * @return string the id of the archive the replaced vault became
      * @throws VaultNotFoundException   if this userId has no such archive
      * @throws VaultTamperedException   if the archive's seal does not hold
-     * @throws DuplicateIndexException  naming the fields whose index another account took since
      * @throws VaultFrozenException     if the vault $replacing names is frozen
      */
-    public function reinstateArchive(VaultGeneration $replacing, string $archiveId, ?string $ticket = null): string
-    {
+    public function reinstateArchive(
+        VaultGeneration $replacing,
+        string $archiveId,
+        ?string $ticket = null,
+        ?array &$restoredWithoutIndex = null
+    ): string {
         $this->requireTicket($ticket, $replacing->userId, RecoveryTickets::HOLDER_RETURN);
-        $record = $this->sealedArchive($replacing->userId, $archiveId);
+        $archive  = $this->sealedArchive($replacing->userId, $archiveId);
         $setAside = $this->storage->swapWithArchive($replacing, $archiveId, $ticket);
-        $this->assertVaultPersisted($record, $record->revision);
+        $this->assertVaultPersisted($archive->record, $archive->record->revision);
+        $restoredWithoutIndex = $this->indexesNotBack($archive);
         return $setAside;
     }
 
     /**
      * Bring an archive back live for a userId left without a live vault — an
-     * operator's step, after the live vault was deleted. As reinstateArchive(),
-     * the replaced vault apart.
+     * operator's step, after the live vault was deleted, or the account erased
+     * while the archive was kept. As reinstateArchive(), the replaced vault
+     * apart, $restoredWithoutIndex included. It takes no ticket: in a
+     * holder's return after an erasure, the return ticket goes to freeze()
+     * on the vault it brought back.
      *
+     * @param list<string>|null $restoredWithoutIndex see reinstateArchive()
      * @throws VaultExistsException if the userId holds a live vault
      */
-    public function restoreArchive(string $userId, string $archiveId): void
+    public function restoreArchive(string $userId, string $archiveId, ?array &$restoredWithoutIndex = null): void
     {
-        $record = $this->sealedArchive($userId, $archiveId);
+        $archive = $this->sealedArchive($userId, $archiveId);
         $this->storage->restoreArchive($userId, $archiveId);
-        $this->assertVaultPersisted($record, $record->revision);
+        $this->assertVaultPersisted($archive->record, $archive->record->revision);
+        $restoredWithoutIndex = $this->indexesNotBack($archive);
     }
 
     /**
      * Freeze the live vault $generation names: it keeps opening and reading,
      * and every write refuses with VaultFrozenException — fields, escrow,
-     * locks, deletion, re-enrolment — until unfreeze(). eraseAccount() still
-     * erases. SelfRecover freezes the vault a returning holder took back, until
-     * the arbiter closes that window.
+     * locks, deletion, re-enrolment, the erasure of the account — until
+     * unfreeze(). SelfRecover freezes the vault a returning holder took back,
+     * until the arbiter closes that window.
      *
      * @param string $by who froze it, as the caller names them (an arbiter, a case)
      * @return bool true if this call froze it; false if it was frozen already, by whoever froze it first
@@ -853,18 +914,159 @@ final class SelfDataGuard
     }
 
     /**
-     * Erase the account — its live vault and every archive — without a
-     * session. Works on a userId left with archives only.
+     * Erase the account without a session: its live vault, and its archives —
+     * unless a re-enrolment applied a level-3 ticket to the account: then
+     * every archive stays, whichever gesture set it aside, the holder's vault
+     * and the requester's alike. Works on a userId left with archives only.
+     *
+     * While the live vault is frozen — a holder's return waits for the
+     * arbiter —, nothing is erased and VaultFrozenException is raised, $kept
+     * left as it was: keep the request, and run it once unfreeze() has closed
+     * the window.
+     *
+     * No ticket is erased: a replay of any of them under this userId — after
+     * the name is registered again — is refused. Once the account keeps no
+     * archive, its tickets no longer name it.
+     *
+     * An erasure request is then finished only once the operator erased the
+     * archives $kept lists with eraseArchive(), when the case they were kept
+     * for is closed; until then the archives, their escrow included, stay
+     * readable to the ceremony, and register() refuses the name. Without a
+     * RecoveryTickets source, a level-3 ticket is recorded only when the
+     * caller hands one to reEnroll(); without one, the archives go with the
+     * account.
      *
      * Whoever exposes this decides who may call it: after a level-3 recovery,
      * the holder of the account is not necessarily the person the archives
      * belong to.
      *
+     * @param list<array{id: string, archivedAt: \DateTimeImmutable}>|null $kept set, once the account is erased, to
+     *        the archives left, oldest first. A variable that holds something else than an array or null raises
+     *        TypeError before anything is done
      * @return int how many vaults were erased, live and archived
+     * @throws VaultFrozenException if the live vault of the account is frozen: nothing is erased
      */
-    public function eraseAccount(string $userId): int
+    public function eraseAccount(string $userId, ?array &$kept = null): int
     {
-        return $this->storage->eraseAccount($userId);
+        $this->refuseWhileFrozen($userId, 'the account is not erased, nothing of it is');
+        $erased = $this->storage->eraseAccount($userId);
+        $kept   = array_map(
+            static fn (array $a): array => ['id' => $a['id'], 'archivedAt' => $a['archivedAt']],
+            $this->storage instanceof ErasesArchives ? $this->storage->keptArchives($userId) : $this->storage->listArchives($userId)
+        );
+        return $erased;
+    }
+
+    /**
+     * Erase one archive of the account, without a session and whatever vault
+     * is live — the operator's act on an archive eraseAccount() kept, once the
+     * case it was kept for is closed; never for a route a visitor reaches. The
+     * tickets of the account stay; once it keeps no archive and no live vault,
+     * they no longer name it. While the live vault is frozen, nothing is
+     * erased; before a holder's return, nothing is frozen, and this erases
+     * the archive — it is the operator's act.
+     *
+     * @return bool false if the userId has no such archive
+     * @throws LogicException when the storage does not implement ErasesArchives
+     * @throws VaultFrozenException if the live vault of the account is frozen: nothing is erased
+     */
+    public function eraseArchive(string $userId, string $archiveId): bool
+    {
+        $storage = $this->erasing();
+        $this->refuseWhileFrozen($userId, 'no archive of it is erased until the case is closed');
+        return $storage->eraseArchive($userId, $archiveId);
+    }
+
+    /**
+     * Every archive whose account holds no live vault — those eraseAccount()
+     * kept, and those a deleted vault left —, oldest first: the erasures the
+     * operator has not finished. Read without opening the archives. For the
+     * operator, never for a route a visitor reaches.
+     *
+     * @return list<array{userId: string, id: string, archivedAt: DateTimeImmutable}>
+     * @throws LogicException when the storage does not implement ErasesArchives
+     */
+    public function keptArchives(): array
+    {
+        return $this->erasing()->keptArchives();
+    }
+
+    /**
+     * The fields of this account that an archive brought back live without
+     * their index, because another account held the value — indexed by both
+     * once the archive's reservation had ended, or before 0.9.1. Each stays
+     * listed until it is indexed again with setFields(), once who owns the
+     * value is settled.
+     *
+     * @return list<string>
+     * @throws LogicException when the storage does not implement TracesLostIndexes
+     */
+    public function lostIndexes(UnlockedVault $session): array
+    {
+        $this->currentRecord($session);
+        return $this->tracing()->lostIndexes($session->userId)[$session->userId] ?? [];
+    }
+
+    /**
+     * lostIndexes() for every account, by userId: for the operator who settles
+     * who owns each value, never for a route a visitor reaches.
+     *
+     * @return array<string, list<string>>
+     * @throws LogicException when the storage does not implement TracesLostIndexes
+     */
+    public function allLostIndexes(): array
+    {
+        return $this->tracing()->lostIndexes();
+    }
+
+    /**
+     * The reservations in force — each archive that still reserves its blind
+     * indexes, each field it reserves, until when, and whether a freeze holds
+     * it past that — so that the operator sees which account keeps a value
+     * no lookup answers for. Names and dates only. For the operator, never for
+     * a route a visitor reaches.
+     *
+     * @return list<array{userId: string, archiveId: string, field: string, until: DateTimeImmutable, frozen: bool}>
+     * @throws LogicException when the storage does not implement TracesLostIndexes
+     */
+    public function reservedIndexes(): array
+    {
+        return $this->tracing()->reservedIndexes();
+    }
+
+    /**
+     * VaultFrozenException when the live vault of $userId is frozen, asked of
+     * the storage before an erasure: the storage refuses it in the erasure's
+     * own transaction too, and this keeps a storage that does not from
+     * erasing during the case.
+     */
+    private function refuseWhileFrozen(string $userId, string $what): void
+    {
+        if ($this->storage->frozenState($userId) !== null) {
+            throw new VaultFrozenException("The vault of '{$userId}' is frozen: {$what}");
+        }
+    }
+
+    private function erasing(): ErasesArchives
+    {
+        if (!$this->storage instanceof ErasesArchives) {
+            throw new LogicException(
+                'This storage does not implement ' . ErasesArchives::class . ': it lists and erases no archive on its '
+                . 'own, and an archive eraseAccount() kept stays'
+            );
+        }
+        return $this->storage;
+    }
+
+    private function tracing(): TracesLostIndexes
+    {
+        if (!$this->storage instanceof TracesLostIndexes) {
+            throw new LogicException(
+                'This storage does not implement ' . TracesLostIndexes::class . ': it keeps no trace of a field that came '
+                . 'back without its index'
+            );
+        }
+        return $this->storage;
     }
 
     /**
@@ -1152,11 +1354,13 @@ final class SelfDataGuard
 
     /**
      * escrowReads() for the escrow of an archive opened with one of its old
-     * locks. `reseal` is always false: no act re-seals an archive's escrow.
+     * locks. `reseal` is always false: no act re-seals an archive's escrow. An
+     * escrow the archive keeps and that does not parse reads as a live row
+     * that does not: `escrow-replaced`, the keepers asked all the same.
      */
     public function archiveEscrowReads(UnlockedArchive $opened): array
     {
-        return $this->readsOf($opened->archive->escrow, fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), true, $opened->escrowId());
+        return $this->readsOf($this->archiveEscrow($opened->archive), fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), true, $opened->escrowId());
     }
 
     /**
@@ -1184,12 +1388,14 @@ final class SelfDataGuard
     /**
      * objectToEscrowRead() for the escrow of an archive opened with one of its
      * old locks: an archive's read waits the delay like any other, and its
-     * objection key derives from the archived vault's own master key.
+     * objection key derives from the archived vault's own master key — an
+     * escrow the archive keeps and that does not parse is objected to all the
+     * same, at every keeper.
      */
     public function objectToArchiveEscrowRead(UnlockedArchive $opened, string $caseRef): void
     {
         $escrowId = $opened->escrowId();
-        [$pinned] = $this->rowOf($opened->archive->escrow, fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), $escrowId);
+        [$pinned] = $this->rowOf($this->archiveEscrow($opened->archive), fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), $escrowId);
         $this->objectAt($pinned, $escrowId, $caseRef, $opened->signEscrowObjection($caseRef));
     }
 
@@ -1310,6 +1516,12 @@ final class SelfDataGuard
         } catch (UnreadableEscrowException $e) {
             throw $this->mismatch($userId, $e);
         }
+    }
+
+    /** The escrow $archive keeps; false for one that does not parse, as rowRecord() reads a live row; null for none. */
+    private function archiveEscrow(ArchivedVault $archive): EscrowRecord|false|null
+    {
+        return $archive->escrowUnreadable ? false : $archive->escrow;
     }
 
     /** The escrow row of $userId; false for a row that does not parse — an outage of the storage passes as it is. */
@@ -1959,20 +2171,49 @@ final class SelfDataGuard
     }
 
     /**
-     * The record of archive $archiveId, its seal checked under the profile it
-     * records: brought back live, that is the profile it opens under. One
-     * without a seal passes only if written before 0.7.0.
+     * Archive $archiveId, its seal checked under the profile it records:
+     * brought back live, that is the profile it opens under. One without a
+     * seal passes only if written before 0.7.0.
      */
-    private function sealedArchive(string $userId, string $archiveId): VaultRecord
+    private function sealedArchive(string $userId, string $archiveId): ArchivedVault
     {
         $archive = $this->storage->loadArchive($userId, $archiveId)
             ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
         $this->assertSameUser($userId, $archive->record->userId);
         if ($archive->record->profileSeal === null && !ProfileSeal::expected($archive->record)) {
-            return $archive->record;
+            return $archive;
         }
         $this->assertProfileSealed($archive->record, $archive->record->kdfOpslimit, $archive->record->kdfMemlimit, archive: true);
-        return $archive->record;
+        return $archive;
+    }
+
+    /**
+     * The fields $archive indexed that came back live without an index: one
+     * whose index, once the archive is live, does not name its account, and
+     * one it kept no index of — an archive written before 0.8.0, or a field
+     * that had already lost its own. Null when the storage could not be asked:
+     * the archive is live by then, and the caller keeps the id the swap
+     * returned.
+     *
+     * @return list<string>|null
+     */
+    private function indexesNotBack(ArchivedVault $archive): ?array
+    {
+        $lost = [];
+        try {
+            foreach ($archive->privateFields as $fieldName => $field) {
+                $index = $archive->blindIndexes[$fieldName] ?? $archive->sharedIndexes[$fieldName] ?? null;
+                if ($index === null
+                    ? $field['wasIndexed']
+                    : !in_array($archive->record->userId, $this->storage->findUserIdsByIndex((string) $fieldName, $index), true)
+                ) {
+                    $lost[] = (string) $fieldName;
+                }
+            }
+        } catch (\Exception) {
+            return null;
+        }
+        return $lost;
     }
 
     /**

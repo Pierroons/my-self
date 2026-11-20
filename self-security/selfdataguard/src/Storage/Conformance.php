@@ -31,8 +31,11 @@ use Throwable;
  * breaks the vault in silence. These cases are what tells it apart.
  *
  * It writes to the database it is given, under userIds drawn at random
- * ("conformance-<hex>-…"), and erases each of them when its case ends; the
- * settings it claims stay, under names of the same form, which nothing reads.
+ * ("conformance-<hex>-…"), and erases each of them when its case ends —
+ * an archive eraseAccount() keeps included, through ErasesArchives when the
+ * storage implements it, otherwise brought back live and erased. The settings
+ * it claims stay, under names of the same form, which nothing reads; so do the
+ * tickets its cases apply, which no longer name an account once it is erased.
  * Each concurrent case is played ten times. Run it against a database you can
  * write to, before the storage serves anyone.
  *
@@ -178,6 +181,10 @@ final class Conformance
             'joins-callers-transaction'     => 'joinsCallersTransaction',
             'swap-with-archive'             => 'swapWithArchive',
             'restore-archive'               => 'restoreArchive',
+            'archive-reserves-its-indexes'  => 'archiveReservesItsIndexes',
+            'archive-escrow-unreadable'     => 'archiveEscrowUnreadable',
+            'erase-account-keeps-recovery-archives' => 'eraseKeepsRecoveryArchives',
+            'erase-account-keeps-tickets'   => 'eraseKeepsTickets',
             'replace-archive-escrow'        => 'replaceArchiveEscrowCase',
             'freeze-refuses-writes'         => 'freezeRefusesWrites',
             'tickets-applied-once'          => 'ticketsAppliedOnce',
@@ -406,13 +413,6 @@ final class Conformance
         sort($holders);
         sort($expected);
         $this->assert($holders === $expected, 'a shared index does not list every account that holds the value');
-
-        $this->storage->replaceWithArchive($alice->generation(), $this->newVault('uniq-alice'));
-        $this->storage->saveFields($bob->generation(), ['email' => ['ciphertext' => 'c-b4', 'blindIndex' => 'IdxTaken=']]);
-        $this->assert(
-            $this->storage->findUserIdsByIndex('email', 'IdxTaken=') === [$bob->userId],
-            'an archived vault still holds its blind-index values'
-        );
         return null;
     }
 
@@ -730,6 +730,7 @@ final class Conformance
     /**
      * The archive comes back live as it was archived, indexes included, and
      * the live vault becomes an archive — or, on any refusal, nothing moves.
+     * The index an archive keeps is archive-reserves-its-indexes'.
      */
     private function swapWithArchive(): ?string
     {
@@ -771,24 +772,6 @@ final class Conformance
                 && ($archived->privateFields['note']['ciphertext'] ?? null) === 'c-note-requester',
             'the vault swapWithArchive() replaced was not archived as it stood'
         );
-
-        $taker = $this->newVault('swap-taker');
-        $this->storage->saveVault($taker);
-        $live = $this->storage->loadVault($holder->userId);
-        $back = $this->storage->replaceWithArchive($live->generation(), $again = $this->newVault('swap'));
-        $this->storage->saveFields($taker->generation(), ['email' => ['ciphertext' => 'c', 'blindIndex' => $this->indexOf($holder->userId)]]);
-        try {
-            $this->storage->swapWithArchive($again->generation(), $back);
-            throw new RuntimeException('swapWithArchive() put back a blind index another account holds');
-        } catch (DuplicateIndexException $e) {
-            $this->assert($e->fields === ['email'], 'the DuplicateIndexException of swapWithArchive() does not name the field taken');
-        }
-        $this->assert(
-            hash_equals($again->userSalt, $this->storage->loadVault($holder->userId)->userSalt)
-                && $this->storage->loadArchive($holder->userId, $back) !== null
-                && $this->storage->findUserIdsByIndex('email', $this->indexOf($holder->userId)) === [$taker->userId],
-            'a swapWithArchive() refused on a taken index changed something: it must be all or nothing'
-        );
         return null;
     }
 
@@ -815,6 +798,256 @@ final class Conformance
                 && $this->storage->findUserIdsByIndex('email', $this->indexOf($old->userId)) === [$old->userId]
                 && $this->storage->loadEscrowFields($old->userId) === ['contact' => 'c-contact'],
             'restoreArchive() did not bring the archive back live, indexes and escrow included, or left it listed'
+        );
+        return null;
+    }
+
+    /**
+     * An archive keeps the blind indexes of its fields, hands them out
+     * (loadArchive()), and, made a moment ago, holds each value against every
+     * other userId: saveFields() refuses it there as it refuses a value held
+     * live, and writes nothing of the batch. The userId the archive belongs
+     * to indexes the value again; once the archive is gone, any account may.
+     * The end of the reservation — RecoveryTickets::RETURN_WINDOW, or the
+     * freeze lifted — takes time the contract cannot make pass, and the field
+     * that comes back without the index another account took meanwhile
+     * cannot be made through it: SqliteAdapter's bench plays both.
+     */
+    private function archiveReservesItsIndexes(): ?string
+    {
+        $holder = $this->newVault('reserve', withRecov: true, withPhrase: true);
+        $this->storage->saveVault($holder);
+        $this->fill($holder);
+        $this->storage->saveFields($holder->generation(), ['phone' => ['ciphertext' => 'c-phone', 'sharedIndex' => 'IdxShared=']]);
+        $requester = $this->newVault('reserve');
+        $id = $this->storage->replaceWithArchive($holder->generation(), $requester);
+        $index = $this->indexOf($holder->userId);
+        $archive = $this->storage->loadArchive($holder->userId, $id);
+        $this->assert(
+            $archive?->blindIndexes === ['email' => $index] && $archive->sharedIndexes === ['phone' => 'IdxShared='],
+            'loadArchive() does not hand out the index each field of the archive held: the façade cannot name a field that came back without it'
+        );
+
+        $taker = $this->newVault('reserve-taker');
+        $this->storage->saveVault($taker);
+        try {
+            $this->storage->saveFields($taker->generation(), [
+                'note'  => ['ciphertext' => 'c-taker-note'],
+                'email' => ['ciphertext' => 'c-taker', 'blindIndex' => $index],
+            ]);
+            throw new RuntimeException('saveFields() gave another account the blind index an archive keeps: the holder would come back without it');
+        } catch (DuplicateIndexException $e) {
+            $this->assert($e->fields === ['email'], 'the DuplicateIndexException over an index an archive keeps does not name exactly that field');
+        }
+        $this->assert(
+            $this->storage->loadFields($taker->userId) === [] && $this->storage->findUserIdsByIndex('email', $index) === [],
+            'a batch refused over an index an archive keeps wrote something'
+        );
+        $this->storage->saveFields($requester->generation(), ['email' => ['ciphertext' => 'c-requester', 'blindIndex' => $index]]);
+        $this->assert(
+            $this->storage->findUserIdsByIndex('email', $index) === [$holder->userId],
+            'the userId an archive belongs to could not index the value its archive keeps'
+        );
+
+        $this->storage->deleteArchive($requester->generation(), $id);
+        $this->storage->saveFields($requester->generation(), ['email' => ['ciphertext' => 'c-requester-2']]);
+        $this->storage->saveFields($taker->generation(), ['email' => ['ciphertext' => 'c-taker', 'blindIndex' => $index]]);
+        $this->assert(
+            $this->storage->findUserIdsByIndex('email', $index) === [$taker->userId],
+            'once the archive is gone, its index stays held: no other account can take the value'
+        );
+        return null;
+    }
+
+    /**
+     * An archive whose escrow row does not parse is read all the same, its
+     * escrow named unreadable, and comes back live with that row as it was
+     * kept — the archive is the holder's vault; its escrow is what is lost.
+     */
+    private function archiveEscrowUnreadable(): ?string
+    {
+        if ($this->unparseEscrow === null) {
+            return 'no rewrite of the escrow row given';
+        }
+        $control = $this->newVault('archive-escrow-parses');
+        $this->storage->saveVault($control);
+        $this->fill($control);
+        $controlId = $this->storage->replaceWithArchive($control->generation(), $this->newVault('archive-escrow-parses'));
+        $readable = $this->storage->loadArchive($control->userId, $controlId);
+        $this->assert(
+            $readable?->escrow !== null && $readable->escrowUnreadable === false,
+            'loadArchive() names unreadable an escrow that parses'
+        );
+        foreach (self::UNPARSED_COLUMNS as $i => $column) {
+            $holder = $this->newVault("archive-escrow-unreadable-{$column}");
+            $this->storage->saveVault($holder);
+            $this->fill($holder);
+            $done = ($this->unparseEscrow)($holder->userId, $column);
+            if ($done === false && in_array($column, self::DECLINABLE_COLUMNS, true)) {
+                continue;
+            }
+            $this->assert($done === true, "the rewrite of the escrow row did not rewrite {$column}: see escrow-unreadable-row-named");
+            $requester = $this->newVault("archive-escrow-unreadable-{$column}");
+            $id = $this->storage->replaceWithArchive($holder->generation(), $requester);
+            try {
+                $archive = $this->storage->loadArchive($holder->userId, $id);
+            } catch (Throwable $e) {
+                throw new RuntimeException(
+                    "loadArchive() of an archive whose escrow {$column} does not parse raised " . $this->short($e::class)
+                    . ': the archive must read, its escrow null and escrowUnreadable true'
+                );
+            }
+            $this->assert($archive !== null, "loadArchive() lost the archive whose escrow {$column} does not parse");
+            $this->assert(
+                $archive->escrow === null && $archive->escrowUnreadable === true,
+                $archive->escrow === null
+                    ? "loadArchive() reads an archive whose escrow {$column} does not parse as an archive without escrow"
+                    : "loadArchive() read the escrow whose {$column} was rewritten as a record"
+            );
+            $this->assertSameVault($holder, $archive->record, "the archive whose escrow {$column} does not parse", ignoreRevision: true);
+            $this->assert(
+                $archive->escrowFields === ['contact' => 'c-contact'] && count($archive->privateFields) === 2,
+                "the archive whose escrow {$column} does not parse lost its fields or its escrow fields"
+            );
+            if ($i % 2 === 0) {
+                $this->storage->swapWithArchive($requester->generation(), $id);
+                $how = 'swapWithArchive()';
+            } else {
+                $this->storage->deleteVault($requester->generation());
+                $this->storage->restoreArchive($holder->userId, $id);
+                $how = 'restoreArchive()';
+            }
+            $this->assertSameVault($holder, $this->storage->loadVault($holder->userId), "the live vault after {$how} of an archive whose escrow does not parse");
+            try {
+                $back = $this->storage->loadEscrow($holder->userId);
+            } catch (UnreadableEscrowException) {
+                $back = false;
+            }
+            $this->assert(
+                $back === false,
+                $back === null
+                    ? "{$how} dropped the escrow row whose {$column} does not parse: it comes back as it was kept"
+                    : "{$how} brought back as a readable row an escrow whose {$column} did not parse"
+            );
+            $this->assert(
+                $this->storage->loadEscrowFields($holder->userId) === ['contact' => 'c-contact'],
+                "{$how} did not bring back the escrow fields of an archive whose escrow does not parse"
+            );
+        }
+        return null;
+    }
+
+    /**
+     * eraseAccount() erases the live vault, and keeps every archive of the
+     * userId once a replaceWithArchive() applied a ticket to it — the archive a
+     * swap set aside, and one set aside without a ticket, included. Without
+     * one, every archive goes (erase-account); under a freeze, nothing does
+     * (freeze-refuses-writes).
+     */
+    private function eraseKeepsRecoveryArchives(): ?string
+    {
+        $holder = $this->newVault('erase-keep');
+        $this->storage->saveVault($holder);
+        $this->fill($holder);
+        $requester = $this->newVault('erase-keep');
+        $byTicket = $this->storage->replaceWithArchive($holder->generation(), $requester, "{$this->prefix}-erase-keep-l3");
+        $swapped = $this->storage->swapWithArchive($requester->generation(), $byTicket, "{$this->prefix}-erase-keep-return");
+        $third = $this->newVault('erase-keep');
+        $without = $this->storage->replaceWithArchive($holder->generation(), $third);
+        $erased = $this->storage->eraseAccount($holder->userId);
+        $this->assert($erased === 1, "eraseAccount() of an account a level-3 ticket was applied to erased {$erased} vaults, not the live one alone");
+        $this->assert(!$this->storage->vaultExists($holder->userId), 'eraseAccount() left the live vault');
+        $kept = array_column($this->storage->listArchives($holder->userId), 'id');
+        sort($kept);
+        $expected = [$swapped, $without];
+        sort($expected);
+        $this->assert(
+            $kept === $expected,
+            'eraseAccount() of an account a level-3 ticket was applied to erased an archive — the one a swap set aside, or one set aside without a ticket: each may be the holder\'s vault'
+        );
+        $archive = $this->storage->loadArchive($holder->userId, $without);
+        $this->assert(
+            $archive !== null && hash_equals($holder->userSalt, $archive->record->userSalt) && $archive->escrowFields === ['contact' => 'c-contact'],
+            'an archive eraseAccount() kept is not the vault as it was archived'
+        );
+        return null;
+    }
+
+    /**
+     * eraseAccount() deletes no recovery ticket: replayed after the erasure,
+     * each one is refused. Once the userId holds no live vault and no archive,
+     * the tickets no longer name it, nor an archive: archiveOfTicket() answers
+     * null, and whoever registers the userId next does not inherit them — its
+     * archives go through eraseAccount() as any. A storage that implements
+     * ErasesArchives erases a kept archive under its userId only, leaves the
+     * tickets, and lists the archives whose userId holds no live vault.
+     */
+    private function eraseKeepsTickets(): ?string
+    {
+        $l3 = "{$this->prefix}-erase-tickets-l3";
+        $return = "{$this->prefix}-erase-tickets-return";
+        $close = "{$this->prefix}-erase-tickets-close";
+        $holder = $this->newVault('erase-tickets');
+        $this->storage->saveVault($holder);
+        $requester = $this->newVault('erase-tickets');
+        $kept = $this->storage->replaceWithArchive($holder->generation(), $requester, $l3);
+        $this->storage->freezeVault($requester->generation(), 'arbiter', new DateTimeImmutable(), $return);
+        $this->storage->unfreezeVault($requester->generation(), $close);
+        $this->storage->eraseAccount($holder->userId);
+        $this->assert($this->storage->archiveOfTicket($l3) === $kept, 'eraseAccount() erased the level-3 ticket of the archive it kept, or no longer names the archive');
+
+        $again = $this->vaultFor($holder->userId);
+        $this->storage->saveVault($again);
+        foreach ([
+            'replaceWithArchive()' => fn () => $this->storage->replaceWithArchive($again->generation(), $this->vaultFor($holder->userId), $l3),
+            'freezeVault()'        => fn () => $this->storage->freezeVault($again->generation(), 'arbiter', new DateTimeImmutable(), $return),
+            'unfreezeVault()'      => fn () => $this->storage->unfreezeVault($again->generation(), $close),
+        ] as $write => $replay) {
+            $this->expect(TicketAlreadyAppliedException::class, $replay, "the ticket of {$write}, replayed after eraseAccount() under a vault registered since");
+        }
+        $this->assert(
+            hash_equals($again->userSalt, $this->storage->loadVault($holder->userId)->userSalt)
+                && $this->storage->frozenState($holder->userId) === null
+                && array_column($this->storage->listArchives($holder->userId), 'id') === [$kept],
+            'a ticket replayed after the erasure changed the vault of whoever registered the userId next'
+        );
+        $this->storage->deleteVault($again->generation());
+
+        if ($this->storage instanceof ErasesArchives) {
+            $listed = array_values(array_filter(
+                $this->storage->keptArchives(),
+                static fn (array $a): bool => $a['userId'] === $holder->userId
+            ));
+            $this->assert(
+                array_column($listed, 'id') === [$kept] && array_column($this->storage->keptArchives($holder->userId), 'id') === [$kept],
+                'keptArchives() does not list the archive of a userId left without a live vault'
+            );
+            $live = $this->newVault('erase-tickets-live');
+            $this->storage->saveVault($live);
+            $this->storage->replaceWithArchive($live->generation(), $this->newVault('erase-tickets-live'));
+            $this->assert($this->storage->keptArchives($live->userId) === [], 'keptArchives() lists the archive of a userId that holds a live vault');
+            $this->assert(!$this->storage->eraseArchive($this->id('erase-tickets-other'), $kept), 'eraseArchive() under another userId returned true');
+            $this->assert($this->storage->loadArchive($holder->userId, $kept) !== null, 'eraseArchive() under another userId erased the archive');
+            $this->assert($this->storage->eraseArchive($holder->userId, $kept), 'eraseArchive() did not erase the archive eraseAccount() kept');
+            $this->assert($this->storage->listArchives($holder->userId) === [], 'eraseArchive() returned true and left the archive');
+            $this->assert(!$this->storage->eraseArchive($holder->userId, $kept), 'eraseArchive() of an archive already erased returned true');
+        } else {
+            $this->storage->restoreArchive($holder->userId, $kept);
+            $this->storage->eraseAccount($holder->userId);
+        }
+
+        $this->assert($this->storage->archiveOfTicket($l3) === null, 'the level-3 ticket still names the archive of an account that holds nothing any more');
+        $newcomer = $this->vaultFor($holder->userId);
+        $this->storage->saveVault($newcomer);
+        $this->expect(
+            TicketAlreadyAppliedException::class,
+            fn () => $this->storage->replaceWithArchive($newcomer->generation(), $this->vaultFor($holder->userId), $l3),
+            'the level-3 ticket replayed once the account holds nothing, under a vault registered since'
+        );
+        $this->storage->replaceWithArchive($newcomer->generation(), $next = $this->vaultFor($holder->userId));
+        $this->assert(
+            $this->storage->eraseAccount($holder->userId) === 2 && $this->storage->listArchives($holder->userId) === [],
+            'the newcomer under the userId inherited the tickets of the account erased before: eraseAccount() kept its archive'
         );
         return null;
     }
@@ -884,6 +1117,11 @@ final class Conformance
         return null;
     }
 
+    /**
+     * A frozen vault reads, and refuses every write of the contract that names
+     * it — eraseAccount() of its userId, and eraseArchive() on a storage that
+     * implements ErasesArchives, included —, leaving everything as it was.
+     */
     private function freezeRefusesWrites(): ?string
     {
         $vault = $this->newVault('freeze');
@@ -912,6 +1150,10 @@ final class Conformance
             'updateVault'     => fn () => $this->storage->updateVault($stored->withWrapPwd($this->blob(), new DateTimeImmutable())),
             'swapWithArchive' => fn () => $this->storage->swapWithArchive($g, $id),
         ];
+        if ($this->storage instanceof ErasesArchives) {
+            $writes['eraseArchive'] = fn () => $this->storage->eraseArchive($live->userId, $id);
+        }
+        $writes['eraseAccount'] = fn () => $this->storage->eraseAccount($live->userId);
         foreach ($writes as $write => $call) {
             $this->expect(VaultFrozenException::class, $call, "{$write}() on a frozen vault");
         }
@@ -930,8 +1172,6 @@ final class Conformance
         $this->storage->saveFields($g, ['after' => ['ciphertext' => 'c-after']]);
         $this->assert($this->storage->loadFields($live->userId, ['after']) === ['after' => 'c-after'], 'an unfrozen vault still refuses writes');
 
-        $this->storage->freezeVault($g, 'arbiter-1', $at);
-        $this->assert($this->storage->eraseAccount($live->userId) === 2, 'eraseAccount() did not erase a frozen account and its archive');
         return null;
     }
 
@@ -963,8 +1203,8 @@ final class Conformance
     /**
      * A recovery ticket is recorded in the transaction of the write it names,
      * once per operation; a replay writes nothing. The archive a level-3
-     * ticket set aside is found by the ticket, and erasing the account erases
-     * its tickets.
+     * ticket set aside is found by the ticket, and erasing the account leaves
+     * that ticket (erase-account-keeps-tickets).
      */
     private function ticketsAppliedOnce(): ?string
     {
@@ -995,7 +1235,7 @@ final class Conformance
         );
         $this->assert($this->storage->frozenState($new->userId) === null, 'a replayed freeze froze the vault again');
         $this->storage->eraseAccount($new->userId);
-        $this->assert($this->storage->archiveOfTicket($ticket) === null, 'eraseAccount() left the tickets of the account');
+        $this->assert($this->storage->archiveOfTicket($ticket) === $id, 'eraseAccount() erased the level-3 ticket: replayed under the same userId, it would re-enrol whoever registers it next');
         return null;
     }
 
@@ -1501,7 +1741,19 @@ final class Conformance
     {
         foreach ($this->created as $userId) {
             try {
+                $live = $this->storage->findVault($userId);
+                if ($live !== null && $this->storage->frozenState($userId) !== null) {
+                    $this->storage->unfreezeVault($live->generation());
+                }
                 $this->storage->eraseAccount($userId);
+                foreach ($this->storage->listArchives($userId) as $kept) {
+                    if ($this->storage instanceof ErasesArchives) {
+                        $this->storage->eraseArchive($userId, $kept['id']);
+                    } else {
+                        $this->storage->restoreArchive($userId, $kept['id']);
+                        $this->storage->eraseAccount($userId);
+                    }
+                }
             } catch (Throwable) {
             }
         }

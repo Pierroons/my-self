@@ -67,8 +67,11 @@ declare(strict_types=1);
  * réécrite, que loadEscrow() lève UnreadableEscrowException, et, pour la
  * révision, que replaceEscrow() sur le record lu avant lève
  * StaleEscrowException. Il ne relit pas la base : il croit que le fichier
- * réécrit la colonne qu'on lui donne. Sans ce fichier, ce cas est sauté de
- * même.
+ * réécrit la colonne qu'on lui donne. Le cas « archive-escrow-unreadable » se
+ * sert du même fichier : il archive un coffre dont la ligne de séquestre ne se
+ * lit plus, et exige que l'archive se lise, son séquestre nommé illisible, puis
+ * revienne en service avec cette ligne telle qu'elle était. Sans ce fichier,
+ * ces deux cas sont sautés de même.
  *
  * La suite écrit dans cette base, sous des userId tirés au hasard
  * (« conformance-<hex>-… »), et les efface à la fin de chaque cas. Les cas de

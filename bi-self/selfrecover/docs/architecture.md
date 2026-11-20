@@ -203,8 +203,9 @@ What the library enforces, with the defaults it ships:
   one served at level 1 or 2 gives the account back to its holder. The vault
   then stays read-only until the arbitrator closes the window
   (`cloreFenetre()`) — never the clock. `fenetre()` tells the application
-  which state holds; with SelfDataGuard, `reinstateArchive()` and `freeze()`
-  follow it. A window that expires unused erases those secrets
+  which state holds; with SelfDataGuard, `reinstateArchive()` — whose
+  `$restoredWithoutIndex` names the fields that came back without their index —,
+  or `restoreArchive()` once the account was erased, and `freeze()` follow it. A window that expires unused erases those secrets
   (`purgerFenetres()`). At level 1, every refusal waits for one common
   deadline, so that the second Argon2id an old passphrase costs does not tell
   that an account came out of a level 3
