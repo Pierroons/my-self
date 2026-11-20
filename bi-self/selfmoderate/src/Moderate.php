@@ -1031,6 +1031,9 @@ class Moderate
     /** Les connexions dont le schéma est vérifié (`exigerSchema()`). */
     private static ?\WeakMap $schemaVerifie = null;
 
+    /** Les connexions dont l'index de la paire est vérifié (`exigerIndexPaire()`). */
+    private static ?\WeakMap $indexVerifie = null;
+
     /**
      * L'exception après laquelle la base a défait une transaction du moteur, ou
      * celle qui contenait son point de reprise : ce n'est pas un refus, et rien
@@ -1255,10 +1258,12 @@ class Moderate
      * (`effet`) : un vote puis son contraire, ou un vote que la cible fait tomber en
      * le croisant, la laissent libre — la cible ne la remplit pas à vide avec ses
      * propres comptes. Un vote qui porte sans rien déplacer (`effet` à zéro : une
-     * borne de la réputation, ou une remise passée) compte un dans son sens, et rien
-     * dans l'autre : au plafond comme au plancher, la part borne encore les scores
-     * des messages et les motifs, et un vote positif sans effet n'ouvre pas la part négative. Lue
-     * sous le verrou du vote, sans la dispense par message de `canVote()`.
+     * borne de la réputation, ou une remise passée) compte un dans son sens tant que
+     * la cible est à la borne de ce sens — au plafond pour un vote positif, au
+     * plancher pour un vote négatif —, et rien sinon : à la borne, la part borne
+     * encore les scores des messages et les motifs ; hors d'elle, des votes émis
+     * pendant un ban, ou que la remise a effacés, ne l'occupent plus. Lue sous le
+     * verrou du vote, sans la dispense par message de `canVote()`.
      */
     private static function partDesRecentsPleine(PDO $pdo, int $voterId, int $author, int $value): bool
     {
@@ -1275,10 +1280,13 @@ class Moderate
         }
         // Le seuil est interpolé, pas lié : comparée à un paramètre arrivé en TEXT,
         // une expression sans affinité serait toujours plus petite sous SQLite, et
-        // tout vote passerait pour récent. Le sens, ±1 calculé ici, l'est avec lui.
+        // tout vote passerait pour récent. Le sens et la borne, des entiers calculés
+        // ici, le sont avec lui.
         $sens = $value === -1 ? -1 : 1;
+        $reputation = self::etat($pdo, $author)['reputation'];
+        $aLaBorne = (int) ($sens === 1 ? $reputation >= self::config()->reputationMax : $reputation <= self::config()->banA);
         $stmt = $pdo->prepare(
-            'SELECT COALESCE(SUM(CASE WHEN v.effet = 0 THEN (CASE WHEN v.value = ' . $sens . ' THEN v.value ELSE 0 END)
+            'SELECT COALESCE(SUM(CASE WHEN v.effet = 0 THEN (CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . ' THEN v.value ELSE 0 END)
                                       ELSE COALESCE(v.effet, v.value) END), 0)
                FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
               WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ?
@@ -1493,12 +1501,9 @@ class Moderate
      * clique qui cesse de s'écrire reste une clique tant que ses votes comptent.
      * `areLinked()` passe par ici : la définition du lien n'existe qu'une fois.
      *
-     * Les messages entre votants se lisent en flux, depuis le plus ancien début,
-     * au plus `$max` : au-delà, la fonction rend null — le temps et la mémoire
-     * d'un vote ne suivent pas le graphe. Chaque sens garde sa date la plus
-     * récente, que la paire compare à son début. Instants et identifiants sont
-     * interpolés en entiers : liés, ils arriveraient en TEXT, et une colonne de
-     * vue calculée, sans affinité, ne leur serait jamais égale.
+     * Les sens se lisent dans l'index de la paire (`recusDe()`), au plus `$max`
+     * recherches : au-delà, la fonction rend null. Le coût suit les votants et
+     * leurs expéditeurs distincts, jamais le volume des messages.
      *
      * @param int[] $voters
      * @param array<int, int>|null $premiers
@@ -1506,44 +1511,31 @@ class Moderate
      */
     private static function mutualPairs(PDO $pdo, array $voters, ?int $t = null, ?array $premiers = null, ?int $max = null): ?array
     {
-        if (count($voters) < 2) {
+        if (count(array_unique($voters)) < 2) {
             return [];
         }
         $t ??= self::maintenant();
-        $profondeur = self::config()->fenetreMeuteJours * 86400;
         $premiers ??= array_fill_keys($voters, $t);
-        $debut = min(array_map(static fn (int $v): int => $premiers[$v], $voters)) - $profondeur;
-        $ids = implode(',', array_map('intval', $voters));
-        $date = self::exigerDatesDm($pdo, $ids, $t);
-        $limite = $max === null ? '' : ' LIMIT ' . ($max + 1);
-        try {
-            $stmt = $pdo->query(
-                "SELECT sender_id, recipient_id, $date FROM dm
-                  WHERE recipient_id IN ($ids) AND sender_id IN ($ids) AND sender_id <> recipient_id
-                    AND $date BETWEEN $debut AND $t$limite"
-            );
-        } catch (\PDOException $e) {
-            throw self::dmIntrouvable($pdo, $e);
-        }
-        $sens = [];
-        $lus = 0;
-        while (($r = $stmt->fetch(PDO::FETCH_NUM)) !== false) {
-            if ($max !== null && ++$lus > $max) {
-                $stmt->closeCursor();
+        $l = self::lecteurDeSens($pdo, $voters, $t, $max ?? PHP_INT_MAX);
+        $dates = [];
+        foreach ($l['votants'] as $r) {
+            $recus = self::recusDe($l, $r);
+            if ($recus === null || $l['budget'] < 0) {
+                self::conclureLecture($l);
 
                 return null;
             }
-            [$de, $vers, $quand] = [(int) $r[0], (int) $r[1], (int) $r[2]];
-            if (($sens[$de][$vers] ?? $quand) <= $quand) {
-                $sens[$de][$vers] = $quand;
+            foreach ($recus as $s => $quand) {
+                $dates[$s][$r] = $quand;
             }
         }
-        $stmt->closeCursor();
+        self::conclureLecture($l);
+        $profondeur = self::config()->fenetreMeuteJours * 86400;
         $paires = [];
-        foreach ($sens as $de => $versQui) {
+        foreach ($dates as $de => $versQui) {
             foreach ($versQui as $vers => $quand) {
-                if ($de < $vers && isset($sens[$vers][$de])
-                    && min($quand, $sens[$vers][$de]) >= min($premiers[$de], $premiers[$vers]) - $profondeur) {
+                if ($de < $vers && isset($dates[$vers][$de])
+                    && min($quand, $dates[$vers][$de]) >= min($premiers[$de], $premiers[$vers]) - $profondeur) {
                     $paires[] = [$de, $vers];
                 }
             }
@@ -1554,55 +1546,41 @@ class Moderate
 
     /**
      * Les votants de `$voters` liés à personne parmi eux, cherchés compte par
-     * compte quand leurs messages dépassent la borne de lecture de
-     * `mutualPairs()` : pour chacun, sa boîte reçue, puis, pour chaque expéditeur
-     * votant, le sens inverse sur leur paire — la lecture d'un compte s'arrête à
-     * son premier lien. Ils sont des voix les uns pour les autres, quel que soit
-     * le reste du graphe : un minimum exact. La recherche s'arrête à `$assez`.
+     * compte quand la lecture de `mutualPairs()` dépasse sa borne : pour chacun,
+     * ses expéditeurs votants dans l'index de la paire, puis le sens inverse sur
+     * leur paire, qui peut n'avoir aucun message — la lecture d'un compte s'arrête
+     * à son premier lien. Ils sont des voix les uns pour les autres, quel que soit le
+     * reste du graphe. La recherche s'arrête à `$assez`, ou au bout de `$max`
+     * recherches : un votant qu'elle n'a pas fini de lire ne compte pas, et le
+     * minimum reste exact.
      *
      * @param int[] $voters
      * @param array<int, int> $premiers
      * @return list<int>
      */
-    private static function liesAPersonne(PDO $pdo, array $voters, int $t, array $premiers, int $assez): array
+    private static function liesAPersonne(PDO $pdo, array $voters, int $t, array $premiers, int $assez, int $max): array
     {
         $seuls = [];
-        if ($assez <= 0) {
+        if ($assez <= 0 || $voters === []) {
             return $seuls;
         }
         $profondeur = self::config()->fenetreMeuteJours * 86400;
-        $debut = min(array_map(static fn (int $v): int => $premiers[$v], $voters)) - $profondeur;
-        $date = self::exigerDatesDm($pdo, implode(',', array_map('intval', $voters)), $t);
-        $votant = array_fill_keys($voters, true);
-        try {
-            $recus = $pdo->prepare("SELECT sender_id, $date FROM dm WHERE recipient_id = ? AND $date BETWEEN $debut AND $t");
-            $retour = $pdo->prepare("SELECT 1 FROM dm WHERE recipient_id = ? AND sender_id = ? AND $date BETWEEN ? AND $t LIMIT 1");
-        } catch (\PDOException $e) {
-            throw self::dmIntrouvable($pdo, $e);
-        }
-        foreach ($voters as $v) {
-            $recus->bindValue(1, $v, PDO::PARAM_INT);
-            $recus->execute();
+        $l = self::lecteurDeSens($pdo, $voters, $t, $max);
+        foreach ($l['votants'] as $v) {
             $lie = false;
-            $vus = [];
-            while (!$lie && ($r = $recus->fetch(PDO::FETCH_NUM)) !== false) {
-                $x = (int) $r[0];
-                if ($x === $v || !isset($votant[$x]) || isset($vus[$x])) {
-                    continue;
-                }
+            $recus = self::recusDe($l, $v, static function (int $x, int $quand) use (&$l, &$lie, $v, $premiers, $profondeur): bool {
                 $depuis = min($premiers[$v], $premiers[$x]) - $profondeur;
-                if ((int) $r[1] < $depuis) {
-                    continue;
+                if ($quand < $depuis) {
+                    return false;
                 }
-                $vus[$x] = true;
-                $retour->bindValue(1, $x, PDO::PARAM_INT);
-                $retour->bindValue(2, $v, PDO::PARAM_INT);
-                $retour->bindValue(3, $depuis, PDO::PARAM_INT);
-                $retour->execute();
-                $lie = $retour->fetchColumn() !== false;
-                $retour->closeCursor();
+                $retour = self::dateDuSens($l, $x, $v, connu: false);
+                $lie = is_int($retour) && $retour >= $depuis;
+
+                return $lie;
+            });
+            if ($recus === null || $l['budget'] < 0) {
+                break;
             }
-            $recus->closeCursor();
             if (!$lie) {
                 $seuls[] = $v;
                 if (count($seuls) >= $assez) {
@@ -1610,57 +1588,265 @@ class Moderate
                 }
             }
         }
+        self::conclureLecture($l);
 
         return $seuls;
     }
 
     /**
-     * La colonne des dates de `dm` que la lecture des liens compare, après une
-     * sonde sur les messages des votants (`$ids`). Un instant en secondes est du
-     * même ordre que maintenant : la sonde cherche, par l'index de la boîte
-     * reçue, une date hors de `[$t / 100, $t × 100]` — des millisecondes sont mille
-     * fois plus grandes, un jour julien plus de cent fois plus petit, et une
-     * date en clair ou un blob se rangent après tout nombre. Aucune : la colonne
-     * se compare telle quelle, et l'index sert. Un instant écrit en chiffres (une
-     * vue en `strftime('%s', …)`) : la colonne se convertit, et tout ce qui n'est
-     * pas un instant à la bonne échelle est refusé. Le reste lève, en le nommant :
-     * le quorum ne lirait aucun lien, et chaque votant ferait une voix.
+     * Ce qu'une lecture des sens tient : les votants triés, les requêtes préparées
+     * sur l'index de la paire (`exigerIndexPaire()`), le budget de recherches, et
+     * le compte des sens lisibles et illisibles (`conclureLecture()`).
+     *
+     * @param int[] $voters
+     * @return array{pdo: PDO, votants: list<int>, estVotant: array<int, true>, t: int, budget: int,
+     *               suivant: \PDOStatement, date: \PDOStatement, dernier: \PDOStatement, existe: \PDOStatement,
+     *               lisibles: int, illisibles: array<int, array<int, true>>}
      */
-    private static function exigerDatesDm(PDO $pdo, string $ids, int $t): string
+    private static function lecteurDeSens(PDO $pdo, array $voters, int $t, int $budget): array
     {
-        $bas = intdiv($t, 100);
-        $haut = $t * 100;
+        self::exigerIndexPaire($pdo);
+        $votants = array_values(array_unique(array_map('intval', $voters)));
+        sort($votants);
         try {
-            $hors = $pdo->query(
-                "SELECT created_at, typeof(created_at) FROM dm
-                  WHERE recipient_id IN ($ids) AND sender_id IN ($ids) AND (created_at < $bas OR created_at > $haut)
-                  LIMIT 1"
-            )->fetch(PDO::FETCH_NUM);
-            if ($hors === false) {
-                return 'created_at';
-            }
-            if ($hors[1] === 'text' && ctype_digit((string) $hors[0])) {
-                $hors = $pdo->query(
-                    "SELECT created_at, typeof(created_at) FROM dm
-                      WHERE recipient_id IN ($ids) AND sender_id IN ($ids)
-                        AND (typeof(created_at) = 'blob'
-                             OR (typeof(created_at) = 'text' AND (created_at = '' OR created_at GLOB '*[^0-9]*'))
-                             OR CAST(created_at AS INTEGER) NOT BETWEEN $bas AND $haut)
-                      LIMIT 1"
-                )->fetch(PDO::FETCH_NUM);
-                if ($hors === false) {
-                    return 'CAST(created_at AS INTEGER)';
-                }
-            }
+            return [
+                'pdo'        => $pdo,
+                'votants'    => $votants,
+                'estVotant'  => array_fill_keys($votants, true),
+                't'          => $t,
+                'budget'     => $budget,
+                'suivant'    => $pdo->prepare('SELECT MIN(sender_id) FROM dm WHERE recipient_id = ? AND sender_id >= ?'),
+                'date'       => $pdo->prepare('SELECT MAX(created_at) FROM dm WHERE recipient_id = ? AND sender_id = ? AND created_at <= ?'),
+                'dernier'    => $pdo->prepare('SELECT MAX(created_at) FROM dm WHERE recipient_id = ? AND sender_id = ?'),
+                'existe'     => $pdo->prepare('SELECT 1 FROM dm WHERE recipient_id = ? AND sender_id = ? LIMIT 1'),
+                'lisibles'   => 0,
+                'illisibles' => [],
+            ];
         } catch (\PDOException $e) {
             throw self::dmIntrouvable($pdo, $e);
         }
-        throw new \LogicException(sprintf(
-            'SelfModerate : « dm.created_at » de l\'hôte porte « %s » (%s), qui n\'est pas un instant Unix en secondes, du même ordre que maintenant (%d) — le quorum des seuils compare des instants.',
-            mb_substr((string) $hors[0], 0, 40),
-            $hors[1],
-            $t
-        ));
+    }
+
+    /**
+     * Les expéditeurs votants de `$r`, avec la date de leur sens vers lui : le plus
+     * petit expéditeur à partir de chaque identifiant de votant, par sauts dans
+     * l'index — un expéditeur qui ne vote pas fait sauter au votant suivant. Un
+     * compte coûte un saut par votant ou par expéditeur distinct, le plus petit des
+     * deux, plus le dernier saut, et de une à trois recherches par sens
+     * (`dateDuSens()`). Un sens illisible n'y est pas. `$assez`, s'il est donné, est
+     * appelé à chaque sens lisible : vrai, la lecture du compte s'arrête là.
+     *
+     * @param callable(int, int): bool|null $assez
+     * @return array<int, int>|null expéditeur → date ; null quand le budget s'épuise à
+     *         un saut ou à une date. Il peut aussi s'épuiser dans `$assez`, au dernier
+     *         saut : la lecture rend alors ce qu'elle a lu, et l'appelant lit le budget.
+     */
+    private static function recusDe(array &$l, int $r, ?callable $assez = null): ?array
+    {
+        $recus = [];
+        $n = count($l['votants']);
+        $i = 0;
+        while ($i < $n) {
+            if (--$l['budget'] < 0) {
+                return null;
+            }
+            $l['suivant']->bindValue(1, $r, PDO::PARAM_INT);
+            $l['suivant']->bindValue(2, $l['votants'][$i], PDO::PARAM_INT);
+            $l['suivant']->execute();
+            $s = $l['suivant']->fetchColumn();
+            $l['suivant']->closeCursor();
+            if ($s === null || $s === false) {
+                break;
+            }
+            $s = (int) $s;
+            if ($s !== $r && isset($l['estVotant'][$s])) {
+                $quand = self::dateDuSens($l, $r, $s);
+                if ($quand === false) {
+                    return null;
+                }
+                if ($quand !== null) {
+                    $recus[$s] = $quand;
+                    if ($assez !== null && $assez($s, $quand)) {
+                        return $recus;
+                    }
+                }
+            }
+            $i = self::votantApres($l['votants'], $s);
+        }
+
+        return $recus;
+    }
+
+    /** La place, dans les votants triés, du premier identifiant au-delà de `$s`. */
+    private static function votantApres(array $votants, int $s): int
+    {
+        $bas = 0;
+        $haut = count($votants);
+        while ($bas < $haut) {
+            $milieu = intdiv($bas + $haut, 2);
+            if ($votants[$milieu] <= $s) {
+                $bas = $milieu + 1;
+            } else {
+                $haut = $milieu;
+            }
+        }
+
+        return $bas;
+    }
+
+    /**
+     * La date du sens `$s` → `$r` : la plus récente jusqu'à `t`, lisible si elle tombe
+     * dans `[t / 2, t]` — un instant en secondes est du même ordre que maintenant,
+     * et des millisecondes, des dixièmes de seconde, un jour julien n'y tombent pas.
+     * Sinon, la plus récente tout court dit le reste : un sens dont le dernier
+     * message tient dans `]t, 2 t]` est lisible, et hors de la fenêtre (0) ; un
+     * instant écrit en texte (une vue en `strftime('%s', …)`) se relit avec `t` en
+     * texte ; tout autre sens — des dates NULL, en clair, hors d'échelle — est
+     * illisible, retenu à part (`conclureLecture()`), et ne lie personne. Un sens
+     * que l'index n'a pas trouvé (`$connu` faux) peut n'avoir aucun message : il ne
+     * lie personne, sans être illisible. Une à trois recherches, quatre pour un
+     * sens inconnu.
+     *
+     * @return int|null|false la date, null si le sens est illisible ou vide, false quand le budget est épuisé
+     */
+    private static function dateDuSens(array &$l, int $r, int $s, bool $connu = true): int|null|false
+    {
+        $t = $l['t'];
+        $lisible = static fn (?int $quand): bool => $quand !== null && $quand >= intdiv($t, 2) && $quand <= $t;
+        $quand = self::lireDate($l, $l['date'], [$r, $s, $t]);
+        if ($quand === false) {
+            return false;
+        }
+        if (!$lisible($quand)) {
+            $dernier = self::lireDate($l, $l['dernier'], [$r, $s], brut: $brut);
+            if ($dernier === false) {
+                return false;
+            }
+            if ($dernier !== null && $dernier > $t && $dernier <= 2 * $t) {
+                $l['lisibles']++;
+
+                return 0;
+            }
+            $quand = is_string($brut) ? self::lireDate($l, $l['date'], [$r, $s, (string) $t]) : null;
+            if ($quand === false) {
+                return false;
+            }
+            if (!$lisible($quand)) {
+                if ($dernier === null && $brut === null && !$connu) {
+                    if (--$l['budget'] < 0) {
+                        return false;
+                    }
+                    $l['existe']->bindValue(1, $r, PDO::PARAM_INT);
+                    $l['existe']->bindValue(2, $s, PDO::PARAM_INT);
+                    $l['existe']->execute();
+                    $existe = $l['existe']->fetchColumn() !== false;
+                    $l['existe']->closeCursor();
+                    if (!$existe) {
+                        return null;
+                    }
+                }
+                $l['illisibles'][$r][$s] = true;
+
+                return null;
+            }
+        }
+        $l['lisibles']++;
+
+        return $quand;
+    }
+
+    /**
+     * Une recherche de date, comptée sur le budget : l'instant rendu, null s'il n'y
+     * en a pas ou s'il n'est pas un nombre, false quand le budget est épuisé.
+     * `$brut` reçoit la valeur telle que la base l'a rendue.
+     *
+     * @param list<int|string> $valeurs
+     */
+    private static function lireDate(array &$l, \PDOStatement $q, array $valeurs, mixed &$brut = null): int|null|false
+    {
+        if (--$l['budget'] < 0) {
+            return false;
+        }
+        foreach ($valeurs as $i => $valeur) {
+            $q->bindValue($i + 1, $valeur, is_int($valeur) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $q->execute();
+        $brut = $q->fetchColumn();
+        $q->closeCursor();
+
+        return match (true) {
+            is_int($brut)                          => $brut,
+            is_float($brut)                        => (int) $brut,
+            is_string($brut) && is_numeric($brut)  => (int) (float) $brut,
+            default                                => null,
+        };
+    }
+
+    /**
+     * Ce qu'une lecture dit des dates de `dm` quand elle a rencontré des sens
+     * illisibles. Si aucun sens n'était lisible et qu'une paire est illisible dans
+     * ses deux sens, c'est la convention de la colonne qui est fausse : la lecture lève, en
+     * nommant une date — sinon le quorum ne lirait aucun lien, et chaque votant
+     * ferait une voix. Sinon, les sens illisibles ne lient personne, et le journal
+     * d'erreurs le dit : un vieux message mal daté ne gèle aucune chute.
+     */
+    private static function conclureLecture(array $l): void
+    {
+        if ($l['illisibles'] === []) {
+            return;
+        }
+        $illisibles = array_sum(array_map('count', $l['illisibles']));
+        foreach ($l['illisibles'] as $r => $expediteurs) {
+            foreach (array_keys($expediteurs) as $s) {
+                if ($l['lisibles'] === 0 && isset($l['illisibles'][$s][$r])) {
+                    $exemple = $l['pdo']->prepare('SELECT created_at, typeof(created_at) FROM dm WHERE recipient_id = ? AND sender_id = ? LIMIT 1');
+                    $exemple->execute([$r, $s]);
+                    $ligne = $exemple->fetch(PDO::FETCH_NUM) ?: ['?', '?'];
+                    $exemple->closeCursor();
+                    throw new \LogicException(sprintf(
+                        'SelfModerate : « dm.created_at » de l\'hôte porte « %s » (%s), qui n\'est pas un instant Unix en secondes, du même ordre que maintenant (%d) — aucun message entre les votants n\'a de date lisible, et le quorum des seuils compare des instants.',
+                        mb_substr((string) $ligne[0], 0, 40),
+                        $ligne[1],
+                        $l['t']
+                    ));
+                }
+            }
+        }
+        error_log(sprintf('SelfModerate : %d sens de messages privés entre votants ont une date illisible (ni un instant en secondes, ni du même ordre que maintenant) ; ils ne lient personne.', $illisibles));
+    }
+
+    /**
+     * L'index de la paire, `dm(recipient_id, sender_id, created_at)` : sans lui,
+     * chaque recherche de la lecture des liens relirait une boîte entière, sous le
+     * verrou d'écriture. Vérifié une fois par connexion, sur les plans que SQLite
+     * donne aux deux recherches : l'expéditeur suivant (l'égalité sur le
+     * destinataire, la plage sur l'expéditeur), et la date d'un sens (l'égalité sur
+     * les deux, la plage sur la date) doivent passer par un index. Une vue qui
+     * calcule l'une de ces colonnes ne le peut pas.
+     */
+    private static function exigerIndexPaire(PDO $pdo): void
+    {
+        self::$indexVerifie ??= new \WeakMap();
+        if (isset(self::$indexVerifie[$pdo])) {
+            return;
+        }
+        try {
+            $plan = implode(' | ', $pdo->query('EXPLAIN QUERY PLAN SELECT MIN(sender_id) FROM dm WHERE recipient_id = 1 AND sender_id >= 1')
+                ->fetchAll(PDO::FETCH_COLUMN, 3));
+            $planDate = implode(' | ', $pdo->query('EXPLAIN QUERY PLAN SELECT MAX(created_at) FROM dm WHERE recipient_id = 1 AND sender_id = 1 AND created_at <= 1')
+                ->fetchAll(PDO::FETCH_COLUMN, 3));
+        } catch (\PDOException $e) {
+            throw self::dmIntrouvable($pdo, $e);
+        }
+        $plan .= ' | ' . $planDate;
+        if (preg_match('/USING (?:COVERING )?INDEX \S+ \(\S+=\? AND \S+>\?\)/', $plan) !== 1
+            || preg_match('/USING (?:COVERING )?INDEX \S+ \(\S+=\? AND \S+=\? AND \S+<\?\)/', $planDate) !== 1) {
+            throw new \LogicException(
+                'SelfModerate : la table « dm » de l\'hôte n\'a pas d\'index que la lecture des liens du quorum puisse suivre (' . $plan . ') — '
+                . 'la note de montée vers la 0.9.0 (README) le crée : CREATE INDEX IF NOT EXISTS idx_dm_paire ON dm(recipient_id, sender_id, created_at).'
+            );
+        }
+        self::$indexVerifie[$pdo] = true;
     }
 
     /** L'erreur d'une lecture de `dm` : la table nommée si elle manque, l'erreur telle quelle sinon. */
@@ -2514,7 +2700,7 @@ class Moderate
                     $auPlancher ? self::config()->voixPourSanction(self::config()->banA) : 0
                 ));
                 if ($voix['indecis']) {
-                    error_log(sprintf('SelfModerate : le quorum du compte %d n\'a pas pu décider (travail ou messages entre votants au-delà de leur borne) ; seules ses %d voix trouvées comptent.', $accountId, $voix['voix']));
+                    error_log(sprintf('SelfModerate : le quorum du compte %d n\'a pas pu décider (travail ou recherches dans l\'index au-delà de leur borne) ; seules ses %d voix trouvées comptent.', $accountId, $voix['voix']));
                 }
             }
         }
@@ -2631,11 +2817,11 @@ class Moderate
      *
      * `voix` est exact sous `$assez`, et vaut `$assez` dès qu'il est atteint : la
      * recherche s'arrête au quorum. `indecis` dit qu'elle n'a pas pu décider — son
-     * travail épuisé (`quorumTravailMax`), ou plus de `quorumMessagesMax` messages
-     * entre votants, où seuls les votants liés à personne se comptent
-     * (`liesAPersonne()`) : `voix` n'est alors qu'un minimum, et la machine ne
-     * sanctionne que ce qu'il porte. `paires_liees` est null quand les messages
-     * n'ont pas été lus en entier.
+     * travail épuisé (`quorumTravailMax`), ou une lecture des liens au-delà de
+     * `quorumRecherchesMax` recherches dans l'index, où seuls les votants liés à
+     * personne se comptent (`liesAPersonne()`) : `voix` n'est alors qu'un minimum,
+     * et la machine ne sanctionne que ce qu'il porte. `paires_liees` est null quand
+     * les liens n'ont pas été lus en entier.
      *
      * @return array{voix: int, votants: int, recents: int, paires_liees: int|null, indecis: bool}
      */
@@ -2653,9 +2839,9 @@ class Moderate
             }
         }
         $classe = min(1, $recents);
-        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumMessagesMax);
+        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumRecherchesMax);
         if ($paires === null) {
-            $sansLien = count(self::liesAPersonne($pdo, $etablis, $t, $premiers, $assez - $classe));
+            $sansLien = count(self::liesAPersonne($pdo, $etablis, $t, $premiers, $assez - $classe, self::config()->quorumRecherchesMax));
             $indecis = $sansLien + $classe < $assez;
             $pairesLiees = null;
         } else {
@@ -3934,8 +4120,8 @@ class Moderate
      * `voix_sans_lien`, exact sous le quorum du ban et égal à ce quorum sinon —
      * un minimum quand `indecis` ;
      * `recents`, les votants que leur âge range dans une seule voix ;
-     * `paires_liees`, les liens entre les autres, null quand leurs messages
-     * dépassent la borne de lecture (`quorumMessagesMax`) ; `indecis`, une
+     * `paires_liees`, les liens entre les autres, null quand la lecture des liens
+     * dépasse sa borne (`quorumRecherchesMax`) ; `indecis`, une
      * recherche qui n'a pas pu décider.
      *
      * @return array{votants: int, ages_jours: list<int>, etalement: int, voix_sans_lien: int,

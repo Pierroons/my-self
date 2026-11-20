@@ -98,13 +98,13 @@ final class Config
      *                                        Épuisée avant de décider, elle ne sanctionne que ce
      *                                        que portent les voix déjà trouvées ; la chute est
      *                                        signalée, et `compositionChute()` la dit indécise.
-     * @param int      $quorumMessagesMax     Messages privés entre votants que le quorum lit au plus
-     *                                        pour en tirer leurs liens. Au-delà, seuls les votants
-     *                                        liés à personne font des voix, cherchés compte par
-     *                                        compte ; s'ils n'atteignent pas le quorum, la chute se
-     *                                        dit indécise. La lecture des liens ne suit plus le volume
-     *                                        de messages qu'un adversaire fait échanger entre
-     *                                        votants ; le repli lit la boîte reçue de chacun.
+     * @param int      $quorumRecherchesMax   Recherches dans l'index de la paire de `dm` que la
+     *                                        lecture des liens du quorum fait au plus. Au-delà,
+     *                                        seuls les votants liés à personne font des voix,
+     *                                        cherchés compte par compte sous la même borne ; s'ils
+     *                                        n'atteignent pas le quorum, la chute se dit indécise.
+     *                                        Le coût suit les votants et leurs expéditeurs
+     *                                        distincts, jamais le volume des messages.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -135,7 +135,7 @@ final class Config
         public readonly int $ageEtabliSecondes = 3600,
         public readonly bool $quorumAuxSeuils = true,
         public readonly int $quorumTravailMax = 200000,
-        public readonly int $quorumMessagesMax = 200000,
+        public readonly int $quorumRecherchesMax = 200000,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -180,8 +180,8 @@ final class Config
         if ($this->quorumTravailMax < 1) {
             throw new InvalidArgumentException('quorumTravailMax compte des sommets lus : 1 ou plus.');
         }
-        if ($this->quorumMessagesMax < 1) {
-            throw new InvalidArgumentException('quorumMessagesMax compte des messages entre votants : 1 ou plus.');
+        if ($this->quorumRecherchesMax < 1) {
+            throw new InvalidArgumentException('quorumRecherchesMax compte des recherches dans un index : 1 ou plus.');
         }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
             throw new InvalidArgumentException(sprintf(

@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS dm (
     FOREIGN KEY (recipient_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_dm_recipient ON dm(recipient_id, created_at);
+-- La lecture des liens du quorum de SelfModerate : une recherche par sens, quel que soit le volume des messages.
+CREATE INDEX IF NOT EXISTS idx_dm_paire ON dm(recipient_id, sender_id, created_at);
 
 -- Blocage des messages privés : entre deux membres dont l'un a bloqué l'autre, l'envoi
 -- est refusé, dans les deux sens, et rien n'entre dans `dm` — SelfModerate y lit les
