@@ -57,7 +57,7 @@ render_header(t('title.security'), $account);
 <div class="sec-card">
   <h2><?= t('sec.5.h2') ?></h2>
   <?php $r = Moderate::regles(); ?>
-  <?= t('sec.5.body', $r['initiale'], $r['max'], h($r['sybil']), h($r['paliers']), $r['quorumVote'], $r['quorumBan']) ?>
+  <?= t('sec.5.body', $r['initiale'], $r['max'], h($r['sybil']), h($r['paliers']), $r['quorumVote'], $r['quorumBan'], h($r['recents'])) ?>
 </div>
 
 <div class="sec-card">

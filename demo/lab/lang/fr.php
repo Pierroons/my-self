@@ -89,7 +89,7 @@ return [
     'sec.5.h2' => '5. Modération — SelfModerate <span class="pill">anti-manipulation</span>',
     'sec.5.body' => '<ul>'
         . '<li>Réputation par membre (départ %1$d/%2$d), vote ±1 sur les messages <em>et</em> les membres, motif exigé au vote négatif.</li>'
-        . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans contribution ne peut pas voter.</li>'
+        . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans contribution ne peut pas voter. Un compte de moins de %7$s vote avec les autres comptes aussi récents : ensemble, ils ne déplacent pas une réputation plus qu\'un membre seul.</li>'
         . '<li><strong>Liens</strong> : deux membres qui se sont écrit en privé dans les deux sens sont liés. Un lien n\'annule aucun vote et ne punit personne ; il compte aux seuils, où la perte du vote exige %5$d votants sans lien entre eux, et le ban %6$d. En dessous, rien n\'est sanctionné, et un arbitre est saisi. <strong>Salve</strong> de votes rapprochés → signalée à un arbitre, rien n\'est annulé.</li>'
         . '<li><strong>Anti-farming</strong> : votes répétés d\'un membre vers un même autre neutralisés. Sanctions graduées : perte du vote, puis ban de %4$s — le dernier palier se reconduit, jamais définitif, et chaque ban s\'écrit au journal de modération.</li>'
         . '</ul>',
@@ -324,7 +324,7 @@ return [
     'mod.intro'    => 'Modération <strong>sans autorité centrale</strong> : la communauté vote, des défenses automatiques contrent la manipulation.',
     'mod.how.h2'   => 'Comment ça marche',
     'mod.how.body' => '<li><strong>Réputation</strong> : chaque membre démarre à %1$d/%2$d. Les votes ▲▼ sur ses posts et son profil la font évoluer ; un vote ▼ exige un motif.</li>'
-        . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans aucun message ne peut pas voter.</li>'
+        . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans aucun message ne peut pas voter. Un compte de moins de %10$s vote avec les autres comptes aussi récents : ensemble, ils ne déplacent pas une réputation plus qu\'un membre seul.</li>'
         . '<li><strong>Anti-farming</strong> : au-delà de %4$d votes d\'un même membre vers un même autre sur %5$d jours, les suivants sont neutralisés.</li>'
         . '<li><strong>Liens</strong> : deux membres qui se sont écrit en privé dans les deux sens sont liés. Un lien n\'annule aucun vote et ne punit personne. <strong>Salve</strong> : plusieurs votes dans la même fenêtre ne sont pas annulés — la cible est signalée à un arbitre.</li>'
         . '<li><strong>Sanctions graduées</strong> : réputation &lt;%6$d → perte du droit de vote ; à 0 → ban de %7$s, le dernier palier se reconduit, jamais définitif. Chacune exige que la chute soit portée par assez de votants sans lien entre eux — %8$d pour la perte du vote, %9$d pour le ban ; sinon rien n\'est sanctionné, et un arbitre est saisi. Un ban bloque le vote et la publication ; les messages privés restent ouverts. À la fin du ban, la réputation revient à %1$d.</li>',

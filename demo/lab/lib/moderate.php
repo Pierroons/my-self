@@ -40,6 +40,7 @@ final class Moderate extends Engine
             'initiale'     => $c->reputationInitiale,
             'max'          => $c->reputationMax,
             'sybil'        => self::dureeEnClair($c->ageMinPourVoterSecondes),
+            'recents'      => self::dureeEnClair($c->ageEtabliSecondes),
             'farmingMax'   => $c->farmingUpvotesMax,
             'farmingJours' => $c->fenetreFarmingJours,
             'perteVote'    => $c->perteDroitDeVoteSous,

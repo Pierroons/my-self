@@ -91,7 +91,7 @@ return [
     'sec.5.h2' => '5. Moderation — SelfModerate <span class="pill">anti-manipulation</span>',
     'sec.5.body' => '<ul>'
         . '<li>Per-member reputation (starting at %1$d/%2$d), ±1 votes on posts <em>and</em> on members, a reason required for a downvote.</li>'
-        . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no contribution cannot vote.</li>'
+        . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no contribution cannot vote. An account under %7$s old votes together with the other accounts as recent: together, they move a reputation no further than a single member.</li>'
         . '<li><strong>Links</strong>: two members who have written to each other privately, both ways, are linked. A link cancels no vote and punishes nobody; it counts at the thresholds, where losing the right to vote takes %5$d voters with no link between them, and a ban %6$d. Below that, nothing is sanctioned, and an arbiter is notified. <strong>Burst</strong> of close votes → flagged to an arbiter, nothing cancelled.</li>'
         . '<li><strong>Anti-farming</strong>: repeated votes from one member to another are neutralised. Graduated sanctions — loss of voting rights, then a ban of %4$s; the last tier repeats, never permanent, and every ban is written to the moderation journal.</li>'
         . '</ul>',
@@ -325,7 +325,7 @@ return [
     'mod.intro'    => 'Moderation <strong>without central authority</strong>: the community votes, automated defences counter manipulation.',
     'mod.how.h2'   => 'How it works',
     'mod.how.body' => '<li><strong>Reputation</strong>: every member starts at %1$d/%2$d. ▲▼ votes on their posts and profile make it move; a ▼ vote requires a reason.</li>'
-        . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no post at all cannot vote.</li>'
+        . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no post at all cannot vote. An account under %10$s old votes together with the other accounts as recent: together, they move a reputation no further than a single member.</li>'
         . '<li><strong>Anti-farming</strong>: beyond %4$d votes from one member to another over %5$d days, the next ones are neutralised.</li>'
         . '<li><strong>Links</strong>: two members who have written to each other privately, both ways, are linked. A link cancels no vote and punishes nobody. <strong>Burst</strong>: several votes in the same window are not cancelled — the target is flagged to an arbiter.</li>'
         . '<li><strong>Graduated sanctions</strong>: reputation &lt;%6$d → loss of voting rights; at 0 → a ban of %7$s, the last tier repeats, never permanent. Each one requires the fall to be carried by enough voters with no link between them — %8$d for the loss of voting rights, %9$d for a ban; otherwise nothing is sanctioned, and an arbiter is notified. A ban blocks voting and posting; private messages stay open. When the ban ends, reputation goes back to %1$d.</li>',

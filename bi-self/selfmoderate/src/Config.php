@@ -22,7 +22,7 @@ final class Config
      *                                        aucun vote ne la descend plus bas, et l'atteindre
      *                                        bannit (voir `banAutomatique`).
      * @param int      $fenetreSalveSecondes  Salve rapide : plusieurs downvotes groupés
-     *                                        dans ce délai, SANS lien entre les votants.
+     *                                        dans ce délai, que leurs votants soient liés ou non.
      *                                        Le plus souvent une réaction spontanée au
      *                                        même message : elle signale, elle n'annule rien.
      * @param int      $fenetreMeuteJours     Deux comptes sont liés quand chacun a écrit à l'autre
@@ -90,10 +90,15 @@ final class Config
      *                                        (`voixPourSanction()`) ; sans lui, la chute est
      *                                        signalée à l'arbitre et rien n'est sanctionné. Faux :
      *                                        la réputation seule décide.
-     * @param int      $quorumNoeudsMax       Nœuds que la recherche du quorum visite au plus.
+     * @param int      $quorumTravailMax      Le travail de la recherche du quorum, en sommets lus.
      *                                        Épuisée avant de décider, elle ne sanctionne que ce
      *                                        que portent les voix déjà trouvées ; la chute est
      *                                        signalée, et `compositionChute()` la dit indécise.
+     * @param int      $quorumPairesMax       Paires de votants liés que le quorum lit au plus. Au-delà,
+     *                                        seuls les votants liés à personne font des voix ; s'ils
+     *                                        n'atteignent pas le quorum, la chute se dit indécise. La
+     *                                        mémoire d'un vote ne suit plus le graphe qu'un
+     *                                        adversaire construit.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -123,7 +128,8 @@ final class Config
         public readonly int $arrondiFinBanSecondes = 60,
         public readonly int $ageEtabliSecondes = 3600,
         public readonly bool $quorumAuxSeuils = true,
-        public readonly int $quorumNoeudsMax = 2000,
+        public readonly int $quorumTravailMax = 200000,
+        public readonly int $quorumPairesMax = 20000,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -165,8 +171,11 @@ final class Config
         if ($this->ageEtabliSecondes < 0 || $this->ageEtabliSecondes > Moderate::DUREE_MAX) {
             throw new InvalidArgumentException('ageEtabliSecondes est une durée : 0 l\'éteint, et elle tient en un siècle au plus (Moderate::DUREE_MAX).');
         }
-        if ($this->quorumNoeudsMax < 1) {
-            throw new InvalidArgumentException('quorumNoeudsMax compte des nœuds de recherche : 1 ou plus.');
+        if ($this->quorumTravailMax < 1) {
+            throw new InvalidArgumentException('quorumTravailMax compte des sommets lus : 1 ou plus.');
+        }
+        if ($this->quorumPairesMax < 1) {
+            throw new InvalidArgumentException('quorumPairesMax compte des paires de votants liés : 1 ou plus.');
         }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
             throw new InvalidArgumentException(sprintf(

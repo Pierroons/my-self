@@ -69,10 +69,10 @@ try {
 }
 $causes = [
     'reputation_zero' => 'réputation à zéro',
-    'salve_rapide'    => 'salve de votes sans lien',
+    'salve_rapide'    => 'salve de votes rapprochés',
     'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus), signalée avant la 0.9.0',
     'votants_tronques' => 'trop de votants pour la détection de meute, signalé avant la 0.9.0',
-    'chute_sans_quorum' => 'chute sous un seuil sans assez de votants sans lien entre eux : aucune sanction automatique, à arbitrer',
+    'chute_sans_quorum' => 'chute sous un seuil sans assez de votants sans lien entre eux : la sanction qu\'ils ne portent pas attend un arbitre',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
     'comptes_recents' => 'comptes récents qui ont voulu peser plus qu\'un membre établi sur ce compte',
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
@@ -84,6 +84,13 @@ $causes = [
     'ban_auto'        => 'ban automatique en cours',
     'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
 ];
+// Ce que le quorum a lu d'une chute (`compositionChute()`) : l'arbitre décide sur ces faits.
+$quorumEnClair = static fn (array $ch): string => sprintf('%d voix sans lien sur %d votant(s)', $ch['voix_sans_lien'], $ch['votants'])
+    . ($ch['paires_liees'] > Moderate::config()->quorumPairesMax
+        ? sprintf(' · plus de %d paires liées', Moderate::config()->quorumPairesMax)
+        : sprintf(' · %d paire(s) liée(s)', $ch['paires_liees']))
+    . ($ch['recents'] > 0 ? sprintf(' · %d compte(s) récent(s), une voix à eux tous', $ch['recents']) : '')
+    . ($ch['indecis'] ? ' · recherche indécise : seules les voix trouvées comptent' : '');
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
 $suites = [
     'avertissement'  => 'avertissement',
@@ -204,6 +211,7 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?php if ($b['chute'] === null): ?>—<?php else: $ch = $b['chute']; ?>
             <?= (int) $ch['votants'] ?> votant(s) · comptes de <?= h(implode(', ', array_slice($ch['ages_jours'], 0, 8)) . (count($ch['ages_jours']) > 8 ? '…' : '')) ?> j
             · en <?= h(Moderate::dureeEnClair($ch['etalement'])) ?>
+            <br><span class="muted"><?= h($quorumEnClair($ch)) ?></span>
           <?php endif; ?></td>
           <td><?= $dt($b['jusqu_a']) ?></td>
           <td><?= h(Moderate::dureeEnClair($b['reste'])) ?></td>
@@ -225,7 +233,8 @@ table.adm tr:last-child td{border-bottom:none}
       <tr><th colspan="5" style="text-align:left"><?= h($causes[$f['cause']] ?? $f['cause']) ?>
         <span class="muted">— <?= $affiches ?> <?= $affiches > 1 ? 'signaux' : 'signal' ?><?= $f['total_cause'] > $affiches ? ' affichés sur ' . (int) $f['total_cause'] . ', les plus anciens d\'abord' : '' ?></span></th></tr>
       <?php endif; ?>
-      <tr><td>@<?= h($f['username']) ?></td>
+      <tr><td>@<?= h($f['username']) ?><?php if ($f['cause'] === 'chute_sans_quorum'): ?>
+            <br><span class="muted"><?= h($quorumEnClair(Moderate::compositionChute($pdo, (int) $f['account_id'], time()))) ?></span><?php endif; ?></td>
           <td><?= (int) $f['occurrences'] ?><?php if ($f['detections'] > $f['occurrences']): ?> <span class="muted">· <?= (int) $f['detections'] ?> détections</span><?php endif; ?></td>
           <td><?= h(date('d/m/Y H:i', $f['ouvert_le'])) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>

@@ -611,8 +611,8 @@ final class Db
             ');
         }
 
-        // SelfModerate — cause du signalement, convalescence (remontée passive), et
-        // début, origine et motif d'un ban.
+        // SelfModerate — cause du signalement, convalescence (remontée passive),
+        // début, origine et motif d'un ban, et l'instant de la dernière chute soldée.
         $cols = self::$pdo->query('PRAGMA table_info(member_moderation)')->fetchAll(PDO::FETCH_COLUMN, 1);
         foreach ([
             'review_reason'    => 'TEXT',
@@ -623,6 +623,7 @@ final class Db
             'ban_origine'      => 'TEXT',
             'ban_motif'        => 'TEXT',
             'strikes_admin'    => 'INTEGER NOT NULL DEFAULT 0',
+            'chute_soldee_le'  => 'INTEGER NOT NULL DEFAULT 0',
         ] as $col => $type) {
             if (!in_array($col, $cols, true)) {
                 self::$pdo->exec("ALTER TABLE member_moderation ADD COLUMN $col $type");

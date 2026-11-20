@@ -154,6 +154,8 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     last_regen_at  INTEGER NOT NULL DEFAULT 0,
     vote_muted_until INTEGER NOT NULL DEFAULT 0, -- suspension du droit de vote, à échéance : séparée de
                                                  -- voting_rights, que la convalescence rendrait dès 5 points
+    chute_soldee_le INTEGER NOT NULL DEFAULT 0, -- dernière chute soldée (fin de ban, grâce, levée) : le
+                                                 -- quorum ne lit que les votes d'après
     updated_at     INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
