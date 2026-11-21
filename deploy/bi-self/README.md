@@ -5,6 +5,11 @@
 | `php-fpm-flux.conf` | `/etc/php/8.4/fpm/pool.d/biself-flux.conf` — **à poser avant le vhost** | `644 root:root` |
 | `nginx-bi-self.conf` | `/etc/nginx/sites-available/` (lien dans `sites-enabled/`) | `644 root:root` |
 | `selfrecover-purger.{service,timer}` | `/etc/systemd/system/` | `644 root:root` |
+| `../my-self/snippets/{deny-bakfiles,selfrecover-security-headers,security-headers-base}.conf` | `/etc/nginx/snippets/` | `644 root:root` |
+
+⚠️ **Les trois fragments ne sont pas optionnels** : le vhost les inclut, et nginx
+refuse de démarrer sur un `include` qui manque. Celui des en-têtes en inclut un
+second (le socle), d'où trois fichiers pour deux `include`.
 
 Le vhost porte des marques dépersonnalisées (`your-instance.example`) : elles se
 substituent à la pose. `scripts/check-vhost.sh` les substitue pour valider le
@@ -58,9 +63,20 @@ gabarit, et il sait tourner par SSH sur un hôte qui a nginx
 4. **Mesurer, et c'est la seule étape qui prouve quelque chose** :
    - un flux `/demo/api/events` s'ouvre et reçoit ses événements — c'est ce qui
      dit que le groupe neuf tient la même clé et lit la même base que les pages ;
-   - un **troisième** flux simultané depuis le même préfixe rend **429**
-     (`limit_conn biself_flux 2`) ;
-   - une route de `moderate` répond normalement, et une rafale y rend 429.
+   - un **deuxième** flux simultané depuis le même préfixe rend **429**
+     (`limit_conn biself_flux 1`, et le groupe dédié n'a que deux ouvriers : à un
+     flux par préfixe, deux préfixes distincts ont chacun le sien) ;
+   - une route de `moderate` répond normalement, et une rafale y rend 429 ;
+   - **chaque famille de routes sort avec ses six en-têtes de sécurité** :
+
+     ```
+     BISELF_HOTE=<nom servi> bash deploy/bi-self/tests/entetes-servis.sh
+     ```
+
+     🔑 C'est la mesure qui ne se devine pas. nginx ne fusionne pas les
+     `add_header` : un seul, posé dans un bloc `location`, annule les six pour ce
+     chemin. Le vhost compte huit blocs, et rien ne signalerait la perte — la
+     page s'affiche, elle sort simplement nue.
 
 **Retour arrière** : le vhost d'abord (`restart`), le groupe d'ouvriers ensuite.
 L'inverse laisserait le vhost pointer une socket disparue, donc 502 sur le flux.
@@ -92,3 +108,33 @@ Trois propriétés en découlent, et chacune se perd facilement :
 vhost en service ne portait **aucune** limite de débit, là où le gabarit en
 déclarait deux. Avant de conclure qu'une route est freinée, lire le fichier de
 la machine — pas celui du dépôt.
+
+## Ce que la pose ne change pas, et pourquoi il a fallu le vérifier
+
+Le gabarit et le vhost servi avaient divergé dans **les deux sens** (mesuré le
+19 puis le 21/11/2026) : le dépôt déclarait des freins que la machine n'avait
+pas, et la machine portait des blocs que le dépôt ignorait. Poser le gabarit
+d'alors aurait donc **rouvert** une démonstration fermée et remplacé le TLS en
+service. Les blocs du servi y sont maintenant repris, et la pose est neutre sur
+tout ce qui suit :
+
+- **la démonstration SelfRecover autonome reste fermée** — le 410 sur
+  `/selfrecover/`, le 301 de `/selfrecover`, les 410 de `/lite.html` et
+  `/comparison.html`, le refus des bases sous ce préfixe ;
+- **le TLS reste celui qui tourne** : `listen 443 ssl` et les deux certificats
+  hors arborescence certbot. Le gabarit ne pose plus `options-ssl-nginx.conf` ni
+  de paramètres Diffie-Hellman — l'instance tient ses protocoles dans son
+  `nginx.conf` ;
+- **l'écoute reste IPv4 seule**, et il n'y a pas de bloc sur le port 80 : la
+  redirection vers HTTPS est portée par le vhost par défaut du serveur, pour
+  tous les noms à la fois ;
+- **les en-têtes restent les six du fragment servi**, par `include`. Les cinq
+  `add_header` que le gabarit portait en dur étaient à la fois moins (pas de
+  HSTS) et plus stricts (pas de script inline) : les poser aurait retiré un
+  engagement et cassé les pages de démonstration.
+
+⚠️ Ce qui s'ajoute, en revanche, mord : les quatre files, la limite de
+connexions du flux, le groupe d'ouvriers dédié, le refus des URL en `.php` et
+celui des fichiers cachés hors `/.well-known`. C'est le but du lot — mais c'est
+aussi ce qui demande l'étape 4, puisqu'un frein mal calibré se voit sur le
+visiteur honnête avant de se voir sur l'abus.
