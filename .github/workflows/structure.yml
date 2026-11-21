@@ -3481,8 +3481,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_cle_frein.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la clé de frein a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 14/14 ' \
-            || { echo "::error::le banc de la clé de frein n'a pas joué ses 14 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 21/21 ' \
+            || { echo "::error::le banc de la clé de frein n'a pas joué ses 21 cas"; exit 1; }
 
       - name: Canari — le banc rougit si l'origine redevient une adresse entière
         run: |
