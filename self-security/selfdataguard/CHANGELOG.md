@@ -3,6 +3,161 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.9.1] — 2026-11-19
+
+A patch release: the holder's return after a level 3. Three defects, each critical, kept the holder's vault from
+coming back or let it be erased. No signature of `StorageInterface` changes; four of its behaviours do, and a storage
+of your own is conformant again once it follows them. The façade gains optional parameters, a key in what
+`readArchive()` returns, and five methods; `RecoveryTickets` gains a constant; existing calls are unchanged.
+
+### Fixed
+
+- **An archive whose escrow row does not parse could not be opened, nor brought back.** `loadArchive()` parsed the
+  escrow the archive keeps and raised `UnreadableEscrowException` for the whole archive: `openArchive()`,
+  `reinstateArchive()` and `restoreArchive()` refused the holder's vault because of its escrow. The archive now reads,
+  its escrow `null` and `ArchivedVault::$escrowUnreadable` true — a column that does not parse, a column missing or
+  holding no value, a row that is not one, alike; escrow fields that are not a map of ciphertexts set
+  `escrowUnreadable` too. `readArchive()` returns the private fields, an empty `escrow` and `escrowUnreadable` true —
+  as it does for an escrow row that parses but does not open, written over before the level 3 or in the archive, and
+  for an escrow field that does not decrypt. The holder's view treats that escrow as the live path treats a row that does not parse:
+  `archiveEscrowReads()` says `escrow-replaced`, and `objectToArchiveEscrowRead()` objects at every keeper. The
+  ceremony's `readArchiveEscrow()` and `sealToKeeper()` refuse it (`UnreadableEscrowException`), naming the archive.
+  Brought back live, the row returns as one that does not parse: `escrowReads()` says `escrow-replaced`, a read of the
+  escrow fields raises `EscrowEnvelopeMismatchException`, and so does a deposit — `setEscrowFields()`,
+  `rotateEscrow()` — until the operator puts back, from a backup, the escrow row that wrote those fields.
+- **A value another account indexed during the window kept the holder from coming back.** `swapWithArchive()` and
+  `restoreArchive()` raised `DuplicateIndexException` and moved nothing: the requester's vault stayed live and
+  unfrozen, and the return ticket, replayed, met the same refusal. An archive now holds the blind indexes it keeps
+  against every other account while it can come back: for `RecoveryTickets::RETURN_WINDOW` after it was made — 30
+  days, the longest window SelfRecover opens (`Escalade::FENETRE_MAXIMUM`; `sanity_couplage_dataguard.php` keeps the
+  two equal) —, or while the live vault of its account is frozen. `saveFields()` refuses them there with
+  `DuplicateIndexException`, as a value held live, and the account the archive belongs to indexes them again freely.
+  The holder comes back with every index. Past the window, the value is free again — a telephone number given to
+  someone else is not held for good by an archive —, and `reservedIndexes()` lists the reservations in force for the
+  operator: account, archive, field, until when, no index. A value another account indexed when no reservation
+  stood — before 0.9.1, or past the window, the archive brought back by the operator — comes back without its index,
+  and the other account keeps it: the field carries a trace until it is indexed again, blind or shared —
+  `lostIndexes($session)` for the holder, `allLostIndexes()` for the operator. `reinstateArchive()` and `restoreArchive()` take an optional `&$restoredWithoutIndex`, set once the
+  archive is live to the fields it indexed that came back without an index, those of an archive written before 0.8.0
+  included; `null` when the storage could not be asked after the swap, which then returns the id of the vault set
+  aside all the same. `DuplicateIndexException` leaves their `@throws`.
+- **`eraseAccount()` erased the holder's archive**, with no session and no ticket, and every ticket applied to the
+  account. The vault a level 3 set aside for the holder's return could be erased by whoever reached the call; and a
+  level-3 ticket replayed after the account was erased and registered again archived the newcomer's vault.
+  `eraseAccount()` now keeps every archive of the account once a `replaceWithArchive()` applied a ticket to it —
+  whichever gesture set each archive aside: after a return granted in error, or a second exchange, the holder's vault
+  is an archive a swap set aside. While the live vault is frozen — a return the arbiter has not closed —, it erases
+  nothing, vault, archives or tickets, and throws `VaultFrozenException`, as every write to a frozen vault does: the
+  request waits for the closure. `eraseArchive()` refuses the same way: while the vault is frozen, nothing is erased;
+  before the holder comes back, nothing is frozen, and the operator's `eraseArchive()` erases. The façade asks for
+  the freeze itself before either erasure, so that a storage written for 0.9.0, which erases a frozen account, is
+  refused too. It erases no ticket: a replay is refused even once the name is registered again
+  (`TicketAlreadyAppliedException`). Once the account holds no live vault and no archive — after `eraseAccount()`,
+  `eraseArchive()`, `delete()` or `deleteArchive()` —, its tickets name it no more, nor an archive: whoever registers
+  the name next does not inherit them. The façade's `eraseAccount($userId, &$kept)` sets `$kept` to the archives left,
+  by id and date; on a storage that implements `ErasesArchives`, it lists them without opening them, so that a kept
+  archive whose package no longer reads no longer makes the call raise after erasing.
+
+### Changed — the storage contract
+
+- Four behaviours of `StorageInterface` change, and no signature:
+  - `saveFields()`: a blind index that an archive of another userId keeps, under the same field, is refused as one
+    held live while that archive can come back — made less than `RecoveryTickets::RETURN_WINDOW` ago, or of a userId
+    whose live vault is frozen —, unless this userId already holds it live there.
+  - `loadArchive()`: an escrow the archive keeps and that does not parse — a column, a column missing or holding no
+    value, a row that is not one — comes as `escrow` null and `escrowUnreadable` true, and escrow fields that are not
+    a map of ciphertexts set `escrowUnreadable`, instead of refusing the archive; `swapWithArchive()` and
+    `restoreArchive()` bring back a row that does not parse, and the escrow fields that read. `ArchivedVault` takes
+    three optional parameters at the end of its constructor: `escrowUnreadable`, `blindIndexes` and `sharedIndexes`
+    (field name → index, base64).
+  - `swapWithArchive()` and `restoreArchive()`: a field whose blind index another account holds comes back without
+    it, instead of `DuplicateIndexException`.
+  - `eraseAccount()`: throws `VaultFrozenException` and erases nothing while the live vault is frozen, compared in
+    its own transaction; keeps every archive once a level-3 ticket was applied to the userId; deletes no ticket;
+    unties the tickets from the userId once it holds nothing — as `deleteVault()` and `deleteArchive()` do.
+- A storage of your own written for 0.9.0 keeps the 0.9.0 behaviour in full, and the conformance suite says so. New
+  cases: `archive-reserves-its-indexes`, `archive-escrow-unreadable` (which needs the third file of
+  `bin/storage-conformance.php`, as `escrow-unreadable-row-named` does), `erase-account-keeps-recovery-archives`,
+  `erase-account-keeps-tickets`. Changed: `swap-with-archive` no longer expects `DuplicateIndexException`;
+  `blind-index-unique` no longer expects an archived vault to free its values; `freeze-refuses-writes` expects
+  `eraseAccount()` of a frozen account — and `eraseArchive()`, on a storage that implements `ErasesArchives` — to
+  throw `VaultFrozenException` and leave the account whole — vault, fields, escrow, archives —, where it expected it
+  erased; `tickets-applied-once` expects the level-3 ticket to stay after `eraseAccount()`. The suite plays a
+  reservation on an archive made a moment ago; its end — the window passed, or the freeze lifted — and the value two
+  accounts then hold take time the contract cannot make pass: `SqliteAdapter`'s bench plays them, by the archive's
+  date, not the suite.
+- **`Storage\ErasesArchives`**, optional: `eraseArchive($userId, $archiveId): bool` deletes one archive with no
+  session and no live vault, and leaves the tickets — nothing while the live vault is frozen (`VaultFrozenException`,
+  compared in the deletion's transaction); `keptArchives(?string $userId = null)` lists the archives whose
+  userId holds no live vault, without opening them. **`Storage\TracesLostIndexes`**, optional:
+  `lostIndexes(?string $userId = null)` lists the live fields that came back without their blind index, and
+  `reservedIndexes()` the reservations in force — userId, archive, field, `until`, `frozen`.
+  `SqliteAdapter` implements both, `StorageInterface` requires neither. The conformance suite plays `ErasesArchives`
+  on a storage that implements it, and erases the archives its cases leave through it, or, on a storage without it,
+  brings each back live and erases the account again. `SqliteAdapter` keeps the trace in `selfdataguard_fields`, as a
+  `blind_index` that starts with `lost:`, which no lookup matches, and adds two indexes in place when a database
+  opens, one on `selfdataguard_archives.archived_at` and one on the frozen vaults only: an indexed write reads the
+  packages of the archives that can still come back, and no other, without scanning every vault.
+
+### Added
+
+- **`SelfDataGuard::eraseArchive($userId, $archiveId)`**: the operator's act on an archive `eraseAccount()` kept, once
+  the case it was kept for is closed — no secret, never on a route a visitor reaches. While the live vault is frozen,
+  it erases nothing and throws `VaultFrozenException`.
+- **`SelfDataGuard::keptArchives()`**: every archive whose account holds no live vault, with its account — the
+  erasures not finished.
+- **`SelfDataGuard::lostIndexes($session)`** and **`allLostIndexes()`**: the fields that came back without their
+  index, for the holder and for the operator; **`reservedIndexes()`**: the reservations in force, for the operator.
+- On a storage that does not implement the interface they need, these five raise `LogicException` naming it.
+- **`RecoveryTickets::RETURN_WINDOW`**: the longest window, in seconds, SelfRecover keeps open for the holder's
+  return — how long an archive reserves its indexes.
+
+### Erasing a kept archive — the operator's path
+
+1. `eraseAccount($userId, $kept)`: the live vault goes; `$kept` lists the archives that stay, and `keptArchives()`
+   lists them across the database. On a frozen account it throws `VaultFrozenException` and erases nothing: keep the
+   request, and run it once `unfreeze()` has closed the window.
+2. Once the holder's case is closed: `eraseArchive($userId, $id)` for each of them — refused, like `eraseAccount()`,
+   while the live vault is frozen. Until then the erasure request is
+   not finished — the archive, its escrow included, stays readable to the ceremony —, and `register()` refuses the
+   userId, as it refuses any userId that keeps archives.
+3. The tickets stay in the database: replayed under that userId, once it is registered again, they are refused.
+
+### Holder's return after an erasure
+
+- The account erased while its archive was kept has no live vault: `generationOf()` returns `null`, and
+  `reinstateArchive($dg->generationOf($user), …)` cannot be called. `restoreArchive($userId, $archiveId,
+  $restoredWithoutIndex)` brings the archive back, and `freeze()` takes the return ticket.
+
+### Limits, declared
+
+- Without a `RecoveryTickets` source, a level-3 ticket is recorded only when the caller hands one to `reEnroll()`;
+  without one, `eraseAccount()` of an account that is not frozen erases its archives, as in 0.9.0.
+- An archive reserves its values for `RETURN_WINDOW` after it was made, or while its account is frozen — not longer:
+  an archive brought back by the operator past that may find a value taken, and comes back without that index.
+- An archive kept stays, its escrow readable to the ceremony, until the operator runs `eraseArchive()`.
+- `eraseArchive()`, like `eraseAccount()`, takes no secret: whoever can call it erases the vault kept for the holder's
+  return. Expose it to the operator only.
+- An erasure request on a frozen account — `eraseAccount()` or `eraseArchive()` — is refused, not deferred: the host
+  keeps it, and runs it at the closure.
+- A value indexed by two accounts when no reservation stood comes back without its index: the trace says so, and who
+  owns the value is the operator's to settle.
+- After a return whose escrow does not parse, the holder deposits nothing until the operator puts the escrow row
+  back from a backup: no gesture of the façade resets the compartment.
+- An archive whose escrow does not parse stops the ceremony's `sealToKeeper()` pass for its account: the archives
+  listed after it are not sealed until the operator deals with that one, as in 0.9.0.
+- The tickets the conformance suite applies stay in the database it is run against; they name no account once its
+  cases have erased them.
+
+### Tests
+
+- `sanity_archive` 121 checks (was 65), `sanity_facade` 189 (was 139), `sanity_conformance` 114 (was 95), with
+  fifteen storages that each keep one 0.9.0 behaviour or break one new clause; `sanity_couplage_dataguard.php` of
+  SelfRecover holds 14 shared values (was 13), the return window among them. Played on 0.9.0 — its `src/` with these
+  benches —, `sanity_archive` fails 44 checks, `sanity_facade` 42 and `sanity_conformance` 14, each naming a behaviour
+  0.9.0 lacks, and none dies on loading; 0.9.0 runs 114 of the 121, 183 of the 189 and 110 of the 114 — a check that
+  follows a refusal of 0.9.0 is not reached. The other checks it runs pass.
+
 ## [v0.9.0] — 2026-11-02
 
 An escrow the administrator alone no longer opens. Under a keeper — a second holder the integrator runs off the

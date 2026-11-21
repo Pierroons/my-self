@@ -28,6 +28,14 @@ interface RecoveryTickets
     /** The arbiter closed the window that return took back: the vault unfreezes. */
     public const CLOSURE = 'cloture';
 
+    /**
+     * The longest window, in seconds, SelfRecover keeps open after a level 3
+     * for the holder's return (Escalade::FENETRE_MAXIMUM): an archive reserves
+     * its blind indexes that long after it was made, or while the live vault
+     * of its account is frozen.
+     */
+    public const RETURN_WINDOW = 30 * 86400;
+
     /** The kind of $ticket if it was issued for $userId; null when it was not, or for another userId. */
     public function kindOf(string $ticket, string $userId): ?string;
 }

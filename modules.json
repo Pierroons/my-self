@@ -141,7 +141,7 @@
       "id": "selfdataguard",
       "nom": "SelfDataGuard",
       "dossier": "self-security/selfdataguard",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "resume": {
         "fr": "chiffrement des données au repos côté application",
         "en": "application-layer encryption of data at rest"
@@ -386,6 +386,14 @@
         [
           "web/my-self.fr/index.html",
           "<span class=\"name\">SelfAct<"
+        ],
+        [
+          "self-right/selfact/TERMS.md",
+          "bêta v"
+        ],
+        [
+          "self-right/selfact/docs/whitepaper.md",
+          "version: \""
         ]
       ]
     },

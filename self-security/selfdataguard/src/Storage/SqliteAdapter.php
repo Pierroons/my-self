@@ -15,6 +15,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowNotFoundException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
+use Pierroons\SelfDataGuard\RecoveryTickets;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -53,7 +54,9 @@ use Throwable;
  *     user_id     TEXT NOT NULL
  *     field_name  TEXT NOT NULL
  *     ciphertext  TEXT NOT NULL    (base64 of EncryptedBlob)
- *     blind_index TEXT             (base64 HMAC, nullable — unique per field_name)
+ *     blind_index TEXT             (base64 HMAC, nullable — unique per field_name;
+ *                 'lost:' and a random suffix on a field an archive brought
+ *                 back without the index another account held: see lostIndexes())
  *     updated_at  TEXT NOT NULL    (ISO 8601)
  *     shared_index TEXT            (base64 HMAC, nullable — added in 0.7.0, hence last)
  *     PRIMARY KEY (user_id, field_name)
@@ -72,22 +75,31 @@ use Throwable;
  *   selfdataguard_tickets         — recovery tickets applied (added in 0.8.0)
  *     ticket, operation  PRIMARY KEY: a ticket applies once per operation
  *     user_id, archive_id (the archive a re-enrolment set aside), applied_at
+ *     — no erasure deletes a row; once its userId holds no live vault and no
+ *     archive, user_id is '' and archive_id NULL
  *
  *   selfdataguard_archives        — vaults set aside by a re-enrolment
  *     archive_id  TEXT PRIMARY KEY (random — a counter would tell how many
  *                 re-enrolments the service has seen)
  *     user_id     TEXT NOT NULL    (no foreign key: the archive outlives the
  *                 live vault it was taken from)
- *     archived_at TEXT NOT NULL    (ISO 8601, UTC, so that the order survives a DST change)
+ *     archived_at TEXT NOT NULL    (ISO 8601, UTC, so that the order survives a DST change;
+ *                 indexed since 0.9.1: it decides which archives reserve their indexes)
  *     locks       TEXT NOT NULL    (the locks that still open it, comma-separated)
  *     package     TEXT NOT NULL    (JSON: the vault row, escrow, fields — all
  *                 still encrypted, their indexes since 0.8.0 —, the Argon2id
  *                 profile, a format version)
  */
-final class SqliteAdapter implements StorageInterface
+final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLostIndexes
 {
     /** Version of the archive package; a reader refuses a newer one. */
     private const ARCHIVE_FORMAT = 1;
+
+    /** Prefix of the blind_index a field carries once it came back without its own; no base64 index starts with it. */
+    private const LOST_INDEX = 'lost:';
+
+    /** What a column an archived escrow lacks is put back as: no base64, no date, no integer reads it. */
+    private const UNREADABLE = '%unreadable%';
 
     /** The journal modes that keep a rollback journal on disk: without one, a failed transaction is not undone. */
     private const JOURNAL_MODES = ['delete', 'truncate', 'persist', 'wal'];
@@ -231,6 +243,7 @@ final class SqliteAdapter implements StorageInterface
         $this->atomic(function () use ($generation): void {
             $this->assertGeneration($generation);
             $this->purgeLive($generation->userId);
+            $this->untieTickets($generation->userId);
         });
     }
 
@@ -240,14 +253,21 @@ final class SqliteAdapter implements StorageInterface
             return;
         }
         $now = (new DateTimeImmutable())->format('c');
+        // A field written without an index keeps the trace of an index it lost;
+        // written with one, the trace goes.
         $stmt = $this->pdo->prepare(
-            'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at, shared_index)
+            "INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at, shared_index)
              VALUES (:uid, :fn, :ct, :bi, :ua, :si)
              ON CONFLICT(user_id, field_name) DO UPDATE SET
                ciphertext   = excluded.ciphertext,
-               blind_index  = excluded.blind_index,
+               blind_index  = CASE
+                                WHEN excluded.blind_index IS NULL AND excluded.shared_index IS NULL
+                                     AND substr(selfdataguard_fields.blind_index, 1, " . strlen(self::LOST_INDEX) . ") = '" . self::LOST_INDEX . "'
+                                THEN selfdataguard_fields.blind_index
+                                ELSE excluded.blind_index
+                              END,
                updated_at   = excluded.updated_at,
-               shared_index = excluded.shared_index'
+               shared_index = excluded.shared_index"
         );
 
         $this->atomic(function () use ($stmt, $generation, $fields, $now): void {
@@ -259,6 +279,10 @@ final class SqliteAdapter implements StorageInterface
                 }
                 if (isset($data['blindIndex'], $data['sharedIndex'])) {
                     throw new InvalidArgumentException("Field '{$fieldName}' carries both a blind and a shared index");
+                }
+                if (isset($data['blindIndex']) && $this->reservedByAnother($generation->userId, (string) $fieldName, (string) $data['blindIndex'])) {
+                    $taken[] = (string) $fieldName;
+                    continue;
                 }
                 try {
                     $stmt->execute([
@@ -317,6 +341,66 @@ final class SqliteAdapter implements StorageInterface
         );
         $stmt->execute([':fn' => $fieldName, ':bi' => $index, ':si' => $index]);
         return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
+     * Whether an archive of another userId than $userId, one that can still
+     * come back (reservingArchives()), keeps $index as the blind index of its
+     * field $fieldName — a value $userId does not already hold live under that
+     * index. Callers run it inside atomic(), so that no archive is made
+     * between the check and the write.
+     *
+     * The archives are picked by date and freeze first, then their packages
+     * are searched as text, then the ones that hold $index are read; one that
+     * does not read as JSON holds it.
+     */
+    private function reservedByAnother(string $userId, string $fieldName, string $index): bool
+    {
+        $held = $this->pdo->prepare('SELECT 1 FROM selfdataguard_fields WHERE user_id = :uid AND field_name = :fn AND blind_index = :bi');
+        $held->execute([':uid' => $userId, ':fn' => $fieldName, ':bi' => $index]);
+        $holdsLive = $held->fetchColumn() !== false;
+        $held->closeCursor();
+        if ($holdsLive) {
+            return false;
+        }
+        [$sql, $params] = $this->reservingArchives('a.user_id <> :other AND (instr(a.package, :bi) > 0 OR instr(a.package, :escaped) > 0)');
+        $stmt = $this->pdo->prepare("SELECT package FROM ({$sql})");
+        $stmt->execute($params + [':other' => $userId, ':bi' => $index, ':escaped' => str_replace('/', '\\/', $index)]);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $package) {
+            $read = json_decode((string) $package, true);
+            if (!is_array($read) || ($read['fields']['private'][$fieldName]['blind_index'] ?? null) === $index) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The archives that reserve their blind indexes: made less than
+     * RecoveryTickets::RETURN_WINDOW ago — the holder may still come back —,
+     * or of a userId whose live vault is frozen. A query selecting user_id,
+     * archive_id, archived_at, package and frozen, for the archives that
+     * also match $where (over the alias `a`), and its parameters. The date
+     * and the frozen accounts come first — through the index on archived_at,
+     * and the one on user_id —, so that no package of an old archive is read.
+     *
+     * @return array{0: string, 1: array<string, string>}
+     */
+    private function reservingArchives(string $where): array
+    {
+        $since = (new DateTimeImmutable('now', new DateTimeZone('UTC')))
+            ->modify('-' . RecoveryTickets::RETURN_WINDOW . ' seconds')->format('c');
+        $columns = 'a.user_id, a.archive_id, a.archived_at, a.package';
+        return [
+            "SELECT {$columns}, 0 AS frozen FROM selfdataguard_archives a
+             WHERE a.archived_at > :since AND NOT EXISTS (
+                 SELECT 1 FROM selfdataguard_vaults v WHERE v.user_id = a.user_id AND v.frozen_by IS NOT NULL)
+               AND {$where}
+             UNION ALL
+             SELECT {$columns}, 1 AS frozen FROM selfdataguard_archives a
+             WHERE a.user_id IN (SELECT user_id FROM selfdataguard_vaults WHERE frozen_by IS NOT NULL) AND {$where}",
+            [':since' => $since],
+        ];
     }
 
     // -- Escrow compartment ---------------------------------------------------
@@ -551,18 +635,42 @@ final class SqliteAdapter implements StorageInterface
         $package = $this->readablePackage($row, $userId);
 
         $private = [];
+        $blind   = [];
+        $shared  = [];
         foreach ($package['fields']['private'] as $name => $field) {
             $private[(string) $name] = ['ciphertext' => (string) $field['ciphertext'], 'wasIndexed' => (bool) $field['was_indexed']];
+            if (isset($field['blind_index']) && !str_starts_with((string) $field['blind_index'], self::LOST_INDEX)) {
+                $blind[(string) $name] = (string) $field['blind_index'];
+            }
+            if (isset($field['shared_index'])) {
+                $shared[(string) $name] = (string) $field['shared_index'];
+            }
         }
+        // An escrow that does not parse does not close the archive: the façade
+        // reads it as a row rewritten, and restorePackage() puts it back.
+        $escrow     = null;
+        $unreadable = false;
+        if (($package['escrow'] ?? null) !== null) {
+            try {
+                $escrow = $this->rowToEscrow(['user_id' => $userId] + self::keptEscrow($package['escrow']));
+            } catch (UnreadableEscrowException) {
+                $unreadable = true;
+            }
+        }
+        [$escrowFields, $fieldsRead] = self::keptEscrowFields($package['fields']);
+        $unreadable = $unreadable || !$fieldsRead;
         return new ArchivedVault(
-            archiveId:     (string) $row['archive_id'],
-            archivedAt:    new DateTimeImmutable((string) $row['archived_at']),
-            record:        $this->rowToVault(['user_id' => $userId] + $package['vault']),
-            kdfOpslimit:   (int) $package['kdf']['opslimit'],
-            kdfMemlimit:   (int) $package['kdf']['memlimit'],
-            escrow:        $package['escrow'] === null ? null : $this->rowToEscrow(['user_id' => $userId] + $package['escrow']),
-            privateFields: $private,
-            escrowFields:  array_map('strval', $package['fields']['escrow']),
+            archiveId:        (string) $row['archive_id'],
+            archivedAt:       new DateTimeImmutable((string) $row['archived_at']),
+            record:           $this->rowToVault(['user_id' => $userId] + $package['vault']),
+            kdfOpslimit:      (int) $package['kdf']['opslimit'],
+            kdfMemlimit:      (int) $package['kdf']['memlimit'],
+            escrow:           $escrow,
+            privateFields:    $private,
+            escrowFields:     $escrowFields,
+            escrowUnreadable: $unreadable,
+            blindIndexes:     $blind,
+            sharedIndexes:    $shared,
         );
     }
 
@@ -616,7 +724,9 @@ final class SqliteAdapter implements StorageInterface
                 'DELETE FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
             );
             $stmt->execute([':uid' => $generation->userId, ':id' => $archiveId]);
-            return $stmt->rowCount() > 0;
+            $deleted = $stmt->rowCount() > 0;
+            $this->untieTickets($generation->userId);
+            return $deleted;
         });
     }
 
@@ -700,14 +810,92 @@ final class SqliteAdapter implements StorageInterface
     public function eraseAccount(string $userId): int
     {
         return $this->atomic(function () use ($userId): int {
+            $this->refuseWhileFrozen($userId, 'the account is not erased, nothing of it is');
             $live = $this->fetchVaultRow($userId) !== null ? 1 : 0;
+            $keep = $this->appliedLevel3($userId);
             $this->purgeLive($userId);
-            $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid');
-            $stmt->execute([':uid' => $userId]);
-            $erased = $live + $stmt->rowCount();
-            $this->pdo->prepare('DELETE FROM selfdataguard_tickets WHERE user_id = :uid')->execute([':uid' => $userId]);
+            $archived = 0;
+            if (!$keep) {
+                $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid');
+                $stmt->execute([':uid' => $userId]);
+                $archived = $stmt->rowCount();
+            }
+            $this->untieTickets($userId);
+            return $live + $archived;
+        });
+    }
+
+    public function eraseArchive(string $userId, string $archiveId): bool
+    {
+        return $this->atomic(function () use ($userId, $archiveId): bool {
+            $this->refuseWhileFrozen($userId, 'no archive of it is erased until the case is closed');
+            $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id');
+            $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+            $erased = $stmt->rowCount() > 0;
+            $this->untieTickets($userId);
             return $erased;
         });
+    }
+
+    public function keptArchives(?string $userId = null): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT user_id, archive_id, archived_at FROM selfdataguard_archives a
+             WHERE NOT EXISTS (SELECT 1 FROM selfdataguard_vaults v WHERE v.user_id = a.user_id)
+               AND (:uid IS NULL OR a.user_id = :auid)
+             ORDER BY archived_at, rowid'
+        );
+        $stmt->execute([':uid' => $userId, ':auid' => $userId]);
+        $out = [];
+        while ($row = $stmt->fetch()) {
+            $out[] = [
+                'userId'     => (string) $row['user_id'],
+                'id'         => (string) $row['archive_id'],
+                'archivedAt' => new DateTimeImmutable((string) $row['archived_at']),
+            ];
+        }
+        return $out;
+    }
+
+    public function reservedIndexes(): array
+    {
+        [$sql, $params] = $this->reservingArchives('1 = 1');
+        $stmt = $this->pdo->prepare("SELECT * FROM ({$sql}) ORDER BY archived_at, archive_id");
+        $stmt->execute($params);
+        $out = [];
+        while ($row = $stmt->fetch()) {
+            $package = json_decode((string) $row['package'], true);
+            $fields  = is_array($package) && is_array($package['fields']['private'] ?? null) ? $package['fields']['private'] : [];
+            $until   = (new DateTimeImmutable((string) $row['archived_at']))->modify('+' . RecoveryTickets::RETURN_WINDOW . ' seconds');
+            foreach ($fields as $name => $field) {
+                $index = is_array($field) ? ($field['blind_index'] ?? null) : null;
+                if (is_string($index) && !str_starts_with($index, self::LOST_INDEX)) {
+                    $out[] = [
+                        'userId'    => (string) $row['user_id'],
+                        'archiveId' => (string) $row['archive_id'],
+                        'field'     => (string) $name,
+                        'until'     => $until,
+                        'frozen'    => (bool) $row['frozen'],
+                    ];
+                }
+            }
+        }
+        return $out;
+    }
+
+    public function lostIndexes(?string $userId = null): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT user_id, field_name FROM selfdataguard_fields
+             WHERE substr(blind_index, 1, length(:lost)) = :prefix AND (:uid IS NULL OR user_id = :fuid)
+             ORDER BY user_id, field_name'
+        );
+        $stmt->execute([':lost' => self::LOST_INDEX, ':prefix' => self::LOST_INDEX, ':uid' => $userId, ':fuid' => $userId]);
+        $out = [];
+        while ($row = $stmt->fetch()) {
+            $out[(string) $row['user_id']][] = (string) $row['field_name'];
+        }
+        return $out;
     }
 
     // -------------------------------------------------------------------------
@@ -738,6 +926,52 @@ final class SqliteAdapter implements StorageInterface
     }
 
     /**
+     * VaultFrozenException when the live vault of $userId is frozen: during
+     * the case, nothing of the account is erased. Callers run it inside
+     * atomic(), before anything is deleted.
+     */
+    private function refuseWhileFrozen(string $userId, string $what): void
+    {
+        if ($this->frozenState($userId) !== null) {
+            throw new VaultFrozenException("The vault of '{$userId}' is frozen: {$what}");
+        }
+    }
+
+    /** Whether a re-enrolment of $userId applied a ticket: the account then keeps every archive through eraseAccount(). */
+    private function appliedLevel3(string $userId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            "SELECT 1 FROM selfdataguard_tickets WHERE user_id = :uid AND operation = 'replace-with-archive' LIMIT 1"
+        );
+        $stmt->execute([':uid' => $userId]);
+        $applied = $stmt->fetchColumn() !== false;
+        $stmt->closeCursor();
+        return $applied;
+    }
+
+    /**
+     * Once $userId holds no live vault and no archive, the tickets applied to
+     * it stay — a replay of one is refused — and no longer name it nor an
+     * archive: whoever registers the userId next does not inherit them.
+     * Callers run it inside atomic().
+     */
+    private function untieTickets(string $userId): void
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT EXISTS (SELECT 1 FROM selfdataguard_vaults WHERE user_id = :uid)
+                 OR EXISTS (SELECT 1 FROM selfdataguard_archives WHERE user_id = :auid)'
+        );
+        $stmt->execute([':uid' => $userId, ':auid' => $userId]);
+        $holds = (bool) $stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($holds) {
+            return;
+        }
+        $this->pdo->prepare("UPDATE selfdataguard_tickets SET user_id = '', archive_id = NULL WHERE user_id = :uid")
+            ->execute([':uid' => $userId]);
+    }
+
+    /**
      * The live vault of $userId, its fields and its escrow — gone.
      *
      * Explicit deletes, not the FK cascade: `PRAGMA foreign_keys` is a no-op
@@ -753,10 +987,11 @@ final class SqliteAdapter implements StorageInterface
 
     /**
      * Everything an archive must keep, as stored — nothing is decrypted. The
-     * indexes go into the package, where no lookup and no unique index reaches
-     * them: live, they would keep answering for data the user no longer has,
-     * and keep the value from its next holder. restorePackage() puts them back.
-     * The keys are added to format 1, which 0.7.0 reads by ignoring them.
+     * indexes go into the package, where no lookup reaches them: live, they
+     * would keep answering for data the user no longer has. A blind index
+     * stays reserved to the userId there while the archive can come back
+     * (reservedByAnother()), and restorePackage() puts it back. The keys are added to format 1, which
+     * 0.7.0 reads by ignoring them.
      *
      * The escrow row goes whole, not as a list of columns: a column added
      * since — the revision, in 0.9.0 — would otherwise be lost to the archive
@@ -928,10 +1163,13 @@ final class SqliteAdapter implements StorageInterface
 
     /**
      * The vault of $package, live again under $userId: its row as archived,
-     * its fields with the indexes the package kept, its escrow and escrow
-     * fields. An index another account holds now is named, every such field
-     * of the package, in one DuplicateIndexException. Callers run it inside
-     * atomic(), with no live vault left for $userId.
+     * its fields with the indexes the package kept, its escrow row and its
+     * escrow fields. A field whose blind index another account holds now comes
+     * back with the trace of a lost index instead (lostIndexes()). An escrow
+     * row that does not parse comes back as it was kept; a column it lacks or
+     * that holds no value comes back as one that does not parse, and a row
+     * that is not one as a row of such columns. Callers run it inside atomic(),
+     * with no live vault left for $userId.
      *
      * @param array<string, mixed> $package
      */
@@ -944,31 +1182,30 @@ final class SqliteAdapter implements StorageInterface
              VALUES (:uid, :fn, :ct, :bi, :ua, :si)'
         );
         $now = (new DateTimeImmutable())->format('c');
-        $taken = [];
         foreach ($package['fields']['private'] as $name => $f) {
+            $params = [
+                ':uid' => $userId,
+                ':fn'  => (string) $name,
+                ':ct'  => (string) $f['ciphertext'],
+                ':bi'  => isset($f['blind_index']) ? (string) $f['blind_index'] : null,
+                ':ua'  => $now,
+                ':si'  => isset($f['shared_index']) ? (string) $f['shared_index'] : null,
+            ];
             try {
-                $field->execute([
-                    ':uid' => $userId,
-                    ':fn'  => (string) $name,
-                    ':ct'  => (string) $f['ciphertext'],
-                    ':bi'  => isset($f['blind_index']) ? (string) $f['blind_index'] : null,
-                    ':ua'  => $now,
-                    ':si'  => isset($f['shared_index']) ? (string) $f['shared_index'] : null,
-                ]);
+                $field->execute($params);
             } catch (PDOException $e) {
+                // A constraint failure undoes this statement only: the field
+                // is inserted again, without the index another account holds.
                 if (!str_contains($e->getMessage(), 'selfdataguard_fields.blind_index')) {
                     throw $e;
                 }
                 $field->closeCursor();
-                $taken[] = (string) $name;
+                $field->execute([':bi' => self::LOST_INDEX . bin2hex(random_bytes(16))] + $params);
             }
         }
-        if ($taken !== []) {
-            throw new DuplicateIndexException($taken);
-        }
 
-        if ($package['escrow'] !== null) {
-            $row     = ['user_id' => $userId] + (array) $package['escrow'];
+        if (($package['escrow'] ?? null) !== null) {
+            $row     = ['user_id' => $userId] + self::keptEscrow($package['escrow']);
             $columns = $this->columnsOf('selfdataguard_escrow');
             $unknown = array_diff(array_keys($row), $columns);
             if ($unknown !== []) {
@@ -976,6 +1213,19 @@ final class SqliteAdapter implements StorageInterface
                     "The archive of '{$userId}' carries escrow columns this database does not have ("
                     . implode(', ', $unknown) . '): it was written by a newer SelfDataGuard — upgrade to bring it back'
                 );
+            }
+            foreach ($this->pdo->query('PRAGMA table_info(selfdataguard_escrow)')->fetchAll() as $info) {
+                $column = (string) $info['name'];
+                if (isset($row[$column]) && !is_scalar($row[$column])) {
+                    $row[$column] = self::UNREADABLE;
+                }
+                if (($row[$column] ?? null) === null && (int) $info['notnull'] === 1) {
+                    if ($info['dflt_value'] === null) {
+                        $row[$column] = self::UNREADABLE;
+                    } else {
+                        unset($row[$column]);
+                    }
+                }
             }
             $kept = array_values(array_intersect($columns, array_keys($row)));
             $this->pdo->prepare(
@@ -988,9 +1238,45 @@ final class SqliteAdapter implements StorageInterface
         $escrowField = $this->pdo->prepare(
             'INSERT INTO selfdataguard_escrow_fields (user_id, field_name, ciphertext, updated_at) VALUES (:uid, :fn, :ct, :ua)'
         );
-        foreach ($package['fields']['escrow'] as $name => $ciphertext) {
-            $escrowField->execute([':uid' => $userId, ':fn' => (string) $name, ':ct' => (string) $ciphertext, ':ua' => $now]);
+        foreach (self::keptEscrowFields($package['fields'])[0] as $name => $ciphertext) {
+            $escrowField->execute([':uid' => $userId, ':fn' => $name, ':ct' => $ciphertext, ':ua' => $now]);
         }
+    }
+
+    /**
+     * The columns of the escrow row an archive package keeps; none when what
+     * it keeps is not a row — a value, a list.
+     *
+     * @return array<string, mixed>
+     */
+    private static function keptEscrow(mixed $kept): array
+    {
+        return is_array($kept) && !array_is_list($kept) ? $kept : [];
+    }
+
+    /**
+     * The escrow fields an archive package keeps, and whether they read as a
+     * map of ciphertexts: one that is not a map comes as none, a ciphertext
+     * that is not a value as one that does not decrypt.
+     *
+     * @param mixed $fields the package's `fields`
+     * @return array{0: array<string, string>, 1: bool}
+     */
+    private static function keptEscrowFields(mixed $fields): array
+    {
+        if (!is_array($fields) || !array_key_exists('escrow', $fields)) {
+            return [[], true];
+        }
+        if (!is_array($fields['escrow'])) {
+            return [[], false];
+        }
+        $out  = [];
+        $read = true;
+        foreach ($fields['escrow'] as $name => $ciphertext) {
+            $read = $read && is_scalar($ciphertext);
+            $out[(string) $name] = is_scalar($ciphertext) ? (string) $ciphertext : self::UNREADABLE;
+        }
+        return [$out, $read];
     }
 
     /**
@@ -1127,6 +1413,10 @@ final class SqliteAdapter implements StorageInterface
         $this->addMissingColumn('selfdataguard_vaults', 'frozen_by', 'TEXT');
         $this->addMissingColumn('selfdataguard_vaults', 'frozen_at', 'TEXT');
         $this->pdo->exec(
+            'CREATE INDEX IF NOT EXISTS selfdataguard_vaults_frozen
+             ON selfdataguard_vaults(user_id) WHERE frozen_by IS NOT NULL'
+        );
+        $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_settings (
                 name   TEXT PRIMARY KEY,
                 value  TEXT NOT NULL
@@ -1154,6 +1444,10 @@ final class SqliteAdapter implements StorageInterface
         $this->pdo->exec(
             'CREATE INDEX IF NOT EXISTS selfdataguard_archives_user
              ON selfdataguard_archives(user_id)'
+        );
+        $this->pdo->exec(
+            'CREATE INDEX IF NOT EXISTS selfdataguard_archives_archived_at
+             ON selfdataguard_archives(archived_at)'
         );
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_fields (
@@ -1350,7 +1644,10 @@ final class SqliteAdapter implements StorageInterface
     /**
      * The revision must be an integer the next write can bump, and, for the
      * live row (`revision_type`), one SQLite stores as an integer: the write
-     * compares it in SQL, where a text or a blob equals no integer.
+     * compares it in SQL, where a text or a blob equals no integer; one
+     * missing reads 0, as for a row written before 0.9.0. Any other column
+     * missing, or holding no value — an archived row can lack one —, does not
+     * parse.
      *
      * @param array<string, mixed> $row
      * @throws UnreadableEscrowException when a column does not parse
@@ -1358,6 +1655,11 @@ final class SqliteAdapter implements StorageInterface
     private function rowToEscrow(array $row): EscrowRecord
     {
         return EscrowRecord::parse((string) $row['user_id'], static function () use ($row): EscrowRecord {
+            foreach (['wrap_user', 'wrap_admin', 'created_at', 'updated_at'] as $column) {
+                if (!isset($row[$column]) || !is_scalar($row[$column])) {
+                    throw new RuntimeException("Missing {$column} in DB");
+                }
+            }
             $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
             if ($wrapAdmin === false) {
                 throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');

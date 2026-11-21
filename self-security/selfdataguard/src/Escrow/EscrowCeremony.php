@@ -11,6 +11,8 @@ use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
+use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 use RuntimeException;
@@ -103,6 +105,7 @@ final class EscrowCeremony
      *
      * @param list<string> $fieldNames empty = all escrow fields
      * @return array<string, string> field_name => plaintext
+     * @throws UnreadableEscrowException when the archive keeps an escrow that does not parse
      */
     public function readArchiveEscrow(
         string $userId,
@@ -118,7 +121,7 @@ final class EscrowCeremony
         ): array {
             $archive = $this->storage->loadArchive($userId, $archiveId)
                 ?? throw new VaultNotFoundException("No archive '{$archiveId}' for '{$userId}'");
-            if ($archive->record->userId !== $userId || $archive->escrow === null) {
+            if ($archive->record->userId !== $userId || self::archiveEscrow($archive) === null) {
                 throw new RuntimeException("No escrow compartment in archive '{$archiveId}' of '{$userId}'");
             }
             $ciphertexts = $fieldNames === []
@@ -164,9 +167,11 @@ final class EscrowCeremony
      * The keeper is the one the database recorded, or recorded here when none
      * is: given another, nothing is sealed — a box sealed to a keeper the
      * deployment does not run opens for no one, and an archive's would stay so.
-     * A failure is logged, with the account.
+     * A failure is logged, with the account. An archive that keeps an escrow
+     * that does not parse is one: the pass of the account stops there.
      *
      * @return array{live: bool, archives: list<string>, frozen: bool} what was sealed
+     * @throws UnreadableEscrowException when an archive of the account keeps an escrow that does not parse
      */
     public function sealToKeeper(string $userId): array
     {
@@ -215,7 +220,8 @@ final class EscrowCeremony
             }
         }
         foreach ($this->storage->listArchives($userId) as $listed) {
-            $escrow = $this->storage->loadArchive($userId, $listed['id'])?->escrow;
+            $archive = $this->storage->loadArchive($userId, $listed['id']);
+            $escrow  = $archive === null ? null : self::archiveEscrow($archive);
             if ($escrow !== null && !EscrowVault::isKeeperSealed($escrow)) {
                 $this->storage->replaceArchiveEscrow($userId, $listed['id'], $wrap($escrow));
                 $done['archives'][] = $listed['id'];
@@ -224,6 +230,21 @@ final class EscrowCeremony
         $this->log->append(['action' => 'seal-to-keeper', 'target' => $userId, 'keeper' => $print,
             'live' => $done['live'], 'archives' => $done['archives'], 'frozen' => $done['frozen'], 'operator' => $this->operator]);
         return $done;
+    }
+
+    /**
+     * The escrow $archive keeps, or null when it keeps none.
+     *
+     * @throws UnreadableEscrowException when it keeps one that does not parse
+     */
+    private static function archiveEscrow(ArchivedVault $archive): ?EscrowRecord
+    {
+        if ($archive->escrowUnreadable) {
+            throw new UnreadableEscrowException(
+                "The escrow of archive '{$archive->archiveId}' of '{$archive->record->userId}' does not parse: nothing of it is read or sealed"
+            );
+        }
+        return $archive->escrow;
     }
 
     /**

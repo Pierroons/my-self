@@ -87,7 +87,9 @@ interface StorageInterface
      * Archives of the userId are left alone. Removing them is a separate,
      * explicit decision (eraseAccount): otherwise whoever holds the current
      * vault — after a fraudulent re-enrolment, say — could erase the old
-     * ones by deleting the account.
+     * ones by deleting the account. Once the userId holds no archive either,
+     * the tickets applied to it no longer name it, as eraseAccount() leaves
+     * them.
      */
     public function deleteVault(VaultGeneration $generation): void;
 
@@ -101,7 +103,14 @@ interface StorageInterface
      *                   naming every such field of the batch, and nothing of the
      *                   batch is written. Enforced by the storage itself (a
      *                   unique constraint): a check before the write lets two
-     *                   concurrent writers both through.
+     *                   concurrent writers both through. An archive of another
+     *                   userId that keeps the value under that field holds it
+     *                   the same way while it can still come back — made less
+     *                   than RecoveryTickets::RETURN_WINDOW ago, or of a userId
+     *                   whose live vault is frozen —, compared inside the
+     *                   write's transaction, so that no archive is made in
+     *                   between; unless this userId already holds it live
+     *                   there.
      *   - sharedIndex : any number of accounts may hold the same value.
      *
      * @param array<string, array{ciphertext: string, blindIndex?: ?string, sharedIndex?: ?string}> $fields
@@ -204,10 +213,10 @@ interface StorageInterface
     /**
      * Atomically set the live vault of $replacing aside as an archive —
      * envelopes, fields and escrow, still encrypted — then insert $new in its
-     * place. The indexes go with the fields, inert: an archive answers no
-     * lookup and holds no value against the next account, and a vault brought
-     * back live by swapWithArchive() or restoreArchive() carries them again.
-     * Nothing changes if any step fails.
+     * place. The indexes go with the fields: an archive answers no lookup, its
+     * blind indexes stay reserved to the userId while it can come back
+     * (saveFields()), and a vault brought back live by swapWithArchive() or
+     * restoreArchive() carries them again. Nothing changes if any step fails.
      *
      * The vault archived is exactly the one $replacing names: a second call
      * with the same generation finds the vault the first one inserted and
@@ -217,7 +226,8 @@ interface StorageInterface
      * $ticket, when given, is recorded with the archive id in the same
      * transaction (archiveOfTicket() reads it back); a ticket already recorded
      * for this operation throws TicketAlreadyAppliedException, and nothing is
-     * written.
+     * written. Once a ticket is recorded, eraseAccount() keeps every archive of
+     * the userId.
      *
      * @return string the archive id
      */
@@ -231,6 +241,16 @@ interface StorageInterface
     /**
      * The archive, if it exists AND belongs to $userId; null otherwise. Its
      * escrow carries the revision it was archived at, or was last replaced at.
+     *
+     * An escrow the archive keeps and that does not parse — the
+     * UnreadableEscrowException of EscrowRecord::parse(), as loadEscrow() raises
+     * it, a column missing or holding no value, a row that is not one, escrow
+     * fields that are not a map of ciphertexts — does not refuse the archive:
+     * it comes with escrowUnreadable true (escrow null when the row itself
+     * does not parse), and swapWithArchive() and restoreArchive() bring back a
+     * row that does not parse — or the row as kept, when only the fields do
+     * not read — and the fields that read. blindIndexes and sharedIndexes carry the index each
+     * private field held when it was archived.
      */
     public function loadArchive(string $userId, string $archiveId): ?ArchivedVault;
 
@@ -260,8 +280,12 @@ interface StorageInterface
      * fields, as they were archived. The archive row is gone once live again.
      * Nothing changes if any step fails.
      *
-     * An index another account took since the archive was made throws
-     * DuplicateIndexException naming those fields, and nothing is swapped.
+     * A field whose blind index another account holds comes back without it,
+     * and the other account keeps the value — an index held by both before an
+     * archive reserved it (saveFields()); a storage that implements
+     * TracesLostIndexes keeps a trace of it. The escrow row comes back as the
+     * archive kept it; one that does not parse comes back as one that does not
+     * parse, a column it lacks put back unreadable (loadArchive()).
      * An archive written before 0.8.0 kept no index: its fields come back
      * without one.
      *
@@ -276,7 +300,7 @@ interface StorageInterface
     /**
      * Bring archive $archiveId back live for a userId that holds no live
      * vault — after its live vault was deleted. Same restoration as
-     * swapWithArchive(), DuplicateIndexException included.
+     * swapWithArchive(), a field whose blind index was taken included.
      *
      * @throws VaultExistsException   if the userId holds a live vault
      * @throws VaultNotFoundException if the userId has no such archive
@@ -288,9 +312,9 @@ interface StorageInterface
     /**
      * Freeze the live vault of $generation: every write of this contract that
      * names it — updateVault included — throws VaultFrozenException, compared
-     * inside the write's own transaction as the generation is. Reads go on,
-     * and eraseAccount() still erases. The freeze stays with the vault, not
-     * with the generation: archived, it is gone with the live row.
+     * inside the write's own transaction as the generation is, and so does
+     * eraseAccount() of the userId. Reads go on. The freeze stays with the
+     * vault, not with the generation: archived, it is gone with the live row.
      *
      * $ticket, when given, is recorded in the same transaction, once per
      * operation, as for replaceWithArchive().
@@ -359,11 +383,24 @@ interface StorageInterface
     public function indexedFields(): array;
 
     /**
-     * Erase the account: the live vault, its fields and escrow, every archive
-     * of the userId and the recovery tickets applied to it, in one transaction. Works on a userId that has
-     * archives and no live vault.
+     * Erase the account, in one transaction: the live vault, its fields and
+     * escrow, and the archives of the userId — unless a replaceWithArchive()
+     * applied a ticket to it: then every archive stays, whichever write set it
+     * aside, for the case it is kept for. Works on a userId that has archives
+     * and no live vault. A kept archive is erased through ErasesArchives,
+     * which a storage implements or not.
+     *
+     * While the live vault is frozen, nothing is erased — vault, fields,
+     * escrow, archives, tickets — and it throws VaultFrozenException, as every
+     * write to a frozen vault does, compared inside the same transaction.
+     *
+     * No recovery ticket is deleted: a replay of any of them is still refused.
+     * Once the userId holds no live vault and no archive, the tickets no longer
+     * name it, nor an archive (archiveOfTicket() then answers null): whoever
+     * registers the userId next does not inherit them.
      *
      * @return int how many vaults were erased, live and archived
+     * @throws VaultFrozenException if the live vault of the userId is frozen
      */
     public function eraseAccount(string $userId): int;
 }

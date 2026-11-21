@@ -1106,8 +1106,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=65 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=95 [sanity_escrow]=66
-            [sanity_facade]=139 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
+            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=114 [sanity_escrow]=66
+            [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
             [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
           )
           rc=0
@@ -1291,10 +1291,67 @@ jobs:
             $D/tests/sanity_archive.php 'a second freeze replaced the first'
           canari $D/src/Storage/SqliteAdapter.php "                'blind_index'  => \$f['blind_index']," "                'blind_index'  => null," \
             $D/tests/sanity_archive.php 'the archive did not keep the blind index'
-          canari $D/src/Storage/SqliteAdapter.php '                $taken[] = (string) $name;' '' \
-            $D/tests/sanity_archive.php 'the swap put back an index another account holds'
-          canari $D/src/SelfDataGuard.php '        $record = $this->sealedArchive($replacing->userId, $archiveId);' \
-            '        $record = $this->storage->loadArchive($replacing->userId, $archiveId)->record;' \
+          canari $D/src/Storage/SqliteAdapter.php "                \$field->execute([':bi' => self::LOST_INDEX . bin2hex(random_bytes(16))] + \$params);" \
+            '                throw new DuplicateIndexException([(string) $name]);' \
+            $D/tests/sanity_archive.php 'a value held by both accounts refused the swap'
+          canari $D/src/Storage/SqliteAdapter.php "                \$field->execute([':bi' => self::LOST_INDEX . bin2hex(random_bytes(16))] + \$params);" \
+            "                \$field->execute([':bi' => null] + \$params);" \
+            $D/tests/sanity_archive.php 'the taken index moved, or the field came back without a trace'
+          canari $D/src/Storage/SqliteAdapter.php '                                THEN selfdataguard_fields.blind_index' \
+            '                                THEN excluded.blind_index' \
+            $D/tests/sanity_archive.php 'a write without an index took the trace away'
+          canari $D/src/Storage/SqliteAdapter.php "                if (isset(\$data['blindIndex']) && \$this->reservedByAnother(" \
+            "                if (false && \$this->reservedByAnother(" \
+            $D/tests/sanity_archive.php "another account indexed a value the holder's archive keeps"
+          canari $D/src/Storage/SqliteAdapter.php "            \$this->refuseWhileFrozen(\$userId, 'the account is not erased, nothing of it is');" '' \
+            $D/tests/sanity_archive.php 'eraseAccount() of a frozen account went through'
+          canari $D/src/Storage/SqliteAdapter.php "            \$this->refuseWhileFrozen(\$userId, 'no archive of it is erased until the case is closed');" '' \
+            $D/tests/sanity_archive.php 'eraseArchive() erased an archive of a frozen account'
+          canari $D/src/Storage/SqliteAdapter.php '            $keep = $this->appliedLevel3($userId);' '            $keep = false;' \
+            $D/tests/sanity_archive.php "eraseAccount() erased the vault a swap set aside"
+          canari $D/src/Storage/SqliteAdapter.php '        if ($holdsLive) {' '        if (false) {' \
+            $D/tests/sanity_archive.php 'an account that held the value before 0.9.1 can no longer write its own field'
+          canari $D/src/Storage/SqliteAdapter.php '             WHERE a.archived_at > :since AND NOT EXISTS (' \
+            '             WHERE :since IS NOT NULL AND NOT EXISTS (' \
+            $D/tests/sanity_archive.php 'the reservation outlived the window: the recycled value stays refused'
+          canari $D/src/Storage/SqliteAdapter.php '             WHERE a.user_id IN (SELECT user_id FROM selfdataguard_vaults WHERE frozen_by IS NOT NULL) AND {$where}",' \
+            '             WHERE 0 AND {$where}",' \
+            $D/tests/sanity_archive.php 'a frozen account lost its reservation once the window was over'
+          canari $D/src/Storage/SqliteAdapter.php "        [\$escrowFields, \$fieldsRead] = self::keptEscrowFields(\$package['fields']);" \
+            "        [\$escrowFields, \$fieldsRead] = [array_map('strval', \$package['fields']['escrow']), true];" \
+            $D/tests/sanity_archive.php 'fields.escrow a string: the archive was refused'
+          canari $D/src/Storage/SqliteAdapter.php '            $this->purgeLive($generation->userId);
+                      $this->untieTickets($generation->userId);' '            $this->purgeLive($generation->userId);' \
+            $D/tests/sanity_archive.php 'after delete(), the tickets still name the account'
+          canari $D/src/SelfDataGuard.php "        return ['private' => \$private, 'escrow' => \$escrow, 'escrowUnreadable' => !\$read];" \
+            "        return ['private' => \$private, 'escrow' => \$escrow, 'escrowUnreadable' => \$record === false];" \
+            $D/tests/sanity_facade.php 'readArchive() did not mark the escrow unreadable'
+          canari $D/src/SelfDataGuard.php "        \$this->refuseWhileFrozen(\$userId, 'the account is not erased, nothing of it is');" '' \
+            $D/tests/sanity_facade.php 'eraseAccount() through a storage that erases under a freeze went through'
+          canari $D/src/SelfDataGuard.php "        \$this->refuseWhileFrozen(\$userId, 'no archive of it is erased until the case is closed');" '' \
+            $D/tests/sanity_facade.php 'eraseArchive() through a storage that erases under a freeze went through'
+          canari $D/src/Storage/SqliteAdapter.php "\"UPDATE selfdataguard_tickets SET user_id = '', archive_id = NULL WHERE user_id = :uid\"" \
+            "'UPDATE selfdataguard_tickets SET user_id = user_id WHERE user_id = :uid'" \
+            $D/tests/sanity_archive.php 'the tickets of an account that holds nothing still name it'
+          canari $D/src/Storage/SqliteAdapter.php "                \$escrow = \$this->rowToEscrow(['user_id' => \$userId] + self::keptEscrow(\$package['escrow']));" \
+            "                \$escrow = \$this->rowToEscrow(['user_id' => \$userId] + \$package['escrow']);" \
+            $D/tests/sanity_archive.php 'a string, not a row: the archive was refused'
+          canari $D/src/Storage/SqliteAdapter.php "                if (!isset(\$row[\$column]) || !is_scalar(\$row[\$column])) {" '                if (false) {' \
+            $D/tests/sanity_archive.php 'wrap_user missing: not read and brought back as an escrow that does not parse'
+          canari $D/src/Storage/SqliteAdapter.php "                if ((\$row[\$column] ?? null) === null && (int) \$info['notnull'] === 1) {" '                if (false) {' \
+            $D/tests/sanity_archive.php 'created_at holding null: the archive was refused, or could not come back'
+          canari $D/src/SelfDataGuard.php '        return $archive->escrowUnreadable ? false : $archive->escrow;' \
+            '        return $archive->escrow;' \
+            $D/tests/sanity_facade.php 'archiveEscrowReads() does not report a row rewritten'
+          canari $D/src/SelfDataGuard.php '                    ? $field['"'"'wasIndexed'"'"']' '                    ? false' \
+            $D/tests/sanity_facade.php 'a field an archive before 0.8.0 indexed came back unnamed'
+          canari $D/src/SelfDataGuard.php '        } catch (\Exception) {' '        } catch (\LogicException) {' \
+            $D/tests/sanity_facade.php 'a lookup failing after the swap cost the caller the id of the vault set aside'
+          canari $D/src/SelfDataGuard.php '            $this->storage instanceof ErasesArchives ? $this->storage->keptArchives($userId) : $this->storage->listArchives($userId)' \
+            '            $this->storage->listArchives($userId)' \
+            $D/tests/sanity_facade.php 'eraseAccount() raised after erasing, over a kept archive that no longer reads'
+          canari $D/src/SelfDataGuard.php '        $archive  = $this->sealedArchive($replacing->userId, $archiveId);' \
+            '        $archive  = $this->storage->loadArchive($replacing->userId, $archiveId);' \
             $D/tests/sanity_facade.php 'an archive whose profile was changed came back live'
           canari $D/src/SelfDataGuard.php '        if ($ticket === null || $this->tickets->kindOf($ticket, $userId) !== $kind) {' '        if (false) {' \
             $D/tests/sanity_facade.php 'reEnroll() went through without an accepted level 3'
@@ -2931,8 +2988,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 13/13 ' \
-            || { echo "::error::le banc du couplage n'a pas jugé ses 13 valeurs"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 14/14 ' \
+            || { echo "::error::le banc du couplage n'a pas jugé ses 14 valeurs"; exit 1; }
           F=self-security/selfdataguard/src/Vault/UserVault.php
           cp "$F" /tmp/UserVault.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -3018,8 +3075,8 @@ jobs:
             echo "→ $(basename "$t")"
             php "$t" || { echo "::error::$(basename "$t") rouge sous PHP ${{ matrix.php }}"; rc=1; }
           done
-          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 13/13 ' \
-            || { echo "::error::couplage hors 13/13 sous PHP ${{ matrix.php }}"; rc=1; }
+          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 14/14 ' \
+            || { echo "::error::couplage hors 14/14 sous PHP ${{ matrix.php }}"; rc=1; }
           php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 27/27$' \
             || { echo "::error::parcours hors 27/27 sous PHP ${{ matrix.php }}"; rc=1; }
           exit $rc
