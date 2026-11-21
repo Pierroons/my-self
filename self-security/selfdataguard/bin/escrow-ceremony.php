@@ -20,7 +20,13 @@ declare(strict_types=1);
  * cérémonie avant son intention. Sa réserve vit hors de cette machine, en ajout
  * seul, et ne se restaure jamais d'une sauvegarde. Un témoin neuf, ou qui a
  * perdu sa réserve, s'amorce par `seed-witness`, sur la tête notée à la
- * dernière vérification : le journal doit encore la porter.
+ * dernière vérification : le journal doit encore la porter. Avant de servir,
+ * le témoin passe `bin/witness-conformance.php` : une réserve qui prend une
+ * tête de quiconque peut y écrire laisse une seule tête forgée fermer toutes
+ * les cérémonies. Si un témoin rend une tête que le journal ne porte pas, rien
+ * ici ne distingue une tête forgée d'un journal coupé : vérifier le journal
+ * contre l'ancre notée hors de la machine (`verify-log --ancre`), donner à la
+ * cérémonie un témoin sur une réserve neuve, puis l'amorcer sur cette ancre.
  *
  * Usage :
  *   php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]

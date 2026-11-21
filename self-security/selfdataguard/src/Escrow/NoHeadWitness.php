@@ -9,6 +9,8 @@ namespace Pierroons\SelfDataGuard\Escrow;
  * whoever holds its secret can rewrite what follows the last anchor taken by
  * hand, while whoever can write the file can cut it before a ceremony that will
  * not see it. The ceremony writes this class to the log like any other witness.
+ * It takes no head, so it keeps the three duties of HeadWitness by holding
+ * nothing: WitnessConformance has nothing to play on it.
  */
 final class NoHeadWitness implements HeadWitness
 {

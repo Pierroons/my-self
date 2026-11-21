@@ -9,6 +9,25 @@ namespace Pierroons\SelfDataGuard\Escrow;
  * ceremony has written its intention, before anything is unsealed. It throws
  * when the head did not get there, and the ceremony stops: whoever could cut
  * the network, read, then rewrite the log, finds the intention already outside.
+ *
+ * Three duties no signature here can carry. WitnessConformance plays them
+ * (`bin/witness-conformance.php`):
+ * 1. Its store takes a head only from whoever holds this instance's key. The
+ *    key, and how the store checks it, belong to the implementation: witness()
+ *    takes no signature. A store that takes a head from anyone who can write
+ *    to it lets one forged head stop every ceremony — the log does not hold
+ *    the head lastHead() returns (`log-behind-witness`), and seedWitness()
+ *    leaves alone a witness that holds a head.
+ * 2. Nothing resets its store: no call, no file, no endpoint the serving
+ *    machine can reach.
+ * 3. lastHead() never returns less than the highest head it took, whatever
+ *    was presented to its store since, an older head of its own included.
+ *
+ * When a witness returns a head the log does not hold, nothing here tells a
+ * forged head from a cut log, and nothing here reopens the ceremony. The
+ * operator checks the log against the anchor written down off the machine
+ * (`bin/escrow-ceremony.php verify-log --ancre`), gives the ceremony a witness
+ * on a new store, and seeds it on that anchor (`seed-witness`).
  */
 interface HeadWitness
 {

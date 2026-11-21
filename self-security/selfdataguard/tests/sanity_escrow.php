@@ -18,6 +18,7 @@ require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
+require __DIR__ . '/witness_doubles.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
@@ -490,6 +491,47 @@ try {
     ko('seedWitness() accepted NoHeadWitness');
 } catch (RuntimeException $e) {
     ok('seedWitness() refuses NoHeadWitness, which takes no head');
+}
+
+// One head forged in the store, by whoever can write to it without the instance's key.
+$forgedHead = '999:' . str_repeat('f', 64);
+$readThrough = static fn (Pierroons\SelfDataGuard\Escrow\HeadWitness $w, string $path) => benchCeremony($storage, Verdict::Open, $w, $path)
+    ->readEscrow('alice', 'case-f', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+
+$plainLog = $wLog();
+$plain    = new PlainFileWitness($plainLog . '.head');
+register_shutdown_function(static fn () => @unlink($plain->store));
+$readThrough($plain, $plainLog);
+$plainHead   = (new AuditLog($plainLog, str_repeat('s', 32)))->verifyUnanchored()['head'];
+$plainAnchor = "{$plainHead['seq']}:{$plainHead['hmac']}";
+plainFileForger($plain)('forge', $forgedHead);
+try {
+    $readThrough($plain, $plainLog);
+    ko('a head forged in a plain file let the next ceremony go on: the test of the stop is void');
+} catch (RuntimeException $e) {
+    $refusedSeed = false;
+    try {
+        benchCeremony($storage, Verdict::Open, $plain, $plainLog)->seedWitness($plainAnchor);
+    } catch (RuntimeException) {
+        $refusedSeed = true;
+    }
+    ($lastEvent($plainLog)['reason'] ?? null) === 'log-behind-witness' && $refusedSeed
+        ? ok('a head forged in a store that takes it stops every ceremony, and seedWitness() reopens nothing: the duty is the store\'s')
+        : ko('a forged head in a plain file was refused for another reason, or seeded over', $e->getMessage());
+}
+
+$reserveLog = $wLog();
+$reserve    = new WitnessReserve();
+$signed     = new ReserveWitness($reserve, random_bytes(32));
+$readThrough($signed, $reserveLog);
+reserveForger($reserve)('forge', $forgedHead);
+try {
+    $readThrough($signed, $reserveLog);
+    str_starts_with((string) $signed->lastHead(), '2:')
+        ? ok('a head forged in a store that takes heads only under the instance key stops nothing: the next ceremony goes on')
+        : ko('the ceremony went on, but the witness does not hold its head', (string) $signed->lastHead());
+} catch (RuntimeException $e) {
+    ko('a head forged in a conformant store stopped the ceremony', $e->getMessage());
 }
 
 section('Cold seizure: wrong admin key cannot open the sealed escrow');

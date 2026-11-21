@@ -1106,9 +1106,9 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=114 [sanity_escrow]=66
+            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=114 [sanity_escrow]=68
             [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
-            [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9
+            [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -1151,6 +1151,47 @@ jobs:
           canari $D/src/Escrow/AuditLog.php '#[\SensitiveParameter] private readonly string $auditSecret' \
             'private readonly string $auditSecret' \
             $D/tests/sanity_audit.php '❌ auditSecret is readable in the trace of a refused constructor'
+
+      # Un témoin dont la réserve prend une tête de quiconque peut y écrire laisse une
+      # seule tête forgée fermer toutes les cérémonies. La suite de conformité du témoin
+      # doit faire échouer chaque témoin qui manque à un devoir : chaque canari retire
+      # un de ses cas, et le banc doit nommer le témoin fautif qui passe alors.
+      - name: Canaris — la conformité du témoin rougit quand on retire un de ses cas
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans le cas"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          W=$D/src/Escrow/WitnessConformance.php
+          canari $W "        \$this->assertHead(null, 'on a new store');" '' \
+            $D/tests/sanity_witness.php '❌ PreloadedWitness on WitnessReserve passed a case it breaks'
+          canari $W "        \$this->assertHead(\$this->take(1), 'after witness()');" '        $this->take(1);' \
+            $D/tests/sanity_witness.php '❌ DroppingWitness on WitnessReserve passed a case it breaks'
+          canari $W '        throw new RuntimeException("{$what} was taken");' '' \
+            $D/tests/sanity_witness.php '❌ AnySeqWitness on WitnessReserve passed a case it breaks'
+          canari $W '        $reached = ($this->forger)($act, $head);' '        $reached = true;' \
+            $D/tests/sanity_witness.php '❌ UnsignedReserveWitness on WitnessReserve passed a case it breaks'
+          canari $W "        \$this->assertHead(\$held, 'after its store was reset');" '' \
+            $D/tests/sanity_witness.php '❌ ReserveWitness on ResettableReserve passed a case it breaks'
+          canari $W "        \$this->forge('replay', \$older);" '' \
+            $D/tests/sanity_witness.php '❌ LastEntryWitness on WitnessReserve passed a case it breaks'
+          canari $W '            throw new RuntimeException("lastHead() throws {$when}, and every ceremony stops: {$e->getMessage()}");' '            $got = null;' \
+            $D/tests/sanity_witness.php '❌ a throw on a forged line is not named'
+          canari $W '        if ($suite->witness instanceof NoHeadWitness) {' '        if (false) {' \
+            $D/tests/sanity_witness.php '❌ NoHeadWitness was played as a witness'
+          canari $D/bin/witness-conformance.php '    exit(4);' '    exit(0);' \
+            $D/tests/sanity_witness.php '❌ NoHeadWitness did not exit 4'
 
       # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
       # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
