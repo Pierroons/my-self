@@ -3,7 +3,7 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.9.1] — 2026-11-19
+## [v0.9.1] — 2026-11-20
 
 A patch release: the holder's return after a level 3. Three defects, each critical, kept the holder's vault from
 coming back or let it be erased. No signature of `StorageInterface` changes; four of its behaviours do, and a storage

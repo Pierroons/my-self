@@ -972,6 +972,35 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfDataGuard v0.9.1] — 20 novembre 2026
+
+### SelfDataGuard 0.9.1 — le retour du titulaire tient, et rien ne s'efface pendant un litige — 20 novembre 2026
+
+Correctif de trois défauts, chacun critique au barème, qui empêchaient le coffre du titulaire de revenir après un
+niveau 3, ou permettaient de l'effacer.
+
+- **Une archive dont la ligne de séquestre ne se lit pas s'ouvre et revient quand même.**
+  - Son séquestre est marqué illisible au chargement (`escrowUnreadable`), au lieu de refuser l'archive entière.
+  - `readArchive()` rend les champs privés.
+  - La vue du titulaire dit `escrow-replaced` et l'objection part à chaque gardien.
+- **Une valeur indexée par un autre compte pendant la fenêtre ne bloque plus le retour.**
+  - Une archive réserve ses index aveugles pendant `RecoveryTickets::RETURN_WINDOW` (30 jours, la plus longue fenêtre
+    de SelfRecover), ou tant que son compte est gelé.
+  - Au-delà, le champ revient sans son index, et une trace le dit au titulaire (`lostIndexes()`) comme à l'exploitant
+    (`allLostIndexes()`).
+- **`eraseAccount()` n'efface plus l'archive du titulaire.**
+  - Un compte qui porte un ticket de niveau 3 garde toutes ses archives, jusqu'à `eraseArchive()`.
+  - Les tickets restent ; ils ne nomment plus personne quand le compte n'a plus rien.
+  - Sous gel, `eraseAccount()` et `eraseArchive()` n'effacent rien et lèvent `VaultFrozenException` : la demande
+    attend la clôture.
+
+Aucune signature de `StorageInterface` ne change ; quatre de ses comportements changent. Deux interfaces facultatives
+s'ajoutent, `ErasesArchives` et `TracesLostIndexes`. Le détail, la migration et les limites déclarées :
+[`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
+
+Mesuré : 1 067 cas sur 14 suites (l'archive 121, la façade 189, la conformité du stockage 114) ; 24 canaris neufs,
+joués par la CI de `dev`.
+
 ## [SelfModerate v0.8.0] — 7 novembre 2026
 
 ### SelfModerate 0.8.0 : lever n'est plus gracier, et un refus du journal ne défait plus le vote — 4 novembre 2026
