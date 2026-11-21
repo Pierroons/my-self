@@ -64,7 +64,7 @@ register_shutdown_function(static fn () => @unlink($dbPath));
 $pdo      = new PDO("sqlite:{$dbPath}");
 $storage  = new SqliteAdapter($pdo);
 $blindKey = Primitives::randomBytes(32);
-$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $uv       = new UserVault();
 $admin    = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the archive bench');
 
@@ -190,7 +190,7 @@ section('A concurrent writer is waited for, not failed on');
 // before it writes does under SQLite.
 $wfile = sys_get_temp_dir() . '/selfdataguard-wait-' . bin2hex(random_bytes(4)) . '.sqlite';
 register_shutdown_function(static fn () => @unlink($wfile));
-$wdg = new SelfDataGuard(new SqliteAdapter("sqlite:{$wfile}"), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$wdg = new SelfDataGuard(new SqliteAdapter("sqlite:{$wfile}"), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $wdg->register('user-wait', 'wait-password-0001', hash('sha256', 'wait-memorized'));
 $holder = new PDO("sqlite:{$wfile}");
 $holder->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

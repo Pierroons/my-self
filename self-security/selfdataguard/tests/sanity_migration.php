@@ -376,7 +376,7 @@ $avantKey   = random_bytes(32);
 // Nothing indexed, nothing sealed: the key decides nothing that exists yet.
 SelfDataGuard::adoptBlindKey($avantStore, $avantKey);
 benchPepperRecorded($avantStore);
-$dgAvant = new SelfDataGuard($avantStore, $avantKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
+$dgAvant = new SelfDataGuard($avantStore, $avantKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 try {
     $dgAvant->loginWithPassword('user-unsealed', 'unsealed-password-01');
     ko('a vault without a profile seal was opened');
@@ -400,7 +400,7 @@ $adopted = SelfDataGuard::adoptPepper($adoptStore, $adoptKey, benchPepper());
 $adopted['vaults'] === 1 && $adopted['refused'] === []
     ? ok('the pepper pass seals a vault written before 0.7.0, as sealProfile() does, and lays it over')
     : ko('the pepper pass left a vault written before 0.7.0 aside', json_encode($adopted));
-$dgAdopt = new SelfDataGuard($adoptStore, $adoptKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dgAdopt = new SelfDataGuard($adoptStore, $adoptKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgAdopt->lockState('user-adopt-old', Lock::Password) === 'layer'
     && $dgAdopt->loginWithPassword('user-adopt-old', 'adopt-old-password')->userId === 'user-adopt-old'
     ? ok('laid over, it opens once the upgrade is declared over, under its legacy profile')
@@ -415,7 +415,7 @@ $pinPdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphert
     ->execute(['user-pin', 'email', 'c-email', BlindIndex::compute('pin@example.org', $rightKey, 'email'), '2026-01-01']);
 $pinStore = new SqliteAdapter($pinPdo);
 try {
-    new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
+    new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('a façade recorded the first key it brought to a database written before 0.7.0');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'adoptBlindKey()') && $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
@@ -456,12 +456,12 @@ try {
 }
 SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'pin@example.org');
 benchPepperRecorded($pinStore);
-$dgPin = new SelfDataGuard($pinStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
+$dgPin = new SelfDataGuard($pinStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgPin->sealProfile('user-pin') && $dgPin->findUserByField('email', 'pin@example.org') === 'user-pin'
     ? ok('the key the lookup proves is adopted: the vault is sealed under it, and the lookup answers')
     : ko('the adopted key did not seal the vault, or the lookup does not answer');
 try {
-    new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
+    new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('another key opened the database once its key was adopted');
 } catch (InvalidArgumentException) {
     ok('once adopted, another key is refused');
@@ -470,7 +470,7 @@ try {
 $sealPdo = new PDO('sqlite::memory:');
 $sealPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $sealStore = new SqliteAdapter($sealPdo);
-(new SelfDataGuard($sealStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare))->register('user-sealproof', 'sealproof-password-01');
+(new SelfDataGuard($sealStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('user-sealproof', 'sealproof-password-01');
 $sealPdo->exec('DELETE FROM selfdataguard_settings');
 try {
     SelfDataGuard::adoptBlindKey($sealStore, $wrongKey, [], 'user-sealproof');
@@ -480,7 +480,7 @@ try {
 }
 SelfDataGuard::adoptBlindKey($sealStore, $rightKey, [], 'user-sealproof');
 benchPepperRecorded($sealStore);
-(new SelfDataGuard($sealStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
+(new SelfDataGuard($sealStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
     ? ok('the key a seal proves is adopted, and the vault opens')
     : ko('the key a seal proves did not open the vault');
 
@@ -498,14 +498,14 @@ try {
 }
 SelfDataGuard::adoptBlindKey($shareStore, $rightKey, ['phone'], 'user-share', 'phone', '+33 6 00');
 benchPepperRecorded($shareStore);
-(new SelfDataGuard($shareStore, $rightKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare))->findUsersByField('phone', '+33 6 00') === ['user-share']
+(new SelfDataGuard($shareStore, $rightKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->findUsersByField('phone', '+33 6 00') === ['user-share']
     ? ok('sharedIndexes that name the shared field are adopted, and the field\'s lookup answers')
     : ko('the shared field adopted does not answer its lookup');
 
 $racePdo = new PDO('sqlite::memory:');
 $racePdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $raceStore = new SqliteAdapter($racePdo);
-new SelfDataGuard($raceStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
+new SelfDataGuard($raceStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 try {
     SelfDataGuard::adoptBlindKey(new SettingRecordedMeanwhileStorage($raceStore), $wrongKey);
     ko('adoptBlindKey() went on over a key another writer recorded meanwhile');
@@ -522,7 +522,7 @@ $legacyStore = new SqliteAdapter($legacyPdo);
 $legacyKey   = random_bytes(32);
 SelfDataGuard::adoptBlindKey($legacyStore, $legacyKey);
 benchPepperRecorded($legacyStore);
-$dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
+$dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 // Archived as 0.6.x did: without a seal, the new vault sealed as this version seals it.
 $fresh = (new UserVault())->register('user-legacy-l3', 'legacy-password-02')['record'];
 $fresh = $fresh->withProfileSeal(ProfileSeal::of(ProfileSeal::key($legacyKey), $fresh, $fresh->kdfOpslimit, $fresh->kdfMemlimit));

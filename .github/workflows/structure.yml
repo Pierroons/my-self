@@ -1114,7 +1114,7 @@ jobs:
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
             [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
-            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=27
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -2224,6 +2224,38 @@ jobs:
             $D/tests/sanity_conformance.php '❌ frozen-vault-takes-its-locks'
           canari $D/src/Storage/Conformance.php "            'account-ids'                   => 'accountIdsCase'," '' \
             $D/tests/sanity_conformance.php 'LiveOnlyAccountIdsStorage passed a case it breaks'
+
+      # Le frein : requis au constructeur, consulté avant toute lecture, informé de ce que
+      # le secret a fait ; un compte inconnu coûte la dérivation d'un secret faux.
+      - name: Canaris — le frein rougit quand on retire une garde
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FA=$D/src/SelfDataGuard.php
+          T=$D/tests/sanity_throttle.php
+          canari $FA '        private readonly Throttle $throttle,' '        private readonly Throttle $throttle = new \Pierroons\SelfDataGuard\Throttle\NoThrottle(),' \
+            $T '❌ the constructor does not require a throttle'
+          canari $FA '        return $this->throttled($door, $userId, function () use ($userId, $lock, $secret): array {' '        $this->load($userId); return $this->throttled($door, $userId, function () use ($userId, $lock, $secret): array {' \
+            $T '❌ loginWithPassword: the refusal did not come before the read'
+          canari $FA '        return $this->throttled(Door::OpenArchive, $current->userId, function () use ($current, $archiveId, $lock, $oldSecret): UnlockedArchive {' '        $this->currentRecord($current); return $this->throttled(Door::OpenArchive, $current->userId, function () use ($current, $archiveId, $lock, $oldSecret): UnlockedArchive {' \
+            $T '❌ openArchive: the refusal did not come before the read'
+          canari $FA '        } catch (WrongSecretException | VaultNotFoundException $e) {' '        } catch (WrongSecretException $e) {' \
+            $T '❌ login on an account that does not exist: VaultNotFoundException kept, settled as a refusal'
+          canari $FA '                $this->vault->deriveInVain($userId, $lock, $secret);' '' \
+            $T '❌ loginWithPassword, unknown account against a wrong password'
 
   selfrecover-1:
     needs: modules

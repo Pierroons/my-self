@@ -96,7 +96,7 @@ file_put_contents($fichierPoivre, \Pierroons\SelfDataGuard\Pepper\Pepper::TAG . 
 chmod($fichierPoivre, 0600);
 $poivre = new \Pierroons\SelfDataGuard\Pepper\LocalPepperFile($fichierPoivre, '');
 unlink($fichierPoivre);
-$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), Primitives::randomBytes(32), $poivre, \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), Primitives::randomBytes(32), $poivre, \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dg->setFields($dg->register('alice', $MDP, $MOT, $PHR), ['note' => $NOTE]);
 
 // ── Niveau 1 ───────────────────────────────────────────────────────────────

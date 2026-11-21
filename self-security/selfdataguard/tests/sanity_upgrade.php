@@ -122,7 +122,7 @@ function otherPepper(string $work): LocalPepperFile
 section('A new installation: the pepper in the Argon2id input of wrap_pwd and wrap_recov');
 
 $fresh = new SqliteAdapter('sqlite:' . "{$work}/fresh.sqlite");
-$dg = new SelfDataGuard($fresh, $key, benchPepper(), PepperForms::LayeredOnly);
+$dg = new SelfDataGuard($fresh, $key, benchPepper(), PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dg->register('alice', PWD, $memo('alice'), PHRASE);
 [$dg->lockState('alice', Lock::Password), $dg->lockState('alice', Lock::Memorized), $dg->lockState('alice', Lock::Passphrase)]
     === ['native', 'native', 'bare']
@@ -142,7 +142,7 @@ $sealedRow = $fresh->loadVault('alice');
 is_a((string) thrown(fn () => (new UserVault())->unlockWithPassword($sealedRow, PWD)), WrongSecretException::class, true)
     ? ok('without the pepper, the right password opens nothing: the database alone is not enough')
     : ko('the database and the password opened the vault without the pepper');
-is_a((string) thrown(fn () => new SelfDataGuard($fresh, $key, otherPepper($work), PepperForms::LayeredOnly)), InvalidArgumentException::class, true)
+is_a((string) thrown(fn () => new SelfDataGuard($fresh, $key, otherPepper($work), PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle())), InvalidArgumentException::class, true)
     ? ok('a façade given another pepper is refused')
     : ko('a façade with another pepper was built on the database');
 
@@ -165,10 +165,10 @@ $u1Before = $old->loadVault('u1');
 $old->replaceWithArchive($old->loadVault('u2')->generation(), sealedBare($key, 'u2'));
 $old->freezeVault($old->loadVault('u3')->generation(), 'arbiter', new DateTimeImmutable());
 
-$refused = thrown(fn () => new SelfDataGuard($old, $key, benchPepper(), PepperForms::AcceptBare));
+$refused = thrown(fn () => new SelfDataGuard($old, $key, benchPepper(), PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()));
 $message = '';
 try {
-    new SelfDataGuard($old, $key, benchPepper(), PepperForms::AcceptBare);
+    new SelfDataGuard($old, $key, benchPepper(), PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 } catch (InvalidArgumentException $e) {
     $message = $e->getMessage();
 }
@@ -189,7 +189,7 @@ $st['layer'] === 6 && $st['bare'] === 2 && $st['native'] === 0 && $st['unreadabl
     ? ok('status: six locks under the layer, the frozen vault\'s two still bare')
     : ko('status does not count the forms', json_encode($st));
 
-$accept = new SelfDataGuard($old, $key, benchPepper(), PepperForms::AcceptBare);
+$accept = new SelfDataGuard($old, $key, benchPepper(), PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $accept->lockState('u1', Lock::Password) === 'layer'
     && $accept->loginWithPassword('u1', PWD)->userId === 'u1'
     && $accept->loginWithMemorized('u1', $memo('u1'))->userId === 'u1'
@@ -197,7 +197,7 @@ $accept->lockState('u1', Lock::Password) === 'layer'
     ? ok('under AcceptBare: a layered lock opens with its secret, and so does a bare one')
     : ko('a lock did not open during the upgrade');
 
-$layered = new SelfDataGuard($old, $key, benchPepper(), PepperForms::LayeredOnly);
+$layered = new SelfDataGuard($old, $key, benchPepper(), PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $layered->loginWithPassword('u1', PWD)->userId === 'u1'
     ? ok('under LayeredOnly: a layered lock opens with its secret')
     : ko('a layered lock did not open once the upgrade was declared over');
@@ -258,7 +258,7 @@ $r['vaults'] === 2 && $r['refused'] === []
     ? ok('the inverse pass takes every layer off: 0.9.x opens by the password and by the memorized secret')
     : ko('the inverse pass did not give back what 0.9.x opens', json_encode($r));
 SelfDataGuard::pepperStatus($back, $key, benchPepper())['bare'] === 4
-    && (new SelfDataGuard($back, $key, benchPepper(), PepperForms::AcceptBare))->loginWithPassword('v1', PWD)->userId === 'v1'
+    && (new SelfDataGuard($back, $key, benchPepper(), PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->loginWithPassword('v1', PWD)->userId === 'v1'
     ? ok('the check of the pepper stays: a façade of 0.10.0 opens the database again, the locks bare')
     : ko('after the inverse pass, the database does not reopen under 0.10.0');
 

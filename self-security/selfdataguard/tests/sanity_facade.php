@@ -78,13 +78,13 @@ register_shutdown_function(static fn () => @unlink($dbPath));
 
 $storage  = new SqliteAdapter("sqlite:{$dbPath}");
 $blindKey = Primitives::randomBytes(32);
-$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 
 ok('SelfDataGuard façade constructed');
 
 // blindKey too short
 try {
-    new SelfDataGuard($storage, 'short', pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+    new SelfDataGuard($storage, 'short', pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('façade accepts short blindKey');
 } catch (InvalidArgumentException) {
     ok('façade rejects short blindKey');
@@ -558,7 +558,7 @@ final class ForgetfulStorage extends DelegatingStorage
     public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r->withWrapPhrase(null, $r->updatedAt), $t); }
 }
 
-$forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 try {
     $forgetful->register('user-forget', 'forget-password-01', null, $PH1);
     ko('a passphrase that was never stored was reported as sealed');
@@ -584,7 +584,7 @@ final class ProfileLosingStorage extends DelegatingStorage
 }
 
 try {
-    (new SelfDataGuard(new ProfileLosingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))
+    (new SelfDataGuard(new ProfileLosingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))
         ->register('user-profile-lost', 'profile-password-01', null, $PH1);
     ko('a vault read back under another Argon2id profile was reported as stored');
 } catch (RuntimeException $e) {
@@ -608,7 +608,7 @@ final class ProfileBlindStorage extends DelegatingStorage
 }
 
 try {
-    (new SelfDataGuard(new ProfileBlindStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))
+    (new SelfDataGuard(new ProfileBlindStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))
         ->register('user-profile-blind', 'profile-password-02', null, $PH1);
     ko('a storage that never reads the profile back was trusted: its vaults would open under the current constants');
 } catch (InvalidArgumentException $e) {
@@ -816,7 +816,7 @@ $dg->findUserByField('email', 'owner@example.org') === 'user-owner'
 // A field is shared or not for the whole database: the façade that shares
 // 'phone' opens a database of its own.
 $sharedStorage = new SqliteAdapter('sqlite::memory:');
-$dgShared = new SelfDataGuard($sharedStorage, $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dgShared = new SelfDataGuard($sharedStorage, $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $sharedOwner = $dgShared->register('user-owner', 'owner-password-0001');
 $sharedOther = $dgShared->register('user-squat', 'squat-password-0001');
 $dgShared->setFields($sharedOwner, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
@@ -834,7 +834,7 @@ try {
 }
 
 try {
-    new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+    new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('a façade that shares a field opened a database where that field names one account');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'sharedIndexes')
@@ -842,12 +842,12 @@ try {
         : ko('refused for another reason', $e->getMessage());
 }
 $twoShared = new SqliteAdapter('sqlite::memory:');
-new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['phone', 'address'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
-new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['address', 'phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly) instanceof SelfDataGuard
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['phone', 'address'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['address', 'phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()) instanceof SelfDataGuard
     ? ok('the same shared fields in another order are the same list')
     : ko('the order of the shared fields was taken for another list');
 try {
-    new SelfDataGuard($storage, Primitives::randomBytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+    new SelfDataGuard($storage, Primitives::randomBytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('a façade opened a database under another blind-index key: every vault would report tampering');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'not the one this database recorded')
@@ -862,7 +862,7 @@ final class DoubledIndexStorage extends DelegatingStorage
 }
 
 try {
-    (new SelfDataGuard(new DoubledIndexStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->findUserByField('email', 'x@example.org');
+    (new SelfDataGuard(new DoubledIndexStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->findUserByField('email', 'x@example.org');
     ko('the lookup picked one of two accounts');
 } catch (AmbiguousLookupException) {
     ok('findUserByField() refuses to pick when two accounts hold the value');
@@ -900,7 +900,7 @@ register_shutdown_function(static function () use ($roPath): void {
 });
 $roStore = new SqliteAdapter("sqlite:{$roPath}");
 try {
-    (new SelfDataGuard($roStore, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->userExists('user-owner')
+    (new SelfDataGuard($roStore, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->userExists('user-owner')
         ? ok('a read-only copy of a database that recorded its key opens, and reads')
         : ko('the read-only copy opened and lost an account');
 } catch (Throwable $e) {
@@ -920,7 +920,7 @@ $noClaim = new class ($storage) extends DelegatingStorage {
     }
 };
 try {
-    new SelfDataGuard($noClaim, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+    new SelfDataGuard($noClaim, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ok('a façade on a database that holds its settings claims nothing: it reads them');
 } catch (RuntimeException $e) {
     ko('a façade claimed a setting the database already holds', $e->getMessage());
@@ -932,7 +932,7 @@ $host->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $host->beginTransaction();
 $host->query('SELECT 1 FROM selfdataguard_vaults LIMIT 1')->fetchAll();
 try {
-    (new SelfDataGuard(new SqliteAdapter($host), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->userExists('user-owner')
+    (new SelfDataGuard(new SqliteAdapter($host), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->userExists('user-owner')
         ? ok('a façade built inside a host transaction, while another connection writes, opens at once')
         : ko('the façade built inside a host transaction lost an account');
 } catch (Throwable $e) {
@@ -950,7 +950,7 @@ final class CaseFoldingStorage extends DelegatingStorage
     public function loadVault(string $u): VaultRecord { return $this->inner->loadVault(strtolower($u)); }
 }
 
-$folding = new SelfDataGuard(new CaseFoldingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$folding = new SelfDataGuard(new CaseFoldingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $folding->register('user-ci', 'case-password-0001');
 try {
     $folding->loginWithPassword('USER-CI', 'case-password-0001');
@@ -979,7 +979,7 @@ final class OverwrittenInsertStorage extends DelegatingStorage
 $overwritten = new OverwrittenInsertStorage($storage);
 $overwritten->overwriteWith = (new UserVault())->register('user-upsert', 'other-insert-0001')['record'];
 try {
-    (new SelfDataGuard($overwritten, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->register('user-upsert', 'first-insert-0001');
+    (new SelfDataGuard($overwritten, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('user-upsert', 'first-insert-0001');
     ko('register() reported a vault the storage no longer holds');
 } catch (RuntimeException $e) {
     str_contains($e->getMessage(), 'holds another vault than the one written')
@@ -993,7 +993,7 @@ final class UpdateDroppingStorage extends DelegatingStorage
     public function updateVault(VaultRecord $r): int { return $r->revision + 1; }
 }
 
-$dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $droppedSession = $dropping->register('user-dropped', 'dropped-password-01');
 try {
     $dropping->setLock($droppedSession, Lock::Password, 'dropped-password-02');
@@ -1023,7 +1023,7 @@ final class RacingStorage extends DelegatingStorage
 }
 
 $racing = new RacingStorage($storage);
-$dgRace = new SelfDataGuard($racing, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dgRace = new SelfDataGuard($racing, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $oldSession = $dgRace->register('user-race', 'race-password-0001', hash('sha256', 'race-memorized'));
 $newSession = null;
 $racing->before = static function () use ($dgRace, &$newSession): void {
@@ -1138,7 +1138,7 @@ function traceArgs(callable $call, string $function): ?array
 }
 
 $tooShort = 'short-blind-key-in-a-trace';
-$args = traceArgs(static fn () => new SelfDataGuard($storage, $tooShort, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly), '__construct');
+$args = traceArgs(static fn () => new SelfDataGuard($storage, $tooShort, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()), '__construct');
 if ($args === null || !in_array($storage, $args, true)) {
     ko('precondition: the trace does not show the public argument — nothing below would be measured');
 } elseif (PHP_VERSION_ID < 80200) {
@@ -1322,7 +1322,7 @@ if ($escBadOpened === null) {
 $kPdo      = new PDO('sqlite::memory:');
 $kStorage  = new SqliteAdapter($kPdo);
 $kKeeper   = new BenchKeeper(delay: 3600);
-$kDg       = new SelfDataGuard($kStorage, $blindKey, keeper: $kKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$kDg       = new SelfDataGuard($kStorage, $blindKey, keeper: $kKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $carol     = $kDg->register('user-carol', 'carol-password-01');
 $kDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'contact de carol']);
 $carolL3   = $kDg->reEnroll($carol->generation(), 'carol-password-02');
@@ -1383,7 +1383,7 @@ foreach ([
 // The pass of a ceremony records its keeper in the database it seals: it runs on one of its own.
 $keeperPdo = new PDO('sqlite::memory:');
 $keeperDb  = new SqliteAdapter($keeperPdo);
-$keeperDg  = new SelfDataGuard($keeperDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$keeperDg  = new SelfDataGuard($keeperDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $escKeeper = $keeperDg->register('user-escbad', 'escbad-password-01');
 $keeperDg->setEscrowFields($escKeeper, $admin['publicKey'], ['contact' => 'contact du titulaire']);
 $escKeeperL3 = $keeperDg->reEnroll($escKeeper->generation(), 'escbad-password-02');
@@ -1535,7 +1535,7 @@ $preLost === ['email']
     : ko('a field an archive before 0.8.0 indexed came back unnamed', var_export($preLost, true));
 
 $shPdo = new PDO('sqlite::memory:');
-$shDg  = new SelfDataGuard(new SqliteAdapter($shPdo), $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$shDg  = new SelfDataGuard(new SqliteAdapter($shPdo), $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $sh = $shDg->register('user-shared', 'shared-password-01');
 $shDg->setFields($sh, ['phone' => '+33 6 00 00 00 00', 'email' => 'shared@example.org'], indexed: ['phone', 'email']);
 $shL3 = $shDg->reEnroll($sh->generation(), 'shared-password-02');
@@ -1556,7 +1556,7 @@ $flaky = new class ($storage) extends DelegatingStorage {
         return parent::findUserIdsByIndex($f, $i);
     }
 };
-$flakyDg = new SelfDataGuard($flaky, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$flakyDg = new SelfDataGuard($flaky, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $fla = $flakyDg->register('user-flaky', 'flaky-password-01');
 $flakyDg->setFields($fla, ['email' => 'flaky@example.org'], indexed: ['email']);
 $flaL3 = $flakyDg->reEnroll($fla->generation(), 'flaky-password-02');
@@ -1601,7 +1601,7 @@ final class TicketsOfTheBench implements Pierroons\SelfDataGuard\RecoveryTickets
 }
 
 $tickets = new TicketsOfTheBench();
-$dgT = new SelfDataGuard($storage, $blindKey, tickets: $tickets, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dgT = new SelfDataGuard($storage, $blindKey, tickets: $tickets, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $sT = $dgT->register('user-ticket', 'ticket-password-01', hash('sha256', 'ticket-memorized'), 'girafe orage piment velours tapis lundi');
 $gT = $sT->generation();
 $refused = static function (callable $call): bool {
@@ -1860,7 +1860,7 @@ foreach ([
         ko("{$call} on a storage that erases under a freeze: {$class} is not declared in this version");
         continue;
     }
-    $loose = new SelfDataGuard(new $class($storage, $r5Pdo), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+    $loose = new SelfDataGuard(new $class($storage, $r5Pdo), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     try {
         $run($loose, $uid, $r5L3['archiveId']);
         ko("{$call} through a storage that erases under a freeze went through");
@@ -1875,7 +1875,7 @@ foreach ([
 
 $noErasing = new class ($storage) extends DelegatingStorage {
 };
-$bare = new SelfDataGuard($noErasing, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$bare = new SelfDataGuard($noErasing, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 foreach ([
     'eraseArchive()'    => [static fn () => $bare->eraseArchive('user-yan', str_repeat('0', 32)), 'ErasesArchives'],
     'keptArchives()'    => [static fn () => $bare->keptArchives(), 'ErasesArchives'],

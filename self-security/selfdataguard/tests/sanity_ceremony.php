@@ -39,7 +39,7 @@ $auditSecret = str_repeat('s', 32);
 
 // ── Setup : user + escrow + admin key + litiges ──────────────────────────────
 $storage = new SqliteAdapter("sqlite:{$db}");
-$dg      = new SelfDataGuard($storage, random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dg      = new SelfDataGuard($storage, random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $admin   = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
 file_put_contents($pubFile, $admin['publicKey']);
 file_put_contents($sealFile, $admin['sealedSecret']);
@@ -295,10 +295,10 @@ file_put_contents($keeperBench, sprintf(
 $kdb    = "{$ws}/escrow-keeper.sqlite";
 $kstore = new SqliteAdapter("sqlite:{$kdb}");
 $kblind = random_bytes(32);
-$kplain = new SelfDataGuard($kstore, $kblind, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$kplain = new SelfDataGuard($kstore, $kblind, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $frank  = $kplain->register('frank', 'motdepasse-frank-fort');
 $kplain->setEscrowFields($frank, $admin['publicKey'], ['contact_secours' => 'frank-secours@example.org']);
-$kdg  = new SelfDataGuard($kstore, $kblind, keeper: $fileKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$kdg  = new SelfDataGuard($kstore, $kblind, keeper: $fileKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $erin = $kdg->register('erin', 'motdepasse-erin-fort');
 $kdg->setEscrowFields($erin, $admin['publicKey'], ['contact_secours' => 'erin-secours@example.org']);
 $pdo->exec("INSERT INTO litiges VALUES ('K-erin','erin','open')");

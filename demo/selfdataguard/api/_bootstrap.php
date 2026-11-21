@@ -19,6 +19,7 @@ use Pierroons\SelfDataGuard\Pepper\Pepper;
 use Pierroons\SelfDataGuard\Pepper\PepperFileException;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Throttle\NoThrottle;
 use Pierroons\SelfDataGuard\Vault\PepperForms;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
@@ -140,8 +141,10 @@ try {
 // Sans base, une lecture passe par une base vide en mémoire : rien n'est écrit, et
 // chaque page vue n'occupe pas une place jusqu'à son expiration.
 $storage     = new SqliteAdapter($baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
+// Le frein de la démo est celui de nginx, par adresse, devant chaque `.php`
+// (deploy/selfdataguard/nginx-dataguard.conf) : la façade reçoit NoThrottle, qui le dit.
 try {
-    $dataGuard = new SelfDataGuard($storage, $blindKey, $pepper, PepperForms::LayeredOnly);
+    $dataGuard = new SelfDataGuard($storage, $blindKey, $pepper, PepperForms::LayeredOnly, throttle: new NoThrottle());
 } catch (InvalidArgumentException) {
     // La base a été ouverte sous une autre clé d'index ou un autre poivre : chaque
     // coffre s'y dirait falsifié, ou ne s'ouvrirait plus.
@@ -183,7 +186,7 @@ function demo_base_neuve(): SelfDataGuard
     }
     file_put_contents($quota, implode("\n", [...$creations, $maintenant]) . "\n", LOCK_EX);
     $GLOBALS['storage'] = new SqliteAdapter('sqlite:' . $baseVisiteur);
-    return new SelfDataGuard($GLOBALS['storage'], $blindKey, $GLOBALS['pepper'], PepperForms::LayeredOnly);
+    return new SelfDataGuard($GLOBALS['storage'], $blindKey, $GLOBALS['pepper'], PepperForms::LayeredOnly, throttle: new NoThrottle());
 }
 
 /** Efface la base qu'une inscription refusée vient de créer. */

@@ -187,9 +187,7 @@ final class UserVault
         ?int $opslimit = null,
         ?int $memlimit = null
     ): UnlockedVault {
-        if ($secret === '' || ($lock === Lock::Passphrase && self::normalizePassphrase($secret) === '')) {
-            throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
-        }
+        self::assertSecretGiven($lock, $secret);
         $wrap = self::wrapOf($record, $lock);
         $ops = $opslimit ?? $record->kdfOpslimit;
         $mem = $memlimit ?? $record->kdfMemlimit;
@@ -252,6 +250,29 @@ final class UserVault
         );
         Primitives::zeroize($masterKey);
         return $unlocked;
+    }
+
+    /**
+     * The derivation an unlock of $lock costs, run on no envelope: what the
+     * façade spends on an account that does not exist, so that the time does
+     * not tell it from a wrong secret. Under the profile a new vault takes,
+     * and a salt drawn for the occasion; an empty secret is refused first, as
+     * unlock() refuses it.
+     */
+    public function deriveInVain(string $userId, Lock $lock, #[\SensitiveParameter] string $secret): void
+    {
+        self::assertSecretGiven($lock, $secret);
+        $salt = Primitives::randomBytes(Primitives::SALT_LEN);
+        [$ops, $mem] = [Primitives::ARGON2_OPSLIMIT, Primitives::ARGON2_MEMLIMIT];
+        if ($this->pepper !== null && LockPepper::covers($lock)) {
+            try {
+                $this->pepper->open($lock, null, $secret, $userId, $salt, $ops, $mem, self::wrongSecret($lock));
+            } catch (MissingEnvelopeException) {
+            }
+            return;
+        }
+        $key = self::keyFor($lock, $secret, $salt, $ops, $mem);
+        Primitives::zeroize($key);
     }
 
     /** The master key, through the pepper — the legacy diagnosis kept for a bare wrap_recov. */
@@ -482,6 +503,13 @@ final class UserVault
             Lock::Memorized  => $record->wrapRecov,
             Lock::Passphrase => $record->wrapPhrase,
         };
+    }
+
+    private static function assertSecretGiven(Lock $lock, #[\SensitiveParameter] string $secret): void
+    {
+        if ($secret === '' || ($lock === Lock::Passphrase && self::normalizePassphrase($secret) === '')) {
+            throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
+        }
     }
 
     private static function wrongSecret(Lock $lock): string

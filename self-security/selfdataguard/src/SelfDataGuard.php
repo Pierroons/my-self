@@ -30,6 +30,9 @@ use Pierroons\SelfDataGuard\Storage\ErasesArchives;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Storage\TracesLostIndexes;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
+use Pierroons\SelfDataGuard\Throttle\Door;
+use Pierroons\SelfDataGuard\Throttle\Outcome;
+use Pierroons\SelfDataGuard\Throttle\Throttle;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Pepper\PepperSource;
 use Pierroons\SelfDataGuard\Pepper\RemotePepperSource;
@@ -48,6 +51,7 @@ use Pierroons\SelfDataGuard\Vault\VaultGeneration;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
+use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 use RuntimeException;
 use Throwable;
 
@@ -56,10 +60,17 @@ use Throwable;
  *
  * Wraps the Vault + Fields + Storage layers behind a minimal API:
  *
- *     $dg = new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
+ *     $dg = new SelfDataGuard(
+ *         $storage, $blindKey,
+ *         pepper: new LocalPepperFile('/etc/myself/pepper', $_SERVER['DOCUMENT_ROOT'] ?? ''),
+ *         forms: PepperForms::LayeredOnly,
+ *         throttle: $hostThrottle,               // or new NoThrottle(): the host brakes elsewhere
+ *         sharedIndexes: ['phone'],
+ *     );
  *
- *     // New user. Passwords are refused below UserVault::PASSWORD_MIN_LEN.
- *     $session = $dg->register('user-1', 'a-long-generated-password', 'memorized-secret', 'six word passphrase');
+ *     // New user. Passwords are refused below UserVault::PASSWORD_MIN_LEN; the
+ *     // memorized secret is the 64-hex fingerprint SelfRecover derives.
+ *     $session = $dg->register('user-1', 'a-long-generated-password', $fingerprint, 'six word passphrase');
  *     $dg->setFields($session, ['email' => 'a@b.c'], indexed: ['email']);
  *
  *     // Returning user
@@ -133,6 +144,11 @@ final class SelfDataGuard
      * @param PepperForms $forms AcceptBare during an upgrade from 0.9.x,
      *        LayeredOnly once it is declared over, and from the start on a new
      *        installation: see PepperForms.
+     * @param Throttle $throttle the host's brake on the doors where a secret
+     *        from outside costs an Argon2id — loginWithPassword(),
+     *        loginWithMemorized(), recover(), openArchive(). Each attempt is
+     *        admitted before anything is read, then settled with what the
+     *        secret did. NoThrottle when the host brakes before the call.
      * @param list<string> $sharedIndexes the indexed fields several accounts may
      *        hold the same value of (a household phone). Every other indexed
      *        field names one account.
@@ -168,6 +184,7 @@ final class SelfDataGuard
         #[\SensitiveParameter] private readonly string $blindKey,
         PepperSource $pepper,
         PepperForms $forms,
+        private readonly Throttle $throttle,
         array $sharedIndexes = [],
         private readonly ?RecoveryTickets $tickets = null,
         private readonly ?EscrowKeeper $keeper = null,
@@ -480,27 +497,33 @@ final class SelfDataGuard
     }
 
     /**
-     * Authenticate by password. Returns an UnlockedVault for the session.
+     * Authenticate by password, behind the throttle. Returns an UnlockedVault
+     * for the session.
+     *
+     * An account that does not exist costs the derivation a wrong password
+     * costs: only the exception tells the two apart, and the host answers both
+     * alike.
      *
      * @throws Vault\WrongSecretException     on wrong password
      * @throws Vault\VaultNotFoundException   on missing user
+     * @throws Throttle\ThrottledException   when the throttle refuses, before anything is read
      */
     public function loginWithPassword(string $userId, #[\SensitiveParameter] string $password): UnlockedVault
     {
-        $record = $this->load($userId);
-        return $this->vault->unlockWithPassword($record, $password);
+        return $this->openThrottled(Door::LoginPassword, $userId, Lock::Password, $password)[1];
     }
 
     /**
-     * Authenticate by memorized secret (recovery flow).
+     * Authenticate by memorized secret (recovery flow), behind the throttle,
+     * as loginWithPassword() is.
      *
      * @throws Vault\WrongSecretException     on wrong secret
      * @throws Vault\VaultNotFoundException   on missing user
+     * @throws Throttle\ThrottledException   when the throttle refuses, before anything is read
      */
     public function loginWithMemorized(string $userId, #[\SensitiveParameter] string $memorized): UnlockedVault
     {
-        $record = $this->load($userId);
-        return $this->vault->unlockWithMemorized($record, $memorized);
+        return $this->openThrottled(Door::LoginMemorized, $userId, Lock::Memorized, $memorized)[1];
     }
 
     /**
@@ -515,10 +538,10 @@ final class SelfDataGuard
      *   - level 2/device, or a vault whose password wrap fell behind: any lock
      *                    the user can give, the current password, $newPassphrase null
      *
-     * On its own it is an Argon2id oracle with no rate limit. Call it right
-     * after SelfRecover has accepted a recovery, behind SelfRecover's own
-     * counters — or, for the catch-up after a device recovery, rate-limit it
-     * as the login is.
+     * Each call costs an Argon2id, behind the throttle as the logins are, and
+     * an account that does not exist costs the same. Call it right after
+     * SelfRecover has accepted a recovery: its counters are a second brake,
+     * on the secret it verified.
      *
      * $newPassphrase null keeps the passphrase wrap as it is.
      */
@@ -529,9 +552,8 @@ final class SelfDataGuard
         #[\SensitiveParameter] string $newPassword,
         #[\SensitiveParameter] ?string $newPassphrase = null
     ): UnlockedVault {
-        $record  = $this->load($userId);
-        $session = $this->vault->unlock($record, $lock, $secret);
-        $record  = $this->vault->setLock($record, $session, Lock::Password, $newPassword);
+        [$record, $session] = $this->openThrottled(Door::Recover, $userId, $lock, $secret);
+        $record = $this->vault->setLock($record, $session, Lock::Password, $newPassword);
         if ($newPassphrase !== null) {
             $record = $this->vault->setLock($record, $session, Lock::Passphrase, $newPassphrase);
         }
@@ -745,8 +767,7 @@ final class SelfDataGuard
      * the CURRENT vault. Old secrets are what may have leaked before a level-3
      * recovery: on their own, they must not reach the old data.
      *
-     * Each call costs an Argon2id and nothing here counts failures: the
-     * integrator rate-limits it as it does its login.
+     * Each call costs an Argon2id, behind the throttle as the logins are.
      *
      * The memorized lock of an archive taken at level 3 needs the SelfRecover
      * salt of that time, which level 3 replaced. Keep it — as a field of the
@@ -754,6 +775,7 @@ final class SelfDataGuard
      *
      * @throws StaleVaultException    if $current is not a session on the live vault
      * @throws VaultNotFoundException if this userId has no such archive
+     * @throws Throttle\ThrottledException when the throttle refuses, before anything is read
      */
     public function openArchive(
         UnlockedVault $current,
@@ -761,16 +783,18 @@ final class SelfDataGuard
         Lock $lock,
         #[\SensitiveParameter] string $oldSecret
     ): UnlockedArchive {
-        $this->currentRecord($current);
-        $archive = $this->storage->loadArchive($current->userId, $archiveId)
-            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
-        $this->assertSameUser($current->userId, $archive->record->userId);
-        [$opslimit, $memlimit] = [$archive->kdfOpslimit, $archive->kdfMemlimit];
-        if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {
-            [$opslimit, $memlimit] = $this->vouchedProfile($archive->record, $opslimit, $memlimit);
-        }
-        $session = $this->vault->unlock($archive->record, $lock, $oldSecret, $opslimit, $memlimit);
-        return new UnlockedArchive($archive, $session, $current->generation());
+        return $this->throttled(Door::OpenArchive, $current->userId, function () use ($current, $archiveId, $lock, $oldSecret): UnlockedArchive {
+            $this->currentRecord($current);
+            $archive = $this->storage->loadArchive($current->userId, $archiveId)
+                ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
+            $this->assertSameUser($current->userId, $archive->record->userId);
+            [$opslimit, $memlimit] = [$archive->kdfOpslimit, $archive->kdfMemlimit];
+            if ($archive->record->profileSeal !== null || ProfileSeal::expected($archive->record)) {
+                [$opslimit, $memlimit] = $this->vouchedProfile($archive->record, $opslimit, $memlimit);
+            }
+            $session = $this->vault->unlock($archive->record, $lock, $oldSecret, $opslimit, $memlimit);
+            return new UnlockedArchive($archive, $session, $current->generation());
+        });
     }
 
     /**
@@ -2399,6 +2423,51 @@ final class SelfDataGuard
         $this->assertSameUser($userId, $record->userId);
         $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
         return $record;
+    }
+
+    /**
+     * $attempt behind the throttle: admitted before it reads anything, then
+     * settled once with what the secret did — Refused for a wrong secret, an
+     * absent lock, an account or an archive that does not exist; Unavailable
+     * for anything that tells nothing of the secret.
+     *
+     * @template T
+     * @param callable(): T $attempt
+     * @return T
+     */
+    private function throttled(Door $door, string $userId, callable $attempt): mixed
+    {
+        $this->throttle->admit($door, $userId);
+        try {
+            $result = $attempt();
+        } catch (WrongSecretException | VaultNotFoundException $e) {
+            $this->throttle->settle($door, $userId, Outcome::Refused);
+            throw $e;
+        } catch (Throwable $e) {
+            $this->throttle->settle($door, $userId, Outcome::Unavailable);
+            throw $e;
+        }
+        $this->throttle->settle($door, $userId, Outcome::Opened);
+        return $result;
+    }
+
+    /**
+     * The live vault of $userId, opened by $secret behind the throttle. What
+     * follows the opening — a re-seal, a write — is not the throttle's to hear.
+     *
+     * @return array{0: VaultRecord, 1: UnlockedVault}
+     */
+    private function openThrottled(Door $door, string $userId, Lock $lock, #[\SensitiveParameter] string $secret): array
+    {
+        return $this->throttled($door, $userId, function () use ($userId, $lock, $secret): array {
+            try {
+                $record = $this->load($userId);
+            } catch (VaultNotFoundException $e) {
+                $this->vault->deriveInVain($userId, $lock, $secret);
+                throw $e;
+            }
+            return [$record, $this->vault->unlock($record, $lock, $secret)];
+        });
     }
 
     /**

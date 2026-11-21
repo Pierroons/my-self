@@ -190,7 +190,7 @@ $out   = $bound->sealToKeeper($admin['publicKey']);
     ? ok('UnlockedEscrow::sealToKeeper(): neither the escrow key nor the objection seed is in what it returns')
     : ko('UnlockedEscrow::sealToKeeper() returns the escrow key or the objection seed');
 
-$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $old = $dg->register('user-arch-keys', 'arch-keys-password-01');
 $dg->setFields($old, ['note' => 'archivée']);
 $dg->setEscrowFields($old, $admin['publicKey'], ['contact' => 'secours']);

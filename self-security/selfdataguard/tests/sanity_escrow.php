@@ -70,7 +70,7 @@ function section(string $title): void
 
 $storage  = new SqliteAdapter('sqlite::memory:');
 $blindKey = random_bytes(32);
-$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 
 const ADMIN_PASS = 'ceremonie-admin-recuperation-tres-longue-2026';
 
@@ -153,7 +153,7 @@ $raced = new class ($storage) extends DelegatingStorage {
 };
 $twice = $dg->register('deux-depots', 'motdepasse-deux-depots');
 $dg->setEscrowFields($twice, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
-(new SelfDataGuard($raced, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->setEscrowFields($twice, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+(new SelfDataGuard($raced, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($twice, $admin['publicKey'], ['contact_b' => 'second dépôt']);
 !$raced->hide
     ? ok('precondition: the second deposit found no escrow, as the losing request does')
     : ko('precondition: the second deposit never read the escrow — the check below measures nothing');
@@ -172,7 +172,7 @@ $rowOnly->hideFields = false;
 $twiceBis = $dg->register('deux-depots-bis', 'motdepasse-deux-depots-bis');
 $dg->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
 try {
-    (new SelfDataGuard($rowOnly, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+    (new SelfDataGuard($rowOnly, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_b' => 'second dépôt']);
     $both = $dg->getEscrowFieldsAsUser($twiceBis);
     ksort($both);
     $both === ['contact_a' => 'premier dépôt', 'contact_b' => 'second dépôt']
@@ -742,7 +742,7 @@ $interleaved = new class ($storage) extends DelegatingStorage {
     }
 };
 try {
-    (new SelfDataGuard($interleaved, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->rebindEscrowAdmin($dave, $admin['publicKey']);
+    (new SelfDataGuard($interleaved, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->rebindEscrowAdmin($dave, $admin['publicKey']);
     ko('a re-sealing from a read another one already replaced succeeded: the first is lost without an error');
 } catch (StaleEscrowException) {
     !$interleaved->other
