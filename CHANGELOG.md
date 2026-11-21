@@ -10,6 +10,30 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Les CGU et le whitepaper de SelfAct entrent sous contrôle, et le tableau d'architecture revient sur sa source — 21 novembre 2026
+
+`check-versions.sh` rendait vert sur 75 porteurs pendant que SelfAct en annonçait deux autres en 0.1.3 :
+`TERMS.md`, qui sont les conditions d'utilisation publiées, et la clé `version` du whitepaper, qui gouverne
+les métadonnées du `.docx` servi à côté. Le contrôle ne les voyait pas, faute d'être déclarés — un porteur
+absent du manifeste et un porteur juste rendent la même couleur.
+
+- Les deux portent désormais `0.1.4` **avec le mot de statut**, qu'une ligne déclarée de SelfAct doit
+  contenir puisque le module déclare un `statut` : corriger le seul numéro aurait fait rougir le contrôle.
+- Le `.docx` du whitepaper est **régénéré** par `scripts/whitepaper-docx.sh` ; sa propriété `version` suit
+  le YAML du `.md` et ne se corrige pas à la main. Le binaire reste hors de portée de `check-versions.sh`,
+  qui lit des lignes de texte : c'est pourquoi le `.md` est déclaré et lui non.
+- Les deux ancres neuves sont **éprouvées**. Une version fausse, puis le mot de statut retiré, font rougir
+  le contrôle sur chacune, et le message nomme le fichier ; l'arbre est rendu à l'identique par empreinte
+  après chacun des quatre cas. Un porteur déclaré qu'on n'a pas vu faire rougir n'est pas un porteur lu.
+- `docs/architecture/CURRENT_ARCHITECTURE.md` affirme « Source des versions : `modules.json` » et en
+  divergeait pour les **sept** modules. Ses lignes sont réécrites depuis le manifeste et non à la main :
+  SelfDataGuard est passé de 0.9.0 à 0.9.1 pendant la préparation du lot, ce qui a périmé une liste relevée
+  deux heures plus tôt. Le fichier n'est pas déclaré porteur — le mettre sous contrôle produit onze
+  signalements, dont quatre portent sur des phrases historiques (« depuis la 0.6.0 ») : une heuristique sur
+  la prose mesure le style, pas une propriété.
+
+`check-versions.sh` : 77 porteurs de 7 modules, 29 disent le statut.
+
 ### SelfRecover-LUKS 0.6.3 — la clé d'amorçage se pose avec une espace, et rien ne la remplace sans l'avoir relue — 11 novembre 2026
 
 Correctif. `INSTALL.md` (§8b) et `install.sh` (réponse par défaut à « Fermer le shell d'amorçage ? ») posaient une

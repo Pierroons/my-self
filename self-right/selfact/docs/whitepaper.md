@@ -3,7 +3,7 @@ title: "SelfAct — Whitepaper"
 subtitle: "Operational extension of SelfJustice: the official resource, the deadline, a template to complete"
 author: "Pierroons — MySelf ecosystem"
 date: "August 2026"
-version: "0.1.3"
+version: "0.1.4 beta"
 ---
 
 # Executive summary
