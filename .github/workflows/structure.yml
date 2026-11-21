@@ -1113,8 +1113,8 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
-            [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
-            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=27
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=30
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -2256,6 +2256,36 @@ jobs:
             $T '❌ login on an account that does not exist: VaultNotFoundException kept, settled as a refusal'
           canari $FA '                $this->vault->deriveInVain($userId, $lock, $secret);' '' \
             $T '❌ loginWithPassword, unknown account against a wrong password'
+
+      # Sous gel, une serrure ne se re-scelle que depuis une ouverture par le mot mémorisé
+      # (D2, décision 3) : le mot de passe et la passphrase d'un tiers revenu n'ouvrent pas
+      # le geste, et le refus d'un coffre non gelé vient après l'ouverture.
+      - name: Canaris — sous gel, le re-scellement par le mot rougit quand on retire une garde
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FA=$D/src/SelfDataGuard.php
+          FC=$D/tests/sanity_facade.php
+          OUVRE='        [$record, $session] = $this->openThrottled(Door::SetLockWhileFrozen, $userId, Lock::Memorized, $memorized);'
+          canari $FA "$OUVRE" "${OUVRE/Lock::Memorized/Lock::Password}" \
+            $FC '❌ the password, given as the memorized secret, re-sealed a lock under the freeze'
+          canari $FA '        if ($this->storage->frozenState($userId) === null) {' '        if (false) {' \
+            $FC '❌ the refusal of a vault not frozen does not point to setLock(), or something was written'
+          canari $FA "$OUVRE" "        if (\$this->storage->frozenState(\$userId) === null) { throw new LogicException('not frozen'); } $OUVRE" \
+            $FC '❌ the gesture tells whoever lacks the memorized secret whether the vault is frozen'
 
   selfrecover-1:
     needs: modules

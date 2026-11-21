@@ -206,6 +206,7 @@ $doors = [
     'loginWithMemorized' => [Door::LoginMemorized, fn () => $dg->loginWithMemorized('alice', $mot)],
     'recover'            => [Door::Recover,        fn () => $dg->recover('alice', Lock::Passphrase, PHRASE, 'throttle-password-03')],
     'openArchive'        => [Door::OpenArchive,    fn () => $dg->openArchive($current, $archive, Lock::Password, PWD)],
+    'setLockWhileFrozen' => [Door::SetLockWhileFrozen, fn () => $dg->setLockWhileFrozen('alice', $mot, Lock::Password, 'throttle-password-09')],
 ];
 foreach ($doors as $name => [$door, $call]) {
     $throttle->refusal = new ThrottledException('slow down');
@@ -278,6 +279,12 @@ $settles('recover whose write is lost after the secret opened: settled Opened â€
 $store->dropWrites = false;
 $settles('recover by the right passphrase', fn () => $dg->recover('alice', Lock::Passphrase, PHRASE, 'throttle-password-03'), null,
     'admit recover alice | settle recover alice Opened');
+
+$settles('setLockWhileFrozen by a wrong memorized secret', fn () => $dg->setLockWhileFrozen('alice', hash('sha256', 'wrong'), Lock::Password, 'throttle-password-09'),
+    WrongSecretException::class, 'admit set-lock-while-frozen alice | settle set-lock-while-frozen alice Refused');
+$settles('setLockWhileFrozen by the right one on a vault not frozen: the secret held, the gesture is refused after',
+    fn () => $dg->setLockWhileFrozen('alice', $mot, Lock::Password, 'throttle-password-09'), LogicException::class,
+    'admit set-lock-while-frozen alice | settle set-lock-while-frozen alice Opened');
 
 $current = $dg->loginWithPassword('alice', 'throttle-password-03');
 $throttle->take();

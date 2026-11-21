@@ -146,7 +146,8 @@ final class SelfDataGuard
      *        installation: see PepperForms.
      * @param Throttle $throttle the host's brake on the doors where a secret
      *        from outside costs an Argon2id — loginWithPassword(),
-     *        loginWithMemorized(), recover(), openArchive(). Each attempt is
+     *        loginWithMemorized(), recover(), openArchive(),
+     *        setLockWhileFrozen(). Each attempt is
      *        admitted before anything is read, then settled with what the
      *        secret did. NoThrottle when the host brakes before the call.
      * @param list<string> $sharedIndexes the indexed fields several accounts may
@@ -692,6 +693,46 @@ final class SelfDataGuard
         return true;
     }
 
+    /**
+     * Re-seal a lock of a FROZEN vault: the one write a freeze lets through,
+     * and only from an opening by the memorized secret, given here each time.
+     *
+     * SelfRecover freezes the vault a returning holder took back, until the
+     * arbiter closes the window. Whoever held the account meanwhile holds its
+     * password and its passphrase, not the holder's memorized secret: through
+     * any other lock, they would re-seal the memorized one to their profit
+     * before the arbiter looks. A session does not say which lock opened it;
+     * the secret is asked instead.
+     *
+     * Only the envelopes and the seal are written
+     * (StorageInterface::updateFrozenLocks()): fields, escrow and removeLock()
+     * stay refused. A holder who forgot the memorized secret re-seals nothing
+     * until unfreeze() — the password still opens the vault, SelfRecover's
+     * level 2 does not follow.
+     *
+     * Behind the throttle, as recover() is. A vault that is not frozen is
+     * refused after the opening, so that whoever lacks the memorized secret
+     * is not told whether it is frozen.
+     *
+     * @throws WrongSecretException          the memorized secret does not open the vault
+     * @throws LogicException                the vault is not frozen: setLock() re-seals it from any session
+     * @throws Throttle\ThrottledException   when the throttle refuses, before anything is read
+     */
+    public function setLockWhileFrozen(
+        string $userId,
+        #[\SensitiveParameter] string $memorized,
+        Lock $lock,
+        #[\SensitiveParameter] string $secret
+    ): UnlockedVault {
+        [$record, $session] = $this->openThrottled(Door::SetLockWhileFrozen, $userId, Lock::Memorized, $memorized);
+        if ($this->storage->frozenState($userId) === null) {
+            throw new LogicException("The vault of '{$userId}' is not frozen: setLock() re-seals a lock from any session");
+        }
+        $sealed = $this->sealed($this->vault->setLock($record, $session, $lock, $secret));
+        $this->assertVaultPersisted($sealed, $this->storage->updateFrozenLocks($sealed));
+        return $session;
+    }
+
     // -- Re-enrolment and archives ---------------------------------------------
 
     /**
@@ -934,8 +975,9 @@ final class SelfDataGuard
      * Freeze the live vault $generation names: it keeps opening and reading,
      * and every write refuses with VaultFrozenException — fields, escrow,
      * locks, deletion, re-enrolment, the erasure of the account — until
-     * unfreeze(). SelfRecover freezes the vault a returning holder took back,
-     * until the arbiter closes that window.
+     * unfreeze(), but one: setLockWhileFrozen() re-seals a lock from an
+     * opening by the memorized secret. SelfRecover freezes the vault a
+     * returning holder took back, until the arbiter closes that window.
      *
      * @param string $by who froze it, as the caller names them (an arbiter, a case)
      * @return bool true if this call froze it; false if it was frozen already, by whoever froze it first

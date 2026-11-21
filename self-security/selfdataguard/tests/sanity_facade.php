@@ -1247,9 +1247,91 @@ $dg->getFields($dg->loginWithPassword('user-back', 'back-password-0001'))['note'
     && count($dg->listArchives($reading)) === 1
     ? ok('nothing changed: the old password still opens it, the archive is there')
     : ko('a refused write changed the frozen vault');
+
+section('Under a freeze, a lock is re-sealed only from an opening by the memorized secret');
+
+// Whoever held the account before the holder came back holds its password and
+// its passphrase, never the holder's memorized secret.
+$backMot   = hash('sha256', 'back-memorized');
+$frozenAt  = $dg->frozenState('user-back');
+$untouched = static fn (): array => [$storage->loadFields('user-back'), $storage->loadEscrowFields('user-back')];
+$fieldsBefore = $untouched();
+$revBefore    = $storage->loadVault('user-back')->revision;
+foreach (['the password' => 'back-password-0001', 'the passphrase' => 'pivert lagune ardoise tambour'] as $what => $stolen) {
+    try {
+        $dg->setLockWhileFrozen('user-back', $stolen, Lock::Memorized, hash('sha256', 'stolen-memorized'));
+        ko("{$what}, given as the memorized secret, re-sealed a lock under the freeze");
+    } catch (WrongSecretException) {
+        $storage->loadVault('user-back')->revision === $revBefore
+            ? ok("{$what}, given as the memorized secret: WrongSecretException, nothing written")
+            : ko("{$what} was refused, but the vault changed");
+    }
+}
+$opened = $dg->setLockWhileFrozen('user-back', $backMot, Lock::Password, 'back-password-0005');
+try {
+    $dg->loginWithPassword('user-back', 'back-password-0001');
+    $oldRefused = false;
+} catch (WrongSecretException) {
+    $oldRefused = true;
+}
+$dg->getFields($dg->loginWithPassword('user-back', 'back-password-0005'))['note'] === 'du titulaire'
+    && $oldRefused && $opened->userId === 'user-back'
+    && $storage->loadVault('user-back')->revision === $revBefore + 1
+    ? ok('by the memorized secret, the password is re-sealed: the new one opens and reads, the old one no longer opens')
+    : ko('the password was not re-sealed under the freeze as asked');
+$untouched() === $fieldsBefore && $dg->frozenState('user-back') == $frozenAt
+    ? ok('only the locks were written: fields, escrow and the freeze — who, when — as they were')
+    : ko('re-sealing a lock under the freeze wrote something else');
+$dg->setLockWhileFrozen('user-back', $backMot, Lock::Memorized, hash('sha256', 'back-memorized-2'));
+try {
+    $dg->loginWithMemorized('user-back', $backMot);
+    $refusedOld = false;
+} catch (WrongSecretException) {
+    $refusedOld = true;
+}
+$refusedOld && $dg->loginWithMemorized('user-back', hash('sha256', 'back-memorized-2'))->userId === 'user-back'
+    ? ok('the memorized secret re-seals itself: the new word opens, the old one no longer does')
+    : ko('the memorized lock was not re-sealed under the freeze');
+$backMot = hash('sha256', 'back-memorized-2');
+$revBefore = $storage->loadVault('user-back')->revision;
+try {
+    $dg->setLockWhileFrozen('user-back', $backMot, Lock::Memorized, 'the word itself');
+    ko('a memorized secret that is not a fingerprint was sealed under the freeze');
+} catch (InvalidArgumentException) {
+    $storage->loadVault('user-back')->revision === $revBefore
+        ? ok('the fingerprint rule holds under the freeze: the word itself is refused, nothing written')
+        : ko('the word itself was refused, but the vault changed');
+}
+$dg->setLockWhileFrozen('user-back', $backMot, Lock::Passphrase, 'merle falaise couvreur ardoise');
+(new UserVault())->unlockWithPassphrase($storage->loadVault('user-back'), 'merle falaise couvreur ardoise')->userId === 'user-back'
+    ? ok('the passphrase is re-sealed the same way')
+    : ko('the passphrase was not re-sealed under the freeze');
+try {
+    $dg->setLock($dg->loginWithMemorized('user-back', $backMot), Lock::Password, 'back-password-0006');
+    ko('a session opened by the memorized secret re-sealed through setLock() under the freeze');
+} catch (VaultFrozenException) {
+    ok('setLock() stays refused under the freeze, whatever lock opened the session');
+}
 $dg->unfreeze($g) && $dg->frozenState('user-back') === null
     ? ok('unfreeze() lifts it')
     : ko('unfreeze() did not lift the freeze');
+$revBefore = $storage->loadVault('user-back')->revision;
+try {
+    $dg->setLockWhileFrozen('user-back', $backMot, Lock::Password, 'back-password-0007');
+    ko('setLockWhileFrozen() wrote into a vault that is not frozen');
+} catch (LogicException $e) {
+    str_contains($e->getMessage(), 'setLock()') && $storage->loadVault('user-back')->revision === $revBefore
+        ? ok('not frozen: refused, nothing written, and the refusal points to setLock()')
+        : ko('the refusal of a vault not frozen does not point to setLock(), or something was written', $e->getMessage());
+}
+$e = null;
+try {
+    $dg->setLockWhileFrozen('user-back', 'back-password-0005', Lock::Password, 'back-password-0007');
+} catch (Throwable $e) {
+}
+$e instanceof WrongSecretException
+    ? ok('without the memorized secret, a vault not frozen answers as a frozen one: a wrong secret — the freeze is not told')
+    : ko('the gesture tells whoever lacks the memorized secret whether the vault is frozen', $e === null ? 'nothing thrown' : get_class($e));
 $dg->setFields($reading, ['note' => 'après le gel']);
 $dg->getFields($reading)['note'] === 'après le gel'
     ? ok('unfrozen, the vault takes writes again')

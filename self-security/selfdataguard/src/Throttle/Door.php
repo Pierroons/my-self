@@ -14,4 +14,5 @@ enum Door: string
     case LoginMemorized = 'login-memorized';
     case Recover        = 'recover';
     case OpenArchive    = 'open-archive';
+    case SetLockWhileFrozen = 'set-lock-while-frozen';
 }
