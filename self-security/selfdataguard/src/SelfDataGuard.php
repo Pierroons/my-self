@@ -31,7 +31,11 @@ use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Storage\TracesLostIndexes;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
+use Pierroons\SelfDataGuard\Pepper\PepperSource;
+use Pierroons\SelfDataGuard\Pepper\RemotePepperSource;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\LockPepper;
+use Pierroons\SelfDataGuard\Vault\PepperForms;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\RecoveryTicketException;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -81,6 +85,8 @@ use Throwable;
 final class SelfDataGuard
 {
     private UserVault $vault;
+    private readonly LockPepper $pepper;
+    private bool $pepperChecked = false;
     private EscrowVault $escrow;
 
     /** @var array<string, true> */
@@ -104,6 +110,8 @@ final class SelfDataGuard
     public const SETTING_FORMER_KEEPERS = 'selfdataguard.escrow-keeper-former';
     public const SETTING_FORGOTTEN_KEEPERS = 'selfdataguard.escrow-keeper-forgotten';
     public const SETTING_ESCROW_ADMIN   = 'selfdataguard.escrow-admin';
+    public const SETTING_PEPPER         = 'selfdataguard.pepper-check';
+    public const SETTING_PEPPER_PASS    = 'selfdataguard.pepper-pass';
 
     /**
      * The first façade opened on an empty database records there which
@@ -115,6 +123,16 @@ final class SelfDataGuard
      * adopts its key with adoptBlindKey(), which proves it first: a wrong key
      * recorded there would make every lookup miss in silence.
      *
+     * @param PepperSource $pepper where the pepper lives — a file out of the
+     *        database (LocalPepperFile), or another machine. wrap_pwd and
+     *        wrap_recov take it; the passphrase does not. The first façade on
+     *        an empty database records its check; a façade given another is
+     *        refused, and so is one on a database that holds vaults and never
+     *        recorded one, until the operator's pass (adoptPepper()). Checked
+     *        here, or at the first use for a RemotePepperSource.
+     * @param PepperForms $forms AcceptBare during an upgrade from 0.9.x,
+     *        LayeredOnly once it is declared over, and from the start on a new
+     *        installation: see PepperForms.
      * @param list<string> $sharedIndexes the indexed fields several accounts may
      *        hold the same value of (a household phone). Every other indexed
      *        field names one account.
@@ -148,6 +166,8 @@ final class SelfDataGuard
     public function __construct(
         private readonly StorageInterface $storage,
         #[\SensitiveParameter] private readonly string $blindKey,
+        PepperSource $pepper,
+        PepperForms $forms,
         array $sharedIndexes = [],
         private readonly ?RecoveryTickets $tickets = null,
         private readonly ?EscrowKeeper $keeper = null,
@@ -202,8 +222,12 @@ final class SelfDataGuard
                 // Checked again at the first act that needs the keeper.
             }
         }
+        $this->pepper = new LockPepper($pepper, $forms);
+        if (!$pepper instanceof RemotePepperSource) {
+            $this->assertPepper();
+        }
         $this->sealKey = ProfileSeal::key($blindKey);
-        $this->vault   = new UserVault();
+        $this->vault   = new UserVault(pepper: $this->pepper);
         $this->escrow  = new EscrowVault();
     }
 
@@ -437,6 +461,7 @@ final class SelfDataGuard
         #[\SensitiveParameter] ?string $memorized = null,
         #[\SensitiveParameter] ?string $passphrase = null
     ): UnlockedVault {
+        $this->assertPepper();
         if ($this->storage->vaultExists($userId)) {
             throw new VaultExistsException("User '{$userId}' already exists");
         }
@@ -509,6 +534,16 @@ final class SelfDataGuard
         $record  = $this->vault->setLock($record, $session, Lock::Password, $newPassword);
         if ($newPassphrase !== null) {
             $record = $this->vault->setLock($record, $session, Lock::Passphrase, $newPassphrase);
+        }
+        // Opened by the memorized secret, the session holds it: once the
+        // upgrade is over, wrap_recov takes the pepper into its Argon2id input
+        // too. A secret that is not the canonical fingerprint stays as sealed.
+        if (
+            $lock === Lock::Memorized && $this->pepper->forms === PepperForms::LayeredOnly
+            && preg_match('/^[0-9a-f]{64}$/D', $secret) === 1
+            && $this->pepper->formOf(Lock::Memorized, $record->wrapRecov, $userId, $record->userSalt) !== 'native'
+        ) {
+            $record = $this->vault->setLock($record, $session, Lock::Memorized, $secret);
         }
         $this->persist($record);
         return $session;
@@ -2101,6 +2136,246 @@ final class SelfDataGuard
      * under the old master key, or fail on read with an authentication error
      * that looks like corruption.
      */
+    /**
+     * The pepper given is the one the database recorded — recorded here on a
+     * database that holds no vault yet. Once per façade.
+     */
+    private function assertPepper(): void
+    {
+        if ($this->pepperChecked) {
+            return;
+        }
+        $check = $this->pepper->check();
+        $held  = $this->storage->loadSetting(self::SETTING_PEPPER);
+        if ($held === null) {
+            if ($this->storage->hasVaults()) {
+                throw new InvalidArgumentException(
+                    'This database holds vaults and never recorded its pepper: the operator lays it over every lock '
+                    . 'once, with no secret of the users in hand — bin/pepper.php adopt (SelfDataGuard::adoptPepper())'
+                );
+            }
+            $held = $this->storage->claimSetting(self::SETTING_PEPPER, $check);
+        }
+        if (!hash_equals($held, $check)) {
+            throw new InvalidArgumentException(
+                "This pepper is not the one this database recorded (recorded {$held}, given {$check}): every lock "
+                . 'it covers was sealed under the recorded one'
+            );
+        }
+        $this->pepperChecked = true;
+    }
+
+    /**
+     * The form of $lock in the live vault of $userId — native, layer, bare,
+     * absent or unreadable —, without any Argon2id. Once the upgrade is over,
+     * a memorized lock still in the layer form is one whose holder should set
+     * the memorized word again: sealed from a string that is not the canonical
+     * fingerprint, it is never converted.
+     */
+    public function lockState(string $userId, Lock $lock): string
+    {
+        $record = $this->load($userId);
+        $wrap   = match ($lock) {
+            Lock::Password   => $record->wrapPwd,
+            Lock::Memorized  => $record->wrapRecov,
+            Lock::Passphrase => $record->wrapPhrase,
+        };
+        if ($wrap === null) {
+            return 'absent';
+        }
+        return LockPepper::covers($lock) ? $this->pepper->formOf($lock, $wrap, $userId, $record->userSalt) : 'bare';
+    }
+
+    /**
+     * The operator's pass of an upgrade from 0.9.x: a layer under the pepper
+     * over every envelope of wrap_pwd and wrap_recov that has none — live
+     * vaults and archives, with no secret of the users in hand —, then the
+     * check of the pepper recorded. Run with the blind-index key the database
+     * recorded, before any façade of 0.10.0 serves it. Run again, it lays only
+     * what is still bare. A frozen vault is left as it is and named; a vault
+     * or an archive whose seal does not hold is never laid over, and named. A
+     * live vault written before 0.7.0 carries no seal: the pass seals it as
+     * sealProfile() does, trusting the row as it stands — run it while nothing
+     * else writes to the database.
+     *
+     * The pass records which pepper it runs under before it writes: a pass
+     * under another pepper is refused. Over layers of a wrong pepper, a second
+     * layer would close every lock it covered.
+     *
+     * @return array{vaults: int, archives: int, frozen: list<string>, refused: list<string>}
+     *         how many live vaults and archives were laid over; the userIds left out
+     * @throws InvalidArgumentException when the blind-index key or the pepper is not the one the database recorded
+     */
+    public static function adoptPepper(StorageInterface $storage, #[\SensitiveParameter] string $blindKey, PepperSource $source): array
+    {
+        [$layers, $sealKey] = self::passOver($storage, $blindKey, $source);
+        $check = $layers->check();
+        $pass  = $storage->loadSetting(self::SETTING_PEPPER_PASS) ?? $storage->claimSetting(self::SETTING_PEPPER_PASS, $check);
+        if (!hash_equals($pass, $check)) {
+            throw new InvalidArgumentException(
+                "A pass under another pepper ({$pass}) was run on this database: nothing is laid over under {$check}"
+            );
+        }
+        $report = ['vaults' => 0, 'archives' => 0, 'frozen' => [], 'refused' => []];
+        self::eachLockSet($storage, $sealKey, static function (VaultRecord $record) use ($layers): ?VaultRecord {
+            $laid = $record;
+            foreach ([Lock::Password, Lock::Memorized] as $lock) {
+                $wrap = $lock === Lock::Password ? $laid->wrapPwd : $laid->wrapRecov;
+                if ($wrap !== null && $layers->formOf($lock, $wrap, $record->userId, $record->userSalt) === 'bare') {
+                    $over = $layers->lay($lock, $wrap, $record->userId, $record->userSalt);
+                    $laid = $lock === Lock::Password ? $laid->withWrapPwd($over, $laid->updatedAt) : $laid->withWrapRecov($over, $laid->updatedAt);
+                }
+            }
+            return $laid === $record ? null : $laid;
+        }, $report, sealsOld: true);
+        $recorded = $storage->loadSetting(self::SETTING_PEPPER) ?? $storage->claimSetting(self::SETTING_PEPPER, $check);
+        if (!hash_equals($recorded, $check)) {
+            throw new InvalidArgumentException("This database recorded the pepper {$recorded}: the pass ran under {$check}");
+        }
+        return $report;
+    }
+
+    /**
+     * The inverse pass, for a return to 0.9.x before the upgrade is declared
+     * over: every layer of this pepper taken off, the bare envelope under it
+     * put back. A native envelope has no bare one under it: its vault is
+     * named, and stays. The check of the pepper stays recorded.
+     *
+     * Until the inverse pass is run, 0.9.x opens no lock laid over: the
+     * password fails as a wrong one. The host closes its recovery route as
+     * long as it serves 0.9.x — under it, the right memorized word on a
+     * layered lock answers as a wrong one.
+     *
+     * @return array{vaults: int, archives: int, frozen: list<string>, refused: list<string>}
+     */
+    public static function unlayPepper(StorageInterface $storage, #[\SensitiveParameter] string $blindKey, PepperSource $source): array
+    {
+        [$layers, $sealKey] = self::passOver($storage, $blindKey, $source);
+        $report = ['vaults' => 0, 'archives' => 0, 'frozen' => [], 'refused' => []];
+        self::eachLockSet($storage, $sealKey, static function (VaultRecord $record) use ($layers): ?VaultRecord {
+            $bare = $record;
+            foreach ([Lock::Password, Lock::Memorized] as $lock) {
+                $wrap = $lock === Lock::Password ? $bare->wrapPwd : $bare->wrapRecov;
+                if ($wrap === null) {
+                    continue;
+                }
+                $form = $layers->formOf($lock, $wrap, $record->userId, $record->userSalt);
+                if ($form === 'native' || $form === 'unreadable') {
+                    throw new RuntimeException("{$lock->value}: {$form}, no bare envelope under it");
+                }
+                if ($form === 'layer') {
+                    $under = $layers->unlay($lock, $wrap, $record->userId, $record->userSalt);
+                    $bare  = $lock === Lock::Password ? $bare->withWrapPwd($under, $bare->updatedAt) : $bare->withWrapRecov($under, $bare->updatedAt);
+                }
+            }
+            return $bare === $record ? null : $bare;
+        }, $report);
+        return $report;
+    }
+
+    /**
+     * How many envelopes of wrap_pwd and wrap_recov are in each form, live and
+     * archived, without any Argon2id: the end of the upgrade is declared once
+     * nothing is bare.
+     *
+     * @return array{native: int, layer: int, bare: int, unreadable: int, unsealed: list<string>}
+     */
+    public static function pepperStatus(StorageInterface $storage, #[\SensitiveParameter] string $blindKey, PepperSource $source): array
+    {
+        [$layers, $sealKey] = self::passOver($storage, $blindKey, $source);
+        $count = ['native' => 0, 'layer' => 0, 'bare' => 0, 'unreadable' => 0, 'unsealed' => []];
+        $report = ['vaults' => 0, 'archives' => 0, 'frozen' => [], 'refused' => []];
+        self::eachLockSet($storage, $sealKey, static function (VaultRecord $record) use ($layers, &$count): ?VaultRecord {
+            foreach ([[Lock::Password, $record->wrapPwd], [Lock::Memorized, $record->wrapRecov]] as [$lock, $wrap]) {
+                if ($wrap !== null) {
+                    $count[$layers->formOf($lock, $wrap, $record->userId, $record->userSalt)]++;
+                }
+            }
+            return null;
+        }, $report);
+        $count['unsealed'] = $report['refused'];
+        return $count;
+    }
+
+    /**
+     * The pepper and the seal key a pass works under, once the blind-index
+     * key is the one the database recorded — under another, every seal would
+     * read as tampering.
+     *
+     * @return array{0: LockPepper, 1: string}
+     */
+    private static function passOver(StorageInterface $storage, #[\SensitiveParameter] string $blindKey, PepperSource $source): array
+    {
+        $held = $storage->loadSetting(self::SETTING_BLIND_KEY);
+        if ($held === null || !hash_equals($held, BlindIndex::keyCheck($blindKey))) {
+            throw new InvalidArgumentException(
+                'The pass runs with the blind-index key this database recorded: it checks every seal before it writes'
+            );
+        }
+        $layers = new LockPepper($source, PepperForms::AcceptBare);
+        $recorded = $storage->loadSetting(self::SETTING_PEPPER);
+        if ($recorded !== null && !hash_equals($recorded, $layers->check())) {
+            throw new InvalidArgumentException(
+                "This database recorded the pepper {$recorded}, and the pass was given {$layers->check()}"
+            );
+        }
+        return [$layers, ProfileSeal::key($blindKey)];
+    }
+
+    /**
+     * $change on every live vault and every archive whose seal holds, page
+     * after page; what it returns, when not null, is sealed and written back.
+     * A frozen live vault and a record whose seal does not hold are named in
+     * $report, and the pass goes on. A live vault written before 0.7.0, which
+     * carries no seal, is handed to $change as well; $sealsOld seals it even
+     * when $change leaves it as it is.
+     *
+     * @param callable(VaultRecord): ?VaultRecord $change
+     * @param array{vaults: int, archives: int, frozen: list<string>, refused: list<string>} $report
+     */
+    private static function eachLockSet(StorageInterface $storage, string $sealKey, callable $change, array &$report, bool $sealsOld = false): void
+    {
+        $holds = static fn (VaultRecord $r): bool => $r->profileSeal !== null
+            && ProfileSeal::holds($sealKey, $r->profileSeal, $r, $r->kdfOpslimit, $r->kdfMemlimit);
+        $seal = static fn (VaultRecord $r): VaultRecord => $r->withProfileSeal(ProfileSeal::of($sealKey, $r, $r->kdfOpslimit, $r->kdfMemlimit));
+        for ($after = ''; ($page = $storage->accountIds($after)) !== []; $after = (string) end($page)) {
+            foreach ($page as $userId) {
+                $live = $storage->findVault($userId);
+                if ($live !== null) {
+                    $old = $live->profileSeal === null && !ProfileSeal::expected($live);
+                    try {
+                        if (!$old && !$holds($live)) {
+                            $report['refused'][] = $userId;
+                        } elseif (($changed = $change($live) ?? ($old && $sealsOld ? $live : null)) !== null) {
+                            $storage->updateVault($seal($changed));
+                            $report['vaults']++;
+                        }
+                    } catch (VaultFrozenException) {
+                        $report['frozen'][] = $userId;
+                    } catch (RuntimeException $e) {
+                        $report['refused'][] = "{$userId} ({$e->getMessage()})";
+                    }
+                }
+                foreach ($storage->listArchives($userId) as $listed) {
+                    $archive = $storage->loadArchive($userId, $listed['id']);
+                    if ($archive === null) {
+                        continue;
+                    }
+                    try {
+                        if (!$holds($archive->record)) {
+                            $report['refused'][] = "{$userId}/{$listed['id']}";
+                        } elseif (($changed = $change($archive->record)) !== null) {
+                            $storage->replaceArchiveVault($userId, $listed['id'], $seal($changed));
+                            $report['archives']++;
+                        }
+                    } catch (RuntimeException $e) {
+                        $report['refused'][] = "{$userId}/{$listed['id']} ({$e->getMessage()})";
+                    }
+                }
+            }
+        }
+    }
+
     private function currentRecord(UnlockedVault $session): VaultRecord
     {
         $record = $this->load($session->userId);
@@ -2119,6 +2394,7 @@ final class SelfDataGuard
      */
     private function load(string $userId): VaultRecord
     {
+        $this->assertPepper();
         $record = $this->storage->loadVault($userId);
         $this->assertSameUser($userId, $record->userId);
         $this->assertProfileSealed($record, $record->kdfOpslimit, $record->kdfMemlimit);
@@ -2318,6 +2594,6 @@ final class SelfDataGuard
     /** Keep the blind-index key and the seal key out of var_dump() and print_r(). */
     public function __debugInfo(): array
     {
-        return ['blindKey' => '[redacted]', 'sealKey' => '[redacted]'];
+        return ['blindKey' => '[redacted]', 'sealKey' => '[redacted]', 'pepper' => '[redacted]'];
     }
 }

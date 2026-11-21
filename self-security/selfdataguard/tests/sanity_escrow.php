@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/pepper_fixture.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
@@ -69,7 +70,7 @@ function section(string $title): void
 
 $storage  = new SqliteAdapter('sqlite::memory:');
 $blindKey = random_bytes(32);
-$dg       = new SelfDataGuard($storage, $blindKey);
+$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 
 const ADMIN_PASS = 'ceremonie-admin-recuperation-tres-longue-2026';
 
@@ -108,7 +109,7 @@ try {
 
 section('User enrolls escrow fields + reads them back');
 
-$session = $dg->register('alice', 'motdepasse-fort', 'sentier-brume-rocher-menthe-fusain');
+$session = $dg->register('alice', 'motdepasse-fort', hash('sha256', 'sentier-brume-rocher-menthe-fusain'));
 // Private zone (untouched behaviour)
 $dg->setFields($session, ['notes' => 'note privée', 'mots_de_passe' => 'forum:hunter2'], []);
 // Escrow zone (consented, admin-recoverable)
@@ -152,7 +153,7 @@ $raced = new class ($storage) extends DelegatingStorage {
 };
 $twice = $dg->register('deux-depots', 'motdepasse-deux-depots');
 $dg->setEscrowFields($twice, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
-(new SelfDataGuard($raced, $blindKey))->setEscrowFields($twice, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+(new SelfDataGuard($raced, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->setEscrowFields($twice, $admin['publicKey'], ['contact_b' => 'second dépôt']);
 !$raced->hide
     ? ok('precondition: the second deposit found no escrow, as the losing request does')
     : ko('precondition: the second deposit never read the escrow — the check below measures nothing');
@@ -171,7 +172,7 @@ $rowOnly->hideFields = false;
 $twiceBis = $dg->register('deux-depots-bis', 'motdepasse-deux-depots-bis');
 $dg->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_a' => 'premier dépôt']);
 try {
-    (new SelfDataGuard($rowOnly, $blindKey))->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_b' => 'second dépôt']);
+    (new SelfDataGuard($rowOnly, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->setEscrowFields($twiceBis, $admin['publicKey'], ['contact_b' => 'second dépôt']);
     $both = $dg->getEscrowFieldsAsUser($twiceBis);
     ksort($both);
     $both === ['contact_a' => 'premier dépôt', 'contact_b' => 'second dépôt']
@@ -185,7 +186,7 @@ try {
 
 section('2FA path: memorized unlock also opens the escrow');
 
-$viaMemorized = $dg->loginWithMemorized('alice', 'sentier-brume-rocher-menthe-fusain');
+$viaMemorized = $dg->loginWithMemorized('alice', hash('sha256', 'sentier-brume-rocher-menthe-fusain'));
 $escViaMem = $dg->getEscrowFieldsAsUser($viaMemorized, ['contact_secours']);
 $escViaMem['contact_secours'] === ESCROW_PLAINTEXT['contact_secours']
     ? ok('escrow readable via memorized-secret session (2FA)') : ko('escrow not readable via memorized');
@@ -665,7 +666,7 @@ EscrowVault::isAccountBound($storage->loadEscrow('alice'))
     ? ok('a new escrow seals wrap_admin with its account')
     : ko('a new escrow still seals the bare key');
 
-$bob = $dg->register('bob', 'motdepasse-bob-01', 'bob-memorized');
+$bob = $dg->register('bob', 'motdepasse-bob-01', hash('sha256', 'bob-memorized'));
 $dg->setEscrowFields($bob, $admin['publicKey'], ['contact_secours' => 'bob-secours@example.org']);
 $recAlice = $storage->loadEscrow('alice');
 $recBob   = $storage->loadEscrow('bob');
@@ -683,7 +684,7 @@ try {
 }
 
 // An escrow sealed before 0.6.0: wrap_admin holds the bare key.
-$carol   = $dg->register('carol', 'motdepasse-carol-01', 'carol-memorized');
+$carol   = $dg->register('carol', 'motdepasse-carol-01', hash('sha256', 'carol-memorized'));
 $neuf    = $ev->create($carol, $admin['publicKey']);
 $ancien  = new EscrowRecord(
     userId: 'carol', wrapUser: $neuf['record']->wrapUser,
@@ -721,7 +722,7 @@ $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS,
     : ko('after a deposit, the administrator no longer reads the escrow');
 
 // Two re-sealings from one read: the storage lets the other request's land first.
-$dave     = $dg->register('dave', 'motdepasse-dave-01', 'dave-memorized');
+$dave     = $dg->register('dave', 'motdepasse-dave-01', hash('sha256', 'dave-memorized'));
 $neufDave = $ev->create($dave, $admin['publicKey']);
 $storage->createEscrow($dave->generation(), new EscrowRecord(
     userId: 'dave', wrapUser: $neufDave['record']->wrapUser,
@@ -741,7 +742,7 @@ $interleaved = new class ($storage) extends DelegatingStorage {
     }
 };
 try {
-    (new SelfDataGuard($interleaved, $blindKey))->rebindEscrowAdmin($dave, $admin['publicKey']);
+    (new SelfDataGuard($interleaved, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->rebindEscrowAdmin($dave, $admin['publicKey']);
     ko('a re-sealing from a read another one already replaced succeeded: the first is lost without an error');
 } catch (StaleEscrowException) {
     !$interleaved->other

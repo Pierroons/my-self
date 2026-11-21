@@ -13,6 +13,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/pepper_fixture.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
@@ -77,13 +78,13 @@ register_shutdown_function(static fn () => @unlink($dbPath));
 
 $storage  = new SqliteAdapter("sqlite:{$dbPath}");
 $blindKey = Primitives::randomBytes(32);
-$dg       = new SelfDataGuard($storage, $blindKey);
+$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 
 ok('SelfDataGuard façade constructed');
 
 // blindKey too short
 try {
-    new SelfDataGuard($storage, 'short');
+    new SelfDataGuard($storage, 'short', pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
     ko('façade accepts short blindKey');
 } catch (InvalidArgumentException) {
     ok('façade rejects short blindKey');
@@ -93,7 +94,7 @@ try {
 
 section('Register + initial fields');
 
-$session = $dg->register('user-cosmo', 'correct horse battery staple', 'sunset-river-marble');
+$session = $dg->register('user-cosmo', 'correct horse battery staple', hash('sha256', 'sunset-river-marble'));
 ok('register returns UnlockedVault');
 
 !$session->isLocked() ? ok('session is unlocked') : ko('session locked at register');
@@ -150,7 +151,7 @@ try {
 
 section('Login by memorized (recovery flow)');
 
-$sessionRec = $dg->loginWithMemorized('user-cosmo', 'sunset-river-marble');
+$sessionRec = $dg->loginWithMemorized('user-cosmo', hash('sha256', 'sunset-river-marble'));
 $recPlain = $dg->getFields($sessionRec);
 $recPlain['email'] === 'alice@example.com'
     ? ok('memorized recovery unlocks SAME data')
@@ -158,7 +159,7 @@ $recPlain['email'] === 'alice@example.com'
 
 // Wrong memorized
 try {
-    $dg->loginWithMemorized('user-cosmo', 'wrong-secret');
+    $dg->loginWithMemorized('user-cosmo', hash('sha256', 'wrong-secret'));
     ko('login wrong memorized should throw');
 } catch (RuntimeException) {
     ok('login wrong memorized throws');
@@ -220,9 +221,9 @@ try {
 
 section('Memorized rotation via façade');
 
-$dg->setLock($sessionNew, Lock::Memorized, 'autumn-leaves-quiet');
+$dg->setLock($sessionNew, Lock::Memorized, hash('sha256', 'autumn-leaves-quiet'));
 
-$sessionMem = $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
+$sessionMem = $dg->loginWithMemorized('user-cosmo', hash('sha256', 'autumn-leaves-quiet'));
 $plain3 = $dg->getFields($sessionMem);
 $plain3['email'] === 'alice@example.com'
     ? ok('after changeMemorized, recovery flow still works')
@@ -231,7 +232,7 @@ $plain3['email'] === 'alice@example.com'
 // Remove memorized recovery
 $dg->removeLock($sessionMem, Lock::Memorized);
 try {
-    $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
+    $dg->loginWithMemorized('user-cosmo', hash('sha256', 'autumn-leaves-quiet'));
     ko('login by memorized should fail after removal');
 } catch (RuntimeException) {
     ok('memorized recovery disabled cleanly');
@@ -285,7 +286,7 @@ section('recover() — every SelfRecover path that keeps the data');
 $PH1 = 'cheval agrafe batterie correct moulin ivoire';
 $PH2 = 'tapis girafe lundi orage piment velours';
 $PH3 = 'sable comete nuage farine bouton cerise';
-$s = $dg->register('user-rec', 'rec-password-0001', 'rec-memorized', $PH1);
+$s = $dg->register('user-rec', 'rec-password-0001', hash('sha256', 'rec-memorized'), $PH1);
 $dg->setFields($s, ['note' => 'garde-moi']);
 
 // Level 1: the server holds the old passphrase, SelfRecover issued a new password and passphrase.
@@ -301,7 +302,7 @@ try {
 }
 
 // Level 2 by code: the server holds the memorized digest.
-$dg->recover('user-rec', Lock::Memorized, 'rec-memorized', 'rec-password-0003', $PH3);
+$dg->recover('user-rec', Lock::Memorized, hash('sha256', 'rec-memorized'), 'rec-password-0003', $PH3);
 ($dg->getFields($dg->loginWithPassword('user-rec', 'rec-password-0003'))['note'] ?? null) === 'garde-moi'
     ? ok('level 2 by code: re-sealed by the memorized secret, data intact')
     : ko('level 2 by code: data lost');
@@ -333,10 +334,10 @@ $dg->recover('user-rec', Lock::Passphrase, $PH3, 'rec-password-0006');
 section('Generation — a session from a replaced vault is refused everywhere');
 
 $admin = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the facade bench');
-$stale = $dg->register('user-gen', 'gen-password-0001', 'gen-memorized');
+$stale = $dg->register('user-gen', 'gen-password-0001', hash('sha256', 'gen-memorized'));
 $dg->setFields($stale, ['a' => '1']);
 $dg->delete($stale->generation());
-$fresh = $dg->register('user-gen', 'gen-password-0002', 'gen-memorized');
+$fresh = $dg->register('user-gen', 'gen-password-0002', hash('sha256', 'gen-memorized'));
 
 $guarded = [
     'setFields'              => static fn () => $dg->setFields($stale, ['a' => '2']),
@@ -368,12 +369,12 @@ $refused === array_keys($guarded)
 section('reEnroll() — level 3: the old vault is archived, a new one created');
 
 $EMAIL = 'ancien@example.org';
-$l3old = $dg->register('user-l3', 'l3-password-0001', 'l3-memorized', $PH1);
+$l3old = $dg->register('user-l3', 'l3-password-0001', hash('sha256', 'l3-memorized'), $PH1);
 $dg->setFields($l3old, ['email' => $EMAIL, 'note' => 'ancienne note'], indexed: ['email']);
 $dg->setEscrowFields($l3old, $admin['publicKey'], ['contact' => 'contact de secours']);
 
 $replaced = $dg->generationOf('user-l3');
-$l3 = $dg->reEnroll($replaced, 'l3-password-0002', 'l3-memorized-new', $PH2);
+$l3 = $dg->reEnroll($replaced, 'l3-password-0002', hash('sha256', 'l3-memorized-new'), $PH2);
 $current = $l3['unlocked'];
 $archiveId = $l3['archiveId'];
 is_string($archiveId) && $dg->getFields($current) === []
@@ -557,7 +558,7 @@ final class ForgetfulStorage extends DelegatingStorage
     public function replaceWithArchive(VaultGeneration $g, VaultRecord $r, ?string $t = null): string { return $this->inner->replaceWithArchive($g, $r->withWrapPhrase(null, $r->updatedAt), $t); }
 }
 
-$forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey);
+$forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 try {
     $forgetful->register('user-forget', 'forget-password-01', null, $PH1);
     ko('a passphrase that was never stored was reported as sealed');
@@ -583,7 +584,7 @@ final class ProfileLosingStorage extends DelegatingStorage
 }
 
 try {
-    (new SelfDataGuard(new ProfileLosingStorage($storage), $blindKey))
+    (new SelfDataGuard(new ProfileLosingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))
         ->register('user-profile-lost', 'profile-password-01', null, $PH1);
     ko('a vault read back under another Argon2id profile was reported as stored');
 } catch (RuntimeException $e) {
@@ -607,7 +608,7 @@ final class ProfileBlindStorage extends DelegatingStorage
 }
 
 try {
-    (new SelfDataGuard(new ProfileBlindStorage($storage), $blindKey))
+    (new SelfDataGuard(new ProfileBlindStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))
         ->register('user-profile-blind', 'profile-password-02', null, $PH1);
     ko('a storage that never reads the profile back was trusted: its vaults would open under the current constants');
 } catch (InvalidArgumentException $e) {
@@ -649,7 +650,7 @@ try {
 section('A profile changed in the database is tampering, not a wrong secret — and the operator repairs it');
 
 $PW_SEAL = 'seal-password-0001';
-$sealed  = $dg->register('user-seal', $PW_SEAL, 'seal-memorized', $PH1);
+$sealed  = $dg->register('user-seal', $PW_SEAL, hash('sha256', 'seal-memorized'), $PH1);
 $dg->setFields($sealed, ['note' => 'sous sceau']);
 $pdoSeal = new PDO("sqlite:{$dbPath}");
 $setRow  = static fn (string $set) => $pdoSeal->exec("UPDATE selfdataguard_vaults SET {$set} WHERE user_id = 'user-seal'");
@@ -667,7 +668,7 @@ $refusal = static function (callable $call) {
 };
 $threeLocks = static fn () => [
     $refusal(static fn () => $dg->loginWithPassword('user-seal', $PW_SEAL)),
-    $refusal(static fn () => $dg->loginWithMemorized('user-seal', 'seal-memorized')),
+    $refusal(static fn () => $dg->loginWithMemorized('user-seal', hash('sha256', 'seal-memorized'))),
     $refusal(static fn () => $dg->recover('user-seal', Lock::Passphrase, $PH1, 'seal-password-0002')),
 ];
 
@@ -815,7 +816,7 @@ $dg->findUserByField('email', 'owner@example.org') === 'user-owner'
 // A field is shared or not for the whole database: the façade that shares
 // 'phone' opens a database of its own.
 $sharedStorage = new SqliteAdapter('sqlite::memory:');
-$dgShared = new SelfDataGuard($sharedStorage, $blindKey, sharedIndexes: ['phone']);
+$dgShared = new SelfDataGuard($sharedStorage, $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $sharedOwner = $dgShared->register('user-owner', 'owner-password-0001');
 $sharedOther = $dgShared->register('user-squat', 'squat-password-0001');
 $dgShared->setFields($sharedOwner, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
@@ -833,7 +834,7 @@ try {
 }
 
 try {
-    new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
+    new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
     ko('a façade that shares a field opened a database where that field names one account');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'sharedIndexes')
@@ -841,12 +842,12 @@ try {
         : ko('refused for another reason', $e->getMessage());
 }
 $twoShared = new SqliteAdapter('sqlite::memory:');
-new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['phone', 'address']);
-new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['address', 'phone']) instanceof SelfDataGuard
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['phone', 'address'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+new SelfDataGuard($twoShared, $blindKey, sharedIndexes: ['address', 'phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly) instanceof SelfDataGuard
     ? ok('the same shared fields in another order are the same list')
     : ko('the order of the shared fields was taken for another list');
 try {
-    new SelfDataGuard($storage, Primitives::randomBytes(32));
+    new SelfDataGuard($storage, Primitives::randomBytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
     ko('a façade opened a database under another blind-index key: every vault would report tampering');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'not the one this database recorded')
@@ -861,7 +862,7 @@ final class DoubledIndexStorage extends DelegatingStorage
 }
 
 try {
-    (new SelfDataGuard(new DoubledIndexStorage($storage), $blindKey))->findUserByField('email', 'x@example.org');
+    (new SelfDataGuard(new DoubledIndexStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->findUserByField('email', 'x@example.org');
     ko('the lookup picked one of two accounts');
 } catch (AmbiguousLookupException) {
     ok('findUserByField() refuses to pick when two accounts hold the value');
@@ -899,7 +900,7 @@ register_shutdown_function(static function () use ($roPath): void {
 });
 $roStore = new SqliteAdapter("sqlite:{$roPath}");
 try {
-    (new SelfDataGuard($roStore, $blindKey))->userExists('user-owner')
+    (new SelfDataGuard($roStore, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->userExists('user-owner')
         ? ok('a read-only copy of a database that recorded its key opens, and reads')
         : ko('the read-only copy opened and lost an account');
 } catch (Throwable $e) {
@@ -919,7 +920,7 @@ $noClaim = new class ($storage) extends DelegatingStorage {
     }
 };
 try {
-    new SelfDataGuard($noClaim, $blindKey);
+    new SelfDataGuard($noClaim, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
     ok('a façade on a database that holds its settings claims nothing: it reads them');
 } catch (RuntimeException $e) {
     ko('a façade claimed a setting the database already holds', $e->getMessage());
@@ -931,7 +932,7 @@ $host->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $host->beginTransaction();
 $host->query('SELECT 1 FROM selfdataguard_vaults LIMIT 1')->fetchAll();
 try {
-    (new SelfDataGuard(new SqliteAdapter($host), $blindKey))->userExists('user-owner')
+    (new SelfDataGuard(new SqliteAdapter($host), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->userExists('user-owner')
         ? ok('a façade built inside a host transaction, while another connection writes, opens at once')
         : ko('the façade built inside a host transaction lost an account');
 } catch (Throwable $e) {
@@ -949,7 +950,7 @@ final class CaseFoldingStorage extends DelegatingStorage
     public function loadVault(string $u): VaultRecord { return $this->inner->loadVault(strtolower($u)); }
 }
 
-$folding = new SelfDataGuard(new CaseFoldingStorage($storage), $blindKey);
+$folding = new SelfDataGuard(new CaseFoldingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $folding->register('user-ci', 'case-password-0001');
 try {
     $folding->loginWithPassword('USER-CI', 'case-password-0001');
@@ -978,7 +979,7 @@ final class OverwrittenInsertStorage extends DelegatingStorage
 $overwritten = new OverwrittenInsertStorage($storage);
 $overwritten->overwriteWith = (new UserVault())->register('user-upsert', 'other-insert-0001')['record'];
 try {
-    (new SelfDataGuard($overwritten, $blindKey))->register('user-upsert', 'first-insert-0001');
+    (new SelfDataGuard($overwritten, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly))->register('user-upsert', 'first-insert-0001');
     ko('register() reported a vault the storage no longer holds');
 } catch (RuntimeException $e) {
     str_contains($e->getMessage(), 'holds another vault than the one written')
@@ -992,7 +993,7 @@ final class UpdateDroppingStorage extends DelegatingStorage
     public function updateVault(VaultRecord $r): int { return $r->revision + 1; }
 }
 
-$dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey);
+$dropping = new SelfDataGuard(new UpdateDroppingStorage($storage), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $droppedSession = $dropping->register('user-dropped', 'dropped-password-01');
 try {
     $dropping->setLock($droppedSession, Lock::Password, 'dropped-password-02');
@@ -1022,11 +1023,11 @@ final class RacingStorage extends DelegatingStorage
 }
 
 $racing = new RacingStorage($storage);
-$dgRace = new SelfDataGuard($racing, $blindKey);
-$oldSession = $dgRace->register('user-race', 'race-password-0001', 'race-memorized');
+$dgRace = new SelfDataGuard($racing, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$oldSession = $dgRace->register('user-race', 'race-password-0001', hash('sha256', 'race-memorized'));
 $newSession = null;
 $racing->before = static function () use ($dgRace, &$newSession): void {
-    $newSession = $dgRace->reEnroll($dgRace->generationOf('user-race'), 'race-password-0002', 'race-memorized-2')['unlocked'];
+    $newSession = $dgRace->reEnroll($dgRace->generationOf('user-race'), 'race-password-0002', hash('sha256', 'race-memorized-2'))['unlocked'];
 };
 try {
     $dgRace->setFields($oldSession, ['note' => 'written with the old key']);
@@ -1137,7 +1138,7 @@ function traceArgs(callable $call, string $function): ?array
 }
 
 $tooShort = 'short-blind-key-in-a-trace';
-$args = traceArgs(static fn () => new SelfDataGuard($storage, $tooShort), '__construct');
+$args = traceArgs(static fn () => new SelfDataGuard($storage, $tooShort, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly), '__construct');
 if ($args === null || !in_array($storage, $args, true)) {
     ko('precondition: the trace does not show the public argument — nothing below would be measured');
 } elseif (PHP_VERSION_ID < 80200) {
@@ -1173,7 +1174,7 @@ if ($args === null || !in_array('email', $args, true)) {
 
 section('reinstateArchive() — the holder comes back, the requester\'s vault waits as an archive');
 
-$holderSession = $dg->register('user-back', 'back-password-0001', 'back-memorized', 'pivert lagune ardoise tambour');
+$holderSession = $dg->register('user-back', 'back-password-0001', hash('sha256', 'back-memorized'), 'pivert lagune ardoise tambour');
 $dg->setFields($holderSession, ['email' => 'back@example.org', 'note' => 'du titulaire'], indexed: ['email']);
 $taken = $dg->reEnroll($holderSession->generation(), 'back-password-0002');
 $dg->setFields($taken['unlocked'], ['note' => 'du demandeur']);
@@ -1283,7 +1284,7 @@ function unparseArchiveEscrow(PDO $pdo, string $archiveId, string $path = '$.esc
 }
 
 $rawDb = new PDO("sqlite:{$dbPath}");
-$escBad = $dg->register('user-escbad', 'escbad-password-01', 'escbad-memorized', $PH1);
+$escBad = $dg->register('user-escbad', 'escbad-password-01', hash('sha256', 'escbad-memorized'), $PH1);
 $dg->setFields($escBad, ['note' => 'note du titulaire']);
 $dg->setEscrowFields($escBad, $admin['publicKey'], ['contact' => 'contact du titulaire']);
 $escBadL3 = $dg->reEnroll($escBad->generation(), 'escbad-password-02');
@@ -1321,7 +1322,7 @@ if ($escBadOpened === null) {
 $kPdo      = new PDO('sqlite::memory:');
 $kStorage  = new SqliteAdapter($kPdo);
 $kKeeper   = new BenchKeeper(delay: 3600);
-$kDg       = new SelfDataGuard($kStorage, $blindKey, keeper: $kKeeper);
+$kDg       = new SelfDataGuard($kStorage, $blindKey, keeper: $kKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $carol     = $kDg->register('user-carol', 'carol-password-01');
 $kDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'contact de carol']);
 $carolL3   = $kDg->reEnroll($carol->generation(), 'carol-password-02');
@@ -1382,7 +1383,7 @@ foreach ([
 // The pass of a ceremony records its keeper in the database it seals: it runs on one of its own.
 $keeperPdo = new PDO('sqlite::memory:');
 $keeperDb  = new SqliteAdapter($keeperPdo);
-$keeperDg  = new SelfDataGuard($keeperDb, $blindKey);
+$keeperDg  = new SelfDataGuard($keeperDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $escKeeper = $keeperDg->register('user-escbad', 'escbad-password-01');
 $keeperDg->setEscrowFields($escKeeper, $admin['publicKey'], ['contact' => 'contact du titulaire']);
 $escKeeperL3 = $keeperDg->reEnroll($escKeeper->generation(), 'escbad-password-02');
@@ -1534,7 +1535,7 @@ $preLost === ['email']
     : ko('a field an archive before 0.8.0 indexed came back unnamed', var_export($preLost, true));
 
 $shPdo = new PDO('sqlite::memory:');
-$shDg  = new SelfDataGuard(new SqliteAdapter($shPdo), $blindKey, sharedIndexes: ['phone']);
+$shDg  = new SelfDataGuard(new SqliteAdapter($shPdo), $blindKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $sh = $shDg->register('user-shared', 'shared-password-01');
 $shDg->setFields($sh, ['phone' => '+33 6 00 00 00 00', 'email' => 'shared@example.org'], indexed: ['phone', 'email']);
 $shL3 = $shDg->reEnroll($sh->generation(), 'shared-password-02');
@@ -1555,7 +1556,7 @@ $flaky = new class ($storage) extends DelegatingStorage {
         return parent::findUserIdsByIndex($f, $i);
     }
 };
-$flakyDg = new SelfDataGuard($flaky, $blindKey);
+$flakyDg = new SelfDataGuard($flaky, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $fla = $flakyDg->register('user-flaky', 'flaky-password-01');
 $flakyDg->setFields($fla, ['email' => 'flaky@example.org'], indexed: ['email']);
 $flaL3 = $flakyDg->reEnroll($fla->generation(), 'flaky-password-02');
@@ -1600,8 +1601,8 @@ final class TicketsOfTheBench implements Pierroons\SelfDataGuard\RecoveryTickets
 }
 
 $tickets = new TicketsOfTheBench();
-$dgT = new SelfDataGuard($storage, $blindKey, tickets: $tickets);
-$sT = $dgT->register('user-ticket', 'ticket-password-01', 'ticket-memorized', 'girafe orage piment velours tapis lundi');
+$dgT = new SelfDataGuard($storage, $blindKey, tickets: $tickets, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$sT = $dgT->register('user-ticket', 'ticket-password-01', hash('sha256', 'ticket-memorized'), 'girafe orage piment velours tapis lundi');
 $gT = $sT->generation();
 $refused = static function (callable $call): bool {
     try {
@@ -1859,7 +1860,7 @@ foreach ([
         ko("{$call} on a storage that erases under a freeze: {$class} is not declared in this version");
         continue;
     }
-    $loose = new SelfDataGuard(new $class($storage, $r5Pdo), $blindKey);
+    $loose = new SelfDataGuard(new $class($storage, $r5Pdo), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
     try {
         $run($loose, $uid, $r5L3['archiveId']);
         ko("{$call} through a storage that erases under a freeze went through");
@@ -1874,7 +1875,7 @@ foreach ([
 
 $noErasing = new class ($storage) extends DelegatingStorage {
 };
-$bare = new SelfDataGuard($noErasing, $blindKey);
+$bare = new SelfDataGuard($noErasing, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 foreach ([
     'eraseArchive()'    => [static fn () => $bare->eraseArchive('user-yan', str_repeat('0', 32)), 'ErasesArchives'],
     'keptArchives()'    => [static fn () => $bare->keptArchives(), 'ErasesArchives'],

@@ -53,7 +53,8 @@ final class UnlockedVault
         #[\SensitiveParameter] string $masterKey,
         public readonly string $vaultSalt,
         public readonly int $kdfOpslimit,
-        public readonly int $kdfMemlimit
+        public readonly int $kdfMemlimit,
+        private readonly ?LockPepper $pepper = null
     ) {
         if (strlen($masterKey) !== Primitives::KEY_LEN) {
             throw new RuntimeException(
@@ -94,6 +95,11 @@ final class UnlockedVault
      */
     public function sealLock(Lock $lock, #[\SensitiveParameter] string $secret): EncryptedBlob
     {
+        if ($this->pepper !== null && LockPepper::covers($lock)) {
+            return $this->pepper->seal(
+                $lock, $secret, $this->key(), $this->userId, $this->vaultSalt, $this->kdfOpslimit, $this->kdfMemlimit
+            );
+        }
         $kek = UserVault::keyFor($lock, $secret, $this->vaultSalt, $this->kdfOpslimit, $this->kdfMemlimit);
         try {
             return Primitives::encrypt($this->key(), $kek, UserVault::wrapAadFor($this->userId));

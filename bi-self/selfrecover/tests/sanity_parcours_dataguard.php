@@ -90,7 +90,13 @@ $rec = new Recovery($st, $SELD, $PROFIL, Langue::FR, delaiRefusUs: 0);
 $dev = new Device($st, $PROFIL, $SELD, Langue::FR, delaiRefusUs: 0);
 $esc = new Escalade($st, $rec, delaiRefusUs: 0);
 
-$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), Primitives::randomBytes(32));
+// Le poivre de SelfDataGuard, tiré pour ce banc : un fichier hors de la base, lu puis effacé.
+$fichierPoivre = tempnam(sys_get_temp_dir(), 'sdg-parcours-poivre-');
+file_put_contents($fichierPoivre, \Pierroons\SelfDataGuard\Pepper\Pepper::TAG . ':' . bin2hex(random_bytes(32)) . "\n");
+chmod($fichierPoivre, 0600);
+$poivre = new \Pierroons\SelfDataGuard\Pepper\LocalPepperFile($fichierPoivre, '');
+unlink($fichierPoivre);
+$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), Primitives::randomBytes(32), $poivre, \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $dg->setFields($dg->register('alice', $MDP, $MOT, $PHR), ['note' => $NOTE]);
 
 // ── Niveau 1 ───────────────────────────────────────────────────────────────

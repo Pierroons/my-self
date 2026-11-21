@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/pepper_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
@@ -63,14 +64,14 @@ register_shutdown_function(static fn () => @unlink($dbPath));
 $pdo      = new PDO("sqlite:{$dbPath}");
 $storage  = new SqliteAdapter($pdo);
 $blindKey = Primitives::randomBytes(32);
-$dg       = new SelfDataGuard($storage, $blindKey);
+$dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $uv       = new UserVault();
 $admin    = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the archive bench');
 
 const EMAIL  = 'ancien@example.org';
 const PHRASE = 'cheval agrafe batterie correct moulin ivoire';
 
-$old = $dg->register('user-arch', 'arch-password-0001', 'arch-memorized', PHRASE);
+$old = $dg->register('user-arch', 'arch-password-0001', hash('sha256', 'arch-memorized'), PHRASE);
 $dg->setFields($old, ['email' => EMAIL, 'note' => 'ancienne note'], indexed: ['email']);
 $dg->setEscrowFields($old, $admin['publicKey'], ['contact' => 'contact de secours']);
 $oldRecord = $storage->loadVault('user-arch');
@@ -80,7 +81,7 @@ $emailIndex = BlindIndex::compute(EMAIL, $blindKey, 'email');
 
 section('replaceWithArchive — the live vault is set aside, the new one takes its place');
 
-$new = $uv->register('user-arch', 'arch-password-0002', 'arch-memorized-2', 'tapis girafe lundi orage piment velours');
+$new = $uv->register('user-arch', 'arch-password-0002', hash('sha256', 'arch-memorized-2'), 'tapis girafe lundi orage piment velours');
 $id1 = $storage->replaceWithArchive($oldRecord->generation(), $new['record']);
 
 is_string($id1) && preg_match('/^[0-9a-f]{32}$/', $id1) === 1
@@ -189,8 +190,8 @@ section('A concurrent writer is waited for, not failed on');
 // before it writes does under SQLite.
 $wfile = sys_get_temp_dir() . '/selfdataguard-wait-' . bin2hex(random_bytes(4)) . '.sqlite';
 register_shutdown_function(static fn () => @unlink($wfile));
-$wdg = new SelfDataGuard(new SqliteAdapter("sqlite:{$wfile}"), $blindKey);
-$wdg->register('user-wait', 'wait-password-0001', 'wait-memorized');
+$wdg = new SelfDataGuard(new SqliteAdapter("sqlite:{$wfile}"), $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$wdg->register('user-wait', 'wait-password-0001', hash('sha256', 'wait-memorized'));
 $holder = new PDO("sqlite:{$wfile}");
 $holder->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $holder->exec('BEGIN IMMEDIATE');
@@ -229,7 +230,7 @@ str_ends_with($at, '+00:00')
 
 section('All or nothing — a failure while inserting the new vault changes nothing');
 
-$boomOld = $dg->register('user-boom', 'boom-password-001', 'boom-memorized');
+$boomOld = $dg->register('user-boom', 'boom-password-001', hash('sha256', 'boom-memorized'));
 $dg->setFields($boomOld, ['keep' => 'me']);
 $pdo->exec(
     "CREATE TRIGGER boom BEFORE INSERT ON selfdataguard_vaults
@@ -305,7 +306,7 @@ section('swapWithArchive — the archive comes back live, the live vault goes as
 /** A vault filled, then re-enrolled: the archive id and the record of each side. */
 function reEnrolled(SelfDataGuard $dg, SqliteAdapter $storage, string $userId, string $email, array $admin): array
 {
-    $s = $dg->register($userId, "{$userId}-password-1", "{$userId}-memorized", PHRASE);
+    $s = $dg->register($userId, "{$userId}-password-1", hash('sha256', "{$userId}-memorized"), PHRASE);
     $dg->setFields($s, ['email' => $email, 'note' => 'note du titulaire'], indexed: ['email']);
     $dg->setEscrowFields($s, $admin['publicKey'], ['contact' => 'contact du titulaire']);
     $holder = $storage->loadVault($userId);
@@ -357,7 +358,7 @@ foreach ([
 
 section('The escrow row comes back whole: a column the package carries is kept, one the database lacks refuses');
 
-$col = $dg->register('user-col', 'user-col-password-1', 'user-col-memorized', PHRASE);
+$col = $dg->register('user-col', 'user-col-password-1', hash('sha256', 'user-col-memorized'), PHRASE);
 $dg->setEscrowFields($col, $admin['publicKey'], ['contact' => 'contact col']);
 $pdo->exec('ALTER TABLE selfdataguard_escrow ADD COLUMN bench_extra TEXT');
 $pdo->exec("UPDATE selfdataguard_escrow SET bench_extra = 'kept' WHERE user_id = 'user-col'");

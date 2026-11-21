@@ -58,9 +58,30 @@ final class UserVault
      */
     public const PASSWORD_MIN_LEN = 12;
 
+    /**
+     * @param ?LockPepper $pepper the pepper on wrap_pwd and wrap_recov, as the
+     *                           façade always passes it; null seals and opens
+     *                           them bare, as 0.9.x did
+     */
     public function __construct(
-        private readonly ?\DateTimeImmutable $clock = null
+        private readonly ?\DateTimeImmutable $clock = null,
+        private readonly ?LockPepper $pepper = null
     ) {
+    }
+
+    /**
+     * The memorized secret is the fingerprint SelfRecover derives from the
+     * memorized word: 64 lower-case hex. Refused when sealing anything else —
+     * the word itself, or the fingerprint in capitals, which would seal
+     * another key —; never when opening, so that a vault sealed so still opens.
+     */
+    public static function assertMemorizedForm(#[\SensitiveParameter] string $memorized): void
+    {
+        if (preg_match('/^[0-9a-f]{64}$/D', $memorized) !== 1) {
+            throw new InvalidArgumentException(
+                'The memorized secret is sealed as the 64 lower-case hex fingerprint SelfRecover derives, never as the word itself'
+            );
+        }
     }
 
     /**
@@ -103,8 +124,8 @@ final class UserVault
             throw new InvalidArgumentException('userId must not be empty');
         }
         self::assertPasswordLength($password);
-        if ($memorized !== null && $memorized === '') {
-            throw new InvalidArgumentException('memorized, if provided, must not be empty');
+        if ($memorized !== null) {
+            self::assertMemorizedForm($memorized);
         }
         if ($passphrase !== null) {
             self::assertPassphraseLength($passphrase);
@@ -115,10 +136,10 @@ final class UserVault
         $ops           = Primitives::ARGON2_OPSLIMIT;
         $mem           = Primitives::ARGON2_MEMLIMIT;
 
-        $wrapPwd    = self::seal(Lock::Password, $password, $userSalt, $userId, $dataMasterKey, $ops, $mem);
+        $wrapPwd    = $this->sealNew(Lock::Password, $password, $userSalt, $userId, $dataMasterKey, $ops, $mem);
         $wrapRecov  = $memorized === null
             ? null
-            : self::seal(Lock::Memorized, $memorized, $userSalt, $userId, $dataMasterKey, $ops, $mem);
+            : $this->sealNew(Lock::Memorized, $memorized, $userSalt, $userId, $dataMasterKey, $ops, $mem);
         $wrapPhrase = $passphrase === null
             ? null
             : self::seal(Lock::Passphrase, $passphrase, $userSalt, $userId, $dataMasterKey, $ops, $mem);
@@ -138,7 +159,8 @@ final class UserVault
         );
 
         $unlocked = new UnlockedVault(
-            userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem
+            userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem,
+            pepper: $this->pepper
         );
         Primitives::zeroize($dataMasterKey);
 
@@ -176,6 +198,15 @@ final class UserVault
                 "The vault of '{$record->userId}' claims an Argon2id profile no version of SelfDataGuard writes "
                 . "({$ops} / {$mem} bytes): nothing is derived under it"
             );
+        }
+        if ($this->pepper !== null && LockPepper::covers($lock)) {
+            $masterKey = $this->openPeppered($record, $lock, $wrap, $secret, $ops, $mem);
+            $unlocked = new UnlockedVault(
+                userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem,
+                pepper: $this->pepper
+            );
+            Primitives::zeroize($masterKey);
+            return $unlocked;
         }
         $key = self::keyFor($lock, $secret, $record->userSalt, $ops, $mem);
         if ($wrap === null) {
@@ -216,10 +247,43 @@ final class UserVault
         }
 
         $unlocked = new UnlockedVault(
-            userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem
+            userId: $record->userId, masterKey: $masterKey, vaultSalt: $record->userSalt, kdfOpslimit: $ops, kdfMemlimit: $mem,
+            pepper: $this->pepper
         );
         Primitives::zeroize($masterKey);
         return $unlocked;
+    }
+
+    /** The master key, through the pepper — the legacy diagnosis kept for a bare wrap_recov. */
+    private function openPeppered(
+        VaultRecord $record,
+        Lock $lock,
+        ?EncryptedBlob $wrap,
+        #[\SensitiveParameter] string $secret,
+        int $ops,
+        int $mem
+    ): string {
+        try {
+            return $this->pepper->open($lock, $wrap, $secret, $record->userId, $record->userSalt, $ops, $mem, self::wrongSecret($lock));
+        } catch (UnlayeredLockException | MissingEnvelopeException $e) {
+            throw $e;
+        } catch (WrongSecretException $e) {
+            if (
+                $lock === Lock::Memorized && $wrap !== null
+                && $this->pepper->formOf($lock, $wrap, $record->userId, $record->userSalt) === 'bare'
+                && $this->wrapIsLegacyV1($record, $secret)
+            ) {
+                throw new RuntimeException(
+                    'This vault predates the Argon2id recovery derivation '
+                    . '(SelfDataGuard < 0.3.0). The memorized secret is correct; '
+                    . 'unlock with another lock and call setLock(Lock::Memorized, …) to re-seal. '
+                    . 'Access is refused here on purpose: the legacy derivation is '
+                    . 'about 78 000 times cheaper to attack.',
+                    previous: $e
+                );
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -269,9 +333,7 @@ final class UserVault
         match ($lock) {
             Lock::Password   => self::assertPasswordLength($secret),
             Lock::Passphrase => self::assertPassphraseLength($secret),
-            Lock::Memorized  => $secret === ''
-                ? throw new InvalidArgumentException('memorized secret must not be empty')
-                : null,
+            Lock::Memorized  => self::assertMemorizedForm($secret),
         };
         self::assertSameVault($record, $unlocked);
         return self::withWrap($record, $lock, $unlocked->sealLock($lock, $secret), $this->now());
@@ -362,6 +424,21 @@ final class UserVault
                 $memlimit
             ),
         };
+    }
+
+    /** A new vault's envelope of $lock: through the pepper when it covers the lock. */
+    private function sealNew(
+        Lock $lock,
+        #[\SensitiveParameter] string $secret,
+        string $userSalt,
+        string $userId,
+        #[\SensitiveParameter] string $masterKey,
+        int $opslimit,
+        int $memlimit
+    ): EncryptedBlob {
+        return $this->pepper !== null && LockPepper::covers($lock)
+            ? $this->pepper->seal($lock, $secret, $masterKey, $userId, $userSalt, $opslimit, $memlimit)
+            : self::seal($lock, $secret, $userSalt, $userId, $masterKey, $opslimit, $memlimit);
     }
 
     /**

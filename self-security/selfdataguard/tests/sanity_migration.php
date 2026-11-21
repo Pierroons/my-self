@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/pepper_fixture.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
@@ -157,7 +158,7 @@ $PHRASE = 'cheval agrafe batterie correct moulin ivoire';
 
 section('A 0.4.0 database gains wrap_phrase and the profile columns when it is opened');
 
-$old = oldDatabase('user-old', 'old-password-0001', 'old-memorized');
+$old = oldDatabase('user-old', 'old-password-0001', hash('sha256', 'old-memorized'));
 in_array('wrap_phrase', array_map(static fn ($l) => explode('|', $l)[0], vaultColumns($old)), true)
     ? ko('the 0.4.0 fixture already has wrap_phrase — it is not a 0.4.0 schema')
     : ok('fixture: the 0.4.0 table has no wrap_phrase');
@@ -172,7 +173,7 @@ vaultColumns($old) === vaultColumns($fresh)
 try {
     $record = $storage->loadVault('user-old');
     $session = $uv->unlockWithPassword($record, 'old-password-0001');
-    $uv->unlockWithMemorized($record, 'old-memorized');
+    $uv->unlockWithMemorized($record, hash('sha256', 'old-memorized'));
     !$record->hasPassphrase()
         ? ok('the 0.4.0 vault still opens by password and memorized secret, with no passphrase wrap')
         : ko('a passphrase wrap appeared out of nowhere');
@@ -234,7 +235,7 @@ function database05x(string $userId, string $password, string $memorized, string
     return $pdo;
 }
 
-$v05 = database05x('user-05x', 'v05-password-0001', 'v05-memorized', $PHRASE);
+$v05 = database05x('user-05x', 'v05-password-0001', hash('sha256', 'v05-memorized'), $PHRASE);
 $noms05 = array_map(static fn ($l) => explode('|', $l)[0], vaultColumns($v05));
 in_array('revision', $noms05, true) && !in_array('kdf_opslimit', $noms05, true)
     ? ok('fixture: the 0.5.x table has revision and no profile column')
@@ -253,7 +254,7 @@ $r05->kdfOpslimit === Primitives::LEGACY_OPSLIMIT && $r05->kdfMemlimit === Primi
     : ko('a pre-0.6.0 row reads back under another profile', "{$r05->kdfOpslimit}/{$r05->kdfMemlimit}");
 try {
     $uv->unlockWithPassword($r05, 'v05-password-0001');
-    $uv->unlockWithMemorized($r05, 'v05-memorized');
+    $uv->unlockWithMemorized($r05, hash('sha256', 'v05-memorized'));
     $uv->unlockWithPassphrase($r05, $PHRASE);
     ok('the 0.5.x vault opens by its three locks after the migration');
 } catch (Throwable $e) {
@@ -369,12 +370,13 @@ $storage->loadVault('user-old')->wrapPhrase?->toBase64() === $before->wrapPhrase
 
 section('A vault written before 0.7.0 opens to no one until the operator seals its profile');
 
-$avantSceau = oldDatabase('user-unsealed', 'unsealed-password-01', 'unsealed-memorized');
+$avantSceau = oldDatabase('user-unsealed', 'unsealed-password-01', hash('sha256', 'unsealed-memorized'));
 $avantStore = new SqliteAdapter($avantSceau);
 $avantKey   = random_bytes(32);
 // Nothing indexed, nothing sealed: the key decides nothing that exists yet.
 SelfDataGuard::adoptBlindKey($avantStore, $avantKey);
-$dgAvant = new SelfDataGuard($avantStore, $avantKey);
+benchPepperRecorded($avantStore);
+$dgAvant = new SelfDataGuard($avantStore, $avantKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
 try {
     $dgAvant->loginWithPassword('user-unsealed', 'unsealed-password-01');
     ko('a vault without a profile seal was opened');
@@ -386,9 +388,23 @@ try {
 $dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-unsealed') && !$dgAvant->sealProfile('user-never')
     ? ok('sealProfile(): true once, false after, false for a userId without a vault')
     : ko('sealProfile() did not seal once and only once');
-$dgAvant->loginWithMemorized('user-unsealed', 'unsealed-memorized')->userId === 'user-unsealed'
+$dgAvant->loginWithMemorized('user-unsealed', hash('sha256', 'unsealed-memorized'))->userId === 'user-unsealed'
     ? ok('sealed, the vault written before 0.7.0 opens under its legacy profile')
     : ko('the sealed vault did not open');
+
+$adoptPdo   = oldDatabase('user-adopt-old', 'adopt-old-password', hash('sha256', 'adopt-old-memorized'));
+$adoptStore = new SqliteAdapter($adoptPdo);
+$adoptKey   = random_bytes(32);
+SelfDataGuard::adoptBlindKey($adoptStore, $adoptKey);
+$adopted = SelfDataGuard::adoptPepper($adoptStore, $adoptKey, benchPepper());
+$adopted['vaults'] === 1 && $adopted['refused'] === []
+    ? ok('the pepper pass seals a vault written before 0.7.0, as sealProfile() does, and lays it over')
+    : ko('the pepper pass left a vault written before 0.7.0 aside', json_encode($adopted));
+$dgAdopt = new SelfDataGuard($adoptStore, $adoptKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
+$dgAdopt->lockState('user-adopt-old', Lock::Password) === 'layer'
+    && $dgAdopt->loginWithPassword('user-adopt-old', 'adopt-old-password')->userId === 'user-adopt-old'
+    ? ok('laid over, it opens once the upgrade is declared over, under its legacy profile')
+    : ko('the vault written before 0.7.0 did not open once laid over');
 
 section('A database that holds vaults records its blind-index key only on proof');
 
@@ -399,7 +415,7 @@ $pinPdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphert
     ->execute(['user-pin', 'email', 'c-email', BlindIndex::compute('pin@example.org', $rightKey, 'email'), '2026-01-01']);
 $pinStore = new SqliteAdapter($pinPdo);
 try {
-    new SelfDataGuard($pinStore, $wrongKey);
+    new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
     ko('a façade recorded the first key it brought to a database written before 0.7.0');
 } catch (InvalidArgumentException $e) {
     str_contains($e->getMessage(), 'adoptBlindKey()') && $pinStore->loadSetting(SelfDataGuard::SETTING_BLIND_KEY) === null
@@ -439,12 +455,13 @@ try {
         : ko('a missing seal is refused as if the key were wrong', $e->getMessage());
 }
 SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'pin@example.org');
-$dgPin = new SelfDataGuard($pinStore, $rightKey);
+benchPepperRecorded($pinStore);
+$dgPin = new SelfDataGuard($pinStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
 $dgPin->sealProfile('user-pin') && $dgPin->findUserByField('email', 'pin@example.org') === 'user-pin'
     ? ok('the key the lookup proves is adopted: the vault is sealed under it, and the lookup answers')
     : ko('the adopted key did not seal the vault, or the lookup does not answer');
 try {
-    new SelfDataGuard($pinStore, $wrongKey);
+    new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
     ko('another key opened the database once its key was adopted');
 } catch (InvalidArgumentException) {
     ok('once adopted, another key is refused');
@@ -453,7 +470,7 @@ try {
 $sealPdo = new PDO('sqlite::memory:');
 $sealPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $sealStore = new SqliteAdapter($sealPdo);
-(new SelfDataGuard($sealStore, $rightKey))->register('user-sealproof', 'sealproof-password-01');
+(new SelfDataGuard($sealStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare))->register('user-sealproof', 'sealproof-password-01');
 $sealPdo->exec('DELETE FROM selfdataguard_settings');
 try {
     SelfDataGuard::adoptBlindKey($sealStore, $wrongKey, [], 'user-sealproof');
@@ -462,7 +479,8 @@ try {
     ok('a database whose vaults are sealed adopts no key their seals deny');
 }
 SelfDataGuard::adoptBlindKey($sealStore, $rightKey, [], 'user-sealproof');
-(new SelfDataGuard($sealStore, $rightKey))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
+benchPepperRecorded($sealStore);
+(new SelfDataGuard($sealStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare))->loginWithPassword('user-sealproof', 'sealproof-password-01')->userId === 'user-sealproof'
     ? ok('the key a seal proves is adopted, and the vault opens')
     : ko('the key a seal proves did not open the vault');
 
@@ -479,14 +497,15 @@ try {
         : ko('refused for another reason, or a key was recorded', $e->getMessage());
 }
 SelfDataGuard::adoptBlindKey($shareStore, $rightKey, ['phone'], 'user-share', 'phone', '+33 6 00');
-(new SelfDataGuard($shareStore, $rightKey, ['phone']))->findUsersByField('phone', '+33 6 00') === ['user-share']
+benchPepperRecorded($shareStore);
+(new SelfDataGuard($shareStore, $rightKey, sharedIndexes: ['phone'], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare))->findUsersByField('phone', '+33 6 00') === ['user-share']
     ? ok('sharedIndexes that name the shared field are adopted, and the field\'s lookup answers')
     : ko('the shared field adopted does not answer its lookup');
 
 $racePdo = new PDO('sqlite::memory:');
 $racePdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $raceStore = new SqliteAdapter($racePdo);
-new SelfDataGuard($raceStore, $rightKey);
+new SelfDataGuard($raceStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
 try {
     SelfDataGuard::adoptBlindKey(new SettingRecordedMeanwhileStorage($raceStore), $wrongKey);
     ko('adoptBlindKey() went on over a key another writer recorded meanwhile');
@@ -498,24 +517,25 @@ try {
 
 section('An archive written before 0.7.0 carries no seal, and opens under the profile it recorded');
 
-$legacyPdo   = oldDatabase('user-legacy-l3', 'legacy-password-01', 'legacy-memorized');
+$legacyPdo   = oldDatabase('user-legacy-l3', 'legacy-password-01', hash('sha256', 'legacy-memorized'));
 $legacyStore = new SqliteAdapter($legacyPdo);
 $legacyKey   = random_bytes(32);
 SelfDataGuard::adoptBlindKey($legacyStore, $legacyKey);
-$dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey);
+benchPepperRecorded($legacyStore);
+$dgLegacy    = new SelfDataGuard($legacyStore, $legacyKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare);
 // Archived as 0.6.x did: without a seal, the new vault sealed as this version seals it.
 $fresh = (new UserVault())->register('user-legacy-l3', 'legacy-password-02')['record'];
 $fresh = $fresh->withProfileSeal(ProfileSeal::of(ProfileSeal::key($legacyKey), $fresh, $fresh->kdfOpslimit, $fresh->kdfMemlimit));
 $legacyArchive = $legacyStore->replaceWithArchive($legacyStore->loadVault('user-legacy-l3')->generation(), $fresh);
 $legacyCurrent = $dgLegacy->loginWithPassword('user-legacy-l3', 'legacy-password-02');
-$dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, 'legacy-memorized') instanceof Pierroons\SelfDataGuard\Vault\UnlockedArchive
+$dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, hash('sha256', 'legacy-memorized')) instanceof Pierroons\SelfDataGuard\Vault\UnlockedArchive
     ? ok('an archive whose envelopes predate 0.7.0, without a seal, opens under the profile it recorded')
     : ko('a legacy archive did not open');
 $legacyPdo->prepare(
     'UPDATE selfdataguard_archives SET package = json_set(package, \'$.kdf.opslimit\', :ops) WHERE archive_id = :id'
 )->execute([':ops' => Primitives::LEGACY_OPSLIMIT + 1, ':id' => $legacyArchive]);
 try {
-    $dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, 'legacy-memorized');
+    $dgLegacy->openArchive($legacyCurrent, $legacyArchive, Lock::Memorized, hash('sha256', 'legacy-memorized'));
     ko('the recorded profile is ignored: the legacy archive opened under another one');
 } catch (WrongSecretException) {
     ok('its recorded profile is the one used — and nothing vouches for it: a profile changed fails as a wrong secret (declared)');

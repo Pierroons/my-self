@@ -14,8 +14,12 @@ declare(strict_types=1);
 require __DIR__ . '/../../../self-security/selfdataguard/src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Pepper\LocalPepperFile;
+use Pierroons\SelfDataGuard\Pepper\Pepper;
+use Pierroons\SelfDataGuard\Pepper\PepperFileException;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\PepperForms;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultTamperedException;
@@ -106,15 +110,43 @@ if ($blindKey === false || strlen($blindKey) < 32) {
     exit;
 }
 
+// Le poivre : hors de la base, et hors de la racine que le serveur web sert —
+// LocalPepperFile refuse un fichier sous DOCUMENT_ROOT. En production,
+// DATAGUARD_PEPPER_PATH le désigne ; le repli, pour les essais locaux, vit dans le
+// dossier temporaire du système, un fichier par instance. Comme la clé d'index, il
+// ne naît que tant qu'aucune base n'existe : un poivre neuf fermerait les autres.
+$pepperPath = getenv('DATAGUARD_PEPPER_PATH')
+    ?: ($_SERVER['DATAGUARD_PEPPER_PATH'] ?? '')
+    ?: (sys_get_temp_dir() . '/selfdataguard-demo-pepper-' . substr(hash('sha256', $repertoireInstance), 0, 12));
+if (!is_file($pepperPath)) {
+    if ((glob($repertoireBases . '/*.sqlite') ?: []) !== []) {
+        http_response_code(500);
+        echo json_encode(['error' => 'The pepper file is missing while demo bases sealed under it exist: restore it']);
+        exit;
+    }
+    $ancien = umask(0o077);
+    file_put_contents($pepperPath, Pepper::TAG . ':' . bin2hex(random_bytes(32)) . "\n");
+    umask($ancien);
+    chmod($pepperPath, 0600);
+}
+try {
+    $pepper = new LocalPepperFile($pepperPath);
+} catch (PepperFileException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => "The pepper file is refused: {$e->reason}"]);
+    exit;
+}
+
 // Sans base, une lecture passe par une base vide en mémoire : rien n'est écrit, et
 // chaque page vue n'occupe pas une place jusqu'à son expiration.
 $storage     = new SqliteAdapter($baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
 try {
-    $dataGuard = new SelfDataGuard($storage, $blindKey);
+    $dataGuard = new SelfDataGuard($storage, $blindKey, $pepper, PepperForms::LayeredOnly);
 } catch (InvalidArgumentException) {
-    // La base a été ouverte sous une autre clé d'index : chaque coffre s'y dirait falsifié.
+    // La base a été ouverte sous une autre clé d'index ou un autre poivre : chaque
+    // coffre s'y dirait falsifié, ou ne s'ouvrirait plus.
     http_response_code(500);
-    echo json_encode(['error' => 'The blind-index key is not the one this demo base was opened with: restore it']);
+    echo json_encode(['error' => 'The blind-index key or the pepper is not the one this demo base was opened with: restore them']);
     exit;
 }
 
@@ -151,7 +183,7 @@ function demo_base_neuve(): SelfDataGuard
     }
     file_put_contents($quota, implode("\n", [...$creations, $maintenant]) . "\n", LOCK_EX);
     $GLOBALS['storage'] = new SqliteAdapter('sqlite:' . $baseVisiteur);
-    return new SelfDataGuard($GLOBALS['storage'], $blindKey);
+    return new SelfDataGuard($GLOBALS['storage'], $blindKey, $GLOBALS['pepper'], PepperForms::LayeredOnly);
 }
 
 /** Efface la base qu'une inscription refusée vient de créer. */

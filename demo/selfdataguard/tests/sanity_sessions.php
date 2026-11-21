@@ -60,6 +60,7 @@ function demarrer(array $env): array
         $tuyaux,
         null,
         $env + ['DATAGUARD_DB_PATH' => $etat . '/demo.sqlite', 'DATAGUARD_BLINDKEY_PATH' => $etat . '/blindkey.bin',
+                'DATAGUARD_PEPPER_PATH' => $etat . '/pepper',
                 'PATH' => getenv('PATH') ?: '/usr/bin:/bin']
     );
     $serveurs[] = $proc;
@@ -98,7 +99,7 @@ function appel(int $port, string $nom, string $route, ?array $corps, ?string $co
 function nbBases(): int { global $bases; return count(glob($bases . '/*.sqlite') ?: []); }
 function oublierQuotas(): void { global $bases; foreach (glob($bases . '/adresse-*') ?: [] as $q) { @unlink($q); } }
 
-$INSCRIPTION = ['userId' => 'alice', 'password' => 'mot-de-passe-alice', 'memorized' => 'sentier-alice',
+$INSCRIPTION = ['userId' => 'alice', 'password' => 'mot-de-passe-alice', 'memorized' => hash('sha256', 'sentier-alice'),
                 'fields' => ['email' => 'alice@example.org'], 'indexed' => ['email']];
 
 // ── Comme en production ─────────────────────────────────────────────────────

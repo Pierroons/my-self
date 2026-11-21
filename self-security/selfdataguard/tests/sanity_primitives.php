@@ -109,7 +109,7 @@ try {
 
 section('deriveFromMemorized (Argon2id since 0.3.0) — shape and domain separation');
 
-$mem = 'sunset-river-marble';
+$mem = hash('sha256', 'sunset-river-marble');
 $ctx1 = bin2hex($salt) . '/dataguard';
 $ctx2 = 'example.com/recover';
 

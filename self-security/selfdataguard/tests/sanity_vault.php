@@ -61,7 +61,7 @@ $vault = new UserVault();
 $result = $vault->register(
     userId: 'user-42',
     password: 'correct horse battery staple',
-    memorized: 'sunset-river-marble'
+    memorized: hash('sha256', 'sunset-river-marble')
 );
 
 $result['record'] instanceof VaultRecord ? ok('register returns VaultRecord') : ko('register no record');
@@ -111,7 +111,7 @@ try {
 
 section('Unlock with memorized');
 
-$unlocked3 = $vault->unlockWithMemorized($record, 'sunset-river-marble');
+$unlocked3 = $vault->unlockWithMemorized($record, hash('sha256', 'sunset-river-marble'));
 $masterKey3 = heldKey($unlocked3);
 hash_equals($masterKey1, $masterKey3)
     ? ok('unlockWithMemorized recovers SAME master key (cross-factor)')
@@ -119,7 +119,7 @@ hash_equals($masterKey1, $masterKey3)
 
 // Wrong memorized
 try {
-    $vault->unlockWithMemorized($record, 'wrong-secret');
+    $vault->unlockWithMemorized($record, hash('sha256', 'wrong-secret'));
     ko('unlockWithMemorized wrong → should throw');
 } catch (RuntimeException) {
     ok('unlockWithMemorized wrong → throws');
@@ -136,7 +136,7 @@ $soloRecord->wrapRecov === null ? ok('solo wrapRecov null') : ko('solo wrapRecov
 !$soloRecord->hasMemorizedRecovery() ? ok('solo hasMemorizedRecovery() false') : ko('solo recovery flag wrong');
 
 try {
-    $vault->unlockWithMemorized($soloRecord, 'whatever');
+    $vault->unlockWithMemorized($soloRecord, hash('sha256', 'whatever'));
     ko('unlockWithMemorized on solo vault → should throw');
 } catch (RuntimeException) {
     ok('unlockWithMemorized on solo vault → throws');
@@ -198,8 +198,8 @@ try {
 
 section('changeMemorized (rotation + removal)');
 
-$rotatedMem = $vault->setLock($record, $unlocked2, Lock::Memorized, 'autumn-leaves-quiet');
-$unlockedNewMem = $vault->unlockWithMemorized($rotatedMem, 'autumn-leaves-quiet');
+$rotatedMem = $vault->setLock($record, $unlocked2, Lock::Memorized, hash('sha256', 'autumn-leaves-quiet'));
+$unlockedNewMem = $vault->unlockWithMemorized($rotatedMem, hash('sha256', 'autumn-leaves-quiet'));
 hash_equals(heldKey($unlockedNewMem), $masterKey1)
     ? ok('new memorized unlocks SAME master key')
     : ko('memorized rotation broke master key');
@@ -331,7 +331,7 @@ $PHRASE = 'cheval agrafe batterie correct moulin ivoire';
 $three  = $vault->register(
     userId: 'user-phrase',
     password: 'phrase-password-0001',
-    memorized: 'sunset-river-marble',
+    memorized: hash('sha256', 'sunset-river-marble'),
     passphrase: $PHRASE
 );
 $rec3 = $three['record'];
@@ -388,7 +388,7 @@ try {
 
 Lock::from('passphrase') === Lock::Passphrase && hash_equals(
     heldKey($three['unlocked']),
-    heldKey($vault->unlock($rec3, Lock::from('memorized'), 'sunset-river-marble'))
+    heldKey($vault->unlock($rec3, Lock::from('memorized'), hash('sha256', 'sunset-river-marble')))
 )
     ? ok('unlock(record, Lock, secret) dispatches on the lock name')
     : ko('unlock() by Lock did not open the vault');
@@ -401,7 +401,7 @@ section('Passphrase — domain separation from the memorized secret');
 // string: the derivations differ, so it must not open.
 $swapped = $rec3->withWrapPhrase($rec3->wrapRecov, new DateTimeImmutable());
 try {
-    $vault->unlockWithPassphrase($swapped, 'sunset-river-marble');
+    $vault->unlockWithPassphrase($swapped, hash('sha256', 'sunset-river-marble'));
     ko('the memorized envelope opens as a passphrase — the two derivations coincide');
 } catch (WrongSecretException) {
     ok('the same string sealed as memorized does not open as passphrase');
@@ -412,7 +412,7 @@ try {
 section('Passphrase — rotation, removal, and the other wraps keep it');
 
 $afterPwd = $vault->setLock($rec3, $byPhrase, Lock::Password, 'phrase-password-0002');
-$afterMem = $vault->setLock($afterPwd, $byPhrase, Lock::Memorized, 'dawn-lake-copper');
+$afterMem = $vault->setLock($afterPwd, $byPhrase, Lock::Memorized, hash('sha256', 'dawn-lake-copper'));
 $afterMem->wrapPhrase?->toBase64() === $rec3->wrapPhrase->toBase64()
     ? ok('setLock() on the password and on the memorized word keeps wrap_phrase')
     : ko('a rotation of another wrap dropped or altered wrap_phrase');
@@ -445,8 +445,8 @@ try {
 
 section('Generation — a session from a replaced vault cannot write into the new one');
 
-$old = $vault->register('user-gen', 'gen-password-0001', 'old-memorized');
-$new = $vault->register('user-gen', 'gen-password-0002', 'new-memorized');
+$old = $vault->register('user-gen', 'gen-password-0001', hash('sha256', 'old-memorized'));
+$new = $vault->register('user-gen', 'gen-password-0002', hash('sha256', 'new-memorized'));
 try {
     $vault->setLock($new['record'], $old['unlocked'], Lock::Password, 'gen-password-0003');
     ko('a session from the old vault re-sealed the new one');
@@ -473,7 +473,7 @@ $MEM = Primitives::ARGON2_MEMLIMIT;
     ? ok('fixture: the other profile differs from the current constants')
     : ko('fixture: the other profile equals the current constants — the section proves nothing');
 
-$base = $vault->register('user-profile', 'profile-password-01', 'profile-memorized');
+$base = $vault->register('user-profile', 'profile-password-01', hash('sha256', 'profile-memorized'));
 $mk   = heldKey($base['unlocked']);
 $seal = new ReflectionMethod(UserVault::class, 'seal');
 $sous = static fn (Lock $l, string $s) => $seal->invoke(
@@ -481,14 +481,14 @@ $sous = static fn (Lock $l, string $s) => $seal->invoke(
 $autre = new VaultRecord(
     userId: 'user-profile', userSalt: $base['record']->userSalt,
     wrapPwd: $sous(Lock::Password, 'profile-password-01'),
-    wrapRecov: $sous(Lock::Memorized, 'profile-memorized'),
+    wrapRecov: $sous(Lock::Memorized, hash('sha256', 'profile-memorized')),
     wrapAdmin: null, createdAt: $base['record']->createdAt, updatedAt: $base['record']->updatedAt,
     kdfOpslimit: $OPS, kdfMemlimit: $MEM
 );
 
 try {
     heldKey($vault->unlockWithPassword($autre, 'profile-password-01')) === $mk
-        && heldKey($vault->unlockWithMemorized($autre, 'profile-memorized')) === $mk
+        && heldKey($vault->unlockWithMemorized($autre, hash('sha256', 'profile-memorized'))) === $mk
         ? ok('both locks open under the profile of the record, not the current constants')
         : ko('the record opened to another master key');
 } catch (Throwable $e) {
@@ -511,7 +511,7 @@ try {
     $rot = $vault->setLock($autre, $vault->unlockWithPassword($autre, 'profile-password-01'), Lock::Password, 'profile-password-02');
     $rot->kdfOpslimit === $OPS && $rot->kdfMemlimit === $MEM
         && heldKey($vault->unlockWithPassword($rot, 'profile-password-02')) === $mk
-        && heldKey($vault->unlockWithMemorized($rot, 'profile-memorized')) === $mk
+        && heldKey($vault->unlockWithMemorized($rot, hash('sha256', 'profile-memorized'))) === $mk
         ? ok('a re-seal keeps the vault\'s profile: the new password and the old memorized wrap both open')
         : ko('the re-seal changed the profile or broke a lock');
 } catch (Throwable $e) {

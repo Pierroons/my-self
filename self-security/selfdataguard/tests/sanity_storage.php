@@ -76,7 +76,7 @@ $blindKey = Primitives::randomBytes(32);
 $result = $vault->register(
     userId: 'user-cosmo',
     password: 'correct horse battery staple',
-    memorized: 'sunset-river-marble'
+    memorized: hash('sha256', 'sunset-river-marble')
 );
 $record = $result['record'];
 $unlocked = $result['unlocked'];

@@ -20,6 +20,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/pepper_fixture.php';
 require __DIR__ . '/key_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
@@ -138,7 +139,7 @@ section('Called with a known key inside, no method gives it back');
 
 $admin = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the key bench');
 $now   = new DateTimeImmutable();
-$built = (new UserVault())->register('user-keys', 'keys-password-0001', 'keys-memorized', 'cheval agrafe batterie correct moulin ivoire');
+$built = (new UserVault())->register('user-keys', 'keys-password-0001', hash('sha256', 'keys-memorized'), 'cheval agrafe batterie correct moulin ivoire');
 $vault = $built['unlocked'];
 $K     = heldKey($vault);
 $S     = (fn (): string => $this->objectionSeed())->call($vault);
@@ -189,7 +190,7 @@ $out   = $bound->sealToKeeper($admin['publicKey']);
     ? ok('UnlockedEscrow::sealToKeeper(): neither the escrow key nor the objection seed is in what it returns')
     : ko('UnlockedEscrow::sealToKeeper() returns the escrow key or the objection seed');
 
-$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32));
+$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $old = $dg->register('user-arch-keys', 'arch-keys-password-01');
 $dg->setFields($old, ['note' => 'archivée']);
 $dg->setEscrowFields($old, $admin['publicKey'], ['contact' => 'secours']);
@@ -231,12 +232,17 @@ foreach ([UnlockedVault::class, UnlockedEscrow::class, UnlockedArchive::class, U
         }
     }
 }
-// The one public method that takes a key: the server's blind-index key, as the
-// façade's constructor takes it. It records a check of it, and hands nothing back.
-$found = array_values(array_diff($found, ['SelfDataGuard::adoptBlindKey($blindKey)']));
+// The public methods that take a key: the server's blind-index key, as the
+// façade's constructor takes it — adoptBlindKey(), which records a check of it,
+// and the operator's passes of the pepper, which check every seal under it
+// before they write. None hands anything back.
+$found = array_values(array_diff($found, [
+    'SelfDataGuard::adoptBlindKey($blindKey)', 'SelfDataGuard::adoptPepper($blindKey)',
+    'SelfDataGuard::pepperStatus($blindKey)', 'SelfDataGuard::unlayPepper($blindKey)',
+]));
 sort($found);
 $found === []
-    ? ok('none does but adoptBlindKey(), which takes the server key as the constructor does — the admin key is unsealed and used inside EscrowCeremony, in private methods')
+    ? ok('none does but adoptBlindKey() and the pepper passes, which take the server key as the constructor does — the admin key is unsealed and used inside EscrowCeremony, in private methods')
     : ko('a public method takes a key', implode(', ', $found));
 
 // -----------------------------------------------------------------------------

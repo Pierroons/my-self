@@ -1113,8 +1113,8 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
-            [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
-            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43
+            [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -2164,6 +2164,44 @@ jobs:
             $D/tests/sanity_conformance.php '❌ account-ids'
           canari $A '                $held === null || $held !== $record->revision' '                false' \
             $D/tests/sanity_conformance.php '❌ replace-archive-vault'
+
+      # Le poivre sur les serrures : une installation neuve scelle natif, la fin de montée
+      # refuse une serrure nue, la passe refuse un autre poivre et scelle un coffre d'avant
+      # 0.7.0, et le mot mémorisé ne se scelle qu'en empreinte. Chaque canari retire une garde.
+      - name: Canaris — le poivre sur les serrures rougit quand on retire une garde
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          LP=$D/src/Vault/LockPepper.php
+          FA=$D/src/SelfDataGuard.php
+          U=$D/tests/sanity_upgrade.php
+          canari $LP '            if ($inner === null && $this->forms === PepperForms::LayeredOnly) {' '            if (false) {' \
+            $U '❌ a bare lock opened once the upgrade was declared over'
+          canari $LP '        if ($this->forms === PepperForms::LayeredOnly) {' '        if (false) {' \
+            $U '❌ the locks of a new vault are not in the forms expected'
+          canari $FA '            if ($this->storage->hasVaults()) {' '            if (false) {' \
+            $U '❌ a database without the pepper recorded was opened, or refused without naming the pass'
+          canari $FA '        if (!hash_equals($pass, $check)) {' '        if (false) {' \
+            $U '❌ a pass under another pepper went on over a pass cut short'
+          canari $FA "            && \$this->pepper->formOf(Lock::Memorized, \$record->wrapRecov, \$userId, \$record->userSalt) !== 'native'" '            && false' \
+            $U '❌ recover() did not seal the locks native'
+          canari $FA '                    $old = $live->profileSeal === null && !ProfileSeal::expected($live);' '                    $old = false;' \
+            $D/tests/sanity_migration.php '❌ the pepper pass left a vault written before 0.7.0 aside'
+          canari $D/src/Vault/UserVault.php "        if (preg_match('/^[0-9a-f]{64}\$/D', \$memorized) !== 1) {" '        if (false) {' \
+            $U '❌ the word itself was sealed'
 
       - name: Canaris — le contrat de stockage de la 0.10.0 rougit quand on retire une garde (2/2)
         run: |

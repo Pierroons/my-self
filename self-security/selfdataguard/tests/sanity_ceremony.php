@@ -13,6 +13,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/pepper_fixture.php';
 
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -38,12 +39,12 @@ $auditSecret = str_repeat('s', 32);
 
 // ── Setup : user + escrow + admin key + litiges ──────────────────────────────
 $storage = new SqliteAdapter("sqlite:{$db}");
-$dg      = new SelfDataGuard($storage, random_bytes(32));
+$dg      = new SelfDataGuard($storage, random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $admin   = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
 file_put_contents($pubFile, $admin['publicKey']);
 file_put_contents($sealFile, $admin['sealedSecret']);
 
-$session = $dg->register('alice', 'motdepasse-fort', 'sentier-brume-rocher');
+$session = $dg->register('alice', 'motdepasse-fort', hash('sha256', 'sentier-brume-rocher'));
 $dg->setEscrowFields($session, $admin['publicKey'], ['contact_secours' => CONTACT]);
 
 $pdo = new PDO("sqlite:{$db}");
@@ -53,7 +54,7 @@ $pdo->exec("INSERT INTO litiges VALUES ('L3-closed','alice','closed')");
 $pdo->exec("INSERT INTO litiges VALUES ('L3-bob','bob','open')");
 
 // bob went through level 3: his old vault, escrow included, is an archive.
-$bob = $dg->register('bob', 'motdepasse-bob-fort', 'bob-memorise');
+$bob = $dg->register('bob', 'motdepasse-bob-fort', hash('sha256', 'bob-memorise'));
 $dg->setEscrowFields($bob, $admin['publicKey'], ['contact_secours' => 'bob-secours@example.org']);
 $bobArchive = $dg->reEnroll($dg->generationOf('bob'), 'motdepasse-bob-neuf')['archiveId'];
 
@@ -294,10 +295,10 @@ file_put_contents($keeperBench, sprintf(
 $kdb    = "{$ws}/escrow-keeper.sqlite";
 $kstore = new SqliteAdapter("sqlite:{$kdb}");
 $kblind = random_bytes(32);
-$kplain = new SelfDataGuard($kstore, $kblind);
+$kplain = new SelfDataGuard($kstore, $kblind, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $frank  = $kplain->register('frank', 'motdepasse-frank-fort');
 $kplain->setEscrowFields($frank, $admin['publicKey'], ['contact_secours' => 'frank-secours@example.org']);
-$kdg  = new SelfDataGuard($kstore, $kblind, keeper: $fileKeeper);
+$kdg  = new SelfDataGuard($kstore, $kblind, keeper: $fileKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly);
 $erin = $kdg->register('erin', 'motdepasse-erin-fort');
 $kdg->setEscrowFields($erin, $admin['publicKey'], ['contact_secours' => 'erin-secours@example.org']);
 $pdo->exec("INSERT INTO litiges VALUES ('K-erin','erin','open')");
