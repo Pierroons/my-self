@@ -1,0 +1,62 @@
+{
+  "profil": {
+    "opslimit": 3,
+    "memlimit": 67108864
+  },
+  "cas": [
+    {
+      "nom": "the inputs of the design review",
+      "poivre_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "sel_compte_hex": "00112233445566778899aabbccddeeff",
+      "mot_de_passe": "correct horse battery",
+      "mot_memorise": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "fichier": "myself-pepper/v1:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\n",
+      "attendu_check": "18f5ec55bbf7a4380f317868a4599b20",
+      "attendu_pre_mot_memorise": "8eaac763fe8715826a46dbdd76ae228473edf4b12599fee77c617f648f20b3ac",
+      "attendu_entree_wrap_pwd": "e92554d2e6faeaf58b12dab12a680a27cc03ea7b3491e994f5de49db853747b7",
+      "attendu_entree_wrap_recov": "ba5aa0fea73210aa66a5d071fd43523d8df8b4329b4f76d90eec5a50846c34e8",
+      "attendu_cle_wrap_pwd": "5ba60530ca8af6bb434bea01be54909443485828b4b38c9be1c7c2498c98c01e",
+      "attendu_cle_wrap_recov": "7850780249b5a2c678123cf305f84471c5721c66d6bae30b89a202ab8dac1d41",
+      "attendu_cle_couche_wrap_pwd": "32f4bc0729b0ddf4387115617ef9db9e8534d06fdc684b6eaf180c74bd997975",
+      "attendu_cle_couche_wrap_recov": "a649bb95e6cd73237156f0ad5096246f97600fd26af4815cdf670b6d1d850bf8"
+    },
+    {
+      "nom": "another pepper, another account",
+      "poivre_hex": "f36465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182",
+      "sel_compte_hex": "a0b1c2d3e4f5061728394a5b6c7d8e9f",
+      "mot_de_passe": "mot de passe à accents",
+      "mot_memorise": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "fichier": "myself-pepper/v1:f36465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182\n",
+      "attendu_check": "f57d884fc15b65804af173cfe6aa7aa2",
+      "attendu_pre_mot_memorise": "23a339c54bc83ee22866151f87ddabc77a6243b32815ed155d57a730b1587f16",
+      "attendu_entree_wrap_pwd": "a104c24d623d54e7dd4e815333cb0eef7cffa44a1e8830cf2e318f69ac9f8663",
+      "attendu_entree_wrap_recov": "f61890f5652927bf11d0cf2bca5e780ebcd03920add6f1adda3918146cf143a2",
+      "attendu_cle_wrap_pwd": "7f86a5a9f8a6d189827979bf26311a91e52de442a1614f4ec301e71b7c579dd5",
+      "attendu_cle_wrap_recov": "0e435c0b3621eb8a02c2faf6da560bb192d57bc02286163a3e4168d9894c43c9",
+      "attendu_cle_couche_wrap_pwd": "88ff359f8ad938ffe1ac709e0df07e50f712f01ee67dbd45306601cf1d914400",
+      "attendu_cle_couche_wrap_recov": "92161399f2bc5633edeafaeb43b6a76806ae1037d59debfa866ebbed956b9263"
+    }
+  ],
+  "refus": {
+    "upper-case hex": {
+      "contenu_hex": "6d7973656c662d7065707065722f76313a303030313032303330343035303630373038303930413042304330443045304631303131313231333134313531363137313831393141314231433144314531460a",
+      "raison": "malformed"
+    },
+    "63 hex": {
+      "contenu_hex": "6d7973656c662d7065707065722f76313a3030313032303330343035303630373038303930613062306330643065306631303131313231333134313531363137313831393161316231633164316531660a",
+      "raison": "malformed"
+    },
+    "a carriage return": {
+      "contenu_hex": "6d7973656c662d7065707065722f76313a303030313032303330343035303630373038303930613062306330643065306631303131313231333134313531363137313831393161316231633164316531660d0a",
+      "raison": "malformed"
+    },
+    "no tag": {
+      "contenu_hex": "303030313032303330343035303630373038303930613062306330643065306631303131313231333134313531363137313831393161316231633164316531660a",
+      "raison": "malformed"
+    },
+    "fewer than 16 distinct bytes": {
+      "contenu_hex": "6d7973656c662d7065707065722f76313a303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730373037303730370a",
+      "raison": "uniform"
+    }
+  }
+}

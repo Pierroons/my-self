@@ -943,6 +943,12 @@ jobs:
       - name: Garde-fou — les vecteurs Argon2id de SelfDataGuard viennent d'une seconde implémentation
         run: python3 self-security/selfdataguard/tests/vecteurs_argon2.py
 
+      # Même garde pour le poivre : sa forme (étiquette, préfixes de longueur, usages,
+      # liaison au sel, grammaire du fichier) est recalculée par hashlib, hmac et
+      # argon2-cffi, et `sanity_pepper.php` la rejoue contre la bibliothèque.
+      - name: Garde-fou — les vecteurs du poivre de SelfDataGuard viennent d'une seconde implémentation
+        run: python3 self-security/selfdataguard/tests/vecteurs_poivre.py
+
       # ── Bancs qui lisent hors de leur module ───────────────────────────────
       # Ces quatre-là assertent sur des chemins que la table range « transverse
       # seul » : l'unité systemd de la purge, les README de SelfModerate et du MCP,
@@ -1108,7 +1114,7 @@ jobs:
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
             [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
-            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -1151,6 +1157,45 @@ jobs:
           canari $D/src/Escrow/AuditLog.php '#[\SensitiveParameter] private readonly string $auditSecret' \
             'private readonly string $auditSecret' \
             $D/tests/sanity_audit.php '❌ auditSecret is readable in the trace of a refused constructor'
+
+      # Le poivre : sa forme ne doit pas dériver de la seconde implémentation, et son
+      # fichier se refuse pour chaque cause nommée. Chaque canari retire une garde ;
+      # le banc doit nommer ce qui passe alors.
+      - name: Canaris — le poivre rougit quand sa forme change ou qu'un refus en sort
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          P=$D/src/Pepper
+          B=$D/tests/sanity_pepper.php
+          canari $P/Pepper.php "self::TAG . \"/input\\0\" . pack('N', strlen(\$binding)) . \$binding" "self::TAG . \"/input\\0\" . \$binding" \
+            $B '❌ the inputs of the design review: pre of the memorized differs from the second implementation'
+          canari $P/Pepper.php 'return self::TAG . "\0" . chr(strlen($usage)) . $usage . $data;' 'return self::TAG . "\0" . $usage . $data;' \
+            $B '❌ the inputs of the design review: check differs from the second implementation'
+          canari $P/LocalPepperFile.php '        if (count(array_unique(str_split($pepper))) < self::DISTINCT_BYTES) {' '        if (false) {' \
+            $B '❌ a pepper file with fewer than 16 distinct bytes was not refused'
+          canari $P/LocalPepperFile.php '        if (($mode & 0o027) !== 0) {' '        if (false) {' \
+            $B '❌ not refused as too-open'
+          canari $P/LocalPepperFile.php "        if (\$root !== false && str_starts_with(\$real, rtrim(\$root, '/') . '/')) {" '        if (false) {' \
+            $B '❌ a file the web server could serve was taken'
+          canari $P/LocalPepperFile.php '        if (is_link($path)) {' '        if (false) {' \
+            $B '❌ a symbolic link was taken for the pepper file'
+          canari $P/LocalPepperFile.php "        return ['key' => '[redacted]'];" '        return get_object_vars($this);' \
+            $B '❌ the pepper is readable in a debug dump'
+          canari $D/bin/pepper.php 'if (file_exists($file) || is_link($file)) {' 'if (false) {' \
+            $B '❌ bin/pepper.php new wrote over a pepper'
 
       # Un témoin dont la réserve prend une tête de quiconque peut y écrire laisse une
       # seule tête forgée fermer toutes les cérémonies. La suite de conformité du témoin
