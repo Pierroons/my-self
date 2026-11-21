@@ -296,6 +296,9 @@ if os.environ["MODE"] == "--publications":
         print("  ✗ aucun dépôt GitHub lisible sur le remote origin")
         sys.exit(2)
     rouges, jaunes, muets, conformes = [], [], [], 0
+    # Le contrôle « la release est-elle dans la branche servie » n'a de sens que pour une release
+    # qui existe : son total se compte donc en chemin, au lieu d'être déduit du manifeste.
+    supplementaires = 0
 
     # Chaque version courante a sa release. Les tags anciens ne sont pas regardés : une release
     # qu'on n'a pas faite en son temps ne se rattrape pas, et la crier chaque matin la rendrait muette.
@@ -310,6 +313,61 @@ if os.environ["MODE"] == "--publications":
             (rouges if jours >= delai else jaunes).append(ligne)
         else:
             muets.append(f"release {attendu} : l'API GitHub a rendu {code or 'rien'}")
+
+    # Le sens inverse, et il manquait : une release PUBLIÉE dont le commit n'est pas dans la
+    # branche servie. Le contrôle ci-dessus ne garde qu'un sens — « la version annoncée a-t-elle
+    # sa release » — et une release EN AVANCE sur l'arbre servi lui est invisible. C'est pourtant
+    # une contradiction publique : mesuré le 21/11/2026, `selfdataguard-v0.9.1` était publiée
+    # depuis la veille sans que son commit soit dans `main`, pendant que le `modules.json` de
+    # `main` annonçait 0.9.0. Les quatre autres releases du moment étaient bien dans `main`. Un
+    # visiteur lisait donc deux versions du même module selon la page ouverte, et le contrôle
+    # restait vert.
+    #
+    # Le délai est celui de tout le fichier : juste après une publication, l'écart est normal —
+    # c'est son INSTALLATION qui ne doit pas durer. Le point de comparaison est la branche servie
+    # et non la branche courante : sur `dev`, toute release est par construction dans l'arbre, et
+    # le contrôle ne dirait rien.
+    servie = os.environ.get("VERSIONS_BRANCHE_SERVIE", "main")
+    ref_servie = next(
+        (r for r in (f"refs/remotes/origin/{servie}", f"refs/heads/{servie}")
+         if subprocess.run(["git", "rev-parse", "--verify", "--quiet", r],
+                           capture_output=True).returncode == 0),
+        None)
+    for m in versionnes:
+        attendu = f"{m['id']}-v{m['version']}"
+        if release_publiee(depot, attendu) != 200:
+            continue                      # son absence est déjà comptée au-dessus
+        supplementaires += 1
+        if ref_servie is None:
+            muets.append(f"release {attendu} : la branche servie « {servie} » est introuvable ici")
+            continue
+        # Le tag peut ne pas être présent localement (un checkout sans tags). Son commit, lui,
+        # est dans l'historique : on demande donc le SHA à la forge quand git ne sait pas résoudre.
+        sha = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{attendu}^{{commit}}"],
+                             capture_output=True, text=True).stdout.strip()
+        if not sha:
+            entetes = {"Accept": "application/vnd.github+json", "User-Agent": "check-versions"}
+            jeton = jeton_github()
+            if jeton:
+                entetes["Authorization"] = f"Bearer {jeton}"
+            chemin = urllib.parse.quote(f"{depot}/commits/{attendu}", safe="/")
+            code, corps = http(f"https://api.github.com/repos/{chemin}", entetes)
+            sha = (json.loads(corps).get("sha") or "") if code == 200 and corps else ""
+        if not sha:
+            muets.append(f"release {attendu} : commit introuvable, ni en local ni par l'API")
+            continue
+        dedans = subprocess.run(["git", "merge-base", "--is-ancestor", sha, ref_servie],
+                                capture_output=True)
+        if dedans.returncode == 0:
+            conformes += 1
+        elif dedans.returncode == 1:
+            jours = int((maintenant - depuis_quand(m["id"], m["version"])) // 86400)
+            ligne = (f"{m['nom']} v{m['version']} : release {attendu} publiée, son commit "
+                     f"{sha[:7]} est absent de {servie} — la forge et la branche servie se "
+                     f"contredisent depuis {jours} jour(s)")
+            (rouges if jours >= delai else jaunes).append(ligne)
+        else:
+            muets.append(f"release {attendu} : git n'a pas pu situer {sha[:7]} dans {servie}")
 
     # Une image déclarée porte la version annoncée.
     for m in (m for m in versionnes if m.get("ghcr")):
@@ -362,6 +420,7 @@ if os.environ["MODE"] == "--publications":
             muets.append(f"{canal} {reference} : le registre n'a pas répondu")
 
     attendus = (len(versionnes)
+                + supplementaires
                 + sum(1 for m in versionnes if m.get("ghcr"))
                 + sum(1 for m in versionnes if m.get("pypi"))
                 + len(retires))

@@ -10,6 +10,23 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Une release publiée hors de la branche servie est désormais vue — 21 novembre 2026
+
+`check-versions.sh --publications` ne gardait qu'un sens : une version annoncée a-t-elle sa release.
+Une release **en avance** sur l'arbre servi lui était invisible, et c'est une contradiction publique.
+Mesuré ce jour : `selfdataguard-v0.9.1`, publiée la veille, n'avait pas son commit dans `main`, pendant
+que le `modules.json` de `main` annonçait 0.9.0 — un visiteur lisait deux versions du même module selon
+la page ouverte, et le contrôle restait vert. Les quatre autres releases du moment étaient dans `main`.
+
+- Le volet `--publications` vérifie maintenant, pour chaque release qui existe, que son commit est un
+  ancêtre de la branche servie — `main` par défaut, `VERSIONS_BRANCHE_SERVIE` pour l'ajuster. Le point
+  de comparaison ne peut pas être la branche courante : sur `dev`, toute release y est par construction.
+- Le délai commun s'applique : l'écart est **jaune** le temps que la promotion ait lieu, rouge au-delà
+  de sept jours. Un écart frais est normal ; c'est son installation qui ne l'est pas.
+- Le commit du tag est résolu en local, et par l'API quand le dépôt a été cloné sans ses tags.
+- Si la branche servie est introuvable, chaque release est déclarée **non établie** au lieu d'être
+  comptée conforme : un contrôle qui ne peut pas mesurer le dit plutôt que de rendre vert.
+
 ### Les CGU et le whitepaper de SelfAct entrent sous contrôle, et le tableau d'architecture revient sur sa source — 21 novembre 2026
 
 `check-versions.sh` rendait vert sur 75 porteurs pendant que SelfAct en annonçait deux autres en 0.1.3 :
