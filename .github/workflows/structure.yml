@@ -1106,9 +1106,9 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=114 [sanity_escrow]=68
+            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
             [sanity_facade]=189 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=43 [sanity_primitives]=56
-            [sanity_storage]=68 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -2077,6 +2077,70 @@ jobs:
             $SC 'ParseInReplaceStorage passed a case it breaks'
           canari $C "                    fn () => \$this->storage->rotateEscrow(\$vault->generation(), \$before, [])," \
             "                    fn () => throw new StaleEscrowException('planted')," $SC 'ParseInRotateStorage passed a case it breaks'
+
+  selfdataguard-9:
+    needs: modules
+    if: needs.modules.outputs.selfdataguard == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - name: Préparer PHP et l'autoload du lab
+        uses: ./.github/actions/preparer-php
+
+      # Le contrat de stockage s'ouvre en 0.10.0 : l'énumération des comptes, la réécriture
+      # du coffre d'une archive, l'écriture étroite sous gel, et deux révisions gardées. Deux
+      # canaris de la conformité par étape : une passe de `sanity_conformance.php` coûte
+      # ~180 s (mesuré le 21/11/2026), et `check-canaris.sh` borne chaque étape à 900 s.
+      - name: Canaris — le contrat de stockage de la 0.10.0 rougit quand on retire une garde (1/2)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          A=$D/src/Storage/SqliteAdapter.php
+          canari $A "        if (array_key_exists('revision_type', \$row) && (" "        if (false && (" \
+            $D/tests/sanity_storage.php '❌ a live revision rewritten as a text was read'
+          canari $A '        return is_int($raw) && $raw >= 0 && $raw < PHP_INT_MAX ? $raw : null;' '        return (int) $raw;' \
+            $D/tests/sanity_storage.php '❌ an archived escrow revision rewritten as a real was taken for 1, and written over'
+          canari $A '             ORDER BY 1 LIMIT :limit' '             ORDER BY 1 COLLATE NOCASE LIMIT :limit' \
+            $D/tests/sanity_conformance.php '❌ account-ids'
+          canari $A '                $held === null || $held !== $record->revision' '                false' \
+            $D/tests/sanity_conformance.php '❌ replace-archive-vault'
+
+      - name: Canaris — le contrat de stockage de la 0.10.0 rougit quand on retire une garde (2/2)
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          canari $D/src/Storage/SqliteAdapter.php ' AND revision = :rev AND frozen_by IS NOT NULL'"'" " AND revision = :rev'" \
+            $D/tests/sanity_conformance.php '❌ frozen-vault-takes-its-locks'
+          canari $D/src/Storage/Conformance.php "            'account-ids'                   => 'accountIdsCase'," '' \
+            $D/tests/sanity_conformance.php 'LiveOnlyAccountIdsStorage passed a case it breaks'
 
   selfrecover-1:
     needs: modules
@@ -5506,6 +5570,7 @@ jobs:
       - selfdataguard-6
       - selfdataguard-7
       - selfdataguard-8
+      - selfdataguard-9
       - selfrecover-1
       - selfrecover-2
       - selfrecover-3

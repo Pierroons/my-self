@@ -564,6 +564,76 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('revision — one the next write cannot compare or bump is refused, live and archived');
+
+$revDb = sys_get_temp_dir() . '/selfdataguard-rev-' . bin2hex(random_bytes(4)) . '.sqlite';
+register_shutdown_function(static fn () => @unlink($revDb));
+$revPdo = new PDO("sqlite:{$revDb}");
+$revPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$revStore = new SqliteAdapter($revPdo);
+$revStore->saveVault((new UserVault())->register('user-rev-type', 'rev-type-password-1')['record']);
+foreach (['a text' => "'un'", 'a real' => '1.5', 'a blob' => "x'01'", 'the largest integer' => (string) PHP_INT_MAX] as $what => $sql) {
+    $revPdo->exec("UPDATE selfdataguard_vaults SET revision = {$sql} WHERE user_id = 'user-rev-type'");
+    try {
+        $revStore->loadVault('user-rev-type');
+        ko("a live revision rewritten as {$what} was read: the next write is refused as stale, or overflows");
+    } catch (RuntimeException $e) {
+        str_contains($e->getMessage(), 'Corrupted revision')
+            ? ok("a live revision rewritten as {$what} is refused at the read, which names it")
+            : ko("a live revision rewritten as {$what} was refused for another reason", $e->getMessage());
+    }
+}
+$revPdo->exec("UPDATE selfdataguard_vaults SET revision = 0 WHERE user_id = 'user-rev-type'");
+$revGen = $revStore->loadVault('user-rev-type')->generation();
+$revStore->createEscrow($revGen, new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
+    'user-rev-type',
+    Primitives::encrypt(Primitives::randomBytes(32), Primitives::randomBytes(32), Pierroons\SelfDataGuard\Crypto\Aad::of('bench')),
+    'sealed-to-admin',
+    new DateTimeImmutable(),
+    new DateTimeImmutable()
+));
+$revArchive = $revStore->replaceWithArchive($revGen, (new UserVault())->register('user-rev-type', 'rev-type-password-2')['record']);
+$packageRevision = static function (string $part, mixed $revision) use ($revPdo, $revArchive): void {
+    $package = json_decode((string) $revPdo->query("SELECT package FROM selfdataguard_archives WHERE archive_id = '{$revArchive}'")->fetchColumn(), true);
+    $package[$part]['revision'] = $revision;
+    $package['fields']['private'] = (object) $package['fields']['private'];
+    $package['fields']['escrow']  = (object) $package['fields']['escrow'];
+    $revPdo->prepare('UPDATE selfdataguard_archives SET package = ? WHERE archive_id = ?')->execute([json_encode($package), $revArchive]);
+};
+$archivedAt = static function (int $revision) use ($revStore, $revArchive): Pierroons\SelfDataGuard\Vault\VaultRecord {
+    $r = $revStore->loadArchive('user-rev-type', $revArchive)->record;
+    return new Pierroons\SelfDataGuard\Vault\VaultRecord(
+        userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov, wrapAdmin: $r->wrapAdmin,
+        createdAt: $r->createdAt, updatedAt: $r->updatedAt, wrapPhrase: $r->wrapPhrase, revision: $revision,
+        kdfOpslimit: $r->kdfOpslimit, kdfMemlimit: $r->kdfMemlimit, profileSeal: $r->profileSeal
+    );
+};
+$escrow = $revStore->loadArchive('user-rev-type', $revArchive)->escrow;
+foreach (['a real' => 1.5, 'a boolean' => true] as $what => $revision) {
+    $packageRevision('escrow', $revision);
+    try {
+        $revStore->replaceArchiveEscrow('user-rev-type', $revArchive, new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
+            'user-rev-type', $escrow->wrapUser, 'resealed', $escrow->createdAt, new DateTimeImmutable(), 1
+        ));
+        ko("an archived escrow revision rewritten as {$what} was taken for 1, and written over");
+    } catch (Pierroons\SelfDataGuard\Escrow\StaleEscrowException) {
+        ok("an archived escrow revision rewritten as {$what} does not match 1: StaleEscrowException");
+    }
+    $packageRevision('vault', $revision);
+    try {
+        $revStore->replaceArchiveVault('user-rev-type', $revArchive, $archivedAt(1));
+        ko("an archived vault revision rewritten as {$what} was taken for 1, and written over");
+    } catch (StaleVaultException) {
+        ok("an archived vault revision rewritten as {$what} does not match 1: StaleVaultException");
+    }
+}
+$packageRevision('vault', 0);
+$revStore->replaceArchiveVault('user-rev-type', $revArchive, $archivedAt(0)) === 1
+    ? ok('an archived vault revision that is an integer is compared and bumped: 0, then 1')
+    : ko('an integer archived revision was not bumped');
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Phase 4 Sanity — {$passes} passed, {$failures} failed\n";

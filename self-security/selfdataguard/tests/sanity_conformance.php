@@ -210,6 +210,11 @@ $broken = [
     'TicketTakingEraseArchiveStorage'  => ['erase-account-keeps-tickets'],
     'LiveListingKeptStorage'           => ['erase-account-keeps-tickets'],
     'FrozenArchiveDeletingStorage'     => ['freeze-refuses-writes'],
+    LiveOnlyAccountIdsStorage::class   => ['account-ids'],
+    CaseFoldedAccountIdsStorage::class => ['account-ids'],
+    ArchiveVaultRevisionBlindStorage::class => ['replace-archive-vault'],
+    FrozenProfileWritingStorage::class => ['frozen-vault-takes-its-locks'],
+    FrozenLocksOnLiveStorage::class    => ['frozen-vault-takes-its-locks'],
 ];
 foreach ($broken as $class => $expected) {
     if (!class_exists($class)) {

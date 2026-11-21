@@ -60,6 +60,9 @@ abstract class DelegatingStorage implements StorageInterface
     public function loadSetting(string $n): ?string { return $this->inner->loadSetting($n); }
     public function hasVaults(): bool { return $this->inner->hasVaults(); }
     public function indexedFields(): array { return $this->inner->indexedFields(); }
+    public function accountIds(string $a = '', int $l = 500): array { return $this->inner->accountIds($a, $l); }
+    public function replaceArchiveVault(string $u, string $id, VaultRecord $r): int { return $this->inner->replaceArchiveVault($u, $id, $r); }
+    public function updateFrozenLocks(VaultRecord $r): int { return $this->inner->updateFrozenLocks($r); }
 }
 
 /** $record with its revision, or its Argon2id profile, replaced. */
@@ -1107,5 +1110,62 @@ if (interface_exists(ErasesArchives::class)) {
                 $st->fetchAll(PDO::FETCH_ASSOC)
             );
         }
+    }
+}
+
+/** accountIds() of the live vaults only: an account that holds nothing but an archive is never walked. */
+final class LiveOnlyAccountIdsStorage extends DelegatingStorage
+{
+    public function accountIds(string $a = '', int $l = 500): array
+    {
+        return array_values(array_filter($this->inner->accountIds($a, $l), fn (string $u): bool => $this->inner->vaultExists($u)));
+    }
+}
+
+/** accountIds() in an order that folds case: "a" comes before "B". */
+final class CaseFoldedAccountIdsStorage extends DelegatingStorage
+{
+    public function accountIds(string $a = '', int $l = 500): array
+    {
+        $all = array_values(array_filter($this->inner->accountIds('', PHP_INT_MAX), static fn (string $u): bool => strcasecmp($u, $a) > 0));
+        usort($all, 'strcasecmp');
+        return array_slice($all, 0, $l);
+    }
+}
+
+/** replaceArchiveVault() over whatever revision the archive holds: a replacement from a stale read wins. */
+final class ArchiveVaultRevisionBlindStorage extends DelegatingStorage
+{
+    public function replaceArchiveVault(string $u, string $id, VaultRecord $r): int
+    {
+        $held = $this->inner->loadArchive($u, $id)?->record;
+        return $this->inner->replaceArchiveVault($u, $id, $held === null ? $r : recordWith($r, revision: $held->revision));
+    }
+}
+
+/** updateFrozenLocks() as a whole update under a lifted freeze: the profile is written too. */
+final class FrozenProfileWritingStorage extends DelegatingStorage
+{
+    public function updateFrozenLocks(VaultRecord $r): int
+    {
+        $state = $this->inner->frozenState($r->userId);
+        if ($state === null) {
+            return $this->inner->updateFrozenLocks($r);
+        }
+        $this->inner->unfreezeVault($r->generation());
+        try {
+            return $this->inner->updateVault($r);
+        } finally {
+            $this->inner->freezeVault($r->generation(), $state['by'], $state['at']);
+        }
+    }
+}
+
+/** updateFrozenLocks() of a vault that is not frozen writes it as updateVault() would. */
+final class FrozenLocksOnLiveStorage extends DelegatingStorage
+{
+    public function updateFrozenLocks(VaultRecord $r): int
+    {
+        return $this->inner->frozenState($r->userId) === null ? $this->inner->updateVault($r) : $this->inner->updateFrozenLocks($r);
     }
 }

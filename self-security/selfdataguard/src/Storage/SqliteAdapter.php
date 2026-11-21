@@ -599,6 +599,23 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
         return $out;
     }
 
+    public function accountIds(string $after = '', int $limit = 500): array
+    {
+        if ($limit < 1) {
+            throw new InvalidArgumentException("accountIds() takes a limit of at least 1, got {$limit}");
+        }
+        $stmt = $this->pdo->prepare(
+            'SELECT user_id FROM selfdataguard_vaults WHERE user_id > :after
+             UNION
+             SELECT user_id FROM selfdataguard_archives WHERE user_id > :after
+             ORDER BY 1 LIMIT :limit'
+        );
+        $stmt->bindValue(':after', $after);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     public function listArchives(string $userId): array
     {
         // The locks are read from the package, the bytes an opening uses and the
@@ -693,8 +710,8 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
             if (!is_array($package['escrow'] ?? null)) {
                 throw new EscrowNotFoundException("The archive '{$archiveId}' of '{$userId}' holds no escrow");
             }
-            $held = (int) ($package['escrow']['revision'] ?? 0);
-            if ($held !== $record->revision) {
+            $held = self::packageRevision($package['escrow']['revision'] ?? 0);
+            if ($held === null || $held !== $record->revision) {
                 throw new StaleEscrowException(
                     "The escrow of archive '{$archiveId}' was replaced since this record was read — reload it"
                 );
@@ -714,6 +731,67 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
                 ':id'  => $archiveId,
             ]);
         });
+    }
+
+    public function replaceArchiveVault(string $userId, string $archiveId, VaultRecord $record): int
+    {
+        if ($record->userId !== $userId) {
+            throw new InvalidArgumentException('The vault record belongs to another userId than the archive');
+        }
+        return $this->atomic(function () use ($userId, $archiveId, $record): int {
+            $stmt = $this->pdo->prepare(
+                'SELECT archive_id, package FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
+            );
+            $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+            $row = $stmt->fetch();
+            $stmt->closeCursor();
+            if ($row === false) {
+                throw new VaultNotFoundException("No archive '{$archiveId}' for userId '{$userId}'");
+            }
+            $package = $this->readablePackage($row, $userId);
+            $vault   = is_array($package['vault'] ?? null) ? $package['vault'] : [];
+            $held    = self::packageRevision($vault['revision'] ?? 0);
+            if (
+                $held === null || $held !== $record->revision
+                || !hash_equals((string) ($vault['user_salt'] ?? ''), base64_encode($record->userSalt))
+            ) {
+                throw new StaleVaultException(
+                    "The vault of archive '{$archiveId}' is another one, or was replaced since this record was read — reload it"
+                );
+            }
+            $package['vault'] = [
+                'wrap_pwd'     => $record->wrapPwd->toBase64(),
+                'wrap_recov'   => $record->wrapRecov?->toBase64(),
+                'wrap_phrase'  => $record->wrapPhrase?->toBase64(),
+                'kdf_opslimit' => $record->kdfOpslimit,
+                'kdf_memlimit' => $record->kdfMemlimit,
+                'profile_seal' => $record->profileSeal === null ? null : base64_encode($record->profileSeal),
+                'updated_at'   => $record->updatedAt->format('c'),
+                'revision'     => $held + 1,
+            ] + $vault;
+            $package['kdf'] = ['opslimit' => $record->kdfOpslimit, 'memlimit' => $record->kdfMemlimit];
+            $package['fields']['private'] = (object) $package['fields']['private'];
+            $package['fields']['escrow']  = (object) $package['fields']['escrow'];
+            $this->pdo->prepare('UPDATE selfdataguard_archives SET package = :pkg, locks = :locks WHERE archive_id = :id')->execute([
+                ':pkg'   => json_encode($package, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($package['vault']))),
+                ':id'    => $archiveId,
+            ]);
+            return $held + 1;
+        });
+    }
+
+    /**
+     * A revision kept in an archive package, when it is one the next write can
+     * bump: an integer — a string of digits, as an older PDO fetched it —,
+     * never a real or a boolean, which a cast would turn into one.
+     */
+    private static function packageRevision(mixed $raw): ?int
+    {
+        if (is_string($raw) && preg_match('/^\d{1,19}$/', $raw) === 1) {
+            $raw = filter_var($raw, FILTER_VALIDATE_INT);
+        }
+        return is_int($raw) && $raw >= 0 && $raw < PHP_INT_MAX ? $raw : null;
     }
 
     public function deleteArchive(VaultGeneration $generation, string $archiveId): bool
@@ -783,6 +861,37 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
             $stmt->execute([':uid' => $generation->userId]);
             return $stmt->rowCount() > 0;
         });
+    }
+
+    public function updateFrozenLocks(VaultRecord $record): int
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE selfdataguard_vaults
+             SET wrap_pwd = :wp, wrap_recov = :wr, wrap_phrase = :wph, profile_seal = :ps, updated_at = :ua,
+                 revision = revision + 1
+             WHERE user_id = :uid AND user_salt = :salt AND revision = :rev AND frozen_by IS NOT NULL'
+        );
+        $stmt->execute([
+            ':uid'  => $record->userId,
+            ':salt' => base64_encode($record->userSalt),
+            ':rev'  => $record->revision,
+            ':wp'   => $record->wrapPwd->toBase64(),
+            ':wr'   => $record->wrapRecov?->toBase64(),
+            ':wph'  => $record->wrapPhrase?->toBase64(),
+            ':ps'   => $record->profileSeal === null ? null : base64_encode($record->profileSeal),
+            ':ua'   => $record->updatedAt->format('c'),
+        ]);
+        if ($stmt->rowCount() === 0) {
+            $row = $this->fetchVaultRow($record->userId)
+                ?? throw new VaultNotFoundException("Vault not found for userId '{$record->userId}'");
+            if ($row['user_salt'] === base64_encode($record->userSalt) && $this->frozenState($record->userId) === null) {
+                throw new \LogicException("The vault of '{$record->userId}' is not frozen: updateVault() writes it");
+            }
+            throw new StaleVaultException(
+                "Vault for userId '{$record->userId}' changed or was replaced since this record was read — reload it"
+            );
+        }
+        return $record->revision + 1;
     }
 
     public function archiveOfTicket(string $ticket): ?string
@@ -1031,7 +1140,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
             $escrowFields[(string) $f['field_name']] = $f['ciphertext'];
         }
 
-        unset($vault['user_id']);
+        unset($vault['user_id'], $vault['revision_type']);
         return json_encode([
             'format' => self::ARCHIVE_FORMAT,
             'kdf'    => ['opslimit' => (int) $vault['kdf_opslimit'], 'memlimit' => (int) $vault['kdf_memlimit']],
@@ -1624,6 +1733,15 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
         if ($salt === false) {
             throw new RuntimeException('Corrupted user_salt in DB (invalid base64)');
         }
+        // The live row (`revision_type`): the write compares the revision in
+        // SQL, where a text, a blob or a real equals no integer, and bumps it,
+        // which the largest integer does not survive.
+        if (array_key_exists('revision_type', $row) && (
+            $row['revision_type'] !== 'integer'
+            || filter_var($row['revision'], FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]]) === false
+        )) {
+            throw new RuntimeException('Corrupted revision in DB (not an integer the next write can bump)');
+        }
         return new VaultRecord(
             userId:    (string) $row['user_id'],
             userSalt:  $salt,
@@ -1719,7 +1837,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
     {
         $stmt = $this->pdo->prepare(
             'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision,
-                    kdf_opslimit, kdf_memlimit, profile_seal
+                    kdf_opslimit, kdf_memlimit, profile_seal, typeof(revision) AS revision_type
              FROM selfdataguard_vaults WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);

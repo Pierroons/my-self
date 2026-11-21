@@ -268,6 +268,23 @@ interface StorageInterface
     public function replaceArchiveEscrow(string $userId, string $archiveId, EscrowRecord $record): void;
 
     /**
+     * Replace the vault envelopes of archive $archiveId with those of $record —
+     * wrap_pwd, wrap_recov, wrap_phrase, the profile and the profileSeal —, the
+     * same vault set in other envelopes: an archive has no session, so this is
+     * how the operator's pass lays a new envelope over an archived lock.
+     * Nothing else of the archive changes — its user_salt, its fields, its
+     * escrow. Writes only where the archived vault still has $record's
+     * user_salt and revision, and bumps the revision, compared inside the
+     * write's own transaction; a revision the next write cannot bump does not
+     * match.
+     *
+     * @return int the revision now stored, the record's plus one
+     * @throws VaultNotFoundException if $userId has no such archive
+     * @throws StaleVaultException    if the archived vault is another one, or was replaced since $record was read
+     */
+    public function replaceArchiveVault(string $userId, string $archiveId, VaultRecord $record): int;
+
+    /**
      * Delete one archive, while the live vault is still the one $generation
      * names. False if it does not exist or belongs to another userId.
      */
@@ -333,6 +350,21 @@ interface StorageInterface
     public function unfreezeVault(VaultGeneration $generation, ?string $ticket = null): bool;
 
     /**
+     * The one write a frozen vault takes: its lock envelopes — wrap_pwd,
+     * wrap_recov, wrap_phrase — and its profileSeal, from $record. Nothing
+     * else of the row is written, the profile and wrap_admin included,
+     * whatever $record carries there. Applies only where the vault is frozen
+     * and user_salt AND revision still match the record's, compared in the
+     * same statement, and bumps the revision, as updateVault() does.
+     *
+     * @return int the revision now stored, the record's plus one
+     * @throws VaultNotFoundException if the userId holds no live vault
+     * @throws StaleVaultException    if the vault was replaced or updated since the record was read
+     * @throws \LogicException        if the vault is not frozen: updateVault() writes it
+     */
+    public function updateFrozenLocks(VaultRecord $record): int;
+
+    /**
      * The archive replaceWithArchive() set aside under $ticket; null when no
      * re-enrolment applied that ticket. Never writes.
      */
@@ -381,6 +413,17 @@ interface StorageInterface
      * @return array<string, bool>
      */
     public function indexedFields(): array;
+
+    /**
+     * Every userId that holds a live vault or an archive, each once, in byte
+     * order, strictly after $after, at most $limit of them. A list shorter
+     * than $limit is the last one; the next page starts after the last userId
+     * returned. Never writes.
+     *
+     * @return list<string>
+     * @throws \InvalidArgumentException if $limit is below 1
+     */
+    public function accountIds(string $after = '', int $limit = 500): array;
 
     /**
      * Erase the account, in one transaction: the live vault, its fields and

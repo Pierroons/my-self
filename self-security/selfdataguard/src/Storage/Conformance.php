@@ -186,7 +186,9 @@ final class Conformance
             'erase-account-keeps-recovery-archives' => 'eraseKeepsRecoveryArchives',
             'erase-account-keeps-tickets'   => 'eraseKeepsTickets',
             'replace-archive-escrow'        => 'replaceArchiveEscrowCase',
+            'replace-archive-vault'         => 'replaceArchiveVaultCase',
             'freeze-refuses-writes'         => 'freezeRefusesWrites',
+            'frozen-vault-takes-its-locks'  => 'frozenVaultTakesItsLocks',
             'tickets-applied-once'          => 'ticketsAppliedOnce',
             'concurrent-updates'            => 'concurrentUpdates',
             'concurrent-re-enrolments'      => 'concurrentReEnrolments',
@@ -199,6 +201,7 @@ final class Conformance
             'setting-replaced-over-expected' => 'settingReplacedOverExpected',
             'has-vaults'                    => 'hasVaultsCase',
             'indexed-fields'                => 'indexedFieldsCase',
+            'account-ids'                   => 'accountIdsCase',
             'concurrent-setting-claims'     => 'concurrentSettingClaims',
             'concurrent-setting-replacements' => 'concurrentSettingReplacements',
         ];
@@ -1118,6 +1121,117 @@ final class Conformance
     }
 
     /**
+     * An archived vault takes new lock envelopes, at the next revision, and
+     * nothing else of the archive changes; brought back live, it carries them.
+     */
+    private function replaceArchiveVaultCase(): ?string
+    {
+        $vault = $this->newVault('archive-vault');
+        $this->storage->saveVault($vault);
+        $this->fill($vault);
+        $live = $this->newVault('archive-vault');
+        $archiveId = $this->storage->replaceWithArchive($vault->generation(), $live);
+        $archived = $this->storage->loadArchive($vault->userId, $archiveId)
+            ?? throw new RuntimeException('loadArchive() lost the archive replaceWithArchive() made');
+
+        $relaid = $this->relaid($archived->record);
+        $revision = $this->storage->replaceArchiveVault($vault->userId, $archiveId, $relaid);
+        $after = $this->storage->loadArchive($vault->userId, $archiveId);
+        $this->assert(
+            $revision === $archived->record->revision + 1 && $after?->record->revision === $revision,
+            'replaceArchiveVault() did not store the archived vault at the next revision'
+        );
+        $this->assertSameVault($relaid, $after->record, 'the archived vault after replaceArchiveVault()', ignoreRevision: true);
+        $this->assert(
+            $after->privateFields === $archived->privateFields && $after->escrowFields === $archived->escrowFields
+                && $after->escrow?->wrapAdmin === $archived->escrow?->wrapAdmin
+                && $after->escrow?->revision === $archived->escrow?->revision,
+            'replaceArchiveVault() changed more of the archive than its vault envelopes'
+        );
+        $this->expect(
+            StaleVaultException::class,
+            fn () => $this->storage->replaceArchiveVault($vault->userId, $archiveId, $this->relaid($archived->record)),
+            'a replacement of an archived vault from a record read before the last one'
+        );
+        $this->expect(
+            StaleVaultException::class,
+            fn () => $this->storage->replaceArchiveVault(
+                $vault->userId,
+                $archiveId,
+                $this->withSalt($this->relaid($after->record), Primitives::randomBytes(Primitives::SALT_LEN))
+            ),
+            'a replacement of an archived vault by the record of another vault'
+        );
+        $this->assertSameVault($relaid, $this->storage->loadArchive($vault->userId, $archiveId)?->record
+            ?? throw new RuntimeException('the archive is gone after a refused replacement'), 'the archived vault after two refused replacements', ignoreRevision: true);
+        $this->expect(
+            VaultNotFoundException::class,
+            fn () => $this->storage->replaceArchiveVault($vault->userId, 'no-such-archive', $this->relaid($after->record)),
+            'replaceArchiveVault() of an archive that does not exist'
+        );
+        $stranger = $this->id('archive-vault-stranger');
+        $this->expect(
+            VaultNotFoundException::class,
+            fn () => $this->storage->replaceArchiveVault($stranger, $archiveId, $this->vaultFor($stranger)),
+            "replaceArchiveVault() of another account's archive"
+        );
+
+        $this->storage->swapWithArchive($live->generation(), $archiveId);
+        $this->assertSameVault($relaid, $this->storage->loadVault($vault->userId), 'the archive brought back live', ignoreRevision: true);
+        return null;
+    }
+
+    /**
+     * A frozen vault takes one write — its lock envelopes and its seal, none
+     * of the rest of the row —, and a vault that is not frozen refuses it.
+     */
+    private function frozenVaultTakesItsLocks(): ?string
+    {
+        $vault = $this->newVault('frozen-locks', withPhrase: true);
+        $this->storage->saveVault($vault);
+        $read = $this->storage->loadVault($vault->userId);
+        $this->expect(
+            \LogicException::class,
+            fn () => $this->storage->updateFrozenLocks($this->relaid($read)),
+            'updateFrozenLocks() of a vault that is not frozen'
+        );
+        $this->assertSameVault($vault, $this->storage->loadVault($vault->userId), 'a vault after a refused updateFrozenLocks()');
+
+        $this->storage->freezeVault($read->generation(), 'conformance', new DateTimeImmutable());
+        $relaid = $this->relaid($read);
+        $revision = $this->storage->updateFrozenLocks($relaid);
+        $after = $this->storage->loadVault($vault->userId);
+        $this->assert(
+            $revision === $read->revision + 1 && $after->revision === $revision,
+            'updateFrozenLocks() did not store the vault at the next revision'
+        );
+        $this->assertSameVault(
+            $relaid->withProfile($read->kdfOpslimit, $read->kdfMemlimit),
+            $after,
+            'a frozen vault after updateFrozenLocks() — its locks and seal written, its profile kept',
+            ignoreRevision: true
+        );
+        $this->assert($this->storage->frozenState($vault->userId) !== null, 'updateFrozenLocks() lifted the freeze');
+        $this->expect(
+            StaleVaultException::class,
+            fn () => $this->storage->updateFrozenLocks($relaid),
+            'updateFrozenLocks() from a record read before the last write'
+        );
+        $this->expect(
+            VaultFrozenException::class,
+            fn () => $this->storage->updateVault($after),
+            'updateVault() of a frozen vault, once updateFrozenLocks() wrote it'
+        );
+        $stranger = $this->id('frozen-locks-stranger');
+        $this->expect(
+            VaultNotFoundException::class,
+            fn () => $this->storage->updateFrozenLocks($this->vaultFor($stranger)),
+            'updateFrozenLocks() of a userId that holds no vault'
+        );
+        return null;
+    }
+
+    /**
      * A frozen vault reads, and refuses every write of the contract that names
      * it — eraseAccount() of its userId, and eraseArchive() on a storage that
      * implements ErasesArchives, included —, leaving everything as it was.
@@ -1360,6 +1474,53 @@ final class Conformance
         $this->storage->replaceWithArchive($vault->generation(), $live = $this->newVault('has'));
         $this->storage->deleteVault($live->generation());
         $this->assert(!$empty || $this->storage->hasVaults(), 'hasVaults() is false on a database that keeps only an archive');
+        return null;
+    }
+
+    /**
+     * Every userId with a live vault or an archive, once, in byte order, page
+     * after page: a collation that folds case or follows a locale puts "a"
+     * before "B", and a pass that walks the pages skips or repeats accounts.
+     */
+    private function accountIdsCase(): ?string
+    {
+        $expected = [];
+        foreach (['B', 'a', 'ab', 'é'] as $label) {
+            $vault = $this->newVault("ids-{$label}");
+            $this->storage->saveVault($vault);
+            $expected[] = $vault->userId;
+        }
+        $both = $this->newVault('ids-both');
+        $this->storage->saveVault($both);
+        $this->storage->replaceWithArchive($both->generation(), $this->vaultFor($both->userId));
+        $expected[] = $both->userId;
+        $archived = $this->newVault('ids-archived');
+        $this->storage->saveVault($archived);
+        $next = $this->vaultFor($archived->userId);
+        $this->storage->replaceWithArchive($archived->generation(), $next);
+        $this->storage->deleteVault($next->generation());
+        $expected[] = $archived->userId;
+        sort($expected, SORT_STRING);
+
+        $mine  = "{$this->prefix}-ids-";
+        $seen  = [];
+        $after = $mine;
+        for ($pages = 0; $pages < count($expected) + 2; $pages++) {
+            $page = $this->storage->accountIds($after, 2);
+            $this->assert(count($page) <= 2, 'accountIds() returned more userIds than its limit');
+            $ours = array_values(array_filter($page, static fn (string $u): bool => str_starts_with($u, $mine)));
+            $seen = [...$seen, ...$ours];
+            if (count($page) < 2 || count($ours) < count($page)) {
+                break;
+            }
+            $after = (string) end($page);
+        }
+        $this->assert(
+            $seen === $expected,
+            'accountIds() did not return each userId with a live vault or an archive once, in byte order, page after page: got '
+                . json_encode($seen, JSON_UNESCAPED_UNICODE)
+        );
+        $this->expect(\InvalidArgumentException::class, fn () => $this->storage->accountIds('', 0), 'accountIds() with a limit of 0');
         return null;
     }
 
@@ -1681,6 +1842,19 @@ final class Conformance
             wrapAdmin: $record->wrapAdmin, createdAt: $record->createdAt, updatedAt: $record->updatedAt,
             wrapPhrase: $record->wrapPhrase, revision: $record->revision,
             kdfOpslimit: $record->kdfOpslimit, kdfMemlimit: $record->kdfMemlimit, profileSeal: $record->profileSeal
+        );
+    }
+
+    /** The same vault in new lock envelopes, under another profile and seal. */
+    private function relaid(VaultRecord $record): VaultRecord
+    {
+        return new VaultRecord(
+            userId: $record->userId, userSalt: $record->userSalt, wrapPwd: $this->blob(),
+            wrapRecov: $record->wrapRecov === null ? null : $this->blob(), wrapAdmin: $record->wrapAdmin,
+            createdAt: $record->createdAt, updatedAt: new DateTimeImmutable(),
+            wrapPhrase: $record->wrapPhrase === null ? null : $this->blob(), revision: $record->revision,
+            kdfOpslimit: $record->kdfOpslimit + 1, kdfMemlimit: $record->kdfMemlimit + 1,
+            profileSeal: Primitives::randomBytes(32)
         );
     }
 

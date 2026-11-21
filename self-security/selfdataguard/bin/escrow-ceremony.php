@@ -81,6 +81,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
 use Pierroons\SelfDataGuard\Escrow\HeadWitness;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 
 function envOrDie(string $key): string
@@ -262,8 +263,21 @@ if ($cmd === 'seal-to-keeper') {
     if ($comptes === []) {
         $pdo = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $comptes = $pdo->query('SELECT user_id FROM selfdataguard_escrow UNION SELECT user_id FROM selfdataguard_archives ORDER BY 1')
-            ->fetchAll(PDO::FETCH_COLUMN);
+        $stockage = new SqliteAdapter($pdo);
+        // Les comptes qui portent un séquestre, lisible ou non, ou une archive :
+        // la passe n'a rien à sceller chez les autres.
+        for ($apres = ''; ($page = $stockage->accountIds($apres)) !== []; $apres = (string) end($page)) {
+            foreach ($page as $compte) {
+                try {
+                    $aSceller = $stockage->loadEscrow($compte) !== null || $stockage->listArchives($compte) !== [];
+                } catch (UnreadableEscrowException) {
+                    $aSceller = true;
+                }
+                if ($aSceller) {
+                    $comptes[] = $compte;
+                }
+            }
+        }
     }
     $ceremony = ceremonie($auditLog, operatorContext());
     $gele = 0;
