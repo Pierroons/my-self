@@ -4,9 +4,9 @@
 # 🔑 **Pourquoi ce contrôle existe.** nginx ne FUSIONNE pas les `add_header` :
 # un seul `add_header` déclaré dans un bloc `location` annule tous ceux du bloc
 # `server` pour ce chemin. Le vhost de bi-self hérite ses en-têtes d'un fragment
-# posé au niveau `server`, et il compte huit blocs `location` : il suffit qu'un
-# seul d'entre eux pose un en-tête un jour pour que ses routes sortent nues. Rien
-# ne le signale — la page s'affiche, elle sort simplement sans ses protections.
+# posé au niveau `server` : il suffit qu'un seul de ses blocs `location` pose un
+# en-tête un jour pour que ses routes sortent nues. Rien ne le signale — la page
+# s'affiche, elle sort simplement sans ses protections.
 #
 # ⚠️ **Il interroge l'instance, pas le dépôt.** Il ne peut donc pas tourner en
 # intégration continue, et il ne remplace pas `scripts/check-vhost.sh`, qui juge
@@ -63,7 +63,7 @@ echo
 # Une route par bloc `location` du vhost, parce que c'est le bloc qui décide.
 # ⚠️ `/demo/api/events` est un flux que le serveur tient ouvert : la requête est
 # bornée dans le temps, sinon ce contrôle occuperait lui-même un ouvrier du
-# groupe dédié — qui n'en compte que deux.
+# groupe dédié, dont `deploy/bi-self/php-fpm-flux.conf` fixe le nombre.
 ROUTES=(
     "/"                             "location /"
     "/index.html"                   "bloc expires"

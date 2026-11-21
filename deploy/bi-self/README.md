@@ -67,16 +67,16 @@ gabarit, et il sait tourner par SSH sur un hôte qui a nginx
      (`limit_conn biself_flux 1`, et le groupe dédié n'a que deux ouvriers : à un
      flux par préfixe, deux préfixes distincts ont chacun le sien) ;
    - une route de `moderate` répond normalement, et une rafale y rend 429 ;
-   - **chaque famille de routes sort avec ses six en-têtes de sécurité** :
+   - **chaque famille de routes sort avec ses en-têtes de sécurité** :
 
      ```
      BISELF_HOTE=<nom servi> bash deploy/bi-self/tests/entetes-servis.sh
      ```
 
-     🔑 C'est la mesure qui ne se devine pas. nginx ne fusionne pas les
-     `add_header` : un seul, posé dans un bloc `location`, annule les six pour ce
-     chemin. Le vhost compte huit blocs, et rien ne signalerait la perte — la
-     page s'affiche, elle sort simplement nue.
+     🔑 nginx ne fusionne pas les `add_header` : un seul, posé dans un bloc
+     `location`, annule pour ce chemin tous ceux du bloc `server`. Chaque bloc du
+     vhost peut donc dénuder ses routes, et rien ne le signalerait — la page
+     s'affiche, elle sort simplement nue.
 
 **Retour arrière** : le vhost d'abord (`restart`), le groupe d'ouvriers ensuite.
 L'inverse laisserait le vhost pointer une socket disparue, donc 502 sur le flux.
@@ -128,13 +128,13 @@ tout ce qui suit :
 - **l'écoute reste IPv4 seule**, et il n'y a pas de bloc sur le port 80 : la
   redirection vers HTTPS est portée par le vhost par défaut du serveur, pour
   tous les noms à la fois ;
-- **les en-têtes restent les six du fragment servi**, par `include`. Les cinq
+- **les en-têtes restent ceux du fragment servi**, par `include`. Les cinq
   `add_header` que le gabarit portait en dur étaient à la fois moins (pas de
   HSTS) et plus stricts (pas de script inline) : les poser aurait retiré un
   engagement et cassé les pages de démonstration.
 
 ⚠️ Ce qui s'ajoute, en revanche, mord : les quatre files, la limite de
 connexions du flux, le groupe d'ouvriers dédié, le refus des URL en `.php` et
-celui des fichiers cachés hors `/.well-known`. C'est le but du lot — mais c'est
-aussi ce qui demande l'étape 4, puisqu'un frein mal calibré se voit sur le
-visiteur honnête avant de se voir sur l'abus.
+celui des fichiers cachés hors `/.well-known`. C'est aussi ce qui demande
+l'étape 4 : un frein mal calibré se voit sur le visiteur honnête avant de se
+voir sur l'abus.

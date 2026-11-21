@@ -2,8 +2,9 @@
 # Le nombre d'ouvriers PHP du gabarit tient-il dans la mémoire de la machine ?
 #
 # 🔑 **Pourquoi ce contrôle existe.** `pm.max_children` est le plafond de
-# requêtes PHP simultanées du serveur ENTIER — un seul groupe d'ouvriers y sert
-# huit vhosts. Le relever est un réglage d'exploitation ; le relever trop fait
+# requêtes PHP simultanées du serveur ENTIER : un seul groupe d'ouvriers y sert
+# tous les vhosts, et `$GABARIT` dit combien, daté. Le relever est un réglage
+# d'exploitation ; le relever trop fait
 # tuer des ouvriers par le noyau sous charge, ce qui ressemble à une panne
 # d'application. Ce qui décide n'est pas le poids d'un ouvrier au repos, c'est
 # son **pic** : une ouverture d'enveloppe SelfDataGuard alloue le `memlimit`
@@ -18,9 +19,9 @@
 #
 # ⚠️ **Le surcoût d'une dérivation est mesuré ICI, pas sur l'hôte.** libsodium
 # alloue `memlimit` octets quelle que soit la machine, et faire dériver au
-# plafond sur une production coûterait 256 Mio et une seconde de deux cœurs par
-# essai. De l'hôte, ce contrôle ne LIT que sa mémoire disponible et le poids de
-# ses ouvriers au repos.
+# plafond sur une production coûterait un `PROFILE_CEILING_MEMLIMIT` et son temps
+# de calcul par essai. De l'hôte, ce contrôle ne LIT que sa mémoire disponible et
+# le poids de ses ouvriers au repos.
 #
 #   POOL_SSH_HOST=<alias> bash deploy/my-self/tests/pic-ouvrier-php.sh
 #
@@ -90,9 +91,9 @@ read -r REPOS PIC_COURANT PIC_MAX APRES_M <<<"$mesure"
 SUR_COURANT=$(( (PIC_COURANT - REPOS) / 1024 ))
 SUR_MAX=$(( (PIC_MAX - REPOS) / 1024 ))
 echo "▸ 2. Surcoût d'UNE dérivation, mesuré sur ce poste"
-echo "   au repos $((REPOS / 1024)) Mo · pic au profil courant +${SUR_COURANT} Mo · pic au plafond +${SUR_MAX} Mo"
+echo "   au repos $((REPOS / 1024)) Mio · pic au profil courant +${SUR_COURANT} Mio · pic au plafond +${SUR_MAX} Mio"
 if [ "$((APRES_M - REPOS))" -gt 16384 ]; then
-    echo "   ⚠️ la mémoire n'est PAS rendue après la dérivation ($(( (APRES_M - REPOS) / 1024 )) Mo restent)."
+    echo "   ⚠️ la mémoire n'est PAS rendue après la dérivation ($(( (APRES_M - REPOS) / 1024 )) Mio restent)."
     echo "      Le surcoût devient alors permanent par ouvrier, et le budget ci-dessous est optimiste."
 else
     echo "   ✓ rendue après la dérivation : seuls les ouvriers qui dérivent AU MÊME INSTANT la paient"
@@ -105,35 +106,39 @@ distant=$(timeout 30 ssh -o BatchMode=yes "$HOTE" '
     free -m | awk "/^Mem:/ {print \$7}"
     ps -o rss= -C php-fpm8.4 2>/dev/null | sort -n | awk "{v[NR]=\$1} END {print (NR ? v[int((NR+1)/2)] : 0)}"
 ' 2>/dev/null) || { echo "   ❌ lecture impossible — ni vert ni rouge, le contrôle n'est pas établi"; exit 2; }
-DISPO_MO=$(printf '%s\n' "$distant" | sed -n 1p)
+# ⚠️ `free -m` rend des MÉBIoctets, et `/proc` des kibioctets : tout ce qui suit
+# est en Mio. Le dépôt porte un contrôle « Mio/MiB, jamais Mo/MB » pour la
+# mémoire d'un profil de hachage — la même rigueur vaut pour celle d'une machine,
+# sinon une somme de Mio s'écrit en Mo et le total devient faux de 5 %.
+DISPO_MIO=$(printf '%s\n' "$distant" | sed -n 1p)
 OUVRIER_KO=$(printf '%s\n' "$distant" | sed -n 2p)
-if [ -z "${DISPO_MO:-}" ] || [ "$DISPO_MO" -le 0 ]; then
+if [ -z "${DISPO_MIO:-}" ] || [ "$DISPO_MIO" -le 0 ]; then
     echo "   ❌ mémoire disponible non lue"; exit 2
 fi
 if [ -z "${OUVRIER_KO:-}" ] || [ "$OUVRIER_KO" -le 0 ]; then
     echo "   ❌ aucun processus php-fpm8.4 lu : le groupe tourne-t-il ?"; exit 2
 fi
-OUVRIER_MO=$((OUVRIER_KO / 1024))
-echo "   mémoire disponible ${DISPO_MO} Mo · un ouvrier au repos ${OUVRIER_MO} Mo (médiane des processus lus)"
+OUVRIER_MIO=$((OUVRIER_KO / 1024))
+echo "   mémoire disponible ${DISPO_MIO} Mio · un ouvrier au repos ${OUVRIER_MIO} Mio (médiane des processus lus)"
 
 # ── 4. Le verdict ───────────────────────────────────────────────────────────
-PIC_OUVRIER=$((OUVRIER_MO + SUR_MAX))
-BUDGET=$((DISPO_MO * PART_BUDGET / 100))
+PIC_OUVRIER=$((OUVRIER_MIO + SUR_MAX))
+BUDGET=$((DISPO_MIO * PART_BUDGET / 100))
 PLAFOND=$((BUDGET / PIC_OUVRIER))
 DECLARE=$(sed -nE 's/^[[:space:]]*pm\.max_children[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' "$GABARIT" | tail -1)
 [ -n "${DECLARE:-}" ] || { echo "❌ pm.max_children introuvable dans $GABARIT"; exit 2; }
 
 echo "▸ 4. Verdict"
-echo "   pic d'un ouvrier qui relit au plafond : ${OUVRIER_MO} + ${SUR_MAX} = ${PIC_OUVRIER} Mo"
-echo "   budget retenu : ${PART_BUDGET} % de ${DISPO_MO} Mo = ${BUDGET} Mo → ${PLAFOND} ouvrier(s) au plus"
+echo "   pic d'un ouvrier qui relit au plafond : ${OUVRIER_MIO} + ${SUR_MAX} = ${PIC_OUVRIER} Mio"
+echo "   budget retenu : ${PART_BUDGET} % de ${DISPO_MIO} Mio = ${BUDGET} Mio → ${PLAFOND} ouvrier(s) au plus"
 echo "   le gabarit déclare pm.max_children = ${DECLARE}"
-echo "   régimes à cette valeur : repos $((DECLARE * OUVRIER_MO)) Mo · tous en dérivation courante $((DECLARE * (OUVRIER_MO + SUR_COURANT))) Mo · pire cas $((DECLARE * PIC_OUVRIER)) Mo"
+echo "   régimes à cette valeur : repos $((DECLARE * OUVRIER_MIO)) Mio · tous en dérivation courante $((DECLARE * (OUVRIER_MIO + SUR_COURANT))) Mio · pire cas $((DECLARE * PIC_OUVRIER)) Mio"
 echo
 
 if [ "$DECLARE" -gt "$PLAFOND" ]; then
-    echo "✗ le gabarit dépasse le budget : $((DECLARE * PIC_OUVRIER)) Mo dans le pire cas, pour ${BUDGET} Mo."
+    echo "✗ le gabarit dépasse le budget : $((DECLARE * PIC_OUVRIER)) Mio dans le pire cas, pour ${BUDGET} Mio."
     echo "  Soit la valeur descend à ${PLAFOND}, soit la machine gagne de la mémoire, soit le"
-    echo "  plafond de relecture du profil baisse — c'est lui qui pèse ${SUR_MAX} Mo par ouvrier."
+    echo "  plafond de relecture du profil baisse — c'est lui qui pèse ${SUR_MAX} Mio par ouvrier."
     exit 1
 fi
 echo "✓ ${DECLARE} ouvriers tiennent dans le budget (plafond mesuré : ${PLAFOND})."

@@ -194,10 +194,9 @@ printf '\n▸ 3. Unité de la mémoire : Mio / MiB, jamais Mo / MB\n\n'
 # sauterait les arbres assemblés), ni `xargs` (qui ne sait pas lancer un
 # builtin, et rend alors un zéro silencieux — mesuré le 10/10/2026).
 # ⚠️ `\b` DEVANT le 64, sinon le motif attrape le « 664 » de « 5 664 Mo » — une
-# mémoire de machine, qui n'a rien à voir avec un profil de hachage. Mesuré le
-# 21/11/2026 sur `deploy/my-self/php-fpm-www.conf` : un signalement juste sur un
-# chiffre qui n'était pas celui du profil. Entre deux chiffres il n'y a pas de
-# frontière de mot, donc `\b64` ne voit que le 64 qui commence un nombre.
+# mémoire de machine, qui n'a rien à voir avec un profil de hachage. Entre deux
+# chiffres il n'y a pas de frontière de mot, donc `\b64` ne voit que le 64 qui
+# commence un nombre.
 mauvaises=$(git grep -nE '(\b64|%[0-9$]*d)(&nbsp;| )(Mo|MB)\b' \
             -- '*.php' '*.md' '*.js' '*.sql' '*.conf' '*.txt' '*.yml' '*.html' 2>/dev/null \
             | grep -vE '^(CHANGELOG\.md|scripts/check-source-profil\.sh):' || true)
