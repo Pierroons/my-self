@@ -35,9 +35,29 @@ BASE = os.environ.get("SELFJUSTICE_JUDILIBRE_BASE",
 # Les deux chemins se surchargent par l'environnement : sur le serveur, la clé
 # vient d'un EnvironmentFile en 0600 et la base vit à côté des autres bases
 # SelfJustice, pas dans le répertoire de travail d'un poste de développement.
-KEY_FILE = os.environ.get(
-    "JUDILIBRE_KEY_FILE", os.path.expanduser("~/.config/judilibre/keyid")
-)
+# 🔑 La cascade ci-dessous est la MÊME que celle d'`update_judilibre.sh`, dans
+# le même ordre, et elle existe parce qu'elle manquait : les deux outils
+# cherchaient la clé à deux chemins par défaut différents sous un seul nom de
+# variable. La rotation du 20/11/2026 a mesuré deux valeurs distinctes pour un
+# secret unique — celle du poste était morte depuis le 4 août, et rien ne
+# reliait les deux emplacements.
+# ⚠️ Toute modification de cet ordre se fait dans les DEUX fichiers.
+def _chemin_cle() -> str:
+    pose = os.environ.get("JUDILIBRE_KEY_FILE")
+    if pose:
+        return pose
+    for candidat in (
+        "/etc/selfjustice/judilibre.key",
+        os.path.expanduser("~/.config/judilibre/keyid"),
+    ):
+        if os.access(candidat, os.R_OK):
+            return candidat
+    # Sans candidat lisible, le chemin du service : l'échec se lira sur ce
+    # nom-là, celui qu'un opérateur doit poser.
+    return "/etc/selfjustice/judilibre.key"
+
+
+KEY_FILE = _chemin_cle()
 DB = os.environ.get(
     "JUDILIBRE_DB",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "judilibre_index.sqlite"),

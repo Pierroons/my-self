@@ -45,7 +45,16 @@ journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 alerter() {
     local titre="$1" message="$2"
     journal "ALERTE : $titre — $message"
-    [ -n "$NTFY_URL" ] && [ -r "$NTFY_TOKEN_FILE" ] || return 0
+    [ -n "$NTFY_URL" ] || return 0
+    # ⚠️ Un jeton illisible rendait cette alerte MUETTE : le `|| return 0` d'avant
+    # ne distinguait pas « pas de canal configuré » de « canal configuré mais
+    # jeton introuvable ». Le second est une panne, et elle s'est produite — la
+    # moisson Judilibre n'a jamais pu alerter tant que son jeton était cherché à
+    # un emplacement invisible au service. Un renoncement se journalise.
+    if [ ! -r "$NTFY_TOKEN_FILE" ]; then
+        journal "ALERTE NON ENVOYÉE (jeton illisible : $NTFY_TOKEN_FILE) — $titre"
+        return 0
+    fi
     curl -fsS -m 10 --retry 2 \
         -H "Authorization: Bearer $(cat "$NTFY_TOKEN_FILE")" \
         -H "Title: $titre" \

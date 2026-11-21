@@ -23,7 +23,26 @@ export JUDILIBRE_MARQUEUR="${JUDILIBRE_MARQUEUR:-/var/lib/selfjustice/judilibre_
 # `ProtectHome=true`, qui rend les répertoires personnels — celui de root
 # compris — invisibles au service. L'échec ne se voit qu'à la première
 # exécution réelle.
-export JUDILIBRE_KEY_FILE="${JUDILIBRE_KEY_FILE:-/etc/selfjustice/judilibre.key}"
+# 🔑 La cascade ci-dessous est la MÊME que celle de `build_judilibre_index.py`,
+# et elle existe parce qu'elle manquait. Les deux outils cherchaient la clé à
+# deux chemins par défaut DIFFÉRENTS sous un seul nom de variable : sur une même
+# machine, ils ne lisaient donc pas le même fichier. La rotation du 20/11/2026 a
+# mesuré deux valeurs distinctes pour un secret unique — celle du poste était
+# morte depuis le 4 août sans que rien ne le signale, parce que rien ne reliait
+# les deux emplacements. Un ordre identique des deux côtés les fait converger.
+# ⚠️ Toute modification de cet ordre se fait dans les DEUX fichiers.
+if [ -z "${JUDILIBRE_KEY_FILE:-}" ]; then
+    for _candidat in /etc/selfjustice/judilibre.key "$HOME/.config/judilibre/keyid"; do
+        if [ -r "$_candidat" ]; then
+            JUDILIBRE_KEY_FILE="$_candidat"
+            break
+        fi
+    done
+    # Sans aucun candidat lisible, on garde le chemin du service : l'échec se
+    # lira sur ce nom-là, celui qu'un opérateur doit poser.
+    JUDILIBRE_KEY_FILE="${JUDILIBRE_KEY_FILE:-/etc/selfjustice/judilibre.key}"
+fi
+export JUDILIBRE_KEY_FILE
 
 # Le moissonneur est cherché à côté de ce script, pas à un chemin fixe : le
 # dépôt le range dans tools/, l'installation serveur dans bin/, et coder l'un
@@ -50,7 +69,16 @@ journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 alerter() {
     local titre="$1" message="$2"
     journal "ALERTE : $titre — $message"
-    [ -n "$NTFY_URL" ] && [ -r "$NTFY_TOKEN_FILE" ] || return 0
+    [ -n "$NTFY_URL" ] || return 0
+    # ⚠️ Un jeton illisible rendait cette alerte MUETTE : le `|| return 0` d'avant
+    # ne distinguait pas « pas de canal configuré » de « canal configuré mais
+    # jeton introuvable ». Le second est une panne, et elle s'est produite — la
+    # moisson Judilibre n'a jamais pu alerter tant que son jeton était cherché à
+    # un emplacement invisible au service. Un renoncement se journalise.
+    if [ ! -r "$NTFY_TOKEN_FILE" ]; then
+        journal "ALERTE NON ENVOYÉE (jeton illisible : $NTFY_TOKEN_FILE) — $titre"
+        return 0
+    fi
     curl -fsS -m 10 --retry 2 \
         -H "Authorization: Bearer $(cat "$NTFY_TOKEN_FILE")" \
         -H "Title: $titre" \

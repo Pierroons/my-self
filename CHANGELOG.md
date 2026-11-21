@@ -10,6 +10,35 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La clé Judilibre se cherche au même endroit des deux côtés, et une alerte qui ne part pas le dit — 21 novembre 2026
+
+**Un seul secret était cherché à deux chemins par défaut différents.** `JUDILIBRE_KEY_FILE` valait
+`/etc/selfjustice/judilibre.key` dans `update_judilibre.sh` et `~/.config/judilibre/keyid` dans
+`build_judilibre_index.py` : sous un nom de variable unique, deux outils du même module ne lisaient donc pas
+le même fichier sur une même machine. La rotation du 20 novembre a mesuré la conséquence — deux valeurs
+distinctes pour un secret unique, celle du poste morte depuis le 4 août sans que rien ne le signale, parce
+que rien ne reliait les deux emplacements. Les deux fichiers portent désormais la **même cascade dans le même
+ordre** : la variable si elle est posée, sinon le premier des deux chemins qui soit lisible, sinon le chemin
+du service — celui qu'un opérateur doit poser, et sur lequel l'échec se lira. Éprouvé dans les deux sens :
+les deux implémentations rendent le même chemin, et la version d'avant reproduit la divergence.
+
+**Une alerte qui ne peut pas partir le dit, au lieu de se taire.** Les quatre scripts de mise à jour
+— `update_jade.sh`, `update_judilibre.sh`, `update_legi.sh`, `update_catalog.sh` — abandonnaient leur
+notification par un `[ -n "$NTFY_URL" ] && [ -r "$NTFY_TOKEN_FILE" ] || return 0`, qui ne distinguait pas
+« aucun canal configuré » de « canal configuré, jeton introuvable ». Le second est une panne, et elle s'est
+produite : aucune alerte de la moisson Judilibre n'avait jamais pu partir tant que son jeton était cherché à
+un emplacement invisible au service, et le silence des alertes ne prouvait rien. Un jeton illisible est
+désormais journalisé comme tel. Le témoin de cette correction est mesuré : sur le même cas, la version
+d'avant laisse son journal vide.
+
+**Les déployeurs de SelfJustice et de SelfAct acceptent `--plan`.** Il contrôle tout — source, destination,
+substitution du gabarit de domaine et ses deux gardes — en écrivant le fichier substitué dans un temporaire
+qu'il jette ensuite : ce qui est annoncé est donc mesuré, pas prédit. Mesuré : zéro fichier écrit dans la
+destination, puis la pose normale inchangée. ⚠️ Le drapeau est un **opt-in**, là où `deploy/my-self/deploy.sh`
+fait du plan son défaut et demande `--appliquer` ; inverser le défaut de ces deux scripts ferait cesser de
+déployer tout appelant déjà en place, sans qu'il le dise. L'écart est assumé, et sa raison est dans les deux
+en-têtes.
+
 ### Le README du paquet `selfright-mcp` cesse d'annoncer qu'il n'est pas publié — 21 novembre 2026
 
 `pypi.yml` refuse de publier tant que le README du paquet porte la phrase « pas encore publié sur

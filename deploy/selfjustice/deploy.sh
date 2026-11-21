@@ -22,12 +22,26 @@
 
 set -euo pipefail
 
+# ⚠️ `--plan` est un OPT-IN, là où `deploy/my-self/deploy.sh` fait du plan son
+# défaut et demande `--appliquer`. L'écart est assumé : inverser le défaut ici
+# ferait cesser de déployer tout appelant déjà en place, sans qu'il le dise.
+PLAN=0
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --plan) PLAN=1 ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 DOMAINE="${1:-}"
 DEST="${2:-}"
 
 if [ -z "$DOMAINE" ] || [ -z "$DEST" ]; then
-    echo "usage: $0 <domaine> <racine-de-destination>" >&2
+    echo "usage: $0 <domaine> <racine-de-destination> [--plan]" >&2
     echo "exemple: $0 justice.example.org /var/www/selfjustice" >&2
+    echo "  --plan : tout contrôler, substitution comprise, sans rien écrire" >&2
     exit 1
 fi
 
@@ -131,8 +145,16 @@ for nom in $SERVIS; do
         exit 1
     fi
 
-    mv "$provisoire" "$cible"
-    echo "  $(basename "$f") : $attendues occurrence(s) substituée(s)"
+    # 🔑 En mode plan, le `sed` et ses deux gardes ont déjà joué sur le
+    # temporaire : ce qui est annoncé est donc mesuré, pas prédit. Seule la
+    # bascule est retenue.
+    if [ "$PLAN" -eq 1 ]; then
+        rm -f "$provisoire"
+        echo "  [plan] $(basename "$f") : $attendues occurrence(s) substituée(s), non posé"
+    else
+        mv "$provisoire" "$cible"
+        echo "  $(basename "$f") : $attendues occurrence(s) substituée(s)"
+    fi
     substituees=$((substituees + attendues))
     traites=$((traites + 1))
 done
@@ -188,6 +210,13 @@ done
 if [ "$traites" -eq 0 ]; then
     echo "erreur : aucun fichier servi trouvé sous $SRC/site — rien n'a été déployé." >&2
     exit 1
+fi
+
+if [ "$PLAN" -eq 1 ]; then
+    echo
+    echo "Plan seulement — $traites fichier(s) seraient posés dans $DEST, $substituees substitution(s)."
+    echo "  Pour l'appliquer, relancer sans --plan."
+    exit 0
 fi
 
 # Contrôle : aucun placeholder ne doit survivre dans ce qui est servi.
