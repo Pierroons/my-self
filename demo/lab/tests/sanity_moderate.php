@@ -1445,6 +1445,16 @@ final class PdoCompteur extends PDO
 {
     public int $requetes = 0;
 
+    /** Au-delà, une requête lève : une lecture qui ne rend pas rougit au lieu de pendre. */
+    public ?int $plafond = null;
+
+    public function compter(): void
+    {
+        if (++$this->requetes > ($this->plafond ?? PHP_INT_MAX)) {
+            throw new RuntimeException("plafond de {$this->plafond} requêtes franchi");
+        }
+    }
+
     public function __construct(string $dsn)
     {
         parent::__construct($dsn);
@@ -1456,13 +1466,13 @@ final class PdoCompteur extends PDO
 
     public function exec(string $statement): int|false
     {
-        $this->requetes++;
+        $this->compter();
         return parent::exec($statement);
     }
 
     public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
     {
-        $this->requetes++;
+        $this->compter();
         return parent::query($query, $fetchMode, ...$fetchModeArgs);
     }
 }
@@ -1473,7 +1483,7 @@ final class RequeteComptee extends PDOStatement
 
     public function execute(?array $params = null): bool
     {
-        $this->connexion->requetes++;
+        $this->connexion->compter();
         return parent::execute($params);
     }
 }
@@ -7425,6 +7435,348 @@ $illisibles215 = str_contains((string) @file_get_contents($journal215), 'date il
 $c215[0] && $c215[1]['paires_liees'] === null && $c215[1]['voix_sans_lien'] === 7 && !$illisibles215
     ? ok('⭐ au repli, un message à sens unique d\'un compte de la cible ne lie aucun critique : les sept bannissent, et le sens sans réponse n\'est pas une date illisible')
     : nok('⭐ au repli, un message à sens unique lie, ou se dit illisible : ' . json_encode([$c215, $illisibles215], JSON_UNESCAPED_UNICODE));
+
+// ── 216. ⭐ Des identifiants de `dm` en texte se nomment ─────────────────────────
+// Un index range une colonne de texte dans l'ordre du texte (« 10 » avant « 9 ») ; la
+// lecture des liens marche dans l'ordre des nombres, et sauterait des votants : une
+// meute ferait des voix. Sur une connexion neuve, une `dm` aux identifiants TEXT, puis
+// sans type, lève au premier vote une erreur qui nomme la colonne.
+$cible216 = membre($pdo, 'cible-216');
+poserReputation($pdo, $cible216, 20);
+$deux216 = membres($pdo, 'critique-216', 2);
+$formes216 = sousQuorum(static function () use ($cible216, $deux216): array {
+    $vus = [];
+    foreach (['texte' => 'TEXT', 'sans_type' => ''] as $forme => $type) {
+        $c = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+        $c->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $c->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $c->exec("CREATE TEMP TABLE dm (sender_id $type, recipient_id $type, created_at INTEGER)");
+        $c->exec('CREATE INDEX temp.dm_216_paire ON dm(recipient_id, sender_id, created_at)');
+        try {
+            frapper($c, $cible216, $deux216, 1, "216-$forme");
+            $vus[$forme] = 'aucune erreur';
+        } catch (Throwable $e) {
+            $vus[$forme] = $e->getMessage();
+        }
+    }
+
+    return $vus;
+});
+str_contains($formes216['texte'], 'dm.sender_id') && str_contains($formes216['texte'], 'TEXT')
+    && str_contains($formes216['sans_type'], 'dm.sender_id') && str_contains($formes216['sans_type'], 'sans type')
+    ? ok('⭐ une dm aux identifiants en texte, ou sans type, lève au premier vote une erreur qui nomme la colonne')
+    : nok('⭐ une dm aux identifiants en texte se lit dans le mauvais ordre : ' . json_encode($formes216, JSON_UNESCAPED_UNICODE));
+
+// ── 217. ⭐ Un expéditeur qui n'est pas un nombre clôt la boîte ──────────────────
+// Une base dont `dm` n'a pas de clé étrangère peut porter un expéditeur écrit en
+// lettres : il se range après tous les nombres, aucun votant n'est derrière lui. Le
+// lien entre deux critiques se lit en quelques requêtes — le compteur lève au-delà de
+// cinq cents, pour qu'une lecture qui repartirait du premier votant rougisse au lieu
+// de pendre —, et huit critiques font sept voix exactes.
+$f217 = dirname((string) getenv('LAB_DB_PATH')) . '/systeme-217.db';
+@unlink($f217);
+$a217 = new PDO('sqlite:' . $f217);
+$a217->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$a217->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$a217->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+$cible217 = membre($a217, 'cible-217');
+poserReputation($a217, $cible217, 20);
+$critiques217 = membres($a217, 'critique-217', 8);
+echangePrive($a217, $critiques217[0], $critiques217[1]);
+$a217->exec('PRAGMA foreign_keys = OFF');
+$a217->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)')
+    ->execute(['systeme', $critiques217[1], 'bienvenue', time() - 86400]);
+$a217 = null;
+$c217 = sousQuorum(static function () use ($f217, $cible217, $critiques217): array {
+    $c = new PdoCompteur('sqlite:' . $f217);
+    $c->plafond = 500;
+    try {
+        $lies = Moderate::areLinked($c, $critiques217[0], $critiques217[1]);
+    } catch (Throwable $t) {
+        $lies = get_class($t) . ' : ' . $t->getMessage();
+    }
+    $requetes = $c->requetes;
+    $c->plafond = null;
+    frapper($c, $cible217, $critiques217, 3, '217');
+
+    return [$lies, $requetes, bilan($c, $cible217)['banni'], Moderate::compositionChute($c, $cible217, time())];
+});
+$c217[0] === true && $c217[1] < 50 && $c217[2] && $c217[3]['paires_liees'] === 1 && $c217[3]['voix_sans_lien'] === 7 && !$c217[3]['indecis']
+    ? ok('⭐ un expéditeur écrit en lettres clôt la boîte : areLinked() rend en quelques requêtes, et huit critiques font sept voix exactes')
+    : nok('⭐ un expéditeur qui n\'est pas un nombre fait tourner la lecture : ' . json_encode($c217, JSON_UNESCAPED_UNICODE));
+
+// ── 218. ⭐ Une forme de `dm` qui relit les messages lève, une forme qui tient passe ─
+// Chaque recherche tient en une ligne de plan, dans un index qui suffit seul. Une vue
+// UNION ALL, même à deux branches indexées, relit chaque boîte pour son MIN ; une vue
+// filtrée sans index partiel relit les lignes pour le filtre : toutes deux lèvent en
+// nommant l'index. Une vue filtrée sous un index partiel du même filtre, et une table
+// WITHOUT ROWID dont la clé commence par les trois colonnes, lisent la paire liée — un
+// échange supprimé n'en fait pas une —, et huit critiques bannissent.
+$critiques218 = membres($pdo, 'critique-218', 8);
+$cibles218 = [];
+foreach (['union', 'filtree', 'partiel', 'sans_rowid'] as $forme218) {
+    $cibles218[$forme218] = membre($pdo, "cible-218-$forme218");
+    poserReputation($pdo, $cibles218[$forme218], 20);
+}
+$monter218 = static function (string $forme) use ($critiques218): PDO {
+    $c = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+    $c->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $c->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $quand = time() - 3600;
+    [$x, $y, $u, $v] = $critiques218;
+    if ($forme === 'union') {
+        foreach (['dm_218a', 'dm_218b'] as $t) {
+            $c->exec("CREATE TEMP TABLE $t (sender_id INTEGER, recipient_id INTEGER, created_at INTEGER)");
+            $c->exec("CREATE INDEX temp.{$t}_paire ON $t(recipient_id, sender_id, created_at)");
+        }
+        $c->exec("INSERT INTO dm_218a VALUES ($x, $y, $quand)");
+        $c->exec("INSERT INTO dm_218b VALUES ($y, $x, $quand)");
+        $c->exec('CREATE TEMP VIEW dm AS SELECT sender_id, recipient_id, created_at FROM dm_218a
+                  UNION ALL SELECT sender_id, recipient_id, created_at FROM dm_218b');
+    } elseif ($forme === 'sans_rowid') {
+        $c->exec('CREATE TEMP TABLE dm (sender_id INTEGER, recipient_id INTEGER, created_at INTEGER, id INTEGER,
+                  PRIMARY KEY (recipient_id, sender_id, created_at, id)) WITHOUT ROWID');
+        $c->exec("INSERT INTO dm VALUES ($x, $y, $quand, 1), ($y, $x, $quand, 2)");
+    } else {
+        $c->exec('CREATE TEMP TABLE dm_218f (sender_id INTEGER, recipient_id INTEGER, created_at INTEGER, supprime INTEGER NOT NULL)');
+        $c->exec('CREATE INDEX temp.dm_218f_paire ON dm_218f(recipient_id, sender_id, created_at)' . ($forme === 'partiel' ? ' WHERE supprime = 0' : ''));
+        $c->exec("INSERT INTO dm_218f VALUES ($x, $y, $quand, 0), ($y, $x, $quand, 0), ($u, $v, $quand, 1), ($v, $u, $quand, 1)");
+        $c->exec('CREATE TEMP VIEW dm AS SELECT sender_id, recipient_id, created_at FROM dm_218f WHERE supprime = 0');
+    }
+
+    return $c;
+};
+$formes218 = sousQuorum(static function () use ($monter218, $cibles218, $critiques218): array {
+    $vus = [];
+    foreach ($cibles218 as $forme => $cible) {
+        $c = $monter218($forme);
+        try {
+            frapper($c, $cible, $critiques218, 3, "218-$forme");
+            $compo = Moderate::compositionChute($c, $cible, time());
+            $vus[$forme] = ['banni' => bilan($c, $cible)['banni'], 'paires' => $compo['paires_liees'], 'voix' => $compo['voix_sans_lien']];
+        } catch (Throwable $e) {
+            $vus[$forme] = $e->getMessage();
+        }
+    }
+
+    return $vus;
+});
+$leve218 = static fn (mixed $vu): bool => is_string($vu) && str_contains($vu, 'idx_dm_paire');
+$lit218 = static fn (mixed $vu): bool => $vu === ['banni' => true, 'paires' => 1, 'voix' => 7];
+$leve218($formes218['union']) && $leve218($formes218['filtree']) && $lit218($formes218['partiel']) && $lit218($formes218['sans_rowid'])
+    ? ok('⭐ une vue UNION ALL et une vue filtrée sans index partiel lèvent en nommant l\'index ; l\'index partiel et la table WITHOUT ROWID lisent la paire liée, et huit critiques bannissent')
+    : nok('⭐ la forme de dm n\'est pas jugée sur ce qu\'elle relit : ' . json_encode($formes218, JSON_UNESCAPED_UNICODE));
+
+// ── 219. ⭐ Une part remplie pendant un ban ne fait pas taire les récents au plancher ─
+// Sept critiques bannissent la cible ; pendant le ban, trois comptes récents de la cible
+// votent contre elle, sans effet. La remise la rend à 20, six critiques neufs la mènent
+// à 2, un septième, lié au premier, à 0 : sept votants, six voix. Trois comptes récents
+// honnêtes votent alors : les votes d'avant la chute soldée n'occupent pas la part,
+// même la cible revenue au plancher, et la classe des récents fait la septième voix.
+$t219 = time();
+Moderate::setHorloge(static function () use (&$t219): int { return $t219; });
+$recent219 = static function (string $nom) use ($pdo, &$t219): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', $t219 - 600]);
+    return (int) $pdo->lastInsertId();
+};
+$cible219 = membre($pdo, 'cible-219');
+poserReputation($pdo, $cible219, 20);
+$sept219 = membres($pdo, 'critique-219', 7);
+$six219 = membres($pdo, 'neuf-219', 6);
+$lie219 = membre($pdo, 'lie-219');
+echangePrive($pdo, $lie219, $six219[0]);
+$bans219 = sousQuorum(static function (JournalDeBanc $journal) use ($pdo, $cible219, $sept219, $six219, $lie219, $recent219, &$t219): array {
+    frapper($pdo, $cible219, $sept219, 3, '219-sept');
+    $t219 += 60;
+    frapper($pdo, $cible219, array_map(static fn (int $k): int => $recent219("sien-219-$k"), range(1, 3)), 1, '219-siens');
+    $t219 += Moderate::config()->dureesBan[0] + Moderate::config()->arrondiFinBanSecondes + 61;
+    frapper($pdo, $cible219, $six219, 3, '219-six');
+    frapper($pdo, $cible219, [$lie219], 2, '219-lie');
+    $auPlancher = bilan($pdo, $cible219);
+    $t219 += 60;
+    frapper($pdo, $cible219, array_map(static fn (int $k): int => $recent219("honnete-219-$k"), range(1, 3)), 1, '219-honnetes');
+
+    return [count($journal->de($cible219, 'ban_debut')), $auPlancher, bilan($pdo, $cible219)];
+});
+Moderate::setHorloge(null);
+$bans219[0] === 2 && $bans219[1]['rep'] === 0 && !$bans219[1]['banni'] && $bans219[2]['banni']
+    ? ok('⭐ des votes sans effet émis pendant un ban n\'occupent pas la part quand la cible revient au plancher : les récents honnêtes font la septième voix')
+    : nok('⭐ une part remplie pendant un ban fait taire les récents au plancher : ' . json_encode($bans219, JSON_UNESCAPED_UNICODE));
+
+// ── 220. ⭐ Au repli, une paire dont un sens est vieux ne lie pas ─────────────────
+// Dix comptes de la cible, liés deux à deux, font dépasser la borne de lecture. Huit
+// critiques : dans deux paires, un sens est récent et l'autre a quatre mois, avant le
+// début de la paire. Le repli lit chacun des deux sens à sa date : aucune paire ne lie,
+// et les critiques bannissent.
+$cible220 = membre($pdo, 'cible-220');
+poserReputation($pdo, $cible220, 20);
+$comptes220 = membres($pdo, 'compte-220', 10);
+lierTous($pdo, $comptes220);
+$critiques220 = membres($pdo, 'critique-220', 8);
+$dm220 = $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)');
+foreach ([[0, 1], [3, 2]] as [$recent, $vieux]) {
+    $dm220->execute([$critiques220[$recent], $critiques220[$vieux], 'chiffre', time() - 3600]);
+    $dm220->execute([$critiques220[$vieux], $critiques220[$recent], 'chiffre', time() - 120 * 86400]);
+}
+$c220 = sousQuorum(static function () use ($pdo, $cible220, $comptes220, $critiques220): array {
+    frapper($pdo, $cible220, $comptes220, 1, '220-comptes');
+    frapper($pdo, $cible220, $critiques220, 3, '220');
+
+    return [bilan($pdo, $cible220)['banni'], Moderate::compositionChute($pdo, $cible220, time())];
+}, quorumRecherchesMax: 200);
+$c220[0] && $c220[1]['paires_liees'] === null && $c220[1]['voix_sans_lien'] === 7
+    ? ok('⭐ au repli, un sens vieux de quatre mois ne lie pas sa paire, qu\'il soit reçu ou rendu : les critiques bannissent')
+    : nok('⭐ au repli, un sens vieux lie sa paire : ' . json_encode($c220, JSON_UNESCAPED_UNICODE));
+
+// ── 221. ⭐ Un compte lu à moitié ne fait pas de voix ─────────────────────────────
+// Dix comptes de la cible liés deux à deux, six critiques liés par paires, dont la
+// dernière finit sur le plus grand identifiant : aucun votant n'est seul. Pour chaque
+// borne de 1 à 300, la lecture exacte compte quatre voix (la clique et les trois
+// paires), et le repli n'en compte aucune — un compte dont la lecture s'épuise en plein
+// sens ne passe pas pour seul.
+$cible221 = membre($pdo, 'cible-221');
+poserReputation($pdo, $cible221, 20);
+$comptes221 = membres($pdo, 'compte-221', 10);
+lierTous($pdo, $comptes221);
+$critiques221 = membres($pdo, 'critique-221', 6);
+foreach ([0, 2, 4] as $k) {
+    echangePrive($pdo, $critiques221[$k], $critiques221[$k + 1]);
+}
+frapper($pdo, $cible221, [...$comptes221, ...$critiques221], 1, '221');
+$lus221 = ['repli' => 0, 'exacte' => 0];
+$fausses221 = [];
+for ($borne = 1; $borne <= 300; $borne++) {
+    $compo221 = sousQuorum(static fn (): array => Moderate::compositionChute($pdo, $cible221, time()), quorumRecherchesMax: $borne);
+    $repli221 = $compo221['paires_liees'] === null;
+    $lus221[$repli221 ? 'repli' : 'exacte']++;
+    if ($compo221['voix_sans_lien'] !== ($repli221 ? 0 : 4)) {
+        $fausses221[$borne] = $compo221['voix_sans_lien'];
+    }
+}
+$fausses221 === [] && $lus221['repli'] > 100 && $lus221['exacte'] > 10
+    ? ok('⭐ de 1 à 300 recherches, aucun compte lu à moitié ne fait de voix : le repli n\'en lit aucune (' . $lus221['repli'] . ' bornes), la lecture exacte quatre (' . $lus221['exacte'] . ')')
+    : nok('⭐ un compte lu à moitié fait une voix, aux bornes : ' . json_encode([array_slice($fausses221, 0, 5, true), $lus221]));
+
+// ── 222. ⭐ La lecture paie les expéditeurs distincts, et le repli sa borne ───────
+// Soixante critiques ont reçu un message d'un même compte qui ne vote pas, créé après
+// eux : chaque boîte se lit en un saut, et cinq cents recherches lisent tout. Puis
+// trente comptes de la cible qui se sont écrit il y a quatre mois, chacun lié au
+// dernier par un échange récent : la lecture exacte et le repli s'épuisent chacun à
+// deux cents recherches, et le compteur le voit.
+$cible222 = membre($pdo, 'cible-222');
+poserReputation($pdo, $cible222, 30);
+$critiques222 = membres($pdo, 'critique-222', 60);
+$tard222 = membre($pdo, 'tard-222');
+foreach ($critiques222 as $critique) {
+    messagePrive($pdo, $tard222, $critique);
+}
+frapper($pdo, $cible222, $critiques222, 1, '222');
+$sauts222 = sousQuorum(static fn (): array => Moderate::compositionChute($pdo, $cible222, time()), quorumRecherchesMax: 500);
+$cible222b = membre($pdo, 'cible-222b');
+poserReputation($pdo, $cible222b, 30);
+$tournoi222 = membres($pdo, 'tournoi-222', 30);
+$dm222 = $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)');
+foreach ($tournoi222 as $i => $x) {
+    foreach (array_slice($tournoi222, $i + 1) as $y) {
+        $dm222->execute([$x, $y, 'chiffre', time() - 120 * 86400]);
+        $dm222->execute([$y, $x, 'chiffre', time() - 120 * 86400]);
+    }
+}
+foreach (array_slice($tournoi222, 0, -1) as $x) {
+    echangePrive($pdo, $x, $tournoi222[29]);
+}
+frapper($pdo, $cible222b, $tournoi222, 1, '222b');
+$repli222 = sousQuorum(static function () use ($compteur, $cible222b): array {
+    $compteur->requetes = 0;
+    $compo = Moderate::compositionChute($compteur, $cible222b, time());
+
+    return [$compo['paires_liees'], $compteur->requetes];
+}, quorumRecherchesMax: 200);
+$sauts222['paires_liees'] === 0 && $repli222[0] === null && $repli222[1] <= 2 * 200 + 40
+    ? ok('⭐ soixante boîtes d\'un expéditeur qui ne vote pas se lisent en un saut chacune, et le repli s\'arrête à sa borne (' . $repli222[1] . ' requêtes)')
+    : nok('⭐ la lecture paie chaque votant, ou le repli passe sa borne : ' . json_encode([$sauts222['paires_liees'], $repli222], JSON_UNESCAPED_UNICODE));
+
+// ── 223. ⭐ Une paire illisible ne lève pas quand d'autres sens se lisent ─────────
+// Huit critiques : deux s'écrivent en millisecondes, deux en secondes, quatre sont
+// seuls. La paire en millisecondes est illisible dans ses deux sens, mais la paire en
+// secondes se lit : la première ne lie personne, le journal d'erreurs le dit, et la
+// cible est bannie.
+$cible223 = membre($pdo, 'cible-223');
+poserReputation($pdo, $cible223, 20);
+$critiques223 = membres($pdo, 'critique-223', 8);
+$dm223 = $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)');
+$dm223->execute([$critiques223[0], $critiques223[1], 'chiffre', (time() - 3600) * 1000]);
+$dm223->execute([$critiques223[1], $critiques223[0], 'chiffre', (time() - 3600) * 1000]);
+echangePrive($pdo, $critiques223[2], $critiques223[3]);
+$journal223 = dirname((string) getenv('LAB_DB_PATH')) . '/erreurs-223.log';
+$journalAvant223 = ini_set('error_log', $journal223);
+$c223 = sousQuorum(static function () use ($pdo, $cible223, $critiques223): array {
+    try {
+        frapper($pdo, $cible223, $critiques223, 3, '223');
+    } catch (Throwable $t) {
+        return [get_class($t) . ' : ' . $t->getMessage()];
+    }
+
+    return [bilan($pdo, $cible223)['banni'], Moderate::compositionChute($pdo, $cible223, time())];
+});
+ini_set('error_log', (string) $journalAvant223);
+$illisibles223 = str_contains((string) @file_get_contents($journal223), 'date illisible');
+$c223[0] === true && $c223[1]['paires_liees'] === 1 && $c223[1]['voix_sans_lien'] === 7 && $illisibles223
+    ? ok('⭐ une paire en millisecondes ne lève pas quand d\'autres sens se lisent : elle ne lie personne, le journal le dit, et la cible est bannie')
+    : nok('⭐ une paire illisible gèle la chute, ou se tait : ' . json_encode([$c223, $illisibles223], JSON_UNESCAPED_UNICODE));
+
+// ── 224. ⭐ Une `dm` sans l'index de la paire se nomme au premier vote ────────────
+// Une base où `dm` ne porte que l'index de la boîte reçue, une cible à 20 et un seul
+// vote, loin de tout seuil : il lève une erreur qui nomme l'index, et l'hôte l'apprend
+// avant la première chute.
+$f224 = dirname((string) getenv('LAB_DB_PATH')) . '/sans-index-224.db';
+@unlink($f224);
+$a224 = new PDO('sqlite:' . $f224);
+$a224->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$a224->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$a224->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+$a224->exec('DROP INDEX idx_dm_paire');
+$cible224 = membre($a224, 'cible-224');
+poserReputation($a224, $cible224, 20);
+$un224 = membres($a224, 'critique-224', 1);
+$a224 = null;
+$erreur224 = sousQuorum(static function () use ($f224, $cible224, $un224): string {
+    $b = new PDO('sqlite:' . $f224);
+    $b->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $b->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    try {
+        frapper($b, $cible224, $un224, 1, '224');
+    } catch (Throwable $e) {
+        return $e->getMessage();
+    }
+
+    return 'aucune erreur';
+});
+str_contains($erreur224, 'idx_dm_paire')
+    ? ok('⭐ une dm sans l\'index de la paire lève dès le premier vote, loin de tout seuil, une erreur qui le nomme')
+    : nok('⭐ une dm sans l\'index de la paire attend la première chute pour se nommer : ' . $erreur224);
+
+// ── 225. ⭐ Des votes sans effet au plafond quittent la part quand la cible en descend ─
+// Au plafond, trois comptes récents votent pour la cible, sans effet : la part des
+// votes positifs est pleine, et elle borne les scores. Cinq critiques établis la
+// descendent à 25. Aucune chute n'a été soldée ; hors du plafond, les trois votes sans
+// effet n'occupent plus la part, et un compte récent honnête qui vote pour elle compte.
+$recent225 = static function (string $nom) use ($pdo): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', time() - 600]);
+    return (int) $pdo->lastInsertId();
+};
+$cible225 = membre($pdo, 'cible-225');
+poserReputation($pdo, $cible225, Moderate::config()->reputationMax);
+frapper($pdo, $cible225, array_map(static fn (int $k): int => $recent225("au-plafond-225-$k"), range(1, Moderate::config()->farmingUpvotesMax)), 1, '225-plafond', 1);
+frapper($pdo, $cible225, membres($pdo, 'critique-225', 5), 1, '225-critiques');
+$avant225 = bilan($pdo, $cible225)['rep'];
+frapper($pdo, $cible225, [$recent225('honnete-225')], 1, '225-honnete', 1);
+$apres225 = bilan($pdo, $cible225)['rep'];
+$avant225 === Moderate::config()->reputationMax - 5 && $apres225 === $avant225 + 1
+    ? ok('⭐ des votes sans effet au plafond n\'occupent plus la part quand la cible en est descendue : un compte récent honnête qui vote pour elle compte')
+    : nok('⭐ des votes sans effet au plafond occupent la part hors du plafond : ' . json_encode([$avant225, $apres225]));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

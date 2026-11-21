@@ -3734,8 +3734,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 258/258 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 258 contrôles"; exit 1; }
+          grep -qx '✅ 268/268 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 268 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3746,9 +3746,9 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 258/258 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 268/268 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 258 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 268 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3903,9 +3903,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 258/258 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 268/268 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 258 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 268 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, la salve, les raisons qu'une page publique tait et la fin réelle
           # d'un ban dans le moteur ; la route de vote, la page
           # publique, les votes reçus, les fins de ban et le blocage dans le lab. Chaque
@@ -4035,20 +4035,20 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 258/258 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 268/268 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 258 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 268 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La part elle-même, son solde net, les votes tombés qu'elle ne compte pas,
           # l'âge au moment du vote, sa fenêtre en jours, le signal qu'elle laisse voir et
           # la salve qu'elle ne relance pas ; ce qu'elle compte (l'effet des votes, et un
-          # vote sans effet dans son seul sens, tant que la cible est à sa borne), le
-          # plafond de chaque sens, sa sortie des plafonds de son auteur, et le message
-          # qui la tait. Chaque plantation est jugée, même après l'échec d'une autre,
+          # vote sans effet dans son seul sens, tant que la cible est à sa borne et
+          # qu'il suit la dernière chute soldée), le plafond de chaque sens, sa sortie
+          # des plafonds de son auteur, et le message qui la tait. Chaque plantation est jugée, même après l'échec d'une autre,
           # et doit rougir sur ce qui la nomme.
           M=bi-self/selfmoderate/src/Moderate.php
           cp "$M" /tmp/recents.intact
           echecs=0
-          cas_liste="eteinte tombes pas_net relance_salve age_present fenetre sans_signal valeur sens_unique hors_borne sans_effet sens plafond message"
+          cas_liste="eteinte tombes pas_net relance_salve age_present fenetre sans_signal valeur sens_unique hors_borne soldee sans_effet sens plafond message"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
           import os
@@ -4058,7 +4058,8 @@ jobs:
           VIDE = "✗ ⭐ la cible remplit la part à vide"
           BORNES = "✗ ⭐ la part des comptes récents déplace plus qu'un membre"
           AUX_BORNES = "✗ ⭐ aux bornes, les comptes récents votent sans borne, ou un vote sans effet ouvre l'autre sens"
-          PART = ("CASE WHEN v.effet = 0 THEN (CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . ' THEN v.value ELSE 0 END)\n"
+          SOLDEE = " AND v.created_at > ' . $soldee . '"
+          PART = ("CASE WHEN v.effet = 0 THEN (CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . '" + SOLDEE + " THEN v.value ELSE 0 END)\n"
                   "                                      ELSE COALESCE(v.effet, v.value) END")
           avant, apres, attendu = {
               'eteinte':      ("        return $solde * $value >= $plafond;", "        return false;", POIDS),
@@ -4067,9 +4068,10 @@ jobs:
               'pas_net':      ("                                      ELSE COALESCE(v.effet, v.value) END), 0)",
                                "                                      ELSE (CASE WHEN v.value < 0 THEN COALESCE(v.effet, v.value) ELSE 0 END) END), 0)", VIDE),
               'valeur':       (PART, "v.value", BORNES),
-              'sens_unique':  ("(CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . ' THEN v.value ELSE 0 END)", "v.value", AUX_BORNES),
+              'sens_unique':  ("(CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . '" + SOLDEE + " THEN v.value ELSE 0 END)", "v.value", AUX_BORNES),
               'hors_borne':   ("(CASE WHEN ' . $aLaBorne . ' AND v.value", "(CASE WHEN 1 AND v.value",
-                               "✗ ⭐ une part remplie pendant un ban fait taire les comptes récents"),
+                               "✗ ⭐ des votes sans effet au plafond occupent la part hors du plafond"),
+              'soldee':       (SOLDEE, "", "✗ ⭐ une part remplie pendant un ban fait taire les récents au plancher"),
               'sans_effet':   (PART, "COALESCE(v.effet, v.value)", AUX_BORNES),
               'sens':         ("        $plafond = $value === -1 ? self::config()->farmingDownvotesMax : self::config()->farmingUpvotesMax;",
                                "        $plafond = self::config()->farmingDownvotesMax;", BORNES),
@@ -4453,8 +4455,11 @@ jobs:
           # voix ; un croisement sous le seuil du vote ; un ban d'arbitre qui retire le
           # vote ; la borne de lecture ignorée ; une dm datée en clair, en millisecondes
           # ou en jour julien qui se tait, ou des chiffres en texte qui ne se lisent pas ;
-          # l'index de la paire non exigé, ou sans la date ; des expéditeurs lus un à un
-          # au lieu de sauter d'un votant au suivant ; une chute classée qui ne revient
+          # l'index de la paire non exigé, ou sans la date, ou vérifié à la première chute
+          # seulement ; un plan de plusieurs lignes, une clé primaire refusée ; des
+          # identifiants de dm en texte admis ; un expéditeur qui n'est pas un nombre et
+          # fait repartir la lecture du premier votant ; des expéditeurs lus un à un au
+          # lieu de sauter d'un votant au suivant ; une chute classée qui ne revient
           # pas au plancher, qui revient à chaque vote, ou qui se tait quand le vote tombe ;
           # une sanction sur un vote de soutien ; les liens lus à l'instant, ou depuis le
           # vote d'un tiers, au repli compris ; au repli, un message à sens unique qui lie,
@@ -4463,7 +4468,7 @@ jobs:
           # mémoire, ou ne s'arrête pas au quorum.
           # La fenêtre des liens et celle des voix ont leur canari d'unité.
           M=bi-self/selfmoderate/src/Moderate.php
-          for cas in classe borne glouton saute famille balai remontee budget neutralises soldee net riposte arbitre lecture typedm strftime millisecondes julien index index_date sauts rouvre chaque_vote vote_perdu soutien liens paire repli sens_unique sens_vide convalescence colonne cycle arret; do
+          for cas in classe borne glouton saute famille balai remontee budget neutralises soldee net riposte arbitre lecture typedm strftime millisecondes julien index index_date index_au_vote une_ligne cle_primaire affinite non_nombre sauts rouvre chaque_vote vote_perdu soutien liens paire repli sens_unique sens_vide convalescence colonne cycle arret; do
             cp "$M" /tmp/moderate.quorum.intact
             CAS="$cas" python3 - "$M" <<'PY'
           import os, sys
@@ -4502,12 +4507,17 @@ jobs:
                               '            $quand = null;'),
               'millisecondes': ('$dernier > $t && $dernier <= 2 * $t', '$dernier > $t && $dernier <= 2000 * $t'),
               'julien':      ('$quand >= intdiv($t, 2) && $quand <= $t;', '$quand >= 0 && $quand <= $t;'),
-              'index':       ("        if (preg_match('/USING (?:COVERING )?INDEX \\S+ \\(\\S+=\\? AND \\S+>\\?\\)/', $plan) !== 1\n            || preg_match('/USING (?:COVERING )?INDEX \\S+ \\(\\S+=\\? AND \\S+=\\? AND \\S+<\\?\\)/', $planDate) !== 1) {",
-                              '        if (false) {'),
-              'index_date':  ("            || preg_match('/USING (?:COVERING )?INDEX \\S+ \\(\\S+=\\? AND \\S+=\\? AND \\S+<\\?\\)/', $planDate) !== 1) {", '            ) {'),
+              'index':       ("        if (!$seul($plan, '\\S+=\\? AND \\S+>\\?') || !$seul($planDate, '\\S+=\\? AND \\S+=\\? AND \\S+<\\?')) {", '        if (false) {'),
+              'index_date':  ("        if (!$seul($plan, '\\S+=\\? AND \\S+>\\?') || !$seul($planDate, '\\S+=\\? AND \\S+=\\? AND \\S+<\\?')) {", "        if (!$seul($plan, '\\S+=\\? AND \\S+>\\?')) {"),
+              'index_au_vote': ("            if (self::config()->quorumAuxSeuils) {\n                self::exigerIndexPaire($pdo);\n            }\n", ''),
+              'une_ligne':   ("count($lignes) === 1\n            && preg_match('/^SEARCH (?:TABLE )?\\S+ USING (?:COVERING INDEX \\S+|PRIMARY KEY) \\(' . $contraintes . '\\)$/', (string) $lignes[0]) === 1;",
+                              "preg_match('/USING (?:COVERING )?INDEX \\S+ \\(' . $contraintes . '\\)/', implode(' | ', $lignes)) === 1;"),
+              'cle_primaire': ("(?:COVERING INDEX \\S+|PRIMARY KEY)", "COVERING INDEX \\S+"),
+              'affinite':    ("            if (!str_contains($type, 'INT') && ($type === '' || preg_match('/CHAR|CLOB|TEXT|BLOB/', $type) === 1)) {", '            if (false) {'),
+              'non_nombre':  ("            if (!is_int($s) && !is_float($s) && !(is_string($s) && is_numeric($s))) {", '            if ($s === null || $s === false) {'),
               'sens_vide':   ("                if ($dernier === null && $brut === null && !$connu) {", '                if (false) {'),
-              'sauts':       ("            $l['suivant']->bindValue(2, $l['votants'][$i], PDO::PARAM_INT);\n            $l['suivant']->execute();\n            $s = $l['suivant']->fetchColumn();\n            $l['suivant']->closeCursor();\n            if ($s === null || $s === false) {\n                break;\n            }\n            $s = (int) $s;\n            if ($s !== $r && isset($l['estVotant'][$s])) {\n                $quand = self::dateDuSens($l, $r, $s);\n                if ($quand === false) {\n                    return null;\n                }\n                if ($quand !== null) {\n                    $recus[$s] = $quand;\n                    if ($assez !== null && $assez($s, $quand)) {\n                        return $recus;\n                    }\n                }\n            }\n            $i = self::votantApres($l['votants'], $s);",
-                              "            $l['suivant']->bindValue(2, $prochain ?? $l['votants'][$i], PDO::PARAM_INT);\n            $l['suivant']->execute();\n            $s = $l['suivant']->fetchColumn();\n            $l['suivant']->closeCursor();\n            if ($s === null || $s === false) {\n                break;\n            }\n            $s = (int) $s;\n            if ($s !== $r && isset($l['estVotant'][$s])) {\n                $quand = self::dateDuSens($l, $r, $s);\n                if ($quand === false) {\n                    return null;\n                }\n                if ($quand !== null) {\n                    $recus[$s] = $quand;\n                    if ($assez !== null && $assez($s, $quand)) {\n                        return $recus;\n                    }\n                }\n            }\n            $prochain = $s + 1;\n            $i = $s + 1 > $l['votants'][$n - 1] ? $n : 0;"),
+              'sauts':       ("            $l['suivant']->bindValue(2, $l['votants'][$i], PDO::PARAM_INT);\n            $l['suivant']->execute();\n            $s = $l['suivant']->fetchColumn();\n            $l['suivant']->closeCursor();\n            if (!is_int($s) && !is_float($s) && !(is_string($s) && is_numeric($s))) {\n                break;\n            }\n            $s = (int) $s;\n            if ($s !== $r && isset($l['estVotant'][$s])) {\n                $quand = self::dateDuSens($l, $r, $s);\n                if ($quand === false) {\n                    return null;\n                }\n                if ($quand !== null) {\n                    $recus[$s] = $quand;\n                    if ($assez !== null && $assez($s, $quand)) {\n                        return $recus;\n                    }\n                }\n            }\n            $i = self::votantApres($l['votants'], $s);",
+                              "            $l['suivant']->bindValue(2, $prochain ?? $l['votants'][$i], PDO::PARAM_INT);\n            $l['suivant']->execute();\n            $s = $l['suivant']->fetchColumn();\n            $l['suivant']->closeCursor();\n            if (!is_int($s) && !is_float($s) && !(is_string($s) && is_numeric($s))) {\n                break;\n            }\n            $s = (int) $s;\n            if ($s !== $r && isset($l['estVotant'][$s])) {\n                $quand = self::dateDuSens($l, $r, $s);\n                if ($quand === false) {\n                    return null;\n                }\n                if ($quand !== null) {\n                    $recus[$s] = $quand;\n                    if ($assez !== null && $assez($s, $quand)) {\n                        return $recus;\n                    }\n                }\n            }\n            $prochain = $s + 1;\n            $i = $s + 1 > $l['votants'][$n - 1] ? $n : 0;"),
               'rouvre':      ("                if ($avant > self::config()->banA || $perdLeVote) {\n                    self::rouvrirEtat($pdo, $accountId, 'chute_sans_quorum');\n                }\n", ''),
               'chaque_vote': ('                if ($avant > self::config()->banA || $perdLeVote) {', '                if (true) {'),
               'vote_perdu':  ('                if ($avant > self::config()->banA || $perdLeVote) {', '                if ($avant > self::config()->banA) {'),
@@ -4521,7 +4531,7 @@ jobs:
               'sens_unique': ('                $lie = is_int($retour) && $retour >= $depuis;', '                $lie = true;'),
               'convalescence': ("                    array_push($tombentRegen, 'reputation_zero', 'ban_en_attente');\n                    $effacer           = true;\n",
                                 "                    array_push($tombentRegen, 'reputation_zero', 'ban_en_attente');\n                    $effacer           = true;\n                    $solder = true;\n"),
-              'colonne':     ('            self::exigerSchema($pdo);\n            $resultat = $ecriture();', '            $resultat = $ecriture();'),
+              'colonne':     ('            self::exigerSchema($pdo);\n            if (self::config()->quorumAuxSeuils) {', '            if (self::config()->quorumAuxSeuils) {'),
               'cycle':       ('        $explorer = null;\n', ''),
               'arret':       ('                if ($reste === [] || $pris >= $assez) {', '                if ($reste === []) {'),
           }[os.environ['CAS']]
@@ -4555,6 +4565,10 @@ jobs:
               typedm|strftime) attendu='✗ ⭐ une dm mal typée se tait' ;;
               millisecondes|julien) attendu='✗ ⭐ une dm mal datée se tait' ;;
               index|index_date) attendu="✗ ⭐ une dm sans l.index de la paire se lit quand même" ;;
+              index_au_vote) attendu="✗ ⭐ une dm sans l.index de la paire attend la première chute" ;;
+              une_ligne|cle_primaire) attendu="✗ ⭐ la forme de dm n.est pas jugée sur ce qu.elle relit" ;;
+              affinite)    attendu='✗ ⭐ une dm aux identifiants en texte se lit dans le mauvais ordre' ;;
+              non_nombre)  attendu="✗ ⭐ un expéditeur qui n.est pas un nombre fait tourner la lecture" ;;
               sens_vide)   attendu='✗ ⭐ au repli, un message à sens unique lie, ou se dit illisible' ;;
               sauts)       attendu="✗ ⭐ la lecture des liens paie chaque expéditeur d.un votant" ;;
               sens_unique) attendu='✗ ⭐ au repli, un message à sens unique lie' ;;

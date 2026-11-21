@@ -1096,6 +1096,9 @@ class Moderate
                 self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');
             }
             self::exigerSchema($pdo);
+            if (self::config()->quorumAuxSeuils) {
+                self::exigerIndexPaire($pdo);
+            }
             $resultat = $ecriture();
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
 
@@ -1260,10 +1263,12 @@ class Moderate
      * propres comptes. Un vote qui porte sans rien déplacer (`effet` à zéro : une
      * borne de la réputation, ou une remise passée) compte un dans son sens tant que
      * la cible est à la borne de ce sens — au plafond pour un vote positif, au
-     * plancher pour un vote négatif —, et rien sinon : à la borne, la part borne
-     * encore les scores des messages et les motifs ; hors d'elle, des votes émis
-     * pendant un ban, ou que la remise a effacés, ne l'occupent plus. Lue sous le
-     * verrou du vote, sans la dispense par message de `canVote()`.
+     * plancher pour un vote négatif — et qu'il suit la dernière chute soldée
+     * (`chute_soldee_le`), et rien sinon : à la borne, la part borne encore les
+     * scores des messages et les motifs ; des votes émis pendant un ban, ou que la
+     * remise a effacés, ne l'occupent plus, même quand la cible revient au
+     * plancher. Lue sous le verrou du vote, sans la dispense par message de
+     * `canVote()`.
      */
     private static function partDesRecentsPleine(PDO $pdo, int $voterId, int $author, int $value): bool
     {
@@ -1281,12 +1286,14 @@ class Moderate
         // Le seuil est interpolé, pas lié : comparée à un paramètre arrivé en TEXT,
         // une expression sans affinité serait toujours plus petite sous SQLite, et
         // tout vote passerait pour récent. Le sens et la borne, des entiers calculés
-        // ici, le sont avec lui.
+        // ici, le sont avec lui, comme la chute soldée, entier que rend
+        // `fenetreDesVoix()`.
         $sens = $value === -1 ? -1 : 1;
         $reputation = self::etat($pdo, $author)['reputation'];
         $aLaBorne = (int) ($sens === 1 ? $reputation >= self::config()->reputationMax : $reputation <= self::config()->banA);
+        [, , $soldee] = self::fenetreDesVoix($pdo, $author, self::maintenant());
         $stmt = $pdo->prepare(
-            'SELECT COALESCE(SUM(CASE WHEN v.effet = 0 THEN (CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . ' THEN v.value ELSE 0 END)
+            'SELECT COALESCE(SUM(CASE WHEN v.effet = 0 THEN (CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . ' AND v.created_at > ' . $soldee . ' THEN v.value ELSE 0 END)
                                       ELSE COALESCE(v.effet, v.value) END), 0)
                FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
               WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ?
@@ -1633,8 +1640,11 @@ class Moderate
      * l'index — un expéditeur qui ne vote pas fait sauter au votant suivant. Un
      * compte coûte un saut par votant ou par expéditeur distinct, le plus petit des
      * deux, plus le dernier saut, et de une à trois recherches par sens
-     * (`dateDuSens()`). Un sens illisible n'y est pas. `$assez`, s'il est donné, est
-     * appelé à chaque sens lisible : vrai, la lecture du compte s'arrête là.
+     * (`dateDuSens()`). Un sens illisible n'y est pas. Un expéditeur qui n'est
+     * pas un nombre se range, dans une colonne numérique (`exigerIndexPaire()`),
+     * après tous les nombres : il clôt la boîte, aucun votant n'est derrière lui.
+     * `$assez`, s'il est donné, est appelé à chaque sens lisible : vrai, la
+     * lecture du compte s'arrête là.
      *
      * @param callable(int, int): bool|null $assez
      * @return array<int, int>|null expéditeur → date ; null quand le budget s'épuise à
@@ -1655,7 +1665,7 @@ class Moderate
             $l['suivant']->execute();
             $s = $l['suivant']->fetchColumn();
             $l['suivant']->closeCursor();
-            if ($s === null || $s === false) {
+            if (!is_int($s) && !is_float($s) && !(is_string($s) && is_numeric($s))) {
                 break;
             }
             $s = (int) $s;
@@ -1818,11 +1828,19 @@ class Moderate
     /**
      * L'index de la paire, `dm(recipient_id, sender_id, created_at)` : sans lui,
      * chaque recherche de la lecture des liens relirait une boîte entière, sous le
-     * verrou d'écriture. Vérifié une fois par connexion, sur les plans que SQLite
-     * donne aux deux recherches : l'expéditeur suivant (l'égalité sur le
-     * destinataire, la plage sur l'expéditeur), et la date d'un sens (l'égalité sur
-     * les deux, la plage sur la date) doivent passer par un index. Une vue qui
-     * calcule l'une de ces colonnes ne le peut pas.
+     * verrou d'écriture. Vérifié une fois par connexion — à la première écriture
+     * du moteur (un vote, un signalement, le balayage, un geste d'arbitre) quand le
+     * quorum aux seuils est allumé —, sur les plans que SQLite donne aux deux
+     * recherches : l'expéditeur suivant (l'égalité sur le destinataire, la plage
+     * sur l'expéditeur) et la date d'un sens (l'égalité sur les deux, la plage sur
+     * la date) tiennent chacun en une seule recherche, dans un index qui suffit
+     * seul — couvrant, ou la clé primaire d'une table `WITHOUT ROWID`. Une vue qui
+     * calcule l'une de ces colonnes, une vue filtrée sans index partiel du même
+     * filtre ou une vue `UNION ALL` relisent les messages, et lèvent.
+     *
+     * Les deux identifiants ont une affinité numérique : la marche par sauts
+     * (`recusDe()`) suit l'ordre des nombres, qu'une colonne de texte ou sans type
+     * ne donne pas.
      */
     private static function exigerIndexPaire(PDO $pdo): void
     {
@@ -1831,20 +1849,34 @@ class Moderate
             return;
         }
         try {
-            $plan = implode(' | ', $pdo->query('EXPLAIN QUERY PLAN SELECT MIN(sender_id) FROM dm WHERE recipient_id = 1 AND sender_id >= 1')
-                ->fetchAll(PDO::FETCH_COLUMN, 3));
-            $planDate = implode(' | ', $pdo->query('EXPLAIN QUERY PLAN SELECT MAX(created_at) FROM dm WHERE recipient_id = 1 AND sender_id = 1 AND created_at <= 1')
-                ->fetchAll(PDO::FETCH_COLUMN, 3));
+            $plan = $pdo->query('EXPLAIN QUERY PLAN SELECT MIN(sender_id) FROM dm WHERE recipient_id = 1 AND sender_id >= 1')
+                ->fetchAll(PDO::FETCH_COLUMN, 3);
+            $planDate = $pdo->query('EXPLAIN QUERY PLAN SELECT MAX(created_at) FROM dm WHERE recipient_id = 1 AND sender_id = 1 AND created_at <= 1')
+                ->fetchAll(PDO::FETCH_COLUMN, 3);
+            $types = array_column($pdo->query('PRAGMA table_info(dm)')->fetchAll(PDO::FETCH_ASSOC), 'type', 'name');
         } catch (\PDOException $e) {
             throw self::dmIntrouvable($pdo, $e);
         }
-        $plan .= ' | ' . $planDate;
-        if (preg_match('/USING (?:COVERING )?INDEX \S+ \(\S+=\? AND \S+>\?\)/', $plan) !== 1
-            || preg_match('/USING (?:COVERING )?INDEX \S+ \(\S+=\? AND \S+=\? AND \S+<\?\)/', $planDate) !== 1) {
+        $seul = static fn (array $lignes, string $contraintes): bool => count($lignes) === 1
+            && preg_match('/^SEARCH (?:TABLE )?\S+ USING (?:COVERING INDEX \S+|PRIMARY KEY) \(' . $contraintes . '\)$/', (string) $lignes[0]) === 1;
+        if (!$seul($plan, '\S+=\? AND \S+>\?') || !$seul($planDate, '\S+=\? AND \S+=\? AND \S+<\?')) {
             throw new \LogicException(
-                'SelfModerate : la table « dm » de l\'hôte n\'a pas d\'index que la lecture des liens du quorum puisse suivre (' . $plan . ') — '
-                . 'la note de montée vers la 0.9.0 (README) le crée : CREATE INDEX IF NOT EXISTS idx_dm_paire ON dm(recipient_id, sender_id, created_at).'
+                'SelfModerate : la table « dm » de l\'hôte n\'a pas d\'index où la lecture des liens du quorum tienne en une recherche ('
+                . implode(' | ', [...$plan, ...$planDate]) . ') — un index couvrant ou la clé primaire ; une vue filtrée demande un index partiel '
+                . 'du même filtre, une vue UNION ALL n\'est pas prise. La note de montée vers la 0.9.0 (README) crée l\'index : '
+                . 'CREATE INDEX IF NOT EXISTS idx_dm_paire ON dm(recipient_id, sender_id, created_at).'
             );
+        }
+        foreach (['sender_id', 'recipient_id'] as $colonne) {
+            $type = strtoupper((string) ($types[$colonne] ?? ''));
+            if (!str_contains($type, 'INT') && ($type === '' || preg_match('/CHAR|CLOB|TEXT|BLOB/', $type) === 1)) {
+                throw new \LogicException(sprintf(
+                    'SelfModerate : « dm.%s » de l\'hôte est déclarée %s : la lecture des liens du quorum marche dans l\'index dans l\'ordre des nombres, '
+                    . 'qu\'une colonne de texte ou sans type ne suit pas — ses identifiants doivent être des entiers (INTEGER).',
+                    $colonne,
+                    $type === '' ? 'sans type' : '« ' . $type . ' »'
+                ));
+            }
         }
         self::$indexVerifie[$pdo] = true;
     }
