@@ -10,6 +10,20 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le README du paquet `selfright-mcp` cesse d'annoncer qu'il n'est pas publié — 21 novembre 2026
+
+`pypi.yml` refuse de publier tant que le README du paquet porte la phrase « pas encore publié sur
+PyPI » : ce fichier **est** la page PyPI de la version publiée, et la réserve devait donc tomber dans
+le commit tagué, pas après lui. Elle tombe ici.
+
+La section « Installation » donne `pip install selfright-mcp` en premier et garde l'installation depuis
+les sources pour qui suit `dev` ou veut contribuer. Mesuré après réécriture : le garde de `pypi.yml` ne
+trouve plus la phrase, `twine check --strict` rend PASSED sur la roue et sur l'archive, et la
+description longue embarquée dans la roue porte la commande d'installation sans la réserve.
+
+Aucune autre surface du dépôt n'annonce le paquet comme non publié : la seule occurrence restante est
+l'entrée du 12 octobre de ce journal, qui raconte la pose de cette réserve.
+
 ### Une release publiée hors de la branche servie est désormais vue — 21 novembre 2026
 
 `check-versions.sh --publications` ne gardait qu'un sens : une version annoncée a-t-elle sa release.
