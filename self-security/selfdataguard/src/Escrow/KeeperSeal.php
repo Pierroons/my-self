@@ -116,6 +116,30 @@ final class KeeperSeal
         return substr(hash('sha256', self::ID_TAG . $objectionPublic, true), 0, self::ESCROW_ID_LEN);
     }
 
+    /** The holder's side: the escrowId of the objection key $seed derives (escrowIdFor()). */
+    public static function escrowIdOfSeed(#[\SensitiveParameter] string $seed): string
+    {
+        $pair = sodium_crypto_sign_seed_keypair($seed);
+        try {
+            return self::escrowIdFor(sodium_crypto_sign_publickey($pair));
+        } finally {
+            Primitives::zeroize($pair);
+        }
+    }
+
+    /** The holder's side: $message signed by the objection key $seed derives (token()). */
+    public static function tokenOfSeed(string $message, #[\SensitiveParameter] string $seed): string
+    {
+        $pair   = sodium_crypto_sign_seed_keypair($seed);
+        $secret = sodium_crypto_sign_secretkey($pair);
+        try {
+            return self::token($message, $secret);
+        } finally {
+            Primitives::zeroize($secret);
+            Primitives::zeroize($pair);
+        }
+    }
+
     /**
      * The keeper's side: whether a box opened by open() may stand for
      * $escrowId — it names it, and an objection key it carries is the one

@@ -432,6 +432,183 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('An objection from a secret alone: the seal no longer holds, or the current vault is someone else\'s');
+
+const OLGA_PWD = 'motdepasse-olga-01';
+
+$oPath     = sys_get_temp_dir() . '/sdg-keeper-objection-' . bin2hex(random_bytes(4)) . '.sqlite';
+$oLog      = sys_get_temp_dir() . '/sdg-keeper-objection-' . bin2hex(random_bytes(4)) . '.log';
+$oKeeper   = new BenchKeeper(delay: 3600);
+$oDb       = new SqliteAdapter("sqlite:{$oPath}");
+$oDg       = new SelfDataGuard($oDb, $blindKey, keeper: $oKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$oCeremony = benchCeremony($oDb, logPath: $oLog, keeper: $oKeeper);
+$oPdo      = new PDO("sqlite:{$oPath}");
+$oMot      = hash('sha256', 'olga-memorized');
+$olga      = $oDg->register('olga', OLGA_PWD, $oMot);
+$oDg->setEscrowFields($olga, $admin['publicKey'], ['contact' => 'olga-secours@example.org']);
+$olgaId    = $olga->escrowId();
+$olga->lock();
+$oSet      = static fn (string $set) => $oPdo->exec("UPDATE selfdataguard_vaults SET {$set} WHERE user_id = 'olga'");
+$oAnnounce = static function (string $case, ?string $archiveId = null) use ($oCeremony, $admin): void {
+    try {
+        $archiveId === null
+            ? $oCeremony->readEscrow('olga', $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])
+            : $oCeremony->readArchiveEscrow('olga', $archiveId, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    } catch (EscrowAnnouncedException) {
+    }
+};
+$oRefusedOnceDue = static function (string $case, ?string $archiveId = null) use ($oCeremony, $oKeeper, $olgaId, $admin): bool {
+    $oKeeper->pending[bin2hex($olgaId) . '|' . $case]['due'] = time() - 1;
+    try {
+        $archiveId === null
+            ? $oCeremony->readEscrow('olga', $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])
+            : $oCeremony->readArchiveEscrow('olga', $archiveId, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+        return false;
+    } catch (EscrowKeeperException) {
+        return true;
+    }
+};
+$oDump = static function () use ($oPdo): string {
+    $all = [];
+    foreach ($oPdo->query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")->fetchAll(PDO::FETCH_COLUMN) as $table) {
+        $all[$table] = $oPdo->query("SELECT * FROM \"{$table}\"")->fetchAll(PDO::FETCH_ASSOC);
+    }
+    return hash('sha256', serialize($all));
+};
+$oObjects = static function (string $label, callable $open, string $case, ?string $archiveId = null) use ($oDg, $oDump, $oRefusedOnceDue): void {
+    $before = $oDump();
+    try {
+        $key  = $open();
+        $view = $oDg->escrowReads($key);
+        $oDg->objectToEscrowRead($key, $case);
+        $key->lock();
+    } catch (Throwable $e) {
+        ko("{$label}: the holder could not object", get_class($e) . ': ' . $e->getMessage());
+        return;
+    }
+    $written = $oDump() !== $before;
+    $shown   = in_array($case, array_column($view['pending'], 'case'), true);
+    $pinned  = $view['established'] && $view['pinned'];
+    $refused = $oRefusedOnceDue($case, $archiveId);
+    $shown && $pinned && !$written && $refused
+        ? ok("{$label}: the view, established on the keeper the row pins, shows {$case} announced; the objection is recorded — once due, the read does not go through —; nothing is written")
+        : ko($label, ($shown ? '' : 'the view does not show the read; ') . ($pinned ? '' : 'the view is not established on a pinned keeper; ')
+            . ($written ? 'the database was written; ' : '') . ($refused ? '' : 'the read went through once due; ') . json_encode($view));
+};
+
+$oAnnounce('LIT-OA');
+$oSet('kdf_opslimit = kdf_opslimit + 1');
+try {
+    $oDg->loginWithPassword('olga', OLGA_PWD);
+    ko('a vault whose profile was changed in the database opened a session');
+} catch (\Pierroons\SelfDataGuard\Vault\VaultTamperedException) {
+    ok('a profile changed in the database: no session opens, so no objection goes through one');
+}
+$oObjects('the profile changed, openForObjection() by the password derives under the profile the seal vouches for',
+    static fn () => $oDg->openForObjection('olga', Lock::Password, OLGA_PWD), 'LIT-OA');
+$oSet('kdf_opslimit = kdf_opslimit - 1');
+
+$recovBefore = (string) $oPdo->query("SELECT wrap_recov FROM selfdataguard_vaults WHERE user_id = 'olga'")->fetchColumn();
+$sealBefore  = (string) $oPdo->query("SELECT profile_seal FROM selfdataguard_vaults WHERE user_id = 'olga'")->fetchColumn();
+$oAnnounce('LIT-OB');
+$oSet('wrap_recov = wrap_pwd');
+$oObjects('an envelope rewritten, the seal holds under no profile: the password opens under the published one',
+    static fn () => $oDg->openForObjection('olga', Lock::Password, OLGA_PWD), 'LIT-OB');
+try {
+    $oDg->openForObjection('olga', Lock::Memorized, $oMot);
+    ko('the memorized secret opened an envelope rewritten over its own');
+} catch (\Pierroons\SelfDataGuard\Vault\WrongSecretException) {
+    ok('the memorized secret, its envelope rewritten, opens nothing: WrongSecretException');
+} catch (Throwable $e) {
+    ko('the memorized secret, its envelope rewritten, was not refused as a wrong secret', get_class($e) . ': ' . $e->getMessage());
+}
+$oPdo->prepare("UPDATE selfdataguard_vaults SET wrap_recov = :r, profile_seal = NULL WHERE user_id = 'olga'")->execute([':r' => $recovBefore]);
+$oAnnounce('LIT-OC');
+$oObjects('the seal removed: the memorized secret opens under the published profile',
+    static fn () => $oDg->openForObjection('olga', Lock::Memorized, $oMot), 'LIT-OC');
+$oPdo->prepare("UPDATE selfdataguard_vaults SET profile_seal = :s WHERE user_id = 'olga'")->execute([':s' => $sealBefore]);
+
+try {
+    $healthy = $oDg->loginWithPassword('olga', OLGA_PWD);
+    $fromKey = $oDg->openForObjection('olga', Lock::Password, OLGA_PWD);
+    $healthy->escrowId() === $olgaId && $fromKey->escrowId() === $olgaId
+        && $olgaId === (string) KeeperSeal::escrowIdOf($oDb->loadEscrow('olga')->wrapAdmin)
+        ? ok('the escrowId of the objection key is the session\'s and the row\'s: the objection seed is derived as before')
+        : ko('the objection key computes another escrowId');
+    $healthy->lock();
+    $fromKey->lock();
+} catch (Throwable $e) {
+    ko('the escrowId of the objection key could not be compared', get_class($e) . ': ' . $e->getMessage());
+}
+
+$oDg->freeze($oDg->generationOf('olga'), 'banc');
+$oAnnounce('LIT-OD');
+$oObjects('the vault frozen, as in the window of a level 3: the objection goes through all the same',
+    static fn () => $oDg->openForObjection('olga', Lock::Password, OLGA_PWD), 'LIT-OD');
+$oDg->unfreeze($oDg->generationOf('olga'));
+
+$taken     = $oDg->reEnroll($oDg->generationOf('olga'), 'motdepasse-de-qui-a-pris-le-compte');
+$oArchive  = $taken['archiveId'];
+$taken['unlocked']->lock();
+$oAnnounce('LIT-OE', $oArchive);
+try {
+    $oDg->loginWithPassword('olga', OLGA_PWD);
+    ko('the old password opened the current vault after a level 3');
+} catch (\Pierroons\SelfDataGuard\Vault\WrongSecretException) {
+    ok('after a level 3 the holder did not ask for, the old password opens no session: openArchive() and its objection are out of reach');
+}
+$oObjects('openForObjection() on the archive, by the old password alone',
+    static fn () => $oDg->openForObjection('olga', Lock::Password, OLGA_PWD, $oArchive), 'LIT-OE', $oArchive);
+
+try {
+    $key      = $oDg->openForObjection('olga', Lock::Password, OLGA_PWD, $oArchive);
+    $refusals = 0;
+    foreach ([
+        static fn () => $oDg->getFields($key),
+        static fn () => $oDg->readArchive($key),
+        static fn () => $oDg->setEscrowFields($key, $admin['publicKey'], ['contact' => 'autre']),
+        static fn () => $oDg->getEscrowFieldsAsUser($key),
+        static fn () => $oDg->sealEscrowToKeeper($key, $admin['publicKey']),
+    ] as $call) {
+        try {
+            $call();
+        } catch (TypeError) {
+            $refusals++;
+        }
+    }
+    $refusals === 5 && !method_exists($key, 'signEscrowRetirement') && !method_exists($key, 'decryptFields') && !method_exists($key, 'openEscrow')
+        ? ok('an ObjectionKey reads no field and signs no retirement: getFields(), readArchive(), setEscrowFields(), getEscrowFieldsAsUser() and sealEscrowToKeeper() refuse its type')
+        : ko('an ObjectionKey is taken where a session is', "{$refusals} type refusals of 5");
+    try {
+        serialize($key);
+        ko('an ObjectionKey was serialized');
+    } catch (RuntimeException) {
+        ok('an ObjectionKey refuses to be serialized');
+    }
+    array_keys($key->__debugInfo()) === ['userId', 'archiveId', 'locked']
+        ? ok('its debug output names the account and the archive, nothing of the key')
+        : ko('its debug output shows more than it should', json_encode(array_keys($key->__debugInfo())));
+    $key->lock();
+    try {
+        $key->signEscrowObjection('LIT-OE');
+        ko('a locked ObjectionKey still signs');
+    } catch (RuntimeException) {
+        ok('once locked, the key signs nothing');
+    }
+} catch (Throwable $e) {
+    ko('the type of the objection key could not be checked', get_class($e) . ': ' . $e->getMessage());
+}
+
+$closed = static fn (string $class): bool => (new ReflectionMethod($class, '__construct'))->isPrivate();
+$closed(\Pierroons\SelfDataGuard\Vault\UnlockedArchive::class) && class_exists(\Pierroons\SelfDataGuard\Vault\ObjectionKey::class)
+    && $closed(\Pierroons\SelfDataGuard\Vault\ObjectionKey::class)
+    ? ok('UnlockedArchive and ObjectionKey are built by the façade alone: both constructors are private')
+    : ko('a constructor of UnlockedArchive or ObjectionKey is open to the integrator');
+@unlink($oLog);
+@unlink($oPath);
+
+// -----------------------------------------------------------------------------
+
 section('A database that recorded a keeper refuses a façade without it, or with another');
 
 foreach (['no keeper' => null, 'NoKeeper' => new NoKeeper(), 'another keeper' => new BenchKeeper()] as $label => $other) {
@@ -862,7 +1039,7 @@ $kB2 = new BenchKeeper(delay: 3600);
 $pdoV = new PDO('sqlite::memory:');
 $viewDb = new SqliteAdapter($pdoV);
 $dgVA = new SelfDataGuard($viewDb, $blindKey, keeper: $kA2, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
-$olga = $dgVA->register('olga', 'motdepasse-olga-01');
+$olga = $dgVA->register('olga', OLGA_PWD);
 $dgVA->setEscrowFields($olga, $admin['publicKey'], ['contact' => 'olga@example.org']);
 $quinn = $dgVA->register('quinn', 'motdepasse-quinn-01');
 $dgVA->setEscrowFields($quinn, $admin['publicKey'], ['contact' => 'quinn@example.org']);

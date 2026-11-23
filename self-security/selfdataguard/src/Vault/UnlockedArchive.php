@@ -19,11 +19,16 @@ use Pierroons\SelfDataGuard\Fields\FieldCrypter;
  * archive is deleted under that generation, so a vault replaced since cannot
  * delete it.
  *
+ * Built by SelfDataGuard::openArchive() alone, from a session on the current
+ * vault: its constructor is private. That is the façade's rule, and no
+ * barrier: whoever holds the database and an old secret opens the archive
+ * all the same, by loadArchive() and UserVault::unlock().
+ *
  * NEVER serialize, log, or persist this object.
  */
 final class UnlockedArchive
 {
-    public function __construct(
+    private function __construct(
         public readonly ArchivedVault $archive,
         private readonly UnlockedVault $session,
         public readonly VaultGeneration $openedFrom

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pierroons\SelfDataGuard;
 
+use Closure;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use LogicException;
@@ -38,6 +39,7 @@ use Pierroons\SelfDataGuard\Pepper\PepperSource;
 use Pierroons\SelfDataGuard\Pepper\RemotePepperSource;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\LockPepper;
+use Pierroons\SelfDataGuard\Vault\ObjectionKey;
 use Pierroons\SelfDataGuard\Vault\PepperForms;
 use Pierroons\SelfDataGuard\Vault\ProfileSeal;
 use Pierroons\SelfDataGuard\Vault\RecoveryTicketException;
@@ -147,7 +149,7 @@ final class SelfDataGuard
      * @param Throttle $throttle the host's brake on the doors where a secret
      *        from outside costs an Argon2id — loginWithPassword(),
      *        loginWithMemorized(), recover(), openArchive(),
-     *        setLockWhileFrozen(). Each attempt is
+     *        setLockWhileFrozen(), openForObjection(). Each attempt is
      *        admitted before anything is read, then settled with what the
      *        secret did. NoThrottle when the host brakes before the call.
      * @param list<string> $sharedIndexes the indexed fields several accounts may
@@ -834,7 +836,8 @@ final class SelfDataGuard
                 [$opslimit, $memlimit] = $this->vouchedProfile($archive->record, $opslimit, $memlimit);
             }
             $session = $this->vault->unlock($archive->record, $lock, $oldSecret, $opslimit, $memlimit);
-            return new UnlockedArchive($archive, $session, $current->generation());
+            $openedFrom = $current->generation();
+            return self::inScope(UnlockedArchive::class, static fn (): UnlockedArchive => new UnlockedArchive($archive, $session, $openedFrom));
         });
     }
 
@@ -1368,6 +1371,54 @@ final class SelfDataGuard
     }
 
     /**
+     * The objection key of the live vault of $userId — or of its archive
+     * $archiveId —, opened by one of its secrets without a session, whatever
+     * the seal says (ObjectionKey). escrowReads() and objectToEscrowRead()
+     * take it in place of a session; nothing that reads or writes a field
+     * does. The vault row and its escrow row are read, nothing of the account
+     * is written, and the master key is wiped before the key is handed out.
+     *
+     * It is the holder's door when no session opens: a vault whose seal no
+     * longer holds — its profile or an envelope changed in the database —, or
+     * an archive after a level 3 they did not ask for, whose current vault is
+     * someone else's. The seal names the profile to derive under; when it
+     * does not hold, each published profile is tried, never the one the row
+     * names.
+     *
+     * Each call costs an Argon2id for each profile tried, behind the throttle;
+     * an account or an archive that does not exist costs one all the same.
+     * Whoever holds a secret of the vault or of the archive, an old one
+     * included, objects with it to every read of that escrow: an objection
+     * blocks a read, and reads nothing.
+     *
+     * @throws WrongSecretException   if the secret opens no envelope under the profiles tried
+     * @throws VaultNotFoundException if this userId has no live vault, or no such archive
+     * @throws Throttle\ThrottledException when the throttle refuses, before anything is read
+     */
+    public function openForObjection(
+        string $userId,
+        Lock $lock,
+        #[\SensitiveParameter] string $secret,
+        ?string $archiveId = null
+    ): ObjectionKey {
+        return $this->throttled(Door::Objection, $userId, function () use ($userId, $lock, $secret, $archiveId): ObjectionKey {
+            [$record, $profiles, $escrow] = $this->orInVain(fn (): array => $this->forObjection($userId, $archiveId), $userId, $lock, $secret);
+            $session = $this->unlockUnderAny($record, $lock, $secret, $profiles);
+            try {
+                $escrowId = $session->escrowId();
+                $open     = $archiveId === null
+                    ? fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session)
+                    : static fn (EscrowRecord $r): UnlockedEscrow => $session->openEscrow($r);
+                [$pinned, $row] = $this->rowOf($escrow, $open, $escrowId);
+                $seed = self::inScope(UnlockedVault::class, static fn (): string => $session->objectionSeed());
+                return self::inScope(ObjectionKey::class, static fn (): ObjectionKey => new ObjectionKey($userId, $archiveId, $seed, $pinned, $row));
+            } finally {
+                $session->lock();
+            }
+        });
+    }
+
+    /**
      * What the keepers released of this account's escrow, and what they hold
      * announced, as they sign it for this session — read when the holder opens
      * their vault. The keepers are asked about the escrowId the session
@@ -1432,25 +1483,28 @@ final class SelfDataGuard
      * A release is the keeper handing the inner box back: the read that
      * follows may still fail — a wrong passphrase —, and is listed all the
      * same. A vault that refuses every session — rewritten in the database —
-     * gives neither this view nor an objection until the operator repairs it;
-     * an outage of the storage comes out of both as it is. A field rewritten
-     * alone leaves the view as the row says: reading the fields refuses.
+     * gives neither this view nor an objection until the operator repairs it
+     * — openForObjection() gives both from a secret —; an outage of the
+     * storage comes out of both as it is. A field rewritten alone leaves the
+     * view as the row says: reading the fields refuses.
+     *
+     * An ObjectionKey is taken in place of a session, of the live vault or of
+     * an archive: the row is then the one its opening read.
      *
      * @return array{established: bool, reason: ?string, keeper: ?string, pinned: bool,
      *               reads: list<array{case: string, seq: int, at: int, keeper: string}>,
      *               pending: list<array{case: string, due: int, objected: bool, keeper: string}>,
      *               unanswered: list<array{keeper: string, reason: string}>, reseal: bool}
      */
-    public function escrowReads(UnlockedVault $session): array
+    public function escrowReads(UnlockedVault|ObjectionKey $session): array
     {
+        if ($session instanceof ObjectionKey) {
+            return $this->readsOf(self::rowAtOpening($session), $session->archiveId !== null, $session->escrowId());
+        }
         $this->currentRecord($session);
         $escrowId = $session->escrowId();
-        $record   = $this->rowRecord($session->userId);
-        if ($record === null && $this->storage->loadEscrowFields($session->userId) !== []) {
-            // A first deposit can land between the two reads: only a row still absent is one deleted.
-            $record = $this->rowRecord($session->userId) ?? false;
-        }
-        return $this->readsOf($record, fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), false, $escrowId);
+        $row      = $this->rowOf($this->liveRow($session->userId), fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), $escrowId);
+        return $this->readsOf($row, false, $escrowId);
     }
 
     /**
@@ -1461,7 +1515,9 @@ final class SelfDataGuard
      */
     public function archiveEscrowReads(UnlockedArchive $opened): array
     {
-        return $this->readsOf($this->archiveEscrow($opened->archive), fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), true, $opened->escrowId());
+        $escrowId = $opened->escrowId();
+        $row      = $this->rowOf($this->archiveEscrow($opened->archive), fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), $escrowId);
+        return $this->readsOf($row, true, $escrowId);
     }
 
     /**
@@ -1477,9 +1533,17 @@ final class SelfDataGuard
      * all, when one could not be asked or did not record it — reason
      * `objection-partial` when others did, the message naming both —, or when
      * none holds it.
+     *
+     * An ObjectionKey is taken in place of a session, of the live vault or of
+     * an archive (openForObjection()).
      */
-    public function objectToEscrowRead(UnlockedVault $session, string $caseRef): void
+    public function objectToEscrowRead(UnlockedVault|ObjectionKey $session, string $caseRef): void
     {
+        if ($session instanceof ObjectionKey) {
+            [$pinned] = self::rowAtOpening($session);
+            $this->objectAt($pinned, $session->escrowId(), $caseRef, $session->signEscrowObjection($caseRef));
+            return;
+        }
         $this->currentRecord($session);
         $escrowId = $session->escrowId();
         [$pinned] = $this->rowOf($this->rowRecord($session->userId), fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), $escrowId);
@@ -1633,6 +1697,21 @@ final class SelfDataGuard
         } catch (UnreadableEscrowException) {
             return false;
         }
+    }
+
+    /**
+     * The escrow row of the live vault of $userId, as rowRecord() reads it —
+     * and false for a row absent while its fields stayed: deleted. A first
+     * deposit can land between the two reads: only a row still absent is one
+     * deleted.
+     */
+    private function liveRow(string $userId): EscrowRecord|false|null
+    {
+        $record = $this->rowRecord($userId);
+        if ($record === null && $this->storage->loadEscrowFields($userId) !== []) {
+            $record = $this->rowRecord($userId) ?? false;
+        }
+        return $record;
     }
 
     /**
@@ -2115,14 +2194,13 @@ final class SelfDataGuard
      * announced. A keeper that cannot be asked does not hide what the others
      * attest: the view is then not established, names it, and lists the rest.
      *
-     * @param EscrowRecord|false|null $record false: a row that does not parse, or one absent while its fields stayed
-     * @param callable(EscrowRecord): UnlockedEscrow $open
+     * @param array{0: ?array{sign: string, box: string}, 1: ?string} $rowState what rowOf() said of the row
      * @return array<string, mixed> see escrowReads()
      */
-    private function readsOf(EscrowRecord|false|null $record, callable $open, bool $archive, string $escrowId): array
+    private function readsOf(array $rowState, bool $archive, string $escrowId): array
     {
         $out = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'reads' => [], 'pending' => [], 'unanswered' => [], 'reseal' => false];
-        [$pinned, $row] = $this->rowOf($record, $open, $escrowId);
+        [$pinned, $row] = $rowState;
         if ($pinned !== null) {
             $out = ['pinned' => true, 'keeper' => KeeperSeal::fingerprint($pinned)] + $out;
         }
@@ -2502,14 +2580,116 @@ final class SelfDataGuard
     private function openThrottled(Door $door, string $userId, Lock $lock, #[\SensitiveParameter] string $secret): array
     {
         return $this->throttled($door, $userId, function () use ($userId, $lock, $secret): array {
-            try {
-                $record = $this->load($userId);
-            } catch (VaultNotFoundException $e) {
-                $this->vault->deriveInVain($userId, $lock, $secret);
-                throw $e;
-            }
+            $record = $this->orInVain(fn (): VaultRecord => $this->load($userId), $userId, $lock, $secret);
             return [$record, $this->vault->unlock($record, $lock, $secret)];
         });
+    }
+
+    /**
+     * $load() — or, for an account or an archive that does not exist, the
+     * derivation a wrong secret costs, then its VaultNotFoundException: the
+     * time does not tell which.
+     *
+     * @template T
+     * @param callable(): T $load
+     * @return T
+     */
+    private function orInVain(callable $load, string $userId, Lock $lock, #[\SensitiveParameter] string $secret): mixed
+    {
+        try {
+            return $load();
+        } catch (VaultNotFoundException $e) {
+            $this->vault->deriveInVain($userId, $lock, $secret);
+            throw $e;
+        }
+    }
+
+    /**
+     * For openForObjection(): the live vault of $userId or its archive
+     * $archiveId, read without its seal, the profiles to derive under, and its
+     * escrow row.
+     *
+     * @return array{0: VaultRecord, 1: non-empty-list<array{0: int, 1: int}>, 2: EscrowRecord|false|null}
+     */
+    private function forObjection(string $userId, ?string $archiveId): array
+    {
+        $this->assertPepper();
+        if ($archiveId === null) {
+            $record = $this->storage->loadVault($userId);
+            $this->assertSameUser($userId, $record->userId);
+            return [$record, $this->profilesToTry($record, $record->kdfOpslimit, $record->kdfMemlimit), $this->liveRow($userId)];
+        }
+        $archive = $this->storage->loadArchive($userId, $archiveId)
+            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
+        $this->assertSameUser($userId, $archive->record->userId);
+        return [$archive->record, $this->profilesToTry($archive->record, $archive->kdfOpslimit, $archive->kdfMemlimit), $this->archiveEscrow($archive)];
+    }
+
+    /**
+     * The profile the seal of $record vouches for — the one recorded, or a
+     * published one it holds under —; with no seal that holds, every published
+     * profile. Never one the seal does not vouch for, which whoever writes the
+     * database chooses.
+     *
+     * @return non-empty-list<array{0: int, 1: int}>
+     */
+    private function profilesToTry(VaultRecord $record, int $opslimit, int $memlimit): array
+    {
+        $published = array_values(array_unique(Primitives::PUBLISHED_PROFILES, SORT_REGULAR));
+        if ($record->profileSeal !== null) {
+            foreach ([[$opslimit, $memlimit], ...$published] as [$ops, $mem]) {
+                if (ProfileSeal::holds($this->sealKey, $record->profileSeal, $record, $ops, $mem)) {
+                    return [[$ops, $mem]];
+                }
+            }
+        }
+        return $published;
+    }
+
+    /**
+     * $record opened by $secret under the first of $profiles it opens under.
+     *
+     * @param non-empty-list<array{0: int, 1: int}> $profiles
+     * @throws WrongSecretException when it opens under none
+     */
+    private function unlockUnderAny(VaultRecord $record, Lock $lock, #[\SensitiveParameter] string $secret, array $profiles): UnlockedVault
+    {
+        $wrong = null;
+        foreach ($profiles as [$opslimit, $memlimit]) {
+            try {
+                return $this->vault->unlock($record, $lock, $secret, $opslimit, $memlimit);
+            } catch (WrongSecretException $e) {
+                $wrong = $e;
+            }
+        }
+        throw $wrong;
+    }
+
+    /**
+     * What the escrow row said when $key was opened (rowOf()).
+     *
+     * @return array{0: ?array{sign: string, box: string}, 1: ?string}
+     */
+    private static function rowAtOpening(ObjectionKey $key): array
+    {
+        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row]);
+    }
+
+    /**
+     * $fn run in the scope of $class. The façade alone builds an
+     * UnlockedArchive or an ObjectionKey, whose constructors are private, and
+     * alone draws the objection seed out of a session into an ObjectionKey: the
+     * type of each says which door it came through. That is the façade's rule,
+     * no barrier against code that does the same.
+     *
+     * @template T
+     * @param class-string $class
+     * @param Closure(): T $fn
+     * @return T
+     */
+    private static function inScope(string $class, Closure $fn): mixed
+    {
+        return Closure::bind($fn, null, $class)();
     }
 
     /**

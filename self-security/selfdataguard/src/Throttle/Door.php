@@ -15,4 +15,5 @@ enum Door: string
     case Recover        = 'recover';
     case OpenArchive    = 'open-archive';
     case SetLockWhileFrozen = 'set-lock-while-frozen';
+    case Objection      = 'objection';
 }

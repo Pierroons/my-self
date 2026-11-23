@@ -997,7 +997,7 @@ jobs:
           canari '    } catch (EscrowEnvelopeMismatchException) {' '    } catch (\DomainException) {' \
             'une ligne de séquestre réécrite cache la vue des lectures'
           F=self-security/selfdataguard/src/SelfDataGuard.php
-          canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
+          canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$userId) !== []) {" "        if (false) {" \
             'une ligne de séquestre supprimée se lit comme un séquestre jamais déposé'
 
       # Le banc des sessions lance deux serveurs `php -S`, qui survivent à leur parent. Ce canari
@@ -1113,8 +1113,8 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
-            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=208 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
-            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=30
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=222 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=38
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -1953,9 +1953,9 @@ jobs:
             $K "a first deposit landing between the reads of the row and of the fields: the holder's read says the row was deleted"
           canari $D/src/Storage/SqliteAdapter.php "            if (\$held->fetchColumn() === false) {" "            if (\$this->loadEscrow(\$record->userId) === null) {" \
             $K "a row made unreadable between a deposit's read and its write: the deposit raised a bare error"
-          canari $SDG "        if (\$record === null && \$this->storage->loadEscrowFields(\$session->userId) !== []) {" "        if (false) {" \
+          canari $SDG "        if (\$record === null && \$this->storage->loadEscrowFields(\$userId) !== []) {" "        if (false) {" \
             $K 'the row deleted, its fields kept: the view says established while the fields refuse'
-          canari $SDG "            \$record = \$this->rowRecord(\$session->userId) ?? false;" "            \$record = false;" \
+          canari $SDG "            \$record = \$this->rowRecord(\$userId) ?? false;" "            \$record = false;" \
             $K 'a first deposit landing between the reads of the row and of the fields: the view says "escrow-replaced"'
           canari $SDG "        if (\$row === 'not-keeper-sealed' || \$row === 'not-pinned') {
                       return ['reason' => \$row, 'keeper' => null] + \$seen;
@@ -2254,7 +2254,7 @@ jobs:
             $T '❌ openArchive: the refusal did not come before the read'
           canari $FA '        } catch (WrongSecretException | VaultNotFoundException $e) {' '        } catch (WrongSecretException $e) {' \
             $T '❌ login on an account that does not exist: VaultNotFoundException kept, settled as a refusal'
-          canari $FA '                $this->vault->deriveInVain($userId, $lock, $secret);' '' \
+          canari $FA '            $this->vault->deriveInVain($userId, $lock, $secret);' '' \
             $T '❌ loginWithPassword, unknown account against a wrong password'
 
       # Sous gel, une serrure ne se re-scelle que depuis une ouverture par le mot mémorisé
@@ -2286,6 +2286,48 @@ jobs:
             $FC '❌ the refusal of a vault not frozen does not point to setLock(), or something was written'
           canari $FA "$OUVRE" "        if (\$this->storage->frozenState(\$userId) === null) { throw new LogicException('not frozen'); } $OUVRE" \
             $FC '❌ the gesture tells whoever lacks the memorized secret whether the vault is frozen'
+
+      # L'objection sans session (P6, P7) : une seule porte, freinée, qui rend la clé
+      # d'objection d'un coffre ou d'une archive depuis un secret, sous le profil que le
+      # sceau couvre, sans rien écrire ; la clé ne fait rien d'autre, et les types
+      # d'UnlockedArchive et d'ObjectionKey ne se bâtissent que dans la façade.
+      - name: Canaris — l'objection sans session rougit quand on retire une garde
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FA=$D/src/SelfDataGuard.php
+          FK=$D/src/Vault/ObjectionKey.php
+          K=$D/tests/sanity_keeper.php
+          T=$D/tests/sanity_throttle.php
+          PORTE='        return $this->throttled(Door::Objection, $userId, function () use ($userId, $lock, $secret, $archiveId): ObjectionKey {'
+          canari $FA "$PORTE" "        \$this->storage->loadVault(\$userId); $PORTE" \
+            $T '❌ openForObjection: the refusal did not come before the read'
+          canari $FA '        $published = array_values(array_unique(Primitives::PUBLISHED_PROFILES, SORT_REGULAR));' '        return [[$opslimit, $memlimit]];' \
+            $K '❌ the profile changed, openForObjection() by the password derives under the profile the seal vouches for'
+          OUVRE='            $session = $this->unlockUnderAny($record, $lock, $secret, $profiles);'
+          canari $FA "$OUVRE" "$OUVRE if (\$archiveId === null) { \$this->repairProfile(\$userId); }" \
+            $K 'the seal vouches for — the database was written'
+          canari $FA '        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row]);' "        return [null, 'not-pinned'];" \
+            $K 'the view is not established on a pinned keeper'
+          canari $FK '        return KeeperSeal::escrowIdOfSeed($this->seed());' "        return KeeperSeal::escrowIdOfSeed(hash('sha256', \$this->seed(), true));" \
+            $K '❌ the objection key computes another escrowId'
+          canari $D/src/Vault/UnlockedArchive.php '    private function __construct(' '    public function __construct(' \
+            $K '❌ a constructor of UnlockedArchive or ObjectionKey is open to the integrator'
+          canari $FK '    private function __construct(' '    public function __construct(' \
+            $K '❌ a constructor of UnlockedArchive or ObjectionKey is open to the integrator'
 
   selfrecover-1:
     needs: modules

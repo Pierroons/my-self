@@ -207,6 +207,7 @@ $doors = [
     'recover'            => [Door::Recover,        fn () => $dg->recover('alice', Lock::Passphrase, PHRASE, 'throttle-password-03')],
     'openArchive'        => [Door::OpenArchive,    fn () => $dg->openArchive($current, $archive, Lock::Password, PWD)],
     'setLockWhileFrozen' => [Door::SetLockWhileFrozen, fn () => $dg->setLockWhileFrozen('alice', $mot, Lock::Password, 'throttle-password-09')],
+    'openForObjection'   => [Door::Objection,      fn () => $dg->openForObjection('alice', Lock::Password, PWD, $archive)],
 ];
 foreach ($doors as $name => [$door, $call]) {
     $throttle->refusal = new ThrottledException('slow down');
@@ -294,6 +295,16 @@ $settles('openArchive by a wrong old password', fn () => $dg->openArchive($curre
     WrongSecretException::class, 'admit open-archive alice | settle open-archive alice Refused');
 $settles('openArchive of an archive that does not exist', fn () => $dg->openArchive($current, 'no-such-archive', Lock::Password, PWD),
     VaultNotFoundException::class, 'admit open-archive alice | settle open-archive alice Refused');
+$settles('openForObjection on the live vault, by its password', fn () => $dg->openForObjection('alice', Lock::Password, 'throttle-password-03')->lock(), null,
+    'admit objection alice | settle objection alice Opened');
+$settles('openForObjection on an archive, by its old password: no session asked', fn () => $dg->openForObjection('alice', Lock::Password, PWD, $archive)->lock(), null,
+    'admit objection alice | settle objection alice Opened');
+$settles('openForObjection by a wrong old password', fn () => $dg->openForObjection('alice', Lock::Password, 'wrong-password-01', $archive),
+    WrongSecretException::class, 'admit objection alice | settle objection alice Refused');
+$settles('openForObjection of an archive that does not exist', fn () => $dg->openForObjection('alice', Lock::Password, PWD, 'no-such-archive'),
+    VaultNotFoundException::class, 'admit objection alice | settle objection alice Refused');
+$settles('openForObjection on an account that does not exist', fn () => $dg->openForObjection('nobody', Lock::Password, PWD),
+    VaultNotFoundException::class, 'admit objection nobody | settle objection nobody Refused');
 $stale = $current;
 $dg->reEnroll($dg->generationOf('alice'), 'throttle-password-04', $mot, PHRASE);
 $throttle->take();
@@ -321,6 +332,11 @@ $alike('loginWithMemorized, unknown account against a wrong memorized secret',
 $alike('recover by the passphrase, unknown account against a wrong passphrase',
     fn () => $dg->recover('alice', Lock::Passphrase, 'wrong passphrase of six words here', 'throttle-password-05'),
     fn () => $dg->recover('nobody', Lock::Passphrase, 'wrong passphrase of six words here', 'throttle-password-05'));
+$alike('openForObjection, unknown account against a wrong password',
+    fn () => $dg->openForObjection('bob', Lock::Password, 'wrong-password-01'), fn () => $dg->openForObjection('nobody', Lock::Password, 'wrong-password-01'));
+$alike('openForObjection, unknown archive against a wrong old password',
+    fn () => $dg->openForObjection('alice', Lock::Password, 'wrong-password-01', $archive),
+    fn () => $dg->openForObjection('alice', Lock::Password, 'wrong-password-01', 'no-such-archive'));
 $alike('a bare lock under LayeredOnly against a wrong password',
     fn () => $dg->loginWithPassword('bob', 'wrong-password-01'), fn () => $bareDg->loginWithPassword('carol', PWD));
 $throttle->take();

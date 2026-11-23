@@ -205,11 +205,11 @@ final class UnlockedVault
      */
     public function escrowId(): string
     {
-        $pair = sodium_crypto_sign_seed_keypair($this->objectionSeed());
+        $seed = $this->objectionSeed();
         try {
-            return KeeperSeal::escrowIdFor(sodium_crypto_sign_publickey($pair));
+            return KeeperSeal::escrowIdOfSeed($seed);
         } finally {
-            Primitives::zeroize($pair);
+            Primitives::zeroize($seed);
         }
     }
 
@@ -227,17 +227,19 @@ final class UnlockedVault
 
     private function signEscrowToken(string $message): string
     {
-        $pair   = sodium_crypto_sign_seed_keypair($this->objectionSeed());
-        $secret = sodium_crypto_sign_secretkey($pair);
+        $seed = $this->objectionSeed();
         try {
-            return KeeperSeal::token($message, $secret);
+            return KeeperSeal::tokenOfSeed($message, $seed);
         } finally {
-            Primitives::zeroize($secret);
-            Primitives::zeroize($pair);
+            Primitives::zeroize($seed);
         }
     }
 
-    /** The same seed at every deposit and under every keeper: the holder objects to any box of the escrow. */
+    /**
+     * The same seed at every deposit and under every keeper: the holder objects
+     * to any box of the escrow. SelfDataGuard::openForObjection() draws it out
+     * of the session, into an ObjectionKey, before it wipes the master key.
+     */
     private function objectionSeed(): string
     {
         return hash_hmac('sha256', self::OBJECTION_SEED_TAG . $this->userId, $this->key(), true);
