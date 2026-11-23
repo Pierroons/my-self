@@ -293,6 +293,155 @@ final class EscrowCeremony
     }
 
     /**
+     * The operator's pass after SelfDataGuard::changeEscrowAdmin(): each escrow
+     * of $userIds — live, and in each archive — that the old administrator key
+     * opens alone is sealed again to the key the database now records, and
+     * labelled with it. The escrow key stays, and the fields with it; no field
+     * is read. The old key is proven and unsealed once for the whole pass, and
+     * wiped after it. Logged once per account: what it re-sealed, and what it
+     * left with the reason.
+     *
+     * Left: an escrow sealed to a keeper (keeper-sealed: its box opens only by a
+     * release — the holder's next deposit re-seals the live one to the new key),
+     * one whose label names a third key (other-key), one the old key does not
+     * open (not-opened), a frozen live vault (frozen), an escrow that does not
+     * parse (unreadable), one a deposit replaced meanwhile (stale: run the pass
+     * again), an account the pass failed on (failed, and logged as such). Keep
+     * the old key while the pass leaves anything under it.
+     *
+     * Re-sealing serves a change of the key's holder. It repairs no leak: a
+     * copy of the database taken before still opens with the old key.
+     *
+     * @param list<string> $userIds
+     * @return array<string, array{live: bool, archives: list<string>, left: array<string, string>}> by account: what
+     *         was re-sealed, and what was left — keyed 'live', by archive id, or 'account' — with its reason
+     * @throws EscrowAdminException when $newPublicKeyB64 is not the key the database records, or the old files are
+     *         two keys' halves
+     * @throws WrongSecretException on a wrong passphrase of the old key
+     */
+    public function resealToAdmin(
+        array $userIds,
+        string $oldSealedSecret,
+        #[\SensitiveParameter] string $oldPassphrase,
+        string $oldPublicKeyB64,
+        string $newPublicKeyB64
+    ): array {
+        $old  = AdminKey::fingerprint($oldPublicKeyB64);
+        $new  = AdminKey::fingerprint($newPublicKeyB64);
+        $held = $this->storage->loadSetting(SelfDataGuard::SETTING_ESCROW_ADMIN);
+        if ($held === null || !hash_equals($held, $new)) {
+            throw new EscrowAdminException(
+                'admin-mismatch',
+                'This database records the administrator key ' . ($held ?? 'none') . ", not {$new}: the pass re-seals to "
+                . 'the key the database records — change it first (SelfDataGuard::changeEscrowAdmin())'
+            );
+        }
+        return $this->withAdminKey($oldSealedSecret, $oldPassphrase, function (string $sk) use ($userIds, $oldPublicKeyB64, $old, $newPublicKeyB64, $new): array {
+            self::assertPair($sk, $oldPublicKeyB64);
+            $done = [];
+            foreach ($userIds as $userId) {
+                $userId = (string) $userId;
+                try {
+                    $done[$userId] = $this->resealAccount($userId, $sk, $oldPublicKeyB64, $old, $newPublicKeyB64, $new);
+                } catch (Throwable $e) {
+                    $this->log->append(['action' => 'reseal-admin-failed', 'target' => $userId, 'admin' => $new,
+                        'reason' => get_class($e), 'operator' => $this->operator]);
+                    $done[$userId] = ['live' => false, 'archives' => [], 'left' => ['account' => 'failed']];
+                }
+            }
+            return $done;
+        });
+    }
+
+    /** @return array{live: bool, archives: list<string>, left: array<string, string>} */
+    private function resealAccount(string $userId, #[\SensitiveParameter] string $sk, string $oldPub, string $old, string $newPub, string $new): array
+    {
+        $done = ['live' => false, 'archives' => [], 'left' => []];
+        try {
+            $live = $this->storage->loadEscrow($userId);
+        } catch (UnreadableEscrowException) {
+            $live = null;
+            $done['left']['live'] = 'unreadable';
+        }
+        $resealed = $live === null ? null : self::resealedTo($live, $sk, $oldPub, $old, $newPub, $new);
+        if ($resealed instanceof EscrowRecord) {
+            try {
+                $this->storage->replaceEscrow($this->storage->loadVault($userId)->generation(), $resealed);
+                $done['live'] = true;
+            } catch (\Pierroons\SelfDataGuard\Vault\VaultFrozenException) {
+                $done['left']['live'] = 'frozen';
+            } catch (StaleEscrowException) {
+                $done['left']['live'] = 'stale';
+            }
+        } elseif ($resealed !== null) {
+            $done['left']['live'] = $resealed;
+        }
+        foreach ($this->storage->listArchives($userId) as $listed) {
+            $archiveId = (string) $listed['id'];
+            $archive   = $this->storage->loadArchive($userId, $archiveId);
+            if ($archive !== null && $archive->escrowUnreadable) {
+                $done['left'][$archiveId] = 'unreadable';
+                continue;
+            }
+            $resealed = $archive?->escrow === null ? null : self::resealedTo($archive->escrow, $sk, $oldPub, $old, $newPub, $new);
+            if ($resealed instanceof EscrowRecord) {
+                try {
+                    $this->storage->replaceArchiveEscrow($userId, $archiveId, $resealed);
+                    $done['archives'][] = $archiveId;
+                } catch (StaleEscrowException) {
+                    $done['left'][$archiveId] = 'stale';
+                }
+            } elseif ($resealed !== null) {
+                $done['left'][$archiveId] = $resealed;
+            }
+        }
+        $this->log->append(['action' => 'reseal-admin', 'target' => $userId, 'admin' => $new, 'former' => $old,
+            'live' => $done['live'], 'archives' => $done['archives'], 'left' => $done['left'], 'operator' => $this->operator]);
+        return $done;
+    }
+
+    /**
+     * $record sealed again to the new key and labelled with it; null when it is
+     * under the new key already; or why it is left.
+     */
+    private static function resealedTo(
+        EscrowRecord $record,
+        #[\SensitiveParameter] string $sk,
+        string $oldPub,
+        string $old,
+        string $newPub,
+        string $new
+    ): EscrowRecord|string|null {
+        if ($record->adminKey !== null && hash_equals($record->adminKey, $new)) {
+            return null;
+        }
+        if (EscrowVault::isKeeperSealed($record)) {
+            return 'keeper-sealed';
+        }
+        if ($record->adminKey !== null && !hash_equals($record->adminKey, $old)) {
+            return 'other-key';
+        }
+        try {
+            $unlocked = self::openWrapAdmin($record, $sk, $oldPub);
+        } catch (RuntimeException) {
+            return 'not-opened';
+        }
+        try {
+            return new EscrowRecord(
+                $record->userId,
+                $record->wrapUser,
+                $unlocked->sealToAdmin($newPub),
+                $record->createdAt,
+                new \DateTimeImmutable(),
+                $record->revision,
+                $new
+            );
+        } finally {
+            $unlocked->lock();
+        }
+    }
+
+    /**
      * The escrow $archive keeps, or null when it keeps none.
      *
      * @throws UnreadableEscrowException when it keeps one that does not parse
@@ -789,19 +938,28 @@ final class EscrowCeremony
      */
     public static function proveAdminKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase, string $publicKeyB64): void
     {
-        $publicKey = EscrowVault::decodePublicKey($publicKeyB64);
+        EscrowVault::decodePublicKey($publicKeyB64);
         $secretKey = self::unsealAdminKey($sealedSecret, $passphrase);
         try {
-            if (strlen($secretKey) !== SODIUM_CRYPTO_BOX_SECRETKEYBYTES
-                || !hash_equals(sodium_crypto_box_publickey_from_secretkey($secretKey), $publicKey)) {
-                throw new EscrowAdminException(
-                    'admin-not-the-pair',
-                    'The sealed secret key is not the private half of the administrator public key given ('
-                    . AdminKey::fingerprint($publicKeyB64) . '): the two files belong to different keys'
-                );
-            }
+            self::assertPair($secretKey, $publicKeyB64);
         } finally {
             Primitives::zeroize($secretKey);
+        }
+    }
+
+    /**
+     * @throws EscrowAdminException admin-not-the-pair, when $secretKey is not the private half of $publicKeyB64
+     */
+    private static function assertPair(#[\SensitiveParameter] string $secretKey, string $publicKeyB64): void
+    {
+        $publicKey = EscrowVault::decodePublicKey($publicKeyB64);
+        if (strlen($secretKey) !== SODIUM_CRYPTO_BOX_SECRETKEYBYTES
+            || !hash_equals(sodium_crypto_box_publickey_from_secretkey($secretKey), $publicKey)) {
+            throw new EscrowAdminException(
+                'admin-not-the-pair',
+                'The sealed secret key is not the private half of the administrator public key given ('
+                . AdminKey::fingerprint($publicKeyB64) . '): the two files belong to different keys'
+            );
         }
     }
 

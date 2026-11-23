@@ -39,6 +39,8 @@ declare(strict_types=1);
  *   php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>
  *   php bin/escrow-ceremony.php seal-to-keeper [user...]
  *   php bin/escrow-ceremony.php adopt-admin
+ *   php bin/escrow-ceremony.php change-admin
+ *   php bin/escrow-ceremony.php reseal-admin [user...]
  *
  * `adopt-admin` inscrit la clé d'administration dans la base : c'est l'acte de
  * l'exploitant, et le seul qui l'inscrit — aucun dépôt ne le fait, et un dépôt sur une
@@ -48,6 +50,16 @@ declare(strict_types=1);
  * Chaque séquestre porte l'empreinte de la clé qui le scelle : la cérémonie la compare à
  * celle qu'on lui donne avant tout gardien, si bien qu'une mauvaise clé ne coûte aucune
  * remise.
+ *
+ * `change-admin` remplace la clé inscrite (DATAGUARD_OLD_ADMIN_PUBKEY_FILE) par celle des
+ * fichiers DATAGUARD_ADMIN_*, prouvée par sa passphrase. `reseal-admin` est la passe qui
+ * suit : chaque séquestre que l'ancienne clé ouvre seule (DATAGUARD_OLD_ADMIN_SEALED_FILE et
+ * sa passphrase) est re-scellé à la nouvelle ; sans compte nommé, tous ceux de la base. Elle
+ * rend ce qu'elle laisse et pourquoi — un séquestre scellé à un gardien ne s'ouvre que par une
+ * remise, et se re-scelle au prochain dépôt de son titulaire — et sort en 5 s'il reste
+ * quelque chose : garder l'ancienne clé jusque-là. Changer de clé sert un changement de
+ * détenteur ; cela ne répare aucune fuite, une copie de la base d'avant s'ouvrant toujours
+ * avec l'ancienne.
  *
  * Sous un gardien, une lecture peut être annoncée plutôt que faite : le gardien
  * l'inscrit et la tient jusqu'à une échéance, que le titulaire voit et à laquelle il
@@ -71,12 +83,15 @@ declare(strict_types=1);
  *
  * Sorties : 0 fait (pour `compare`, chaque champ concorde) · 1 journal rompu · 2 refusé
  * · 3 configuration · 4 lecture annoncée, à relancer après l'échéance · 5 comparaison
- * faite, au moins un champ ne concorde pas ou est indisponible.
+ * faite, au moins un champ ne concorde pas ou est indisponible ; pour `reseal-admin`,
+ * passe faite, au moins un séquestre laissé sous l'ancienne clé.
  *
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (coffres + escrow)
  *   DATAGUARD_ADMIN_PUBKEY_FILE fichier clé publique admin (base64)
  *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (v2:ops:mem:salt:blob ; salt:blob avant 0.6.0)
+ *   DATAGUARD_OLD_ADMIN_PUBKEY_FILE, DATAGUARD_OLD_ADMIN_SEALED_FILE
+ *                               (change-admin, reseal-admin) les fichiers de la clé remplacée
  *   DATAGUARD_AUDIT_LOG         chemin du journal d'audit
  *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal ; un secret neuf ouvre un journal
  *                               neuf : sous lui, l'ancien se rompt à sa première ligne. L'ancien se
@@ -287,27 +302,39 @@ if ($cmd === 'verify-log') {
     exit(1);
 }
 
-if ($cmd === 'seal-to-keeper') {
-    $comptes = array_slice($argv, 2);
-    if ($comptes === []) {
-        $pdo = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $stockage = new SqliteAdapter($pdo);
-        // Les comptes qui portent un séquestre, lisible ou non, ou une archive :
-        // la passe n'a rien à sceller chez les autres.
-        for ($apres = ''; ($page = $stockage->accountIds($apres)) !== []; $apres = (string) end($page)) {
-            foreach ($page as $compte) {
-                try {
-                    $aSceller = $stockage->loadEscrow($compte) !== null || $stockage->listArchives($compte) !== [];
-                } catch (UnreadableEscrowException) {
-                    $aSceller = true;
-                }
-                if ($aSceller) {
-                    $comptes[] = $compte;
-                }
+/**
+ * Les comptes nommés, ou, sans nom, ceux de la base qui portent un séquestre —
+ * lisible ou non — ou une archive : une passe n'a rien à faire chez les autres.
+ *
+ * @param list<string> $noms
+ * @return list<string>
+ */
+function comptesDeLaPasse(array $noms): array
+{
+    if ($noms !== []) {
+        return $noms;
+    }
+    $pdo = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $stockage = new SqliteAdapter($pdo);
+    $comptes  = [];
+    for ($apres = ''; ($page = $stockage->accountIds($apres)) !== []; $apres = (string) end($page)) {
+        foreach ($page as $compte) {
+            try {
+                $aSceller = $stockage->loadEscrow($compte) !== null || $stockage->listArchives($compte) !== [];
+            } catch (UnreadableEscrowException) {
+                $aSceller = true;
+            }
+            if ($aSceller) {
+                $comptes[] = $compte;
             }
         }
     }
+    return $comptes;
+}
+
+if ($cmd === 'seal-to-keeper') {
+    $comptes  = comptesDeLaPasse(array_slice($argv, 2));
     $ceremony = ceremonie($auditLog, operatorContext());
     $gele = 0;
     $echecs = [];
@@ -357,6 +384,68 @@ if ($cmd === 'adopt-admin') {
     exit(0);
 }
 
+if ($cmd === 'change-admin') {
+    $ctx  = operatorContext();
+    $qui  = $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '');
+    $ancienne = fileEnv('DATAGUARD_OLD_ADMIN_PUBKEY_FILE');
+    $nouvelle = fileEnv('DATAGUARD_ADMIN_PUBKEY_FILE');
+    $pdo  = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $passphrase = readPassphrase("Passphrase de la NOUVELLE clé d'administration : ");
+    try {
+        SelfDataGuard::changeEscrowAdmin(new SqliteAdapter($pdo), $ancienne, fileEnv('DATAGUARD_ADMIN_SEALED_FILE'), $passphrase, $nouvelle);
+    } catch (\Throwable $e) {
+        $raison = match (true) {
+            $e instanceof EscrowAdminException  => $e->reason,
+            $e instanceof WrongSecretException  => 'bad-passphrase',
+            default                             => 'sealed-key-unreadable',
+        };
+        $auditLog->append(['action' => 'change-admin-denied', 'reason' => $raison, 'operator' => $qui]);
+        fwrite(STDERR, "⛔ Clé d'administration non changée ({$raison}) — {$e->getMessage()}\n");
+        exit(2);
+    } finally {
+        sodium_memzero($passphrase);
+    }
+    $auditLog->append(['action' => 'change-admin', 'admin' => AdminKey::fingerprint($nouvelle), 'former' => AdminKey::fingerprint($ancienne), 'operator' => $qui]);
+    echo "✅ clé d'administration " . AdminKey::fingerprint($nouvelle) . " inscrite à la place de " . AdminKey::fingerprint($ancienne)
+        . " : chaque dépôt scelle à la nouvelle. Ce qui reste scellé à l'ancienne se re-scelle par reseal-admin — garde l'ancienne clé jusque-là.\n";
+    exit(0);
+}
+
+if ($cmd === 'reseal-admin') {
+    $comptes  = comptesDeLaPasse(array_slice($argv, 2));
+    $ceremony = ceremonie($auditLog, operatorContext());
+    $passphrase = readPassphrase("Passphrase de l'ANCIENNE clé d'administration : ");
+    try {
+        $faits = $ceremony->resealToAdmin($comptes, fileEnv('DATAGUARD_OLD_ADMIN_SEALED_FILE'), $passphrase,
+            fileEnv('DATAGUARD_OLD_ADMIN_PUBKEY_FILE'), fileEnv('DATAGUARD_ADMIN_PUBKEY_FILE'));
+    } catch (EscrowAdminException $e) {
+        fwrite(STDERR, "⛔ Passe refusée — clé d'administration ({$e->reason}) : {$e->getMessage()}\n");
+        exit(2);
+    } catch (WrongSecretException) {
+        fwrite(STDERR, "⛔ Passe refusée — passphrase de l'ancienne clé invalide.\n");
+        exit(2);
+    } catch (\Throwable $e) {
+        fwrite(STDERR, "⛔ Passe refusée — {$e->getMessage()}\n");
+        exit(2);
+    } finally {
+        sodium_memzero($passphrase);
+    }
+    $laisses = 0;
+    foreach ($faits as $compte => $fait) {
+        echo "🔐 {$compte} : " . ($fait['live'] ? 'coffre vivant re-scellé à la nouvelle clé' : 'coffre vivant sans changement')
+            . ($fait['archives'] === [] ? '' : ', ' . count($fait['archives']) . ' archive(s) re-scellée(s)') . "\n";
+        foreach ($fait['left'] as $ou => $raison) {
+            $laisses++;
+            echo "   ⚠️ laissé sous l'ancienne clé — {$ou} : {$raison}\n";
+        }
+    }
+    if ($laisses > 0) {
+        fwrite(STDERR, "⚠️ {$laisses} séquestre(s) laissé(s) sous l'ancienne clé : garde-la tant qu'il en reste.\n");
+    }
+    exit($laisses === 0 ? 0 : 5);
+}
+
 $arites = ['unlock' => 3, 'unlock-archive' => 4, 'archives' => 2, 'compare' => 3, 'compare-archive' => 4];
 $args   = array_slice($argv, 2);
 $normalisation = Normalization::Exact;
@@ -381,7 +470,9 @@ if (!isset($arites[$cmd]) || count($args) < $arites[$cmd]) {
         . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n"
         . "  php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>\n"
         . "  php bin/escrow-ceremony.php seal-to-keeper [user...]\n"
-        . "  php bin/escrow-ceremony.php adopt-admin\n");
+        . "  php bin/escrow-ceremony.php adopt-admin\n"
+        . "  php bin/escrow-ceremony.php change-admin\n"
+        . "  php bin/escrow-ceremony.php reseal-admin [user...]\n");
     exit(3);
 }
 

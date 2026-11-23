@@ -947,6 +947,128 @@ $aCeremony->readEscrow('amy', 'case-a3', $admin['sealedSecret'], ADMIN_PASS, $ad
     ? ok('with the key the label names, the ceremony reads')
     : ko('the right key no longer reads');
 
+section('The administrator key changes, and the operator\'s pass re-seals what the old one holds');
+
+$autrePass = 'une autre passphrase admin assez longue';
+$tiers     = base64_encode(sodium_crypto_box_publickey(sodium_crypto_box_keypair()));
+$printAdm  = AdminKey::fingerprint($admin['publicKey']);
+$printAut  = AdminKey::fingerprint($autreAdmin['publicKey']);
+// bert: a live escrow under the old key; amy: an archive under it, and a new live vault without escrow.
+$bert = $aDg->register('bert', 'motdepasse-bert-01');
+$aDg->setEscrowFields($bert, $admin['publicKey'], ['contact_secours' => 'bert-secours@example.org']);
+$amyL3 = $aDg->reEnroll($aDg->generationOf('amy'), 'motdepasse-amy-02');
+// abel: written before 0.6.0 and 0.10.0 — the bare key, no label.
+$abel    = $aDg->register('abel', 'motdepasse-abel-01');
+$abelNew = $ev->create($abel, $admin['publicKey']);
+$aStore->createEscrow($abel->generation(), new EscrowRecord(
+    userId: 'abel', wrapUser: $abelNew['record']->wrapUser,
+    wrapAdmin: sodium_crypto_box_seal(heldKey($abelNew['unlocked']), base64_decode($admin['publicKey'])),
+    createdAt: $abelNew['record']->createdAt, updatedAt: $abelNew['record']->updatedAt, revision: 0, adminKey: null
+));
+// cleo: labelled with a third key. fay: no label, sealed to a third key. dina: frozen.
+$cleo = $aDg->register('cleo', 'motdepasse-cleo-01');
+$aDg->setEscrowFields($cleo, $admin['publicKey'], ['contact_secours' => 'cleo-secours@example.org']);
+$cleoRow = $aStore->loadEscrow('cleo');
+$aStore->replaceEscrow($cleo->generation(), new EscrowRecord('cleo', $cleoRow->wrapUser, $cleoRow->wrapAdmin, $cleoRow->createdAt, new DateTimeImmutable(), $cleoRow->revision, AdminKey::fingerprint($tiers)));
+$fay    = $aDg->register('fay', 'motdepasse-fay-01');
+$fayNew = $ev->create($fay, $tiers);
+$aStore->createEscrow($fay->generation(), new EscrowRecord('fay', $fayNew['record']->wrapUser, $fayNew['record']->wrapAdmin, $fayNew['record']->createdAt, $fayNew['record']->updatedAt, 0, null));
+$dina = $aDg->register('dina', 'motdepasse-dina-01');
+$aDg->setEscrowFields($dina, $admin['publicKey'], ['contact_secours' => 'dina-secours@example.org']);
+$aStore->freezeVault($aDg->generationOf('dina'), 'bench', new DateTimeImmutable());
+$aAccounts = ['amy', 'bert', 'abel', 'cleo', 'fay', 'dina'];
+
+foreach ([
+    'an old key the database did not record' => [static fn () => SelfDataGuard::changeEscrowAdmin($aStore, $tiers, $autreAdmin['sealedSecret'], $autrePass, $autreAdmin['publicKey']), 'admin-mismatch'],
+    'the two halves of two keys as the new one' => [static fn () => SelfDataGuard::changeEscrowAdmin($aStore, $admin['publicKey'], $admin['sealedSecret'], ADMIN_PASS, $autreAdmin['publicKey']), 'admin-not-the-pair'],
+    'a wrong passphrase of the new key' => [static fn () => SelfDataGuard::changeEscrowAdmin($aStore, $admin['publicKey'], $autreAdmin['sealedSecret'], 'pas celle-là', $autreAdmin['publicKey']), Pierroons\SelfDataGuard\Vault\WrongSecretException::class],
+] as $label => [$call, $expected]) {
+    try {
+        $call();
+        ko("changeEscrowAdmin() went through given {$label}");
+    } catch (Throwable $e) {
+        (($e instanceof EscrowAdminException ? $e->reason : get_class($e)) === $expected) && $aHeld() === $printAdm
+            ? ok("changeEscrowAdmin() given {$label} is refused, and the record stays")
+            : ko("changeEscrowAdmin() given {$label}: refused for another reason, or the record changed", get_class($e) . ' ' . $e->getMessage());
+    }
+}
+try {
+    $aCeremony->resealToAdmin($aAccounts, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $autreAdmin['publicKey']);
+    ko('the pass re-sealed to a key the database does not record');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-mismatch' && $aStore->loadEscrow('bert')->adminKey === $printAdm
+        ? ok('the pass refuses to re-seal to a key the database does not record: the key changes first')
+        : ko('refused, but not before re-sealing', $e->reason);
+}
+SelfDataGuard::changeEscrowAdmin($aStore, $admin['publicKey'], $autreAdmin['sealedSecret'], $autrePass, $autreAdmin['publicKey']);
+$aHeld() === $printAut
+    ? ok('changeEscrowAdmin() replaces the recorded key with the new one, proven by its passphrase')
+    : ko('the recorded key did not change');
+try {
+    $aDg->setEscrowFields($bert, $admin['publicKey'], ['contact_secours' => 'bert-secours@example.org']);
+    ko('a deposit under the old key went through after the change');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-mismatch' ? ok('after the change, a deposit under the old key is refused') : ko('refused for another reason', $e->reason);
+}
+try {
+    $aCeremony->readEscrow('bert', 'case-r0', $autreAdmin['sealedSecret'], $autrePass, $autreAdmin['publicKey'], ['contact_secours']);
+    ko('the new key read an escrow still sealed to the old one');
+} catch (EscrowAdminException) {
+    $aCeremony->readEscrow('bert', 'case-r1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']) === ['contact_secours' => 'bert-secours@example.org']
+        ? ok('until the pass, an escrow under the old key is refused to the new one by its label, and the old one still reads it')
+        : ko('the old key no longer reads an escrow still sealed to it');
+}
+try {
+    $aCeremony->resealToAdmin($aAccounts, $admin['sealedSecret'], 'pas la passphrase', $admin['publicKey'], $autreAdmin['publicKey']);
+    ko('the pass went through under a wrong passphrase of the old key');
+} catch (Pierroons\SelfDataGuard\Vault\WrongSecretException) {
+    $aStore->loadEscrow('bert')->adminKey === $printAdm ? ok('a wrong passphrase of the old key re-seals nothing') : ko('a wrong passphrase re-sealed');
+}
+try {
+    $aCeremony->resealToAdmin($aAccounts, $autreAdmin['sealedSecret'], $autrePass, $admin['publicKey'], $autreAdmin['publicKey']);
+    ko('the pass went through with the sealed file of another key than the old one');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-not-the-pair' && $aStore->loadEscrow('bert')->adminKey === $printAdm
+        ? ok('the old key\'s files must be one key\'s halves: re-sealed nothing otherwise')
+        : ko('refused, but not as the pair', $e->reason);
+}
+$pass = $aCeremony->resealToAdmin($aAccounts, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $autreAdmin['publicKey']);
+$amyArchive = $aStore->loadArchive('amy', $amyL3['archiveId'])?->escrow;
+$pass['bert']['live'] && $aStore->loadEscrow('bert')->adminKey === $printAut
+    && $pass['amy']['archives'] === [$amyL3['archiveId']] && $amyArchive?->adminKey === $printAut
+    ? ok('the pass re-seals a live escrow and an archive\'s to the new key, and labels them with it')
+    : ko('the pass did not re-seal the live escrow or the archive', json_encode([$pass['bert'], $pass['amy']]));
+$pass['abel']['live'] && $aStore->loadEscrow('abel')->adminKey === $printAut && EscrowVault::isAccountBound($aStore->loadEscrow('abel'))
+    ? ok('an escrow written before 0.6.0, without a label, that the old key opens is re-sealed, bound to its account and labelled')
+    : ko('the unlabelled escrow was not re-sealed', json_encode($pass['abel']));
+($pass['cleo']['left'] ?? null) === ['live' => 'other-key'] && ($pass['fay']['left'] ?? null) === ['live' => 'not-opened']
+    && ($pass['dina']['left'] ?? null) === ['live' => 'frozen']
+    ? ok('the pass says what it left and why: a third key\'s label, an escrow the old key does not open, a frozen vault')
+    : ko('the pass did not report what it left', json_encode([$pass['cleo'], $pass['fay'], $pass['dina']]));
+$aCeremony->readEscrow('bert', 'case-r2', $autreAdmin['sealedSecret'], $autrePass, $autreAdmin['publicKey'], ['contact_secours']) === ['contact_secours' => 'bert-secours@example.org']
+    && $aCeremony->readArchiveEscrow('amy', $amyL3['archiveId'], 'case-r3', $autreAdmin['sealedSecret'], $autrePass, $autreAdmin['publicKey'], ['contact_secours']) === ['contact_secours' => 'amy-secours@example.org']
+    ? ok('after the pass, the new key reads the live escrow and the archive\'s: the escrow key and the fields stayed')
+    : ko('the new key does not read what the pass re-sealed');
+try {
+    $aCeremony->readEscrow('bert', 'case-r4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+    ko('the old key still reads an escrow the pass re-sealed, through the ceremony');
+} catch (EscrowAdminException) {
+    ok('the ceremony refuses the old key on an escrow the pass re-sealed');
+}
+$again = $aCeremony->resealToAdmin($aAccounts, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $autreAdmin['publicKey']);
+!$again['bert']['live'] && $again['bert']['left'] === [] && $again['amy']['archives'] === [] && $again['amy']['left'] === []
+    && !$again['abel']['live'] && $again['dina']['left'] === ['live' => 'frozen']
+    ? ok('run again, the pass re-seals nothing more and still names what it leaves')
+    : ko('the pass run again did something', json_encode($again));
+$resealLog = array_values(array_filter(
+    (new AuditLog($aLog, str_repeat('s', 32)))->readAll(),
+    static fn (array $e): bool => ($e['event']['action'] ?? null) === 'reseal-admin' && ($e['event']['target'] ?? null) === 'cleo'
+));
+($resealLog[0]['event']['left'] ?? null) === ['live' => 'other-key'] && ($resealLog[0]['event']['admin'] ?? null) === $printAut
+    && ($resealLog[0]['event']['former'] ?? null) === $printAdm
+    ? ok('each account is logged once per pass: the new key, the old one, what was re-sealed, what was left')
+    : ko('the pass is not logged per account', json_encode($resealLog[0] ?? null));
+
 // Two re-sealings from one read: the storage lets the other request's land first.
 $dave     = $dg->register('dave', 'motdepasse-dave-01', hash('sha256', 'dave-memorized'));
 $neufDave = $ev->create($dave, $admin['publicKey']);

@@ -377,6 +377,48 @@ final class SelfDataGuard
     }
 
     /**
+     * Replace the administrator key the database recorded with $newPublicKey —
+     * the operator's act. $oldPublicKey must be the key recorded; the new one is
+     * proven as adoptEscrowAdmin() proves it. Every later deposit seals to the
+     * new key. What is sealed to the old one stays so — its label says so —
+     * until the operator's pass re-seals it (EscrowCeremony::resealToAdmin()),
+     * or, for a live escrow, its holder's next deposit: keep the old key until
+     * the pass leaves nothing under it.
+     *
+     * A change of key serves a change of its holder. It repairs no leak: a copy
+     * of the database taken before opens with the old key all the same.
+     *
+     * @throws WrongSecretException     on a wrong passphrase of the new key
+     * @throws InvalidArgumentException on a sealed file or a public key that does not parse
+     * @throws EscrowAdminException     admin-mismatch, when the database recorded none, another key than
+     *                                  $oldPublicKey, or changed it meanwhile; admin-not-the-pair for the new key's files
+     */
+    public static function changeEscrowAdmin(
+        StorageInterface $storage,
+        string $oldPublicKey,
+        string $sealedSecret,
+        #[\SensitiveParameter] string $passphrase,
+        string $newPublicKey
+    ): void {
+        $old  = AdminKey::fingerprint($oldPublicKey);
+        $new  = AdminKey::fingerprint($newPublicKey);
+        $held = $storage->loadSetting(self::SETTING_ESCROW_ADMIN);
+        if ($held === null || !hash_equals($held, $old)) {
+            throw new EscrowAdminException(
+                'admin-mismatch',
+                'This database recorded the administrator key ' . ($held ?? 'none') . ", not {$old}: nothing was changed"
+            );
+        }
+        EscrowCeremony::proveAdminKey($sealedSecret, $passphrase, $newPublicKey);
+        if (!hash_equals($old, $new) && !$storage->replaceSetting(self::SETTING_ESCROW_ADMIN, $old, $new)) {
+            throw new EscrowAdminException(
+                'admin-mismatch',
+                "The recorded administrator key changed meanwhile: it is no longer {$old}, and nothing was changed"
+            );
+        }
+    }
+
+    /**
      * Replace the keeper the database recorded — the operator's act. $from
      * joins the former keepers the database keeps a record of, so that a
      * façade and the ceremony given it still reach what is sealed to it: the
@@ -386,7 +428,9 @@ final class SelfDataGuard
      * records it. An escrow retired from a keeper never reads there again, so
      * $to is never a keeper a record of former or forgotten keepers lists —
      * replaced before, or given to a façade as former and written there by a
-     * deposit —, nor $from itself.
+     * deposit —, nor $from itself. A forgetFormerKeeper() of $to landing at
+     * the same time is seen: the keeper goes back to $from, and the act is
+     * refused.
      *
      * @throws InvalidArgumentException when $from is not the keeper the database
      *         recorded, $to is $from or a keeper the records list, a record of
@@ -428,6 +472,16 @@ final class SelfDataGuard
         if (!$storage->replaceSetting(self::SETTING_KEEPER, $fromPrint, $toPrint)) {
             throw new InvalidArgumentException('The recorded keeper changed meanwhile: it is no longer ' . $fromPrint);
         }
+        // forgetFormerKeeper() reads the keeper again once it has written the record of forgotten keepers; this
+        // reads that record again once the keeper is written: of two such acts at once, one sees the other.
+        if (in_array($toPrint, KeeperSeal::formerPrints($storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS), 'forgotten keepers'), true)) {
+            $storage->replaceSetting(self::SETTING_KEEPER, $toPrint, $fromPrint);
+            $storage->replaceSetting(self::SETTING_FORMER_KEEPERS, $written, $formerHeld ?? '[]');
+            throw new InvalidArgumentException(
+                "The keeper {$toPrint} was forgotten meanwhile (forgetFormerKeeper()): the database's keeper is "
+                . "{$fromPrint} again — change to a keeper this database never had"
+            );
+        }
     }
 
     /**
@@ -447,7 +501,9 @@ final class SelfDataGuard
      * Nothing else logs the act. Interrupted after the record of forgotten
      * keepers took $print, it leaves every deposit refused until called
      * again, which ends the act. Refused for the database's keeper: the
-     * operator changes first to a keeper this database never had.
+     * operator changes first to a keeper this database never had — and, once
+     * the forgotten record took $print, when a changeKeeper() to it landed at
+     * the same time.
      *
      * @throws InvalidArgumentException when the database records no former keeper
      *         $print, $print is the database's keeper, a record is unreadable,
@@ -478,6 +534,15 @@ final class SelfDataGuard
             if (!$recorded) {
                 throw new InvalidArgumentException('The record of forgotten keepers changed meanwhile: nothing was changed');
             }
+        }
+        // changeKeeper() reads the record of forgotten keepers again once it has written the keeper; this reads the
+        // keeper again once that record is written: of two such acts at once, one sees the other.
+        $keeperNow = $storage->loadSetting(self::SETTING_KEEPER);
+        if ($keeperNow !== null && hash_equals($keeperNow, $print)) {
+            throw new InvalidArgumentException(
+                "The database's keeper became {$print} meanwhile (changeKeeper()): the record of forgotten keepers took "
+                . 'it, and it is still among the former ones — change to a keeper this database never had, then call again'
+            );
         }
         $kept = json_encode(array_values(array_diff($former, [$print])), JSON_THROW_ON_ERROR);
         if (!$storage->replaceSetting(self::SETTING_FORMER_KEEPERS, (string) $held, $kept)) {

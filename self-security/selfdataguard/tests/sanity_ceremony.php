@@ -310,6 +310,46 @@ $r['code'] === 2 && str_contains($r['err'], "clé d'administration (admin-mismat
     ? ok('unlock under another administrator key than the escrow\'s label: exit 2, named as such, nothing read')
     : ko('a read under another key was not refused by the label', $r['code'] . ' ' . trim($r['out'] . $r['err']));
 
+section('change-admin, then reseal-admin — the key changes, and the pass re-seals what the old one holds');
+
+$rotDb  = "{$ws}/rotation.sqlite";
+copy($db, $rotDb);
+$rotEnv = ['DATAGUARD_DB' => $rotDb] + $env;
+$oldEnv = ['DATAGUARD_OLD_ADMIN_PUBKEY_FILE' => $pubFile, 'DATAGUARD_OLD_ADMIN_SEALED_FILE' => $sealFile];
+$rotHeld = static fn (): ?string => (new SqliteAdapter("sqlite:{$rotDb}"))->loadSetting(SelfDataGuard::SETTING_ESCROW_ADMIN);
+$autrePrint = Pierroons\SelfDataGuard\Escrow\AdminKey::fingerprint($autre['publicKey']);
+$r = run(['change-admin'], "pas la passphrase\n", $oldEnv + $autreEnv + $rotEnv);
+$r['code'] === 2 && str_contains($r['err'], 'bad-passphrase') && $rotHeld() === $print
+    ? ok('change-admin under a wrong passphrase of the new key: exit 2, the record kept')
+    : ko('change-admin under a wrong passphrase was not refused', $r['code'] . ' ' . trim($r['err']));
+$r = run(['change-admin'], "une autre passphrase admin du banc de cérémonie\n", $oldEnv + $autreEnv + $rotEnv);
+$r['code'] === 0 && $rotHeld() === $autrePrint && str_contains($r['out'], 'reseal-admin')
+    && ($lastAct()['action'] ?? null) === 'change-admin' && ($lastAct()['former'] ?? null) === $print
+    ? ok('change-admin: exit 0, the new key recorded in place of the old one, the act logged, and the pass named')
+    : ko('change-admin did not change the key', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], "une autre passphrase admin du banc de cérémonie\n", $autreEnv + $rotEnv);
+$r['code'] === 2 && str_contains($r['err'], 'admin-mismatch')
+    ? ok('before the pass, the new key is refused on an escrow the old one seals: its label says so')
+    : ko('the new key read before the pass', $r['code'] . ' ' . trim($r['err']));
+$r = run(['reseal-admin'], ADMIN_PASS . "\n", $oldEnv + $autreEnv + $rotEnv);
+$r['code'] === 0 && str_contains($r['out'], 'alice : coffre vivant re-scellé à la nouvelle clé')
+    && str_contains($r['out'], 'bob : coffre vivant sans changement, 1 archive(s) re-scellée(s)')
+    ? ok('reseal-admin: exit 0, the live escrow and the archive re-sealed to the new key, account by account')
+    : ko('reseal-admin did not re-seal', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], "une autre passphrase admin du banc de cérémonie\n", $autreEnv + $rotEnv);
+$r['code'] === 0 && str_contains($r['out'], CONTACT)
+    ? ok('after the pass, the new key reads the escrow: the escrow key and its field stayed')
+    : ko('the new key does not read after the pass', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+(new PDO("sqlite:{$rotDb}"))->exec("UPDATE selfdataguard_escrow SET admin_key = '" . str_repeat('c3', 16) . "' WHERE user_id = 'alice'");
+$r = run(['reseal-admin', 'alice'], ADMIN_PASS . "\n", $oldEnv + $autreEnv + $rotEnv);
+$r['code'] === 5 && str_contains($r['out'], "laissé sous l'ancienne clé — live : other-key") && str_contains($r['err'], 'garde-la')
+    ? ok('reseal-admin that leaves an escrow: exit 5, what it left and why, and to keep the old key')
+    : ko('reseal-admin did not report what it left', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['reseal-admin', 'alice'], "pas la passphrase\n", $oldEnv + $autreEnv + $rotEnv);
+$r['code'] === 2 && str_contains($r['err'], "passphrase de l'ancienne clé invalide")
+    ? ok('reseal-admin under a wrong passphrase of the old key: exit 2, nothing re-sealed')
+    : ko('reseal-admin under a wrong passphrase was not refused', $r['code'] . ' ' . trim($r['err']));
+
 // -----------------------------------------------------------------------------
 
 section('Passphrase gate — wrong passphrase is refused + logged');

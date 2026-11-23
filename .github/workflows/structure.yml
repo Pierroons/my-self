@@ -1112,8 +1112,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=58 [sanity_conformance]=123 [sanity_escrow]=103
-            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=238 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
+            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=65 [sanity_conformance]=123 [sanity_escrow]=119
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=242 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
             [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=44
           )
           rc=0
@@ -2429,7 +2429,7 @@ jobs:
             $E '❌ a deposit given another administrator key than the database recorded went through'
           canari $FA '        EscrowCeremony::proveAdminKey($sealedSecret, $passphrase, $adminPublicKey);' '' \
             $E '❌ a wrong passphrase adopted the administrator key'
-          canari $FC '                || !hash_equals(sodium_crypto_box_publickey_from_secretkey($secretKey), $publicKey)) {' '                ) {' \
+          canari $FC '            || !hash_equals(sodium_crypto_box_publickey_from_secretkey($secretKey), $publicKey)) {' '            ) {' \
             $E '❌ the sealed key of one administrator key and the public key of another were adopted'
           AD='        $held  = $storage->loadSetting(self::SETTING_ESCROW_ADMIN) ?? $storage->claimSetting(self::SETTING_ESCROW_ADMIN, $print);'
           canari $FA "$AD" "$AD \$held = \$print;" \
@@ -2451,7 +2451,7 @@ jobs:
             $E '❌ refused, but not as admin-mismatch'
           canari $D/src/Escrow/EscrowRecord.php "        if (\$adminKey !== null && preg_match('/^[0-9a-f]{32}\\z/', \$adminKey) !== 1) {" '        if (false) {' \
             $E '❌ an escrow record took a label that is not the fingerprint of a key'
-          canari $B '} catch (EscrowAdminException $e) {' '} catch (\LogicException $e) {' \
+          canari $B '    fwrite(STDERR, "⛔ Refusé — clé d'"'"'administration ({$e->reason}) : {$e->getMessage()}\n");' '    fwrite(STDERR, "⛔ Refusé — {$e->getMessage()}\n");' \
             $C '❌ a read under another key was not refused by the label'
           canari $B "        \$auditLog->append(['action' => 'adopt-admin-denied', 'reason' => \$raison, 'operator' => \$qui]);" '' \
             $C '❌ a wrong passphrase was not refused as such'
@@ -2500,6 +2500,55 @@ jobs:
           D=self-security/selfdataguard
           canari $D/src/Storage/SqliteAdapter.php '                adminKey:  $adminKey,' '                adminKey:  null,' \
             $D/tests/sanity_conformance.php '❌ escrow-admin-label'
+
+      # Lot 8c de SelfDataGuard 0.10.0 : la clé d'administration se change par l'acte de
+      # l'exploitant, la passe re-scelle ce que l'ancienne tient seule et rend ce qu'elle
+      # laisse ; et deux actes sur les gardiens en même temps se voient l'un l'autre.
+      - name: Canaris — la clé d'administration se change, et la passe dit ce qu'elle laisse
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FA=$D/src/SelfDataGuard.php
+          FC=$D/src/Escrow/EscrowCeremony.php
+          B=$D/bin/escrow-ceremony.php
+          E=$D/tests/sanity_escrow.php
+          K=$D/tests/sanity_keeper.php
+          C=$D/tests/sanity_ceremony.php
+          canari $FA '        EscrowCeremony::proveAdminKey($sealedSecret, $passphrase, $newPublicKey);' '' \
+            $E '❌ changeEscrowAdmin() went through given the two halves of two keys as the new one'
+          canari $FC '        if ($held === null || !hash_equals($held, $new)) {' '        if (false) {' \
+            $E '❌ the pass re-sealed to a key the database does not record'
+          canari $FC '            self::assertPair($sk, $oldPublicKeyB64);' '' \
+            $E '❌ the pass went through with the sealed file of another key than the old one'
+          canari $FC '        if (EscrowVault::isKeeperSealed($record)) {' '        if (false) {' \
+            $K '❌ the pass did not leave the keeper-sealed escrow as such'
+          canari $FC '        if ($record->adminKey !== null && !hash_equals($record->adminKey, $old)) {' '        if (false) {' \
+            $E '❌ the pass did not report what it left'
+          canari $FC '        if ($record->adminKey !== null && hash_equals($record->adminKey, $new)) {' '        if (false) {' \
+            $E '❌ the pass run again did something'
+          canari $FC "                \$done['left']['live'] = 'frozen';" "                throw new \\RuntimeException('frozen');" \
+            $E '❌ the pass did not report what it left'
+          canari $FC '                $new' '                $old' \
+            $E '❌ the pass did not re-seal the live escrow or the archive'
+          canari $FA "        if (in_array(\$toPrint, KeeperSeal::formerPrints(\$storage->loadSetting(self::SETTING_FORGOTTEN_KEEPERS), 'forgotten keepers'), true)) {" '        if (false) {' \
+            $K "❌ changeKeeper() made a keeper forgotten meanwhile the database's keeper"
+          canari $FA '        if ($keeperNow !== null && hash_equals($keeperNow, $print)) {' '        if (false) {' \
+            $K '❌ forgetFormerKeeper() forgot the keeper the database took meanwhile'
+          canari $B '    exit($laisses === 0 ? 0 : 5);' '    exit(0);' \
+            $C '❌ reseal-admin did not report what it left'
 
   selfrecover-1:
     needs: modules

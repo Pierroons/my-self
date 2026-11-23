@@ -495,6 +495,17 @@ try {
         : ko('the label was not compared before the keeper', json_encode([$coraLabel, $e->reason, count($slow->pending), $coraHeld]));
 }
 
+$rkNew = SelfDataGuard::generateAdminRecoveryKey('une nouvelle cle admin du banc du gardien');
+SelfDataGuard::changeEscrowAdmin($slowDb, $admin['publicKey'], $rkNew['sealedSecret'], 'une nouvelle cle admin du banc du gardien', $rkNew['publicKey']);
+$rkPass = benchCeremony($slowDb, keeper: $slow)->resealToAdmin(['cora'], $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $rkNew['publicKey']);
+($rkPass['cora']['left'] ?? null) === ['live' => 'keeper-sealed'] && $slowDb->loadEscrow('cora')->adminKey === AdminKey::fingerprint($admin['publicKey'])
+    ? ok('the pass leaves an escrow sealed to a keeper, and says so: its box opens only by a release')
+    : ko('the pass did not leave the keeper-sealed escrow as such', json_encode($rkPass));
+$slowDg->setEscrowFields($cora, $rkNew['publicKey'], ['contact' => 'cora-secours@example.org']);
+EscrowVault::isKeeperSealed($slowDb->loadEscrow('cora')) && $slowDb->loadEscrow('cora')->adminKey === AdminKey::fingerprint($rkNew['publicKey'])
+    ? ok('the holder\'s next deposit re-seals it under the keeper, to the new administrator key')
+    : ko('the deposit did not re-seal the keeper-sealed escrow to the new key');
+
 section('An objection from a secret alone: the seal no longer holds, or the current vault is someone else\'s');
 
 const OLGA_PWD = 'motdepasse-olga-01';
@@ -1734,6 +1745,27 @@ try {
         : ko('a forgotten keeper given again was refused, but not as keeper-mismatch', $e->reason);
 }
 
+/**
+ * Answers the next read of each setting named in $before with the value given
+ * there, then the stored one: an act read before another wrote it, as when the
+ * other lands between this one's read and its write.
+ */
+final class ReadBefore extends DelegatingStorage
+{
+    /** @var array<string, ?string> */
+    public array $before = [];
+
+    public function loadSetting(string $name): ?string
+    {
+        if (array_key_exists($name, $this->before)) {
+            $value = $this->before[$name];
+            unset($this->before[$name]);
+            return $value;
+        }
+        return $this->inner->loadSetting($name);
+    }
+}
+
 final class FailOnceSetting extends DelegatingStorage
 {
     public ?string $failName = null;
@@ -1771,6 +1803,44 @@ try {
 } catch (Throwable $e) {
     ko('forgetFormerKeeper() called again was refused', $e->getMessage());
 }
+// Two acts at once on the keepers: each reads again what the other writes, and one sees the other.
+$kRa = new BenchKeeper();
+$kRb = new BenchKeeper();
+$rDb = new ReadBefore($rDbPlain = new SqliteAdapter('sqlite::memory:'));
+benchAdminRecorded($rDbPlain, $admin['publicKey']);
+(new SelfDataGuard($rDb, $blindKey, keeper: $kRa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('rita', 'motdepasse-rita-01');
+SelfDataGuard::changeKeeper($rDb, $kRa, $kRb);
+$printRa = KeeperSeal::fingerprint($kRa->publicKeys());
+$printRb = KeeperSeal::fingerprint($kRb->publicKeys());
+SelfDataGuard::forgetFormerKeeper($rDb, $printRa);
+// changeKeeper(B → A) read the record of forgotten keepers before forgetFormerKeeper(A) wrote it.
+$rDb->before = [SelfDataGuard::SETTING_FORGOTTEN_KEEPERS => '[]'];
+try {
+    SelfDataGuard::changeKeeper($rDb, $kRb, $kRa);
+    ko('changeKeeper() made a keeper forgotten meanwhile the database\'s keeper');
+} catch (InvalidArgumentException $e) {
+    $rDb->loadSetting(SelfDataGuard::SETTING_KEEPER) === $printRb
+        && !in_array($printRb, KeeperSeal::formerPrints($rDb->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS)), true)
+        && str_contains($e->getMessage(), 'forgotten meanwhile')
+        ? ok('changeKeeper() reads the forgotten keepers again once it wrote the keeper: a keeper forgotten meanwhile is refused, and the keeper goes back')
+        : ko('changeKeeper() saw the forgotten keeper, but did not put the records back', $e->getMessage());
+}
+// forgetFormerKeeper(B) read the keeper before changeKeeper(… → B) wrote it.
+$kRc = new BenchKeeper();
+SelfDataGuard::changeKeeper($rDb, $kRb, $kRc);
+$printRc = KeeperSeal::fingerprint($kRc->publicKeys());
+$rDbPlain->replaceSetting(SelfDataGuard::SETTING_KEEPER, $printRc, $printRb);
+$rDb->before = [SelfDataGuard::SETTING_KEEPER => $printRc];
+try {
+    SelfDataGuard::forgetFormerKeeper($rDb, $printRb);
+    ko('forgetFormerKeeper() forgot the keeper the database took meanwhile');
+} catch (InvalidArgumentException $e) {
+    in_array($printRb, KeeperSeal::formerPrints($rDb->loadSetting(SelfDataGuard::SETTING_FORMER_KEEPERS)), true)
+        && str_contains($e->getMessage(), 'became')
+        ? ok('forgetFormerKeeper() reads the keeper again once it wrote the forgotten record: a keeper taken meanwhile is named, and not taken off the former ones')
+        : ko('forgetFormerKeeper() saw the keeper, but went on', $e->getMessage());
+}
+
 $fDb->replaceSetting(SelfDataGuard::SETTING_FORGOTTEN_KEEPERS, (string) $fDb->loadSetting(SelfDataGuard::SETTING_FORGOTTEN_KEEPERS), '["unterminated');
 try {
     SelfDataGuard::changeKeeper($fDb, $kFb, new BenchKeeper());
