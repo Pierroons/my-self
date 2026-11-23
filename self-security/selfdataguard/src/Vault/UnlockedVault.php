@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
@@ -217,7 +218,8 @@ final class UnlockedVault
                 : $unlocked->sealToKeeper($adminPublicKeyB64),
             createdAt: $createdAt,
             updatedAt: $now,
-            revision:  $revision
+            revision:  $revision,
+            adminKey:  AdminKey::fingerprint($adminPublicKeyB64)
         );
         return ['record' => $record, 'unlocked' => $unlocked];
     }

@@ -27,6 +27,12 @@ use ValueError;
  *   - revision   : bumped by every stored replacement; a write applies only
  *                  over the revision it was read at (0 for a record not yet
  *                  stored, whatever is passed — the storage writes 0)
+ *   - admin_key  : the fingerprint of the admin public key wrap_admin is sealed
+ *                  to (AdminKey::fingerprint()), in the clear — under a keeper,
+ *                  of the key its inner box is sealed to. The ceremony compares
+ *                  it with the key it is given before any keeper is asked, and
+ *                  the operator counts by it what an old key still holds. null
+ *                  for an escrow written before 0.10.0, which names none.
  *
  * Immutable value object.
  */
@@ -38,13 +44,17 @@ final class EscrowRecord
         public readonly string $wrapAdmin,           // raw sealed-box bytes
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
-        public readonly int $revision = 0
+        public readonly int $revision,
+        public readonly ?string $adminKey
     ) {
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
         }
         if ($wrapAdmin === '') {
             throw new InvalidArgumentException('wrapAdmin (sealed box) must not be empty');
+        }
+        if ($adminKey !== null && preg_match('/^[0-9a-f]{32}\z/', $adminKey) !== 1) {
+            throw new InvalidArgumentException('adminKey is the fingerprint of an admin public key: 32 hex digits');
         }
     }
 

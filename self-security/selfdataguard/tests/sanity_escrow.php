@@ -32,6 +32,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
 use Pierroons\SelfDataGuard\Escrow\NoHeadWitness;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\Comparison;
+use Pierroons\SelfDataGuard\Escrow\EscrowAdminException;
 use Pierroons\SelfDataGuard\Escrow\EscrowSnapshot;
 use Pierroons\SelfDataGuard\Escrow\Normalization;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
@@ -91,6 +92,7 @@ const ESCROW_PLAINTEXT = [
 section('Admin recovery key generation + passphrase seal');
 
 $admin = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
+benchAdminRecorded($storage, $admin['publicKey']);
 isset($admin['publicKey'], $admin['sealedSecret']) ? ok('generate returns publicKey + sealedSecret') : ko('missing keys');
 strlen(base64_decode($admin['publicKey'], true) ?: '') === SODIUM_CRYPTO_BOX_PUBLICKEYBYTES
     ? ok('public key is a valid 32-byte box public key') : ko('public key wrong length');
@@ -789,7 +791,7 @@ $recAlice = $storage->loadEscrow('alice');
 $recBob   = $storage->loadEscrow('bob');
 $echange  = new EscrowRecord(
     userId: 'bob', wrapUser: $recBob->wrapUser, wrapAdmin: $recAlice->wrapAdmin,
-    createdAt: $recBob->createdAt, updatedAt: $recBob->updatedAt
+    createdAt: $recBob->createdAt, updatedAt: $recBob->updatedAt, revision: $recBob->revision, adminKey: $recBob->adminKey
 );
 try {
     openWrapAdmin($echange, $skLien, $admin['publicKey']);
@@ -806,7 +808,7 @@ $neuf    = $ev->create($carol, $admin['publicKey']);
 $ancien  = new EscrowRecord(
     userId: 'carol', wrapUser: $neuf['record']->wrapUser,
     wrapAdmin: sodium_crypto_box_seal(heldKey($neuf['unlocked']), base64_decode($admin['publicKey'])),
-    createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt
+    createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt, revision: 0, adminKey: null
 );
 $storage->createEscrow($carol->generation(), $ancien);
 !EscrowVault::isAccountBound($storage->loadEscrow('carol'))
@@ -821,15 +823,20 @@ $carolAvant = $storage->loadEscrow('carol')->wrapAdmin;
 try {
     $dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
     ko('a deposit given another administrator key than the database recorded went through');
-} catch (InvalidArgumentException) {
+} catch (\Pierroons\SelfDataGuard\Escrow\EscrowAdminException) {
     $storage->loadEscrow('carol')->wrapAdmin === $carolAvant
         ? ok('a deposit given another administrator key is refused, and the wrap_admin stays: each deposit re-seals, so another key would take the compartment')
         : ko('a refused deposit still changed the wrap_admin');
 }
+$storage->loadEscrow('carol')->adminKey === null
+    && $ceremony->readEscrow('carol', 'case-carol-0', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']) === []
+    ? ok('an escrow written before 0.10.0 names no administrator key, and the ceremony still opens it')
+    : ko('an escrow without a label was refused, or carries one');
 $dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     && EscrowVault::isAccountBound($storage->loadEscrow('carol'))
-    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account')
-    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin');
+    && $storage->loadEscrow('carol')->adminKey === AdminKey::fingerprint($admin['publicKey'])
+    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account, and labels it with the key')
+    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or left it unlabelled');
 !$dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
     : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
@@ -838,13 +845,115 @@ $ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS,
     ? ok('a deposit with the recorded key re-seals the compartment, and the administrator still reads it')
     : ko('after a deposit, the administrator no longer reads the escrow');
 
+section('The administrator key is recorded by the operator, who proves they hold it');
+
+$aPdo   = new PDO('sqlite::memory:');
+$aPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$aStore = new SqliteAdapter($aPdo);
+$aDg    = new SelfDataGuard($aStore, random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$aHeld  = static fn (): ?string => $aStore->loadSetting(SelfDataGuard::SETTING_ESCROW_ADMIN);
+$amy    = $aDg->register('amy', 'motdepasse-amy-01');
+try {
+    $aDg->setEscrowFields($amy, $admin['publicKey'], ['contact_secours' => 'amy-secours@example.org']);
+    ko('a deposit on a database that recorded no administrator key went through');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-unrecorded' && $aHeld() === null && $aStore->loadEscrow('amy') === null && $aStore->loadEscrowFields('amy') === []
+        ? ok('a deposit on a database that recorded no administrator key is refused: nothing sealed, and the key given is not recorded')
+        : ko('the deposit was refused, but recorded a key or wrote the escrow', json_encode([$e->reason, $aHeld()]));
+    !$e instanceof InvalidArgumentException
+        ? ok('the refusal is named, and is no InvalidArgumentException: the ceremony does not take it for a sealed file that does not parse')
+        : ko('the refusal is still an InvalidArgumentException');
+}
+try {
+    SelfDataGuard::adoptEscrowAdmin($aStore, $admin['sealedSecret'], 'pas la passphrase de l\'administrateur', $admin['publicKey']);
+    ko('a wrong passphrase adopted the administrator key');
+} catch (Pierroons\SelfDataGuard\Vault\WrongSecretException) {
+    $aHeld() === null ? ok('a wrong passphrase adopts nothing') : ko('a wrong passphrase recorded a key');
+}
+try {
+    SelfDataGuard::adoptEscrowAdmin($aStore, $admin['sealedSecret'], ADMIN_PASS, $autreAdmin['publicKey']);
+    ko('the sealed key of one administrator key and the public key of another were adopted');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-not-the-pair' && $aHeld() === null
+        ? ok('the sealed key of one key and the public key of another adopt nothing: the pair is proven')
+        : ko('refused, but not as the pair', $e->reason);
+}
+SelfDataGuard::adoptEscrowAdmin($aStore, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+$aHeld() === AdminKey::fingerprint($admin['publicKey'])
+    ? ok('the operator adopts the key by proving it: the passphrase unseals the secret key, whose public half is the key given')
+    : ko('the adopted key is not recorded', (string) $aHeld());
+try {
+    SelfDataGuard::adoptEscrowAdmin($aStore, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    ok('adopting the key already recorded does nothing');
+} catch (Throwable $e) {
+    ko('adopting the recorded key again was refused', get_class($e));
+}
+try {
+    SelfDataGuard::adoptEscrowAdmin($aStore, $autreAdmin['sealedSecret'], 'une autre passphrase admin assez longue', $autreAdmin['publicKey']);
+    ko('a database that recorded a key adopted another');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-mismatch' && $aHeld() === AdminKey::fingerprint($admin['publicKey'])
+        ? ok('a database that recorded a key refuses to adopt another, proven or not')
+        : ko('refused, but the record changed or the reason is not admin-mismatch', $e->reason);
+}
+$aDg->setEscrowFields($amy, $admin['publicKey'], ['contact_secours' => 'amy-secours@example.org']);
+$aStore->loadEscrow('amy')?->adminKey === AdminKey::fingerprint($admin['publicKey'])
+    ? ok('once the key is adopted, the deposit goes through and labels the escrow with its fingerprint')
+    : ko('the deposit did not label the escrow', (string) $aStore->loadEscrow('amy')?->adminKey);
+$aPdo->exec("DELETE FROM selfdataguard_settings WHERE name = 'selfdataguard.escrow-admin'");
+try {
+    $aDg->setEscrowFields($amy, $autreAdmin['publicKey'], ['contact_secours' => 'amy-secours@example.org']);
+    ko('after the record was erased, a deposit recorded the key it was given');
+} catch (EscrowAdminException) {
+    $aHeld() === null && $aStore->loadEscrow('amy')?->adminKey === AdminKey::fingerprint($admin['publicKey'])
+        ? ok('whoever erases the record does not have the next deposit record their key: it is refused, the escrow untouched')
+        : ko('the deposit was refused, but the record or the escrow changed');
+}
+SelfDataGuard::adoptEscrowAdmin($aStore, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+
+section('The ceremony compares the escrow\'s label before anything else, and proves the key pair');
+
+$aLog      = sys_get_temp_dir() . '/sdg-admin-label-' . bin2hex(random_bytes(4)) . '.log';
+register_shutdown_function(static fn () => @unlink($aLog));
+$aCeremony = benchCeremony($aStore, logPath: $aLog);
+$aLast     = static fn (): array => (static fn (array $all): array => end($all)['event'] ?? [])((new AuditLog($aLog, str_repeat('s', 32)))->readAll());
+try {
+    $aCeremony->readEscrow('amy', 'case-a1', $autreAdmin['sealedSecret'], 'une autre passphrase admin assez longue', $autreAdmin['publicKey'], ['contact_secours']);
+    ko('the ceremony read an escrow under another administrator key than its label names');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-mismatch' && ($aLast()['reason'] ?? null) === 'admin-mismatch'
+        ? ok('given another key than the escrow\'s label names, the ceremony stops, and the log says admin-mismatch')
+        : ko('refused, but not as admin-mismatch', json_encode($aLast()));
+} catch (Throwable $e) {
+    ko('given another key than its label, the ceremony stopped only once the box was tried', get_class($e));
+}
+try {
+    $aCeremony->readEscrow('amy', 'case-a2', $autreAdmin['sealedSecret'], 'une autre passphrase admin assez longue', $admin['publicKey'], ['contact_secours']);
+    ko('the ceremony read with the sealed key of another key than the public key given');
+} catch (EscrowAdminException $e) {
+    $e->reason === 'admin-not-the-pair' && ($aLast()['reason'] ?? null) === 'admin-not-the-pair'
+        ? ok('the sealed key of another key than the one given stops at the passphrase, before any keeper: admin-not-the-pair')
+        : ko('refused, but not as the pair', json_encode($aLast()));
+} catch (Throwable $e) {
+    ko('the sealed key of another key was refused only once the box was tried', get_class($e));
+}
+try {
+    new EscrowRecord('amy', $aStore->loadEscrow('amy')->wrapUser, 'x', new DateTimeImmutable(), new DateTimeImmutable(), 0, 'pas-une-empreinte');
+    ko('an escrow record took a label that is not the fingerprint of a key');
+} catch (InvalidArgumentException) {
+    ok('a label that is not a fingerprint (32 hex digits) is refused: a row carrying one does not parse');
+}
+$aCeremony->readEscrow('amy', 'case-a3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']) === ['contact_secours' => 'amy-secours@example.org']
+    ? ok('with the key the label names, the ceremony reads')
+    : ko('the right key no longer reads');
+
 // Two re-sealings from one read: the storage lets the other request's land first.
 $dave     = $dg->register('dave', 'motdepasse-dave-01', hash('sha256', 'dave-memorized'));
 $neufDave = $ev->create($dave, $admin['publicKey']);
 $storage->createEscrow($dave->generation(), new EscrowRecord(
     userId: 'dave', wrapUser: $neufDave['record']->wrapUser,
     wrapAdmin: sodium_crypto_box_seal(heldKey($neufDave['unlocked']), base64_decode($admin['publicKey'])),
-    createdAt: $neufDave['record']->createdAt, updatedAt: $neufDave['record']->updatedAt
+    createdAt: $neufDave['record']->createdAt, updatedAt: $neufDave['record']->updatedAt, revision: 0, adminKey: null
 ));
 $interleaved = new class ($storage) extends DelegatingStorage {
     public bool $other = true;

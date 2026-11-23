@@ -17,13 +17,16 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require_once __DIR__ . '/pepper_fixture.php';
+require_once __DIR__ . '/admin_fixture.php';
 require __DIR__ . '/key_fixture.php';
 require __DIR__ . '/ceremony_fixture.php';
 require __DIR__ . '/keeper_fixture.php';
 require __DIR__ . '/keeper_doubles.php';
 require __DIR__ . '/storage_doubles.php';
 
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\Comparison;
+use Pierroons\SelfDataGuard\Escrow\EscrowAdminException;
 use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
 use Pierroons\SelfDataGuard\Escrow\EscrowEnvelopeMismatchException;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
@@ -81,6 +84,7 @@ const ADMIN_PASS = 'gardien-admin-recuperation-tres-longue-2026';
 $admin    = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
 $adminSk  = unsealAdminKey($admin['sealedSecret'], ADMIN_PASS);
 $storage  = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($storage, $admin['publicKey']);
 $blindKey = random_bytes(32);
 $keeper   = new BenchKeeper();
 $dg       = new SelfDataGuard($storage, $blindKey, keeper: $keeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
@@ -248,7 +252,7 @@ $keeper->down = false;
 $bob = $dg->register('bob', 'motdepasse-bob-01');
 $dg->setEscrowFields($bob, $admin['publicKey'], ['contact' => 'bob-secours@example.org']);
 $bobRecord = $storage->loadEscrow('bob');
-$moved = new EscrowRecord('bob', $bobRecord->wrapUser, $storage->loadEscrow('alice')->wrapAdmin, $bobRecord->createdAt, new DateTimeImmutable(), $bobRecord->revision);
+$moved = new EscrowRecord('bob', $bobRecord->wrapUser, $storage->loadEscrow('alice')->wrapAdmin, $bobRecord->createdAt, new DateTimeImmutable(), $bobRecord->revision, $bobRecord->adminKey);
 $storage->replaceEscrow($dg->generationOf('bob'), $moved);
 try {
     $ceremony->readEscrow('bob', 'LIT-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
@@ -301,6 +305,7 @@ section('A delay: the read is announced, the holder sees it and may object');
 
 $slow   = new BenchKeeper(delay: 3600);
 $slowDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($slowDb, $admin['publicKey']);
 $slowDg = new SelfDataGuard($slowDb, $blindKey, keeper: $slow, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $slowLog = sys_get_temp_dir() . '/sdg-keeper-slow-' . bin2hex(random_bytes(4)) . '.log';
 $slowCeremony = benchCeremony($slowDb, logPath: $slowLog, keeper: $slow);
@@ -479,6 +484,16 @@ try {
         ? ok('on the live escrow too: announced, then made once due, and shown to the holder as a release')
         : ko('the live comparison did not go through as a read');
 }
+$coraLabel = $slowDb->loadEscrow('cora')->adminKey;
+$coraHeld  = count($slow->pending);
+try {
+    $slowCeremony->readEscrow('cora', 'LIT-ADM', $admin['sealedSecret'], ADMIN_PASS, base64_encode(sodium_crypto_box_publickey(sodium_crypto_box_keypair())), ['contact']);
+    ko('a read under another administrator key than the label reached the end');
+} catch (EscrowAdminException $e) {
+    $coraLabel === AdminKey::fingerprint($admin['publicKey']) && $e->reason === 'admin-mismatch' && count($slow->pending) === $coraHeld
+        ? ok('under another administrator key than the escrow\'s label, a read stops before the keeper: nothing announced, no release spent')
+        : ko('the label was not compared before the keeper', json_encode([$coraLabel, $e->reason, count($slow->pending), $coraHeld]));
+}
 
 section('An objection from a secret alone: the seal no longer holds, or the current vault is someone else\'s');
 
@@ -488,6 +503,7 @@ $oPath     = sys_get_temp_dir() . '/sdg-keeper-objection-' . bin2hex(random_byte
 $oLog      = sys_get_temp_dir() . '/sdg-keeper-objection-' . bin2hex(random_bytes(4)) . '.log';
 $oKeeper   = new BenchKeeper(delay: 3600);
 $oDb       = new SqliteAdapter("sqlite:{$oPath}");
+benchAdminRecorded($oDb, $admin['publicKey']);
 $oDg       = new SelfDataGuard($oDb, $blindKey, keeper: $oKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $oCeremony = benchCeremony($oDb, logPath: $oLog, keeper: $oKeeper);
 $oPdo      = new PDO("sqlite:{$oPath}");
@@ -665,6 +681,7 @@ $pPath     = sys_get_temp_dir() . '/sdg-keeper-pin-' . bin2hex(random_bytes(4)) 
 $pLog      = sys_get_temp_dir() . '/sdg-keeper-pin-' . bin2hex(random_bytes(4)) . '.log';
 $pKeeper   = new BenchKeeper(delay: 3600);
 $pDb       = new SqliteAdapter("sqlite:{$pPath}");
+benchAdminRecorded($pDb, $admin['publicKey']);
 $pPlain    = new SelfDataGuard($pDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $pia       = $pPlain->register('pia', PIA_PWD);
 $pPlain->setEscrowFields($pia, $admin['publicKey'], ['contact' => 'pia-secours@example.org']);
@@ -716,8 +733,8 @@ $adminSetting = (string) $pPdo->query("SELECT value FROM selfdataguard_settings 
 $other        = SelfDataGuard::generateAdminRecoveryKey('une-autre-cle-admin-tres-longue-2026')['publicKey'];
 $pPdo->exec("DELETE FROM selfdataguard_settings WHERE name = 'selfdataguard.escrow-admin'");
 foreach ([
-    'a database that recorded no administrator key: the key given is not recorded' => [static fn () => $pPin(PIA_PWD, $other), InvalidArgumentException::class],
-    'another administrator key than the recorded one'                              => [static fn () => $pPin(PIA_PWD, $other), InvalidArgumentException::class],
+    'a database that recorded no administrator key: the key given is not recorded' => [static fn () => $pPin(PIA_PWD, $other), \Pierroons\SelfDataGuard\Escrow\EscrowAdminException::class],
+    'another administrator key than the recorded one'                              => [static fn () => $pPin(PIA_PWD, $other), \Pierroons\SelfDataGuard\Escrow\EscrowAdminException::class],
     'a wrong old password'                                                         => [static fn () => $pPin('mauvais-mot-de-passe-pia', $admin['publicKey']), \Pierroons\SelfDataGuard\Vault\WrongSecretException::class],
 ] as $label => [$call, $class]) {
     $boxBefore = $pBox();
@@ -741,6 +758,9 @@ try {
     $once && !$twice
         ? ok('pinArchiveEscrow() seals the escrow of the archive under its objection key, from the old password alone; a second call has nothing to do')
         : ko('the pin did not go through once, then stop', json_encode([$once, $twice]));
+    $pDb->loadArchive('pia', $pArchive)?->escrow?->adminKey === AdminKey::fingerprint($admin['publicKey'])
+        ? ok('the pinned escrow of the archive carries the label of the administrator key')
+        : ko('the pin lost the label of the administrator key');
     $key  = $pDg->openForObjection('pia', Lock::Password, PIA_PWD, $pArchive);
     $view = $pDg->escrowReads($key);
     $view['established'] && $view['pinned'] && !$view['reseal']
@@ -784,6 +804,7 @@ foreach (['no keeper' => null, 'NoKeeper' => new NoKeeper(), 'another keeper' =>
 section('An escrow sealed before the keeper is sealed to it from the holder\'s session');
 
 $plainDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($plainDb, $admin['publicKey']);
 $before0 = new SelfDataGuard($plainDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dave = $before0->register('dave', 'motdepasse-dave-01');
 $before0->setEscrowFields($dave, $admin['publicKey'], ['contact' => 'dave-secours@example.org']);
@@ -811,10 +832,14 @@ $reads = $withKeeper->escrowReads($dave);
     : ko('an escrow the pass wrapped reads as established', json_encode($reads));
 @unlink($passLog);
 $freshDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($freshDb, $admin['publicKey']);
 $noKeeperYet = new SelfDataGuard($freshDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $finn = $noKeeperYet->register('finn', 'motdepasse-finn-01');
 $noKeeperYet->setEscrowFields($finn, $admin['publicKey'], ['contact' => 'finn-secours@example.org']);
 benchCeremony($freshDb, keeper: $keeper)->sealToKeeper('finn');
+EscrowVault::isKeeperSealed($freshDb->loadEscrow('finn')) && $freshDb->loadEscrow('finn')->adminKey === AdminKey::fingerprint($admin['publicKey'])
+    ? ok('the operator\'s pass seals the escrow to the keeper and keeps its label: the box inside is sealed to the same key')
+    : ko('the operator\'s pass lost the label of the escrow');
 try {
     new SelfDataGuard($freshDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('the pass did not record its keeper: a façade without it opened the database, and its next deposit would undo the pass');
@@ -825,7 +850,7 @@ $wrapped = $plainDb->loadEscrow('dave');
 $foreignId = KeeperSeal::newEscrowId();
 $plainDb->replaceEscrow($before0->generationOf('dave'), new EscrowRecord(
     'dave', $wrapped->wrapUser, 'k1:' . bin2hex($foreignId) . ':' . KeeperSeal::outerOf($wrapped->wrapAdmin),
-    $wrapped->createdAt, new DateTimeImmutable(), $wrapped->revision
+    $wrapped->createdAt, new DateTimeImmutable(), $wrapped->revision, $wrapped->adminKey
 ));
 $withKeeper->sealEscrowToKeeper($dave, $admin['publicKey'])
     && EscrowVault::isKeeperSealed($plainDb->loadEscrow('dave'))
@@ -850,7 +875,7 @@ $gina = $dg->register('gina', 'motdepasse-gina-01');
 $dg->setEscrowFields($gina, $admin['publicKey'], ['contact' => 'gina-secours@example.org']);
 $ginaRecord = $storage->loadEscrow('gina');
 $storage->replaceEscrow($dg->generationOf('gina'), new EscrowRecord(
-    'gina', $ginaRecord->wrapUser, random_bytes(80), $ginaRecord->createdAt, new DateTimeImmutable(), $ginaRecord->revision
+    'gina', $ginaRecord->wrapUser, random_bytes(80), $ginaRecord->createdAt, new DateTimeImmutable(), $ginaRecord->revision, $ginaRecord->adminKey
 ));
 $dg->rebindEscrowAdmin($gina, $admin['publicKey']);
 $rebound = $storage->loadEscrow('gina');
@@ -873,6 +898,7 @@ $remote = new class extends BenchKeeper {
     }
 };
 $remoteDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($remoteDb, $admin['publicKey']);
 $hana = (new SelfDataGuard($remoteDb, $blindKey, keeper: $remote, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('hana', 'motdepasse-hana-01');
 (new SelfDataGuard($remoteDb, $blindKey, keeper: $remote, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($hana, $admin['publicKey'], ['contact' => 'hana-secours@example.org']);
 $remote->keysDown = true;
@@ -926,6 +952,7 @@ section('What the holder sees under a keeper that changed, and an objection to a
 $keeperA = new BenchKeeper(delay: 3600);
 $keeperB = new BenchKeeper(delay: 3600);
 $changeDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($changeDb, $admin['publicKey']);
 $dgA  = new SelfDataGuard($changeDb, $blindKey, keeper: $keeperA, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $ivan = $dgA->register('ivan', 'motdepasse-ivan-01');
 $dgA->setEscrowFields($ivan, $admin['publicKey'], ['contact' => 'ivan-secours@example.org']);
@@ -953,6 +980,7 @@ $deafKeeper = new class (3600) extends BenchKeeper {
     }
 };
 $deafDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($deafDb, $admin['publicKey']);
 $deafDg = new SelfDataGuard($deafDb, $blindKey, keeper: $deafKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $ines   = $deafDg->register('ines', 'motdepasse-ines-01');
 $deafDg->setEscrowFields($ines, $admin['publicKey'], ['contact' => 'ines@example.org']);
@@ -991,6 +1019,7 @@ section('A keeper the deployment replaced: the holder sees and objects to what i
 $oldKeeper = new BenchKeeper(delay: 3600);
 $newKeeper = new BenchKeeper(delay: 3600);
 $swapDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($swapDb, $admin['publicKey']);
 $dgOld  = new SelfDataGuard($swapDb, $blindKey, keeper: $oldKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $kim = $dgOld->register('kim', 'motdepasse-kim-01');
 $dgOld->setEscrowFields($kim, $admin['publicKey'], ['contact' => 'kim@example.org']);
@@ -1094,6 +1123,7 @@ $rowOf   = static fn (PDO $pdo, string $user): string|false => $pdo->query(
 $kA = new BenchKeeper(delay: 3600);
 $kB = new BenchKeeper(delay: 3600);
 $retDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($retDb, $admin['publicKey']);
 $dgRA  = new SelfDataGuard($retDb, $blindKey, keeper: $kA, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $nora  = $dgRA->register('nora', 'motdepasse-nora-01');
 $dgRA->setEscrowFields($nora, $admin['publicKey'], ['contact' => 'nora@example.org']);
@@ -1129,6 +1159,7 @@ $k1 = new BenchKeeper();
 $k2 = new BenchKeeper();
 $k3 = new BenchKeeper();
 $twoDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($twoDb, $admin['publicKey']);
 $dg1   = new SelfDataGuard($twoDb, $blindKey, keeper: $k1, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $rita  = $dg1->register('rita', 'motdepasse-rita-01');
 $dg1->setEscrowFields($rita, $admin['publicKey'], ['contact' => 'rita@example.org']);
@@ -1195,6 +1226,7 @@ $kA2 = new BenchKeeper(delay: 3600);
 $kB2 = new BenchKeeper(delay: 3600);
 $pdoV = new PDO('sqlite::memory:');
 $viewDb = new SqliteAdapter($pdoV);
+benchAdminRecorded($viewDb, $admin['publicKey']);
 $dgVA = new SelfDataGuard($viewDb, $blindKey, keeper: $kA2, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $olga = $dgVA->register('olga', OLGA_PWD);
 $dgVA->setEscrowFields($olga, $admin['publicKey'], ['contact' => 'olga@example.org']);
@@ -1228,6 +1260,7 @@ try {
 $kP = new BenchKeeper(delay: 3600);
 $pdoP = new PDO('sqlite::memory:');
 $restDb = new SqliteAdapter($pdoP);
+benchAdminRecorded($restDb, $admin['publicKey']);
 $plainP = new SelfDataGuard($restDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $paul = $plainP->register('paul', 'motdepasse-paul-01');
 $plainP->setEscrowFields($paul, $admin['publicKey'], ['contact' => 'paul@example.org']);
@@ -1266,6 +1299,7 @@ $kU1 = new BenchKeeper(delay: 3600);
 $kU2 = new BenchKeeper(delay: 3600);
 $pdoU = new PDO('sqlite::memory:');
 $backDb = new SqliteAdapter($pdoU);
+benchAdminRecorded($backDb, $admin['publicKey']);
 $ursula = (new SelfDataGuard($backDb, $blindKey, keeper: $kU1, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('ursula', 'motdepasse-ursula-01');
 (new SelfDataGuard($backDb, $blindKey, keeper: $kU1, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($ursula, $admin['publicKey'], ['contact' => 'ursula@example.org']);
 $ursulaBackup = $pdoU->query("SELECT * FROM selfdataguard_escrow WHERE user_id = 'ursula'")->fetch(PDO::FETCH_ASSOC);
@@ -1386,6 +1420,7 @@ $casesOf = static fn (array $list): array => array_column($list, 'case');
 $kY1a = new BenchKeeper(delay: 3600);
 $kY1b = new BenchKeeper(delay: 3600);
 $y1Db = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($y1Db, $admin['publicKey']);
 $yuna = (new SelfDataGuard($y1Db, $blindKey, keeper: $kY1a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('yuna', 'motdepasse-yuna-01');
 (new SelfDataGuard($y1Db, $blindKey, keeper: $kY1a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($yuna, $admin['publicKey'], ['contact' => 'yuna@example.org']);
 $yunaOld = $y1Db->loadEscrow('yuna');
@@ -1413,6 +1448,7 @@ isset($kY1a->retired[$hexOf($yuna)])
 $kY2 = new BenchKeeper(delay: 3600);
 $pdoY2 = new PDO('sqlite::memory:');
 $y2Db = new SqliteAdapter($pdoY2);
+benchAdminRecorded($y2Db, $admin['publicKey']);
 $dgY2 = new SelfDataGuard($y2Db, $blindKey, keeper: $kY2, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $zoe = $dgY2->register('zoe', 'motdepasse-zoe-01');
 $dgY2->setEscrowFields($zoe, $admin['publicKey'], ['contact' => 'zoe@example.org']);
@@ -1464,6 +1500,7 @@ $kY3a = new BenchKeeper(delay: 3600);
 $kY3b = new BenchKeeper(delay: 3600);
 $pdoY3 = new PDO('sqlite::memory:');
 $y3Db = new SqliteAdapter($pdoY3);
+benchAdminRecorded($y3Db, $admin['publicKey']);
 $yann = (new SelfDataGuard($y3Db, $blindKey, keeper: $kY3a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('yann', 'motdepasse-yann-01');
 (new SelfDataGuard($y3Db, $blindKey, keeper: $kY3a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($yann, $admin['publicKey'], ['contact' => 'yann@example.org']);
 $yannBackup = $pdoY3->query("SELECT wrap_user, wrap_admin FROM selfdataguard_escrow WHERE user_id = 'yann'")->fetch(PDO::FETCH_ASSOC);
@@ -1494,6 +1531,7 @@ $kY3a->down = false;
 $kY4a = new BenchKeeper(delay: 0);
 $kY4b = new BenchKeeper(delay: 0);
 $y4Db = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($y4Db, $admin['publicKey']);
 $yves = (new SelfDataGuard($y4Db, $blindKey, keeper: $kY4a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('yves', 'motdepasse-yves-01');
 (new SelfDataGuard($y4Db, $blindKey, keeper: $kY4a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($yves, $admin['publicKey'], ['contact' => 'yves@example.org']);
 SelfDataGuard::changeKeeper($y4Db, $kY4a, $kY4b);
@@ -1511,6 +1549,7 @@ $reads['established'] && count($fromA) === 1
 
 $kY6 = new BenchKeeper(delay: 3600);
 $y6Db = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($y6Db, $admin['publicKey']);
 $dgY6 = new SelfDataGuard($y6Db, $blindKey, keeper: $kY6, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $yoko = $dgY6->register('yoko', 'motdepasse-yoko-01');
 $dgY6->setEscrowFields($yoko, $admin['publicKey'], ['contact' => 'yoko@example.org']);
@@ -1524,6 +1563,7 @@ $kY8a = new BenchKeeper();
 $kY8b = new BenchKeeper();
 $kY8c = new BenchKeeper();
 $y8Db = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($y8Db, $admin['publicKey']);
 $dgY8a = new SelfDataGuard($y8Db, $blindKey, keeper: $kY8a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $yara = $dgY8a->register('yara', 'motdepasse-yara-01');
 SelfDataGuard::changeKeeper($y8Db, $kY8a, $kY8b);
@@ -1563,6 +1603,7 @@ try {
 
 $counted = [new CountingKeeper(), new CountingKeeper(), new CountingKeeper(), new CountingKeeper()];
 $y9Db = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($y9Db, $admin['publicKey']);
 $yeti = (new SelfDataGuard($y9Db, $blindKey, keeper: $counted[0], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('yeti', 'motdepasse-yeti-01');
 foreach ([[0, 1], [1, 2], [2, 3]] as [$from, $to]) {
     SelfDataGuard::changeKeeper($y9Db, $counted[$from], $counted[$to]);
@@ -1606,6 +1647,7 @@ $kZa = new KeysDownKeeper(delay: 3600);
 $kZb = new KeysDownKeeper(delay: 3600);
 $pdoZ = new PDO('sqlite::memory:');
 $zDb = new SqliteAdapter($pdoZ);
+benchAdminRecorded($zDb, $admin['publicKey']);
 $zack = (new SelfDataGuard($zDb, $blindKey, keeper: $kZa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('zack', 'motdepasse-zack-01');
 (new SelfDataGuard($zDb, $blindKey, keeper: $kZa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($zack, $admin['publicKey'], ['contact' => 'zack@example.org']);
 $zackRow = $zDb->loadEscrow('zack');
@@ -1670,6 +1712,7 @@ try {
 $kQa = new BenchKeeper(delay: 3600);
 $kQc = new BenchKeeper(delay: 3600);
 $qDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($qDb, $admin['publicKey']);
 $dgQ = new SelfDataGuard($qDb, $blindKey, keeper: $kQa, formerKeepers: [$kQc], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $quil = $dgQ->register('quil', 'motdepasse-quil-01');
 $dgQ->setEscrowFields($quil, $admin['publicKey'], ['contact' => 'quil@example.org']);
@@ -1706,7 +1749,8 @@ final class FailOnceSetting extends DelegatingStorage
 }
 $kFa = new BenchKeeper();
 $kFb = new BenchKeeper();
-$fDb = new FailOnceSetting(new SqliteAdapter('sqlite::memory:'));
+$fDb = new FailOnceSetting($fDbPlain = new SqliteAdapter('sqlite::memory:'));
+benchAdminRecorded($fDbPlain, $admin['publicKey']);
 (new SelfDataGuard($fDb, $blindKey, keeper: $kFa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('fanny', 'motdepasse-fanny-01');
 SelfDataGuard::changeKeeper($fDb, $kFa, $kFb);
 $printFa = KeeperSeal::fingerprint($kFa->publicKeys());
@@ -1749,6 +1793,7 @@ $dgP->hasEscrow($paul)
 
 $pdoF = new PDO('sqlite::memory:');
 $fieldDb = new SqliteAdapter($pdoF);
+benchAdminRecorded($fieldDb, $admin['publicKey']);
 $dgF = new SelfDataGuard($fieldDb, $blindKey, keeper: new BenchKeeper(), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $fred = $dgF->register('fred', 'motdepasse-fred-01');
 $dgF->setEscrowFields($fred, $admin['publicKey'], ['contact' => 'fred@example.org', 'indice' => 'fred']);
@@ -1783,6 +1828,7 @@ $kWa = new BenchKeeper(delay: 3600);
 $kWb = new BenchKeeper(delay: 3600);
 $kWc = new BenchKeeper(delay: 3600);
 $wDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($wDb, $admin['publicKey']);
 $wade = (new SelfDataGuard($wDb, $blindKey, keeper: $kWa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('wade', 'motdepasse-wade-01');
 (new SelfDataGuard($wDb, $blindKey, keeper: $kWa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($wade, $admin['publicKey'], ['contact' => 'wade@example.org']);
 SelfDataGuard::changeKeeper($wDb, $kWa, $kWb);
@@ -1802,6 +1848,7 @@ $reads['reason'] === 'retired' && in_array(KeeperSeal::fingerprint($kWb->publicK
 $kOa = new BenchKeeper(delay: 3600);
 $kOb = new BenchKeeper(delay: 3600);
 $oDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($oDb, $admin['publicKey']);
 $olaf = (new SelfDataGuard($oDb, $blindKey, keeper: $kOa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('olaf', 'motdepasse-olaf-01');
 (new SelfDataGuard($oDb, $blindKey, keeper: $kOa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($olaf, $admin['publicKey'], ['contact' => 'olaf@example.org']);
 $olafRow = $oDb->loadEscrow('olaf');
@@ -1822,6 +1869,7 @@ $kOb->down = false;
 $kV = new BenchKeeper(delay: 3600);
 $pdoV2 = new PDO('sqlite::memory:');
 $vDb = new SqliteAdapter($pdoV2);
+benchAdminRecorded($vDb, $admin['publicKey']);
 $dgV = new SelfDataGuard($vDb, $blindKey, keeper: $kV, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $vera = $dgV->register('vera', 'motdepasse-vera-01');
 $dgV->setEscrowFields($vera, $admin['publicKey'], ['contact' => 'vera@example.org']);
@@ -1887,6 +1935,7 @@ final class FailingEscrowRead extends DelegatingStorage
 }
 $kT = new BenchKeeper(delay: 3600);
 $tInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($tInner, $admin['publicKey']);
 $tDb = new FailingEscrowRead($tInner);
 $dgT = new SelfDataGuard($tDb, $blindKey, keeper: $kT, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $tess = $dgT->register('tess', 'motdepasse-tess-01');
@@ -1993,7 +2042,8 @@ final class AlwaysExistsEscrow extends DelegatingStorage
         throw new EscrowExistsException("An escrow already exists for '{$record->userId}'");
     }
 }
-$xDb = new AlwaysExistsEscrow(new SqliteAdapter('sqlite::memory:'));
+$xDb = new AlwaysExistsEscrow($xDbPlain = new SqliteAdapter('sqlite::memory:'));
+benchAdminRecorded($xDbPlain, $admin['publicKey']);
 $dgX = new SelfDataGuard($xDb, $blindKey, keeper: $keeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $xena = $dgX->register('xena', 'motdepasse-xena-01');
 try {
@@ -2021,6 +2071,7 @@ final class AlwaysStaleRotation extends DelegatingStorage
     }
 }
 $sInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($sInner, $admin['publicKey']);
 $sDb = new AlwaysStaleRotation($sInner);
 $yara = (new SelfDataGuard($sInner, $blindKey, keeper: $keeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('yara', 'motdepasse-yara-01');
 (new SelfDataGuard($sInner, $blindKey, keeper: $keeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($yara, $admin['publicKey'], ['contact' => 'yara@example.org']);
@@ -2051,7 +2102,8 @@ final class FormersKeepChanging extends DelegatingStorage
         return '[]';
     }
 }
-$fDb = new FormersKeepChanging(new SqliteAdapter('sqlite::memory:'));
+$fDb = new FormersKeepChanging($fDbPlain = new SqliteAdapter('sqlite::memory:'));
+benchAdminRecorded($fDbPlain, $admin['publicKey']);
 $fDg = new SelfDataGuard($fDb, $blindKey, keeper: $keeper, formerKeepers: [new BenchKeeper()], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $zack = $fDg->register('zack', 'motdepasse-zack-01');
 try {
@@ -2068,6 +2120,7 @@ try {
 $kVb = new BenchKeeper(delay: 3600);
 $pdoVb = new PDO('sqlite::memory:');
 $vbDb = new SqliteAdapter($pdoVb);
+benchAdminRecorded($vbDb, $admin['publicKey']);
 $dgVb = new SelfDataGuard($vbDb, $blindKey, keeper: $kVb, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $vince = $dgVb->register('vince', 'motdepasse-vince-01');
 $dgVb->setEscrowFields($vince, $admin['publicKey'], ['contact' => 'vince@example.org']);
@@ -2080,6 +2133,7 @@ $reads = $dgVb->escrowReads($vince);
 $kNa = new BenchKeeper(delay: 3600);
 $kNb = new BenchKeeper(delay: 3600);
 $nDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($nDb, $admin['publicKey']);
 $nils = (new SelfDataGuard($nDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('nils', 'motdepasse-nils-01');
 (new SelfDataGuard($nDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($nils, $admin['publicKey'], ['contact' => 'nils@example.org']);
 benchCeremony($nDb, keeper: $kNa)->sealToKeeper('nils');
@@ -2126,6 +2180,7 @@ final class HookedSettings extends DelegatingStorage
 $kHa = new BenchKeeper();
 $kHb = new BenchKeeper();
 $hInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($hInner, $admin['publicKey']);
 $hDb = new HookedSettings($hInner);
 $hugo = (new SelfDataGuard($hInner, $blindKey, keeper: $kHa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('hugo', 'motdepasse-hugo-01');
 SelfDataGuard::changeKeeper($hInner, $kHa, $kHb);
@@ -2144,6 +2199,7 @@ try {
 $kJa = new BenchKeeper();
 $kJc = new BenchKeeper();
 $jInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($jInner, $admin['publicKey']);
 $jDb = new HookedSettings($jInner);
 (new SelfDataGuard($jInner, $blindKey, keeper: $kJa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('jade', 'motdepasse-jade-01');
 $printJa = KeeperSeal::fingerprint($kJa->publicKeys());
@@ -2164,11 +2220,13 @@ try {
 $kKa = new BenchKeeper();
 $kKc = new BenchKeeper();
 $kInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($kInner, $admin['publicKey']);
 $kDb = new HookedSettings($kInner);
 $karl = (new SelfDataGuard($kInner, $blindKey, keeper: $kKa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('karl', 'motdepasse-karl-01');
 $printKa = KeeperSeal::fingerprint($kKa->publicKeys());
 $printKc = KeeperSeal::fingerprint($kKc->publicKeys());
 $dryInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($dryInner, $admin['publicKey']);
 $dryDb    = new HookedSettings($dryInner);
 $dryKarl  = (new SelfDataGuard($dryInner, $blindKey, keeper: $kKa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('karl', 'motdepasse-karl-01');
 $dryDg    = new SelfDataGuard($dryDb, $blindKey, keeper: $kKa, formerKeepers: [new BenchKeeper()], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
@@ -2191,6 +2249,7 @@ $kLa = new BenchKeeper();
 $kLc = new BenchKeeper();
 $kLd = new BenchKeeper();
 $lInner = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($lInner, $admin['publicKey']);
 $lise = (new SelfDataGuard($lInner, $blindKey, keeper: $kLa, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('lise', 'motdepasse-lise-01');
 (new SelfDataGuard($lInner, $blindKey, keeper: $kLa, formerKeepers: [$kLc], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($lise, $admin['publicKey'], ['contact' => 'lise@example.org']);
 $printLa = KeeperSeal::fingerprint($kLa->publicKeys());
@@ -2300,6 +2359,7 @@ final class ChangeBeforeWrite extends DelegatingStorage
 }
 $pdoW = new PDO('sqlite::memory:');
 $wInner = new SqliteAdapter($pdoW);
+benchAdminRecorded($wInner, $admin['publicKey']);
 $wDb = new ChangeBeforeWrite($wInner);
 $dgW = new SelfDataGuard($wDb, $blindKey, keeper: $keeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $wren = $dgW->register('wren', 'motdepasse-wren-01');

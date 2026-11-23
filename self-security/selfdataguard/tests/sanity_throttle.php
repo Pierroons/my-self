@@ -18,6 +18,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require_once __DIR__ . '/pepper_fixture.php';
+require_once __DIR__ . '/admin_fixture.php';
 require_once __DIR__ . '/storage_doubles.php';
 require_once __DIR__ . '/keeper_fixture.php';
 
@@ -225,6 +226,7 @@ $throttle->refusal = null;
 
 $kAdmin   = SelfDataGuard::generateAdminRecoveryKey('throttle-admin-passphrase-2026');
 $kStore   = new ReadCountingStorage(new SqliteAdapter('sqlite:' . "{$work}/keeper.sqlite"));
+benchAdminRecorded($kStore, $kAdmin['publicKey']);
 $kDg      = new SelfDataGuard($kStore, $key, benchPepper(), PepperForms::LayeredOnly, $throttle, keeper: new BenchKeeper());
 $kSession = $kDg->register('kim', PWD);
 $kDg->setEscrowFields($kSession, $kAdmin['publicKey'], ['contact' => 'kim@example.org']);

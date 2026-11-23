@@ -143,7 +143,10 @@ interface StorageInterface
      * userId has one, enforced by the storage itself — two first deposits that
      * both find none would each bring their own escrow key, and the fields
      * sealed under the replaced one would never open again.
-     * $record->userId must be $generation's.
+     * $record->userId must be $generation's. Its adminKey label is stored with
+     * it, null as null: loadEscrow() gives it back, every replacement writes
+     * the one its record carries, and the archive a re-enrolment sets aside
+     * keeps it (conformance case escrow-admin-label).
      */
     public function createEscrow(VaultGeneration $generation, EscrowRecord $record): void;
 
@@ -178,7 +181,8 @@ interface StorageInterface
     public function rotateEscrow(VaultGeneration $generation, EscrowRecord $record, array $fields): void;
 
     /**
-     * Load the escrow envelope for a user, with its revision, or null if none.
+     * Load the escrow envelope for a user, with its revision and its adminKey
+     * label as written, or null if none.
      *
      * @throws UnreadableEscrowException when the row is there but does not
      *         parse, a revision the next write cannot bump (PHP_INT_MAX)
@@ -259,7 +263,7 @@ interface StorageInterface
      * wraps the same escrow key again: an archive has no session, so this is
      * how its wrap_admin is re-sealed. Nothing else of the archive changes —
      * its vault, its fields, its escrow fields. The revision is compared and
-     * bumped as replaceEscrow() does it.
+     * bumped as replaceEscrow() does it; the adminKey label is the record's.
      *
      * @throws VaultNotFoundException  if $userId has no such archive
      * @throws EscrowNotFoundException if the archive holds no escrow

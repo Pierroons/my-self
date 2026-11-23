@@ -20,8 +20,9 @@ use Throwable;
 
 /**
  * The only path of the library to an account's escrow on the administrator's
- * side. The admin key is unsealed here and nowhere else, and only after three
- * things, in this order:
+ * side. The admin key is unsealed here and nowhere else — proveAdminKey(), which
+ * the operator's adoption of the key calls, wipes it at once —, and only after
+ * these things, in this order:
  *
  *   1. the arbiter's verdict on the case, whatever it is — an arbiter that
  *      throws answers Unavailable —, and the intention — who, which account,
@@ -31,8 +32,10 @@ use Throwable;
  *   2. the head of the log taken out of the machine by the witness, which
  *      stops the ceremony when it fails;
  *   3. a verdict of Open;
- *   4. the passphrase checked: the admin key unsealed, then erased — a typo
- *      reaches no keeper;
+  *   4. the escrow's label compared with the admin key given: an escrow sealed
+ *      to another key stops here; then the passphrase checked — the admin key
+ *      unsealed, found to be the private half of the public key given, then
+ *      erased. A typo, or the wrong key file, reaches no keeper;
  *   5. for a compartment sealed to a keeper, the keeper's release, given the
  *      intention's head: it records the read and hands back the inner box —
  *      or holds it until a delay ends, or refuses it to an objection. Without
@@ -263,7 +266,8 @@ final class EscrowCeremony
             KeeperSeal::wrap(KeeperSeal::newEscrowId(), $r->userId, null, $r->wrapAdmin, $box),
             $r->createdAt,
             new \DateTimeImmutable(),
-            $r->revision
+            $r->revision,
+            $r->adminKey
         );
         $done = ['live' => false, 'archives' => [], 'frozen' => false];
         $live = $this->storage->loadEscrow($userId);
@@ -408,6 +412,7 @@ final class EscrowCeremony
         } catch (Throwable $e) {
             $this->log->append(['action' => "{$act}-denied", 'reason' => match (true) {
                 $e instanceof EscrowKeeperException              => $e->reason,
+                $e instanceof EscrowAdminException               => $e->reason,
                 $e instanceof StaleEscrowException               => 'stale-escrow',
                 $e instanceof WrongSecretException               => 'bad-passphrase',
                 $e instanceof LegacyCipherUnavailableException => 'legacy-cipher-unavailable',
@@ -518,7 +523,7 @@ final class EscrowCeremony
             } catch (Throwable $e) {
                 throw new EscrowKeeperException('keeper-failed', 'The keeper did not hand back the box: the escrow stays sealed', $e);
             }
-            return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision);
+            return new EscrowRecord($record->userId, $record->wrapUser, $inner, $record->createdAt, $record->updatedAt, $record->revision, $record->adminKey);
         }
         throw new EscrowKeeperException(
             'keeper-failed',
@@ -548,10 +553,35 @@ final class EscrowCeremony
         return false;
     }
 
-    /** The admin key unsealed and erased at once: WrongSecretException on a wrong passphrase, before any keeper is asked. */
-    private function checkPassphrase(string $sealedSecret, #[\SensitiveParameter] string $passphrase): void
+    /**
+     * The admin key unsealed, found to be the private half of $adminPublicKeyB64,
+     * and erased at once — before any keeper is asked: WrongSecretException on a
+     * wrong passphrase, EscrowAdminException (admin-not-the-pair) on the key file
+     * of another key.
+     */
+    private function checkPassphrase(string $sealedSecret, #[\SensitiveParameter] string $passphrase, string $adminPublicKeyB64): void
     {
-        $this->withAdminKey($sealedSecret, $passphrase, static fn (string $sk): bool => true);
+        self::proveAdminKey($sealedSecret, $passphrase, $adminPublicKeyB64);
+    }
+
+    /**
+     * The escrow's label names the admin key it is sealed to: given another,
+     * the ceremony stops here — before the passphrase, and before any keeper is
+     * asked, so that a wrong key costs no release the holder would see as a
+     * read. An escrow written before 0.10.0 names none, and goes on.
+     *
+     * @throws EscrowAdminException admin-mismatch
+     */
+    private static function assertLabel(EscrowRecord $record, string $adminPublicKeyB64): void
+    {
+        $given = AdminKey::fingerprint($adminPublicKeyB64);
+        if ($record->adminKey !== null && !hash_equals($record->adminKey, $given)) {
+            throw new EscrowAdminException(
+                'admin-mismatch',
+                "The escrow of '{$record->userId}' is sealed to the administrator key {$record->adminKey}, and this "
+                . "ceremony was given {$given}: nothing is unsealed, and no keeper is asked"
+            );
+        }
     }
 
     /**
@@ -592,7 +622,8 @@ final class EscrowCeremony
     ): mixed {
         [$snapshot, $ciphertexts] = EscrowSnapshot::read($this->storage, $userId, $fieldNames)
             ?? throw new RuntimeException("No escrow compartment for '{$userId}'");
-        $this->checkPassphrase($sealedSecret, $passphrase);
+        self::assertLabel($snapshot, $adminPublicKeyB64);
+        $this->checkPassphrase($sealedSecret, $passphrase, $adminPublicKeyB64);
         $record = $this->throughKeeper($snapshot, $caseRef, $intent);
         return $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): mixed => self::using(
             self::openWrapAdmin($record, $sk, $adminPublicKeyB64),
@@ -627,7 +658,8 @@ final class EscrowCeremony
             throw new RuntimeException("No escrow compartment in archive '{$archiveId}' of '{$userId}'");
         }
         $ciphertexts = array_intersect_key($archive->escrowFields, array_flip($fieldNames));
-        $this->checkPassphrase($sealedSecret, $passphrase);
+        self::assertLabel($archive->escrow, $adminPublicKeyB64);
+        $this->checkPassphrase($sealedSecret, $passphrase, $adminPublicKeyB64);
         $escrow = $this->throughKeeper($archive->escrow, $caseRef, $intent);
         return $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): mixed => self::using(
             self::openWrapAdmin($escrow, $sk, $adminPublicKeyB64),
@@ -745,10 +777,40 @@ final class EscrowCeremony
     }
 
     /**
+     * Proof that whoever calls holds the administrator key $publicKeyB64: the
+     * passphrase unseals $sealedSecret, and the secret key it holds is the
+     * private half of $publicKeyB64. The secret key is wiped before returning
+     * — the operator's adoption of the key calls it (SelfDataGuard::adoptEscrowAdmin()),
+     * and the ceremony before any keeper is asked.
+     *
+     * @throws WrongSecretException     on a wrong passphrase
+     * @throws InvalidArgumentException on a sealed file, or a public key, that does not parse
+     * @throws EscrowAdminException     admin-not-the-pair, when the secret key is another key's
+     */
+    public static function proveAdminKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase, string $publicKeyB64): void
+    {
+        $publicKey = EscrowVault::decodePublicKey($publicKeyB64);
+        $secretKey = self::unsealAdminKey($sealedSecret, $passphrase);
+        try {
+            if (strlen($secretKey) !== SODIUM_CRYPTO_BOX_SECRETKEYBYTES
+                || !hash_equals(sodium_crypto_box_publickey_from_secretkey($secretKey), $publicKey)) {
+                throw new EscrowAdminException(
+                    'admin-not-the-pair',
+                    'The sealed secret key is not the private half of the administrator public key given ('
+                    . AdminKey::fingerprint($publicKeyB64) . '): the two files belong to different keys'
+                );
+            }
+        } finally {
+            Primitives::zeroize($secretKey);
+        }
+    }
+
+    /**
      * The admin secret key, from its sealed file and passphrase.
      *
      * @throws InvalidArgumentException on a sealed file that cannot be read
      * @throws WrongSecretException     on a wrong passphrase (auth tag mismatch)
+     * @throws LegacyCipherUnavailableException on a key sealed before 0.4.0, on a machine without its cipher
      */
     private static function unsealAdminKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase): string
     {

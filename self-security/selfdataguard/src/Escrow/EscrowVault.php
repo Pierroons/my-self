@@ -159,7 +159,8 @@ final class EscrowVault
             wrapAdmin: $unlocked->sealToAdmin($adminPublicKeyB64),
             createdAt: $record->createdAt,
             updatedAt: $this->now(),
-            revision:  $record->revision
+            revision:  $record->revision,
+            adminKey:  AdminKey::fingerprint($adminPublicKeyB64)
         );
     }
 

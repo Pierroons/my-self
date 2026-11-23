@@ -14,6 +14,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require_once __DIR__ . '/pepper_fixture.php';
+require_once __DIR__ . '/admin_fixture.php';
 
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -41,6 +42,7 @@ $auditSecret = str_repeat('s', 32);
 $storage = new SqliteAdapter("sqlite:{$db}");
 $dg      = new SelfDataGuard($storage, random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $admin   = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
+benchAdminRecorded($storage, $admin['publicKey']);
 file_put_contents($pubFile, $admin['publicKey']);
 file_put_contents($sealFile, $admin['sealedSecret']);
 
@@ -267,6 +269,49 @@ $r['code'] === 0 && str_contains($r['out'], 'contact_secours : concorde') && !st
 
 // -----------------------------------------------------------------------------
 
+section('adopt-admin — the operator records the administrator key, proving they hold it');
+
+$adoptDb  = "{$ws}/adopt.sqlite";
+$adoptEnv = ['DATAGUARD_DB' => $adoptDb] + $env;
+$autre    = SelfDataGuard::generateAdminRecoveryKey('une autre passphrase admin du banc de cérémonie');
+file_put_contents("{$ws}/autre.pub", $autre['publicKey']);
+file_put_contents("{$ws}/autre.sealed", $autre['sealedSecret']);
+$autreEnv = ['DATAGUARD_ADMIN_PUBKEY_FILE' => "{$ws}/autre.pub", 'DATAGUARD_ADMIN_SEALED_FILE' => "{$ws}/autre.sealed"];
+$recorded = static fn (): ?string => (new SqliteAdapter("sqlite:{$adoptDb}"))->loadSetting(SelfDataGuard::SETTING_ESCROW_ADMIN);
+$lastAct  = static function () use ($auditLog, $auditSecret): array {
+    $all = (new AuditLog($auditLog, $auditSecret))->readAll();
+    return end($all)['event'] ?? [];
+};
+$r = run(['adopt-admin'], "mauvaise-passphrase\n", $adoptEnv);
+$r['code'] === 2 && str_contains($r['err'], 'bad-passphrase') && $recorded() === null
+    && ($lastAct()['action'] ?? null) === 'adopt-admin-denied' && ($lastAct()['reason'] ?? null) === 'bad-passphrase'
+    ? ok('adopt-admin under a wrong passphrase: exit 2, nothing recorded, the refusal logged')
+    : ko('a wrong passphrase was not refused as such', $r['code'] . ' ' . trim($r['err']) . ' ' . json_encode($lastAct()));
+$r = run(['adopt-admin'], ADMIN_PASS . "\n", ['DATAGUARD_ADMIN_PUBKEY_FILE' => "{$ws}/autre.pub"] + $adoptEnv);
+$r['code'] === 2 && str_contains($r['err'], 'admin-not-the-pair') && $recorded() === null
+    ? ok('adopt-admin with the sealed key of one key and the public key of another: exit 2, nothing recorded')
+    : ko('two halves of two keys were not refused', $r['code'] . ' ' . trim($r['err']));
+$r = run(['adopt-admin'], ADMIN_PASS . "\n", $adoptEnv);
+$print = Pierroons\SelfDataGuard\Escrow\AdminKey::fingerprint($admin['publicKey']);
+$r['code'] === 0 && str_contains($r['out'], $print) && $recorded() === $print
+    && ($lastAct()['action'] ?? null) === 'adopt-admin' && ($lastAct()['admin'] ?? null) === $print
+    ? ok('adopt-admin with the passphrase and both halves: exit 0, the key recorded, the act logged with its fingerprint')
+    : ko('adopt-admin did not record the key', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['adopt-admin'], ADMIN_PASS . "\n", $adoptEnv);
+$r['code'] === 0 && $recorded() === $print
+    ? ok('adopt-admin of the key already recorded: exit 0, nothing changes')
+    : ko('adopting the recorded key again failed', $r['code'] . ' ' . trim($r['err']));
+$r = run(['adopt-admin'], "une autre passphrase admin du banc de cérémonie\n", $autreEnv + $adoptEnv);
+$r['code'] === 2 && str_contains($r['err'], 'admin-mismatch') && $recorded() === $print
+    ? ok('adopt-admin of another key on a database that recorded one: exit 2, the record kept')
+    : ko('another key was adopted over the recorded one', $r['code'] . ' ' . trim($r['err']));
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], "une autre passphrase admin du banc de cérémonie\n", $autreEnv + $env);
+$r['code'] === 2 && str_contains($r['err'], "clé d'administration (admin-mismatch)") && !str_contains($r['out'], CONTACT)
+    ? ok('unlock under another administrator key than the escrow\'s label: exit 2, named as such, nothing read')
+    : ko('a read under another key was not refused by the label', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+
+// -----------------------------------------------------------------------------
+
 section('Passphrase gate — wrong passphrase is refused + logged');
 
 $r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], "mauvaise-passphrase\n", $env);
@@ -345,6 +390,7 @@ file_put_contents($keeperBench, sprintf(
 ));
 $kdb    = "{$ws}/escrow-keeper.sqlite";
 $kstore = new SqliteAdapter("sqlite:{$kdb}");
+benchAdminRecorded($kstore, $admin['publicKey']);
 $kblind = random_bytes(32);
 $kplain = new SelfDataGuard($kstore, $kblind, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $frank  = $kplain->register('frank', 'motdepasse-frank-fort');

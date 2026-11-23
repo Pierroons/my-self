@@ -14,6 +14,8 @@ use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\Escrow\Verdict;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 
+require_once __DIR__ . '/admin_fixture.php';
+
 /**
  * Every escrow field a bench deposits, for the reads that take them all: a
  * ceremony reads only the fields it is given, and a field the escrow does not
@@ -65,6 +67,7 @@ function unsealAdminKey(string $sealed, string $passphrase): string
 {
     return (new ReflectionMethod(EscrowCeremony::class, 'unsealAdminKey'))->invoke(null, $sealed, $passphrase);
 }
+
 
 /** The ceremony's private opening of wrap_admin, for the benches that test it. */
 function openWrapAdmin(EscrowRecord $record, string $adminSecretKey, string $adminPublicKeyB64): UnlockedEscrow

@@ -174,6 +174,7 @@ final class Conformance
             'escrow-compare-and-swap'       => 'escrowCompareAndSwap',
             'rotate-escrow'                 => 'rotateEscrowCase',
             'escrow-unreadable-row-named'   => 'unreadableEscrowNamed',
+            'escrow-admin-label'            => 'escrowAdminLabel',
             'delete-vault'                  => 'deleteVault',
             'replace-with-archive'          => 'replaceWithArchive',
             'delete-archive'                => 'deleteArchive',
@@ -439,13 +440,13 @@ final class Conformance
                 && $read->wrapAdmin === $escrow->wrapAdmin,
             'loadEscrow() did not return the escrow as written'
         );
-        $second = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:second', $escrow->createdAt, $escrow->updatedAt);
+        $second = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:second', $escrow->createdAt, $escrow->updatedAt, 0, null);
         $this->expect(EscrowExistsException::class, fn () => $this->storage->createEscrow($vault->generation(), $second), 'a second createEscrow() of the same userId');
         $this->assert(
             $this->storage->loadEscrow($vault->userId)?->wrapAdmin === $escrow->wrapAdmin,
             'a second createEscrow() replaced the first escrow: the fields sealed under its key no longer open'
         );
-        $rebound = new EscrowRecord($vault->userId, $escrow->wrapUser, 'sealed-to-admin:rebound', $escrow->createdAt, new DateTimeImmutable());
+        $rebound = new EscrowRecord($vault->userId, $escrow->wrapUser, 'sealed-to-admin:rebound', $escrow->createdAt, new DateTimeImmutable(), 0, null);
         $this->storage->replaceEscrow($vault->generation(), $rebound);
         $this->assert(
             $this->storage->loadEscrow($vault->userId)?->wrapAdmin === 'sealed-to-admin:rebound',
@@ -457,6 +458,41 @@ final class Conformance
         $all = $this->storage->loadEscrowFields($vault->userId);
         ksort($all);
         $this->assert($all === ['contact' => 'c-3', 'hint' => 'c-2'], 'saving an escrow field again did not replace it');
+        return null;
+    }
+
+    /**
+     * The adminKey label an escrow record carries comes back as written — by
+     * a creation, a replacement, a rotation (null as null), in the archive a
+     * re-enrolment sets aside, and after a replacement of that archive's
+     * escrow. The ceremony compares it before asking the keeper: a label lost
+     * or kept from an older record sends a release to a key that cannot open it.
+     */
+    private function escrowAdminLabel(): ?string
+    {
+        $vault = $this->newVault('escrow-label');
+        $this->storage->saveVault($vault);
+        $first  = str_repeat('a1', 16);
+        $second = str_repeat('b2', 16);
+        $now    = new DateTimeImmutable('2026-01-01T00:00:00+00:00');
+        $this->storage->createEscrow($vault->generation(), new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:label', $now, $now, 0, $first));
+        $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
+        $this->assert($read->adminKey === $first, 'loadEscrow() did not give back the adminKey label createEscrow() wrote');
+        $this->storage->replaceEscrow($vault->generation(), new EscrowRecord($vault->userId, $read->wrapUser, 'sealed-to-admin:label-2', $read->createdAt, new DateTimeImmutable(), $read->revision, $second));
+        $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow');
+        $this->assert($read->adminKey === $second, 'replaceEscrow() did not write the adminKey label of its record');
+        $this->storage->rotateEscrow($vault->generation(), new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:label-3', $read->createdAt, new DateTimeImmutable(), $read->revision, null), ['c' => 'c-1']);
+        $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow');
+        $this->assert($read->adminKey === null, 'rotateEscrow() kept a label its record does not carry: null is written as null');
+        $this->storage->replaceEscrow($vault->generation(), new EscrowRecord($vault->userId, $read->wrapUser, 'sealed-to-admin:label-4', $read->createdAt, new DateTimeImmutable(), $read->revision, $first));
+        $archiveId = $this->storage->replaceWithArchive($vault->generation(), $this->newVault('escrow-label'));
+        $kept = $this->storage->loadArchive($vault->userId, $archiveId)?->escrow ?? throw new RuntimeException('the archive lost its escrow');
+        $this->assert($kept->adminKey === $first, 'the archive a re-enrolment set aside lost the adminKey label of its escrow');
+        $this->storage->replaceArchiveEscrow($vault->userId, $archiveId, new EscrowRecord($vault->userId, $kept->wrapUser, 'sealed-to-admin:archived', $kept->createdAt, new DateTimeImmutable(), $kept->revision, $second));
+        $this->assert(
+            $this->storage->loadArchive($vault->userId, $archiveId)?->escrow?->adminKey === $second,
+            'replaceArchiveEscrow() did not write the adminKey label of its record'
+        );
         return null;
     }
 
@@ -558,7 +594,7 @@ final class Conformance
         $this->storage->createEscrow($vault->generation(), $this->escrow($vault->userId));
         $this->storage->saveEscrowFields($vault->generation(), ['kept' => 'c-old', 'dropped' => 'c-old-2']);
         $read = $this->storage->loadEscrow($vault->userId) ?? throw new RuntimeException('loadEscrow() lost the escrow it was given');
-        $rotated = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:rotated', $read->createdAt, new DateTimeImmutable(), $read->revision);
+        $rotated = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:rotated', $read->createdAt, new DateTimeImmutable(), $read->revision, null);
         $this->storage->rotateEscrow($vault->generation(), $rotated, ['kept' => 'c-new', 'added' => 'c-added']);
 
         $stored = $this->storage->loadEscrow($vault->userId);
@@ -574,7 +610,7 @@ final class Conformance
             'after rotateEscrow(), the escrow fields are not exactly the ones given: one it does not name was kept under the replaced key, or one was lost'
         );
 
-        $stale = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:stale', $read->createdAt, new DateTimeImmutable(), $read->revision);
+        $stale = new EscrowRecord($vault->userId, $this->blob(), 'sealed-to-admin:stale', $read->createdAt, new DateTimeImmutable(), $read->revision, null);
         $this->expect(
             StaleEscrowException::class,
             fn () => $this->storage->rotateEscrow($vault->generation(), $stale, ['stale' => 'c-stale']),
@@ -1592,7 +1628,7 @@ final class Conformance
         $outcomes = $this->race(<<<'PHP'
             $r = $s->loadVault($uid);
             $now = new DateTimeImmutable();
-            $escrow = new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $r->wrapPwd, "sealed-by-{$me}", $now, $now);
+            $escrow = new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $r->wrapPwd, "sealed-by-{$me}", $now, $now, 0, null);
             $ready();
             $s->createEscrow($r->generation(), $escrow);
             PHP, $vault->userId);
@@ -1617,7 +1653,7 @@ final class Conformance
         $outcomes = $this->race(<<<'PHP'
             $r = $s->loadVault($uid);
             $e = $s->loadEscrow($uid);
-            $rotated = new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $e->wrapUser, "rotated-by-{$me}", $e->createdAt, new DateTimeImmutable(), $e->revision);
+            $rotated = new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $e->wrapUser, "rotated-by-{$me}", $e->createdAt, new DateTimeImmutable(), $e->revision, null);
             $ready();
             $s->rotateEscrow($r->generation(), $rotated, ["by-{$me}" => "c-{$me}"]);
             PHP, $vault->userId);
@@ -1678,7 +1714,7 @@ final class Conformance
                 0       => $s->replaceWithArchive($g, $new),
                 1       => $s->saveFields($g, ['late' => ['ciphertext' => 'c-late']]),
                 2       => $s->saveEscrowFields($g, ['late' => 'c-late']),
-                default => $s->createEscrow($g, new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $r->wrapPwd, 'sealed-late', $now, $now)),
+                default => $s->createEscrow($g, new Pierroons\SelfDataGuard\Escrow\EscrowRecord($uid, $r->wrapPwd, 'sealed-late', $now, $now, 0, null)),
             };
             PHP, $vault->userId);
         $this->assert(
@@ -1871,13 +1907,13 @@ final class Conformance
     {
         $this->escrowWrap ??= $this->blob();
         $now = new DateTimeImmutable('2026-01-01T00:00:00+00:00');
-        return new EscrowRecord($userId, $this->escrowWrap, 'sealed-to-admin:' . $userId, $now, $now);
+        return new EscrowRecord($userId, $this->escrowWrap, 'sealed-to-admin:' . $userId, $now, $now, 0, null);
     }
 
     /** $read again, with another wrap_admin, at the revision it was read at. */
     private function escrowLike(EscrowRecord $read, string $wrapAdmin): EscrowRecord
     {
-        return new EscrowRecord($read->userId, $read->wrapUser, $wrapAdmin, $read->createdAt, new DateTimeImmutable(), $read->revision);
+        return new EscrowRecord($read->userId, $read->wrapUser, $wrapAdmin, $read->createdAt, new DateTimeImmutable(), $read->revision, $read->adminKey);
     }
 
     private function indexOf(string $userId): string

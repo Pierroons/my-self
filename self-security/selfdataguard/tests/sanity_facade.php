@@ -334,6 +334,7 @@ $dg->recover('user-rec', Lock::Passphrase, $PH3, 'rec-password-0006');
 section('Generation — a session from a replaced vault is refused everywhere');
 
 $admin = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the facade bench');
+benchAdminRecorded($storage, $admin['publicKey']);
 $stale = $dg->register('user-gen', 'gen-password-0001', hash('sha256', 'gen-memorized'));
 $dg->setFields($stale, ['a' => '1']);
 $dg->delete($stale->generation());
@@ -1403,6 +1404,7 @@ if ($escBadOpened === null) {
 // administrator writes the database, and makes that escrow unreadable.
 $kPdo      = new PDO('sqlite::memory:');
 $kStorage  = new SqliteAdapter($kPdo);
+benchAdminRecorded($kStorage, $admin['publicKey']);
 $kKeeper   = new BenchKeeper(delay: 3600);
 $kDg       = new SelfDataGuard($kStorage, $blindKey, keeper: $kKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $carol     = $kDg->register('user-carol', 'carol-password-01');
@@ -1465,6 +1467,7 @@ foreach ([
 // The pass of a ceremony records its keeper in the database it seals: it runs on one of its own.
 $keeperPdo = new PDO('sqlite::memory:');
 $keeperDb  = new SqliteAdapter($keeperPdo);
+benchAdminRecorded($keeperDb, $admin['publicKey']);
 $keeperDg  = new SelfDataGuard($keeperDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $escKeeper = $keeperDg->register('user-escbad', 'escbad-password-01');
 $keeperDg->setEscrowFields($escKeeper, $admin['publicKey'], ['contact' => 'contact du titulaire']);

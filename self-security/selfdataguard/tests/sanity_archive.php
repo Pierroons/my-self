@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require_once __DIR__ . '/pepper_fixture.php';
+require_once __DIR__ . '/admin_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
@@ -67,6 +68,7 @@ $blindKey = Primitives::randomBytes(32);
 $dg       = new SelfDataGuard($storage, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $uv       = new UserVault();
 $admin    = SelfDataGuard::generateAdminRecoveryKey('admin passphrase for the archive bench');
+benchAdminRecorded($storage, $admin['publicKey']);
 
 const EMAIL  = 'ancien@example.org';
 const PHRASE = 'cheval agrafe batterie correct moulin ivoire';
@@ -797,7 +799,7 @@ foreach ([
     'updateVault'        => static fn () => $storage->updateVault($frozenRecord->withWrapPwd($frozenRecord->wrapPwd, $now)),
     'saveFields'         => static fn () => $storage->saveFields($fg, ['note' => ['ciphertext' => 'c']]),
     'saveEscrowFields'   => static fn () => $storage->saveEscrowFields($fg, ['contact' => 'c']),
-    'createEscrow'       => static fn () => $storage->createEscrow($fg, new Pierroons\SelfDataGuard\Escrow\EscrowRecord('user-frz', $frozenRecord->wrapPwd, 'x', $now, $now)),
+    'createEscrow'       => static fn () => $storage->createEscrow($fg, new Pierroons\SelfDataGuard\Escrow\EscrowRecord('user-frz', $frozenRecord->wrapPwd, 'x', $now, $now, 0, null)),
     'deleteVault'        => static fn () => $storage->deleteVault($fg),
     'deleteArchive'      => static fn () => $storage->deleteArchive($fg, $frz['archiveId']),
     'replaceWithArchive' => static fn () => $storage->replaceWithArchive($fg, $uv->register('user-frz', 'frz-password-9')['record']),

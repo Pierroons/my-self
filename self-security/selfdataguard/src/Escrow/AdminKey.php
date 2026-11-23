@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard\Escrow;
 
 use InvalidArgumentException;
-use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Vault\UserVault;
-use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
  * Admin recovery keypair for the escrow compartment (whitepaper §4.2, revised).
@@ -121,5 +120,16 @@ final class AdminKey
         }
 
         return [(int) $parts[1], (int) $parts[2], $parts[3], $parts[4]];
+    }
+
+    /**
+     * The fingerprint of an admin public key: what the database records as its
+     * administrator key, and what labels each escrow sealed to it.
+     *
+     * @throws InvalidArgumentException when $publicKeyB64 is not a box public key
+     */
+    public static function fingerprint(string $publicKeyB64): string
+    {
+        return substr(hash('sha256', "selfdataguard/escrow-admin/v1\0" . EscrowVault::decodePublicKey($publicKeyB64)), 0, 32);
     }
 }

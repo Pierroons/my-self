@@ -38,6 +38,16 @@ declare(strict_types=1);
  *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
  *   php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>
  *   php bin/escrow-ceremony.php seal-to-keeper [user...]
+ *   php bin/escrow-ceremony.php adopt-admin
+ *
+ * `adopt-admin` inscrit la clé d'administration dans la base : c'est l'acte de
+ * l'exploitant, et le seul qui l'inscrit — aucun dépôt ne le fait, et un dépôt sur une
+ * base sans clé inscrite est refusé. Il prouve qu'il tient la clé : la passphrase
+ * descelle DATAGUARD_ADMIN_SEALED_FILE, et la clé secrète qu'il porte est la moitié
+ * privée de DATAGUARD_ADMIN_PUBKEY_FILE. Une base qui a inscrit une autre clé refuse.
+ * Chaque séquestre porte l'empreinte de la clé qui le scelle : la cérémonie la compare à
+ * celle qu'on lui donne avant tout gardien, si bien qu'une mauvaise clé ne coûte aucune
+ * remise.
  *
  * Sous un gardien, une lecture peut être annoncée plutôt que faite : le gardien
  * l'inscrit et la tient jusqu'à une échéance, que le titulaire voit et à laquelle il
@@ -86,6 +96,8 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowAdminException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\Escrow\Comparison;
 use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
@@ -96,6 +108,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
 use Pierroons\SelfDataGuard\Escrow\HeadWitness;
 use Pierroons\SelfDataGuard\Escrow\Normalization;
+use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
@@ -317,6 +330,33 @@ if ($cmd === 'seal-to-keeper') {
     exit($gele === 0 && $echecs === [] ? 0 : 2);
 }
 
+if ($cmd === 'adopt-admin') {
+    $ctx  = operatorContext();
+    $qui  = $ctx['operator'] . ($ctx['ip'] !== null ? " ({$ctx['ip']})" : '');
+    $pub  = fileEnv('DATAGUARD_ADMIN_PUBKEY_FILE');
+    $pdo  = new PDO('sqlite:' . envOrDie('DATAGUARD_DB'));
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $passphrase = readPassphrase("Passphrase admin de récupération : ");
+    try {
+        SelfDataGuard::adoptEscrowAdmin(new SqliteAdapter($pdo), fileEnv('DATAGUARD_ADMIN_SEALED_FILE'), $passphrase, $pub);
+        $empreinte = AdminKey::fingerprint($pub);
+    } catch (\Throwable $e) {
+        $raison = match (true) {
+            $e instanceof EscrowAdminException  => $e->reason,
+            $e instanceof WrongSecretException  => 'bad-passphrase',
+            default                             => 'sealed-key-unreadable',
+        };
+        $auditLog->append(['action' => 'adopt-admin-denied', 'reason' => $raison, 'operator' => $qui]);
+        fwrite(STDERR, "⛔ Clé d'administration non inscrite ({$raison}) — {$e->getMessage()}\n");
+        exit(2);
+    } finally {
+        sodium_memzero($passphrase);
+    }
+    $auditLog->append(['action' => 'adopt-admin', 'admin' => $empreinte, 'operator' => $qui]);
+    echo "✅ clé d'administration {$empreinte} inscrite : chaque dépôt la scelle désormais, et la cérémonie compare chaque séquestre à elle\n";
+    exit(0);
+}
+
 $arites = ['unlock' => 3, 'unlock-archive' => 4, 'archives' => 2, 'compare' => 3, 'compare-archive' => 4];
 $args   = array_slice($argv, 2);
 $normalisation = Normalization::Exact;
@@ -340,7 +380,8 @@ if (!isset($arites[$cmd]) || count($args) < $arites[$cmd]) {
         . "  php bin/escrow-ceremony.php archives <user> <dossier>\n"
         . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n"
         . "  php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>\n"
-        . "  php bin/escrow-ceremony.php seal-to-keeper [user...]\n");
+        . "  php bin/escrow-ceremony.php seal-to-keeper [user...]\n"
+        . "  php bin/escrow-ceremony.php adopt-admin\n");
     exit(3);
 }
 
@@ -389,6 +430,9 @@ try {
     exit(4);
 } catch (EscrowKeeperException $e) {
     fwrite(STDERR, "⛔ Refusé — gardien ({$e->reason}) : {$e->getMessage()}\n");
+    exit(2);
+} catch (EscrowAdminException $e) {
+    fwrite(STDERR, "⛔ Refusé — clé d'administration ({$e->reason}) : {$e->getMessage()}\n");
     exit(2);
 } catch (EscrowRefusedException $e) {
     fwrite(STDERR, "⛔ Refusé — le dossier « {$dossier} » n'autorise pas la lecture pour « {$user} » ({$e->verdict->value}).\n");

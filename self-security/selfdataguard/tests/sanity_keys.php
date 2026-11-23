@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require_once __DIR__ . '/pepper_fixture.php';
+require_once __DIR__ . '/admin_fixture.php';
 require __DIR__ . '/key_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
@@ -196,7 +197,8 @@ $out   = $bound->sealToKeeper($admin['publicKey']);
     ? ok('UnlockedEscrow::sealToKeeper(): neither the escrow key nor the objection seed is in what it returns')
     : ko('UnlockedEscrow::sealToKeeper() returns the escrow key or the objection seed');
 
-$dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$dg = new SelfDataGuard($keysStore = new SqliteAdapter('sqlite::memory:'), random_bytes(32), pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+benchAdminRecorded($keysStore, $admin['publicKey']);
 $old = $dg->register('user-arch-keys', 'arch-keys-password-01');
 $dg->setFields($old, ['note' => 'archivée']);
 $dg->setEscrowFields($old, $admin['publicKey'], ['contact' => 'secours']);

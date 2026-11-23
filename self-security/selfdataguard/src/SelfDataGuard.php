@@ -11,6 +11,8 @@ use LogicException;
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowAdminException;
+use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
 use Pierroons\SelfDataGuard\Escrow\EscrowEnvelopeMismatchException;
 use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
@@ -337,6 +339,41 @@ final class SelfDataGuard
             throw new InvalidArgumentException('Another blind-index key was recorded meanwhile');
         }
         $storage->claimSetting(self::SETTING_SHARED_INDEXES, self::sharedList($sharedIndexes));
+    }
+
+    /**
+     * Record $adminPublicKey as the administrator key escrows are sealed to —
+     * the operator's act, and the only one that records it: no deposit does.
+     * Whoever records it proves they hold it: the passphrase unseals
+     * $sealedSecret, and the secret key it holds is the private half of
+     * $adminPublicKey (EscrowCeremony::proveAdminKey()). Adopting the key already recorded
+     * does nothing.
+     *
+     * A database that recorded another key refuses it: escrows sealed to the
+     * recorded one stay readable by its holder alone. On a database whose
+     * record was erased, the key adopted is the one every later deposit seals
+     * to; escrows sealed before keep the key their label names.
+     *
+     * @throws WrongSecretException     on a wrong passphrase
+     * @throws InvalidArgumentException on a sealed file or a public key that does not parse
+     * @throws EscrowAdminException     admin-not-the-pair, when the two files are two keys' halves;
+     *                                  admin-mismatch, when the database recorded another key — before or meanwhile
+     */
+    public static function adoptEscrowAdmin(
+        StorageInterface $storage,
+        string $sealedSecret,
+        #[\SensitiveParameter] string $passphrase,
+        string $adminPublicKey
+    ): void {
+        EscrowCeremony::proveAdminKey($sealedSecret, $passphrase, $adminPublicKey);
+        $print = AdminKey::fingerprint($adminPublicKey);
+        $held  = $storage->loadSetting(self::SETTING_ESCROW_ADMIN) ?? $storage->claimSetting(self::SETTING_ESCROW_ADMIN, $print);
+        if (!hash_equals($held, $print)) {
+            throw new EscrowAdminException(
+                'admin-mismatch',
+                "This database recorded the administrator key {$held}, not {$print}: nothing was changed"
+            );
+        }
     }
 
     /**
@@ -1287,15 +1324,17 @@ final class SelfDataGuard
      * asked or does not take the retirement.
      *
      * wrap_admin is sealed to $adminPublicKey at each deposit, and, with a
-     * keeper, sealed again to it. The first deposit records which key; a
-     * deposit given another is refused — it would take every compartment it
-     * touches from the administrator who holds the recorded one. The key
-     * changes by StorageInterface::replaceSetting(), the operator's act.
+     * keeper, sealed again to it; the escrow is labelled with its fingerprint.
+     * $adminPublicKey is the key the operator recorded (adoptEscrowAdmin()): a
+     * deposit records nothing, and one given another key is refused — it would
+     * take every compartment it touches from the administrator who holds the
+     * recorded one.
      *
      * These fields are the CONSENTED, admin-recoverable subset (e.g.
      * contact_secours) — kept in a sub-key distinct from the private zone.
      *
      * @param array<string, string> $fields field_name => plaintext
+     * @throws EscrowAdminException when the database recorded no administrator key, or another
      * @throws StaleEscrowException when other deposits kept landing between this one's read and its write
      * @throws VaultFrozenException when there is a former keeper and the vault is frozen
      * @throws EscrowKeeperException keeper-mismatch — a recorded former keeper not given, a forgotten one given, a
@@ -1427,9 +1466,8 @@ final class SelfDataGuard
      * objected to is refused once due.
      *
      * The archive is opened as openForObjection() opens it, behind the
-     * throttle. The administrator key must be the one the database recorded:
-     * a database that recorded none is refused, since the key given would
-     * otherwise become the one every later deposit is sealed to.
+     * throttle. The administrator key must be the one the operator recorded,
+     * as for a deposit.
      *
      * A copy of the database taken before keeps the box of before: a read
      * announced from it is neither shown nor opposable — the keeper is asked
@@ -1438,7 +1476,7 @@ final class SelfDataGuard
      * False when there is nothing to do: no keeper, no escrow, or one already
      * pinned to a keeper — this façade's or a former one.
      *
-     * @throws InvalidArgumentException when $adminPublicKey is not the one the database recorded, or none is
+     * @throws EscrowAdminException when $adminPublicKey is not the one the database recorded, or none is
      * @throws EscrowEnvelopeMismatchException when the escrow of the archive does not parse or does not open
      * @throws WrongSecretException   if the old secret opens no envelope of the archive
      * @throws VaultNotFoundException if this userId has no such archive
@@ -1463,7 +1501,7 @@ final class SelfDataGuard
             if ($row !== 'not-keeper-sealed' && $row !== 'not-pinned') {
                 return false;
             }
-            $this->assertEscrowAdmin($adminPublicKey, claims: false);
+            $this->assertEscrowAdmin($adminPublicKey);
             $pinned = $session->pinEscrow($escrow, $adminPublicKey, (array) $this->keeperKeys(), new DateTimeImmutable());
             $this->storage->replaceArchiveEscrow($userId, $archiveId, $pinned);
             return true;
@@ -1635,7 +1673,7 @@ final class SelfDataGuard
      * access to this compartment.
      *
      * @throws \Pierroons\SelfDataGuard\Escrow\StaleEscrowException when another request re-sealed it after this one read it
-     * @throws InvalidArgumentException when $adminPublicKey is not the one the database recorded
+     * @throws EscrowAdminException when $adminPublicKey is not the one the database recorded, or none is
      * @throws EscrowEnvelopeMismatchException when the escrow row does not parse, or, without a keeper, does not open
      */
     public function rebindEscrowAdmin(UnlockedVault $session, string $adminPublicKey): bool
@@ -1837,24 +1875,31 @@ final class SelfDataGuard
     }
 
     /**
-     * $adminPublicKey is the one the database seals escrows to: recorded at the
-     * first deposit, compared at every one after.
+     * $adminPublicKey is the one the database seals escrows to, as the operator
+     * recorded it (adoptEscrowAdmin()). Nothing here records it: a key a
+     * deposit recorded would be whichever the first deposit was given — on a
+     * database whose record was erased too.
+     *
+     * @throws EscrowAdminException admin-unrecorded, or admin-mismatch
      */
-    private function assertEscrowAdmin(string $adminPublicKey, bool $claims = true): void
+    private function assertEscrowAdmin(string $adminPublicKey): void
     {
-        $print = substr(hash('sha256', "selfdataguard/escrow-admin/v1\0" . EscrowVault::decodePublicKey($adminPublicKey)), 0, 32);
-        $held  = $this->storage->loadSetting(self::SETTING_ESCROW_ADMIN)
-            ?? ($claims ? $this->storage->claimSetting(self::SETTING_ESCROW_ADMIN, $print) : null);
+        $print = AdminKey::fingerprint($adminPublicKey);
+        $held  = $this->storage->loadSetting(self::SETTING_ESCROW_ADMIN);
         if ($held === null) {
-            throw new InvalidArgumentException(
-                'This database recorded no administrator key: the first deposit records it, and nothing else does'
+            throw new EscrowAdminException(
+                'admin-unrecorded',
+                "This database recorded no administrator key, and this call was given {$print}: nothing is sealed. The "
+                . 'operator records it, proving it holds the key — SelfDataGuard::adoptEscrowAdmin(), or '
+                . '`php bin/escrow-ceremony.php adopt-admin`'
             );
         }
         if (!hash_equals($held, $print)) {
-            throw new InvalidArgumentException(
+            throw new EscrowAdminException(
+                'admin-mismatch',
                 "Escrows here are sealed to the administrator key {$held}, and this call was given {$print}: each "
                 . 'deposit re-seals the compartment to the key it is given, so another would take it from the '
-                . 'administrator who holds the recorded one. The key changes by StorageInterface::replaceSetting()'
+                . 'administrator who holds the recorded one'
             );
         }
     }

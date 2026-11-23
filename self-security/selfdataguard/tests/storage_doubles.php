@@ -595,7 +595,7 @@ final class TicketDroppingStorage extends DelegatingStorage
 /** $record again, at the revision $revision. */
 function escrowAt(EscrowRecord $record, int $revision): EscrowRecord
 {
-    return new EscrowRecord($record->userId, $record->wrapUser, $record->wrapAdmin, $record->createdAt, $record->updatedAt, $revision);
+    return new EscrowRecord($record->userId, $record->wrapUser, $record->wrapAdmin, $record->createdAt, $record->updatedAt, $revision, $record->adminKey);
 }
 
 /** replaceEscrow() that writes over whatever revision is stored: the last writer wins. */

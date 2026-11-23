@@ -590,7 +590,9 @@ $revStore->createEscrow($revGen, new Pierroons\SelfDataGuard\Escrow\EscrowRecord
     Primitives::encrypt(Primitives::randomBytes(32), Primitives::randomBytes(32), Pierroons\SelfDataGuard\Crypto\Aad::of('bench')),
     'sealed-to-admin',
     new DateTimeImmutable(),
-    new DateTimeImmutable()
+    new DateTimeImmutable(),
+    0,
+    null
 ));
 $revArchive = $revStore->replaceWithArchive($revGen, (new UserVault())->register('user-rev-type', 'rev-type-password-2')['record']);
 $packageRevision = static function (string $part, mixed $revision) use ($revPdo, $revArchive): void {
@@ -613,7 +615,7 @@ foreach (['a real' => 1.5, 'a boolean' => true] as $what => $revision) {
     $packageRevision('escrow', $revision);
     try {
         $revStore->replaceArchiveEscrow('user-rev-type', $revArchive, new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
-            'user-rev-type', $escrow->wrapUser, 'resealed', $escrow->createdAt, new DateTimeImmutable(), 1
+            'user-rev-type', $escrow->wrapUser, 'resealed', $escrow->createdAt, new DateTimeImmutable(), 1, null
         ));
         ko("an archived escrow revision rewritten as {$what} was taken for 1, and written over");
     } catch (Pierroons\SelfDataGuard\Escrow\StaleEscrowException) {

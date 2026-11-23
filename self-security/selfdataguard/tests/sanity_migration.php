@@ -609,8 +609,11 @@ $escrow080 = $store080->loadEscrow('user-escrow-080');
 $escrow080?->revision === 0
     ? ok('an escrow written before 0.9.0 is read at revision 0')
     : ko('an escrow written before 0.9.0 lost its row, or its revision is not 0');
+$escrow080?->adminKey === null
+    ? ok('an escrow written before 0.10.0 names no administrator key: its label reads null')
+    : ko('an escrow written before 0.10.0 came back with a label');
 $store080->replaceEscrow($vault080->generation(), new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
-    'user-escrow-080', $escrow080->wrapUser, 'resealed-080', $escrow080->createdAt, new DateTimeImmutable(), $escrow080->revision
+    'user-escrow-080', $escrow080->wrapUser, 'resealed-080', $escrow080->createdAt, new DateTimeImmutable(), $escrow080->revision, null
 ));
 $store080->loadEscrow('user-escrow-080')?->revision === 1
     ? ok('it is replaced at its revision, which then reads 1')
@@ -635,7 +638,7 @@ $archived080?->revision === 0
     ? ok('the escrow of an archive written before 0.9.0 is read at revision 0')
     : ko('the escrow of an archive written before 0.9.0 is not read at revision 0');
 $store080->replaceArchiveEscrow('user-escrow-080', $archive080, new Pierroons\SelfDataGuard\Escrow\EscrowRecord(
-    'user-escrow-080', $archived080->wrapUser, 'archive-resealed-080', $archived080->createdAt, new DateTimeImmutable(), 0
+    'user-escrow-080', $archived080->wrapUser, 'archive-resealed-080', $archived080->createdAt, new DateTimeImmutable(), 0, null
 ));
 $store080->loadArchive('user-escrow-080', $archive080)?->escrow?->wrapAdmin === 'archive-resealed-080'
     ? ok('and re-sealed at it')

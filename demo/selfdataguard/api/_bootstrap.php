@@ -38,6 +38,9 @@ header('Cache-Control: no-store');
 const DEMO_TTL_SECONDES       = 30 * 60;
 const DEMO_BASES_MAX          = 1000;
 const DEMO_BASES_PAR_ADRESSE  = 5;
+// Passphrase de la clé d'administration de démo (documentée dans le README). En prod :
+// dans la tête de l'admin, jamais dans le code.
+const DEMO_ADMIN_PASSPHRASE   = 'demo-admin-recovery-passphrase-2026';
 
 // ⚠️ Secure par défaut : une détection de HTTPS se trompe derrière un frontal et
 // retirerait l'attribut sans que personne le voie. DATAGUARD_DEMO_HTTP=1 ne sert
@@ -186,6 +189,9 @@ function demo_base_neuve(): SelfDataGuard
     }
     file_put_contents($quota, implode("\n", [...$creations, $maintenant]) . "\n", LOCK_EX);
     $GLOBALS['storage'] = new SqliteAdapter('sqlite:' . $baseVisiteur);
+    // L'exploitant inscrit sa clé d'administration dans chaque base qu'il ouvre, en
+    // prouvant qu'il la tient : aucun dépôt ne l'inscrit, et un dépôt sans elle est refusé.
+    SelfDataGuard::adoptEscrowAdmin($GLOBALS['storage'], (string) file_get_contents($GLOBALS['adminSealPath']), DEMO_ADMIN_PASSPHRASE, $GLOBALS['adminRecoveryPubKey']);
     return new SelfDataGuard($GLOBALS['storage'], $blindKey, $GLOBALS['pepper'], PepperForms::LayeredOnly, throttle: new NoThrottle());
 }
 
@@ -206,7 +212,7 @@ $adminPubPath  = dirname($blindKeyPath) . '/admin-recovery.pub';
 $adminSealPath = dirname($blindKeyPath) . '/admin-recovery.sealed';
 if (!is_file($adminPubPath)) {
     // Passphrase de démo (documentée dans README). En prod : dans la tête de l'admin.
-    $ar = SelfDataGuard::generateAdminRecoveryKey('demo-admin-recovery-passphrase-2026');
+    $ar = SelfDataGuard::generateAdminRecoveryKey(DEMO_ADMIN_PASSPHRASE);
     // Les DEUX moitiés, ou aucune. Si la publique s'écrit et que la scellée échoue,
     // l'escrow scellera vers une clé dont la partie privée n'existe nulle part : chaque
     // scellement produirait alors une donnée définitivement irrécupérable, sans un mot.

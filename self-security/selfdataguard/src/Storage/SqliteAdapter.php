@@ -69,6 +69,8 @@ use Throwable;
  *     wrap_user   escrow_key wrapped by the master key (base64 EncryptedBlob)
  *     wrap_admin  escrow_key sealed to the admin public key (base64 sealed box)
  *     revision    bumped by every replacement (added in 0.9.0)
+ *     admin_key   fingerprint of the admin key wrap_admin is sealed to (added
+ *                 in 0.10.0; NULL for an escrow written before)
  *
  *   selfdataguard_escrow_fields   — escrow fields encrypted with escrow_key
  *
@@ -411,8 +413,8 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
             throw new InvalidArgumentException('The escrow record belongs to another userId than the generation');
         }
         $stmt = $this->pdo->prepare(
-            'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
-             VALUES (:uid, :wu, :wa, :ca, :ua)'
+            'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at, admin_key)
+             VALUES (:uid, :wu, :wa, :ca, :ua, :ak)'
         );
         $this->atomic(function () use ($stmt, $record, $generation): void {
             $this->assertGeneration($generation);
@@ -423,6 +425,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
                     ':wa'  => base64_encode($record->wrapAdmin),
                     ':ca'  => $record->createdAt->format('c'),
                     ':ua'  => $record->updatedAt->format('c'),
+                    ':ak'  => $record->adminKey,
                 ]);
             } catch (PDOException $e) {
                 $stmt->closeCursor();
@@ -468,7 +471,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
     public function loadEscrow(string $userId): ?EscrowRecord
     {
         $stmt = $this->pdo->prepare(
-            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at, revision, typeof(revision) AS revision_type
+            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at, revision, typeof(revision) AS revision_type, admin_key
              FROM selfdataguard_escrow WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);
@@ -721,6 +724,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
                 'wrap_admin' => base64_encode($record->wrapAdmin),
                 'updated_at' => $record->updatedAt->format('c'),
                 'revision'   => $held + 1,
+                'admin_key'  => $record->adminKey,
             ] + $package['escrow'];
             // Decoded as arrays, the field maps are objects again before they are
             // written: a field named "0" would otherwise come back as a JSON list.
@@ -1584,10 +1588,12 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
                 revision    INTEGER NOT NULL DEFAULT 0,
+                admin_key   TEXT,
                 FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
             )'
         );
         $this->addMissingColumn('selfdataguard_escrow', 'revision', 'INTEGER NOT NULL DEFAULT 0');
+        $this->addMissingColumn('selfdataguard_escrow', 'admin_key', 'TEXT');
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_escrow_fields (
                 user_id     TEXT NOT NULL,
@@ -1789,6 +1795,10 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
             ) {
                 throw new RuntimeException('Corrupted revision in DB (not an integer the next write can bump)');
             }
+            $adminKey = $row['admin_key'] ?? null;
+            if ($adminKey !== null && !is_string($adminKey)) {
+                throw new RuntimeException('Corrupted admin_key in DB (not a fingerprint)');
+            }
             return new EscrowRecord(
                 userId:    (string) $row['user_id'],
                 wrapUser:  EncryptedBlob::fromBase64((string) $row['wrap_user']),
@@ -1796,6 +1806,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
                 createdAt: new DateTimeImmutable((string) $row['created_at']),
                 updatedAt: new DateTimeImmutable((string) $row['updated_at']),
                 revision:  (int) $revision,
+                adminKey:  $adminKey,
             );
         });
     }
@@ -1808,7 +1819,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
     {
         $stmt = $this->pdo->prepare(
             'UPDATE selfdataguard_escrow
-             SET wrap_user = :wu, wrap_admin = :wa, updated_at = :ua, revision = revision + 1
+             SET wrap_user = :wu, wrap_admin = :wa, updated_at = :ua, admin_key = :ak, revision = revision + 1
              WHERE user_id = :uid AND revision = :rev'
         );
         $stmt->execute([
@@ -1816,6 +1827,7 @@ final class SqliteAdapter implements StorageInterface, ErasesArchives, TracesLos
             ':wu'  => $record->wrapUser->toBase64(),
             ':wa'  => base64_encode($record->wrapAdmin),
             ':ua'  => $record->updatedAt->format('c'),
+            ':ak'  => $record->adminKey,
             ':rev' => $record->revision,
         ]);
         if ($stmt->rowCount() === 0) {
