@@ -31,6 +31,9 @@ use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
 use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
 use Pierroons\SelfDataGuard\Escrow\NoHeadWitness;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\Comparison;
+use Pierroons\SelfDataGuard\Escrow\EscrowSnapshot;
+use Pierroons\SelfDataGuard\Escrow\Normalization;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
@@ -276,7 +279,7 @@ $log = $entries();
 
 $blind = benchCeremony($storage, Verdict::Open, new BenchWitness(false), $cLog);
 try {
-    $blind->readEscrow('alice', 'case-2', $admin['sealedSecret'], 'not even the passphrase', $admin['publicKey']);
+    $blind->readEscrow('alice', 'case-2', $admin['sealedSecret'], 'not even the passphrase', $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('the ceremony went on without its witness');
 } catch (RuntimeException $e) {
     $log = $entries();
@@ -288,7 +291,7 @@ try {
 foreach ([Verdict::Closed, Verdict::Expired, Verdict::Unknown, Verdict::Unavailable] as $verdict) {
     try {
         benchCeremony($storage, $verdict, null, $cLog)
-            ->readEscrow('alice', 'case-3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+            ->readEscrow('alice', 'case-3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
         ko("a {$verdict->value} verdict unsealed the escrow");
     } catch (EscrowRefusedException $e) {
         $all  = $entries();
@@ -300,14 +303,14 @@ foreach ([Verdict::Closed, Verdict::Expired, Verdict::Unknown, Verdict::Unavaila
 }
 
 $failing = new class implements EscrowArbiter {
-    public function verdict(string $userId, string $caseRef, ?string $archiveId): Verdict
+    public function verdict(string $userId, string $caseRef, ?string $archiveId, array $fieldNames): Verdict
     {
         throw new RuntimeException('case table unreachable');
     }
 };
 try {
     (new EscrowCeremony($storage, new AuditLog($cLog, str_repeat('s', 32)), $failing, new NoHeadWitness(), new Pierroons\SelfDataGuard\Escrow\NoKeeper(), 'bench'))
-        ->readEscrow('alice', 'case-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+        ->readEscrow('alice', 'case-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('an arbiter that throws let the escrow be unsealed');
 } catch (EscrowRefusedException $e) {
     $intents = array_values(array_filter($entries(), static fn (array $x): bool => ($x['event']['case'] ?? null) === 'case-4'));
@@ -535,6 +538,120 @@ try {
     ko('a head forged in a conformant store stopped the ceremony', $e->getMessage());
 }
 
+section('A read names its fields, and the arbiter is asked about them');
+
+$fLog = sys_get_temp_dir() . '/sdg-fields-bench-' . bin2hex(random_bytes(4)) . '.log';
+register_shutdown_function(static fn () => @unlink($fLog));
+$fArbiter  = new FixedArbiter();
+$fCeremony = new EscrowCeremony($storage, new AuditLog($fLog, str_repeat('s', 32)), $fArbiter, new NoHeadWitness(), new Pierroons\SelfDataGuard\Escrow\NoKeeper(), 'bench');
+$fEntries  = static fn (): array => (new AuditLog($fLog, str_repeat('s', 32)))->readAll();
+
+foreach (['no field' => [], 'a field named twice' => ['contact_secours', 'contact_secours'], 'a name that is not a string' => [7], 'an empty name' => ['']] as $label => $names) {
+    try {
+        $fCeremony->readEscrow('alice', 'case-f1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $names);
+        ko("a read given {$label} went on");
+    } catch (InvalidArgumentException) {
+        $fEntries() === [] && $fArbiter->askedFields === null
+            ? ok("a read given {$label} is refused before the arbiter is asked and before the log")
+            : ko("a read given {$label} was refused after the arbiter or the log", json_encode($fEntries()));
+    }
+}
+try {
+    $fCeremony->readArchiveEscrow('alice', 'any-archive', 'case-f1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], []);
+    ko('a read of an archive given no field went on');
+} catch (InvalidArgumentException) {
+    $fEntries() === [] ? ok('a read of an archive given no field is refused, before the log') : ko('refused after the log');
+} catch (Throwable $e) {
+    ko('a read of an archive given no field went past the log', get_class($e));
+}
+$named = $fCeremony->readEscrow('alice', 'case-f2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours']);
+$named === ['contact_secours' => ESCROW_PLAINTEXT['contact_secours']] && $fArbiter->askedFields === ['contact_secours']
+    ? ok('a read returns the fields it names, no other, and the arbiter is asked about those')
+    : ko('the read or the arbiter did not keep to the fields named', json_encode([$named, $fArbiter->askedFields]));
+(($fEntries()[0]['event']['fields'] ?? null) === ['contact_secours'])
+    ? ok('the intention names the fields read')
+    : ko('the intention does not name the fields', json_encode($fEntries()[0] ?? null));
+$fCeremony->listArchives('alice', 'case-f3');
+$fArbiter->askedFields === []
+    ? ok('a listing of archives asks the arbiter about no field: it reads none')
+    : ko('a listing of archives named fields to the arbiter', json_encode($fArbiter->askedFields));
+try {
+    EscrowSnapshot::read($storage, 'alice', []);
+    ko('EscrowSnapshot::read() took an empty list for every field');
+} catch (InvalidArgumentException) {
+    ok('EscrowSnapshot::read() refuses an empty list');
+}
+array_keys(EscrowSnapshot::read($storage, 'alice', null)[1] ?? []) == array_keys(ESCROW_PLAINTEXT)
+    ? ok('EscrowSnapshot::read() reads every field when it is given null, said as such')
+    : ko('null did not read every field');
+
+section('A comparison answers field by field, and hands no field out');
+
+$fBefore = count($fEntries());
+$compared = $fCeremony->compareEscrow('alice', 'case-f4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], [
+    'contact_secours' => ESCROW_PLAINTEXT['contact_secours'],
+    'indice_recup'    => ' Ville de naissance de mon  chat',
+    'absent'          => 'déclaré sans champ',
+], Normalization::Exact);
+$compared === ['contact_secours' => Comparison::Matches, 'indice_recup' => Comparison::Differs, 'absent' => Comparison::Unavailable]
+    ? ok('exact: the same value matches, another case or spacing differs, a field the escrow does not hold is unavailable')
+    : ko('wrong comparison', json_encode(array_map(static fn (Comparison $c): string => $c->value, $compared)));
+$fArbiter->askedFields === ['contact_secours', 'indice_recup', 'absent']
+    ? ok('the arbiter is asked about the fields compared')
+    : ko('the arbiter was not asked about the fields compared', json_encode($fArbiter->askedFields));
+$fCompared = array_slice($fEntries(), $fBefore);
+($fCompared[0]['event']['action'] ?? null) === 'escrow-compare-intent'
+    && ($fCompared[0]['event']['normalization'] ?? null) === 'exact'
+    && ($fCompared[0]['event']['fields'] ?? null) === ['contact_secours', 'indice_recup', 'absent']
+    && ($fCompared[1]['event']['action'] ?? null) === 'escrow-compare'
+    && ($fCompared[1]['event']['returned'] ?? null) === ['contact_secours' => 'matches', 'indice_recup' => 'differs', 'absent' => 'unavailable']
+    ? ok('the log writes the intention with its fields and its normalization, then each field\'s outcome')
+    : ko('the comparison is not logged as one', json_encode($fCompared));
+$fWritten = (string) file_get_contents($fLog);
+!str_contains($fWritten, ESCROW_PLAINTEXT['contact_secours']) && !str_contains($fWritten, 'naissance') && !str_contains($fWritten, 'déclaré sans champ')
+    ? ok('neither a value of the escrow nor a declared value reaches the log')
+    : ko('a value reached the log');
+$fCeremony->compareEscrow('alice', 'case-f5', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'],
+    ['indice_recup' => "  Ville de NAISSANCE de mon\u{00A0}chat "], Normalization::CaseAndSpaces) === ['indice_recup' => Comparison::Matches]
+    ? ok('case-and-spaces: case and white space are folded, and the value matches')
+    : ko('case-and-spaces did not fold case and white space');
+$fCeremony->compareEscrow('alice', 'case-f6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'],
+    ['indice_recup' => 'ville de naissance de mon chât'], Normalization::CaseAndSpaces) === ['indice_recup' => Comparison::Differs]
+    ? ok('case-and-spaces leaves accents as they are: an accent differs, under the normalization named')
+    : ko('case-and-spaces folded an accent it does not name');
+Normalization::CaseAndSpaces->apply("\xff  ABC ") === "\xff  ABC "
+    ? ok('a value that is not valid UTF-8 is compared byte for byte')
+    : ko('a value that is not UTF-8 was changed');
+foreach (['no value' => [], 'a value that is not a string' => ['contact_secours' => 12]] as $label => $declared) {
+    $fCount = count($fEntries());
+    try {
+        $fCeremony->compareEscrow('alice', 'case-f7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $declared, Normalization::Exact);
+        ko("a comparison given {$label} went on");
+    } catch (InvalidArgumentException) {
+        count($fEntries()) === $fCount ? ok("a comparison given {$label} is refused before the log") : ko("refused after the log: {$label}");
+    } catch (Throwable $e) {
+        ko("a comparison given {$label} failed past the log", get_class($e));
+    }
+}
+$dora = $dg->register('dora', 'motdepasse-dora-01');
+$dg->setEscrowFields($dora, $admin['publicKey'], ['contact_secours' => 'dora-secours@example.org']);
+$storage->saveEscrowFields($dora->generation(), ['casse' => base64_encode(random_bytes(60))]);
+try {
+    $fCeremony->compareEscrow('dora', 'case-f8', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'],
+        ['contact_secours' => 'dora-secours@example.org', 'casse' => 'quoi que ce soit'], Normalization::Exact)
+        === ['contact_secours' => Comparison::Matches, 'casse' => Comparison::Unavailable]
+        ? ok('a field that does not open is unavailable, and the others are still compared')
+        : ko('a field that does not open was not answered as unavailable');
+} catch (Throwable $e) {
+    ko('a field that does not open stopped the comparison', get_class($e));
+}
+try {
+    $fCeremony->readEscrow('dora', 'case-f9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact_secours', 'casse']);
+    ko('a read of a field that does not open went through');
+} catch (RuntimeException) {
+    ok('a read of a field that does not open fails, as before: only a comparison answers unavailable');
+}
+
 section('Cold seizure: wrong admin key cannot open the sealed escrow');
 
 $escrowRecord = $storage->loadEscrow('alice');
@@ -717,7 +834,7 @@ $dg->rebindEscrowAdmin($carol, $admin['publicKey'])
     ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
     : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
 $dg->setEscrowFields($carol, $admin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
-$ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+$ceremony->readEscrow('carol', 'case-carol', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS) === ['contact_secours' => 'carol-secours@example.org']
     ? ok('a deposit with the recorded key re-seals the compartment, and the administrator still reads it')
     : ko('after a deposit, the administrator no longer reads the escrow');
 

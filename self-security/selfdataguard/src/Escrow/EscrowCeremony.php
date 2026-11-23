@@ -44,6 +44,13 @@ use Throwable;
  * Then the result, or the failure, goes to the log too. A refused intention is
  * in the log as much as a granted one.
  *
+ * A read names the fields it reads, and so does a comparison: no act reaches
+ * every field by omission, and the arbiter is asked about the fields named. A
+ * comparison (compareEscrow()) answers, field by field, whether a declared
+ * value matches the escrow's under a named normalization, and hands no field
+ * out: it is a read all the same — same arbiter, same log, same keeper, same
+ * delay, same objection, the same release in the holder's view.
+ *
  * ⚠️ Without a keeper, this holds nothing against the administrator alone:
  * whoever has the sealed key file and its passphrase opens wrap_admin outside
  * the library, with no log. Under one, a compartment sealed to it opens only
@@ -73,8 +80,9 @@ final class EscrowCeremony
      * The escrow fields of the account's live vault — only escrow fields, never
      * the private zone.
      *
-     * @param list<string> $fieldNames empty = all escrow fields
+     * @param list<string> $fieldNames the fields to read — at least one; a field the escrow does not hold is not returned
      * @return array<string, string> field_name => plaintext
+     * @throws InvalidArgumentException when $fieldNames is empty or names a field twice — before anything is logged
      */
     public function readEscrow(
         string $userId,
@@ -82,20 +90,50 @@ final class EscrowCeremony
         string $sealedSecret,
         #[\SensitiveParameter] string $passphrase,
         string $adminPublicKeyB64,
-        array $fieldNames = []
+        array $fieldNames
     ): array {
-        return $this->perform('escrow-unlock', $userId, $caseRef, null, ['fields' => $fieldNames], function (array $intent) use (
+        $fieldNames = self::fieldList($fieldNames);
+        return $this->perform('escrow-unlock', $userId, $caseRef, null, $fieldNames, ['fields' => $fieldNames], function (array $intent) use (
             $userId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
         ): array {
-            [$snapshot, $ciphertexts] = EscrowSnapshot::read($this->storage, $userId, $fieldNames)
-                ?? throw new RuntimeException("No escrow compartment for '{$userId}'");
-            $this->checkPassphrase($sealedSecret, $passphrase);
-            $record = $this->throughKeeper($snapshot, $caseRef, $intent);
-            $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
-                self::openWrapAdmin($record, $sk, $adminPublicKeyB64),
-                $ciphertexts
-            ));
+            $plain = $this->withLiveEscrow($userId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames, $intent, self::decrypted(...));
             return [$plain, ['returned' => array_keys($plain)]];
+        });
+    }
+
+    /**
+     * Whether each value $declared gives matches the live escrow's field of
+     * that name, both put under $normalization first — without the field
+     * leaving the ceremony. Its value is neither returned nor logged; the log
+     * says which fields were compared, under which normalization, and what
+     * each came out as.
+     *
+     * It narrows what an honest operator sees, and nothing more: the
+     * administrator key opens the box outside the library, and the escrow key
+     * is in this process once the box opens.
+     *
+     * @param array<string, string> $declared field_name => the value the case declares — at least one
+     * @return array<string, Comparison> field_name => Matches, Differs (under $normalization), or Unavailable — a
+     *         field the escrow does not hold, or one that does not open
+     * @throws InvalidArgumentException when $declared is empty or holds a value that is not a string — before
+     *         anything is logged
+     */
+    public function compareEscrow(
+        string $userId,
+        string $caseRef,
+        string $sealedSecret,
+        #[\SensitiveParameter] string $passphrase,
+        string $adminPublicKeyB64,
+        #[\SensitiveParameter] array $declared,
+        Normalization $normalization
+    ): array {
+        $fieldNames = self::declaredList($declared);
+        return $this->perform('escrow-compare', $userId, $caseRef, null, $fieldNames, ['fields' => $fieldNames, 'normalization' => $normalization->value], function (array $intent) use (
+            $userId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames, $declared, $normalization
+        ): array {
+            $compared = $this->withLiveEscrow($userId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames, $intent,
+                static fn (UnlockedEscrow $escrow, array $ciphertexts): array => self::compared($escrow, $ciphertexts, $declared, $normalization));
+            return [$compared, ['returned' => self::outcomes($compared)]];
         });
     }
 
@@ -103,8 +141,9 @@ final class EscrowCeremony
      * The escrow fields of one archive of the account — for a holder who lost
      * every secret, which is what level 3 is.
      *
-     * @param list<string> $fieldNames empty = all escrow fields
+     * @param list<string> $fieldNames the fields to read — at least one; a field the archive does not hold is not returned
      * @return array<string, string> field_name => plaintext
+     * @throws InvalidArgumentException when $fieldNames is empty or names a field twice — before anything is logged
      * @throws UnreadableEscrowException when the archive keeps an escrow that does not parse
      */
     public function readArchiveEscrow(
@@ -114,26 +153,43 @@ final class EscrowCeremony
         string $sealedSecret,
         #[\SensitiveParameter] string $passphrase,
         string $adminPublicKeyB64,
-        array $fieldNames = []
+        array $fieldNames
     ): array {
-        return $this->perform('archive-escrow-unlock', $userId, $caseRef, $archiveId, ['fields' => $fieldNames], function (array $intent) use (
+        $fieldNames = self::fieldList($fieldNames);
+        return $this->perform('archive-escrow-unlock', $userId, $caseRef, $archiveId, $fieldNames, ['fields' => $fieldNames], function (array $intent) use (
             $userId, $archiveId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames
         ): array {
-            $archive = $this->storage->loadArchive($userId, $archiveId)
-                ?? throw new VaultNotFoundException("No archive '{$archiveId}' for '{$userId}'");
-            if ($archive->record->userId !== $userId || self::archiveEscrow($archive) === null) {
-                throw new RuntimeException("No escrow compartment in archive '{$archiveId}' of '{$userId}'");
-            }
-            $ciphertexts = $fieldNames === []
-                ? $archive->escrowFields
-                : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
-            $this->checkPassphrase($sealedSecret, $passphrase);
-            $escrow = $this->throughKeeper($archive->escrow, $caseRef, $intent);
-            $plain = $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): array => $this->decrypt(
-                self::openWrapAdmin($escrow, $sk, $adminPublicKeyB64),
-                $ciphertexts
-            ));
+            $plain = $this->withArchiveEscrow($userId, $archiveId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames, $intent, self::decrypted(...));
             return [$plain, ['returned' => array_keys($plain)]];
+        });
+    }
+
+    /**
+     * compareEscrow(), on the escrow of one archive of the account.
+     *
+     * @param array<string, string> $declared field_name => the value the case declares — at least one
+     * @return array<string, Comparison>
+     * @throws InvalidArgumentException when $declared is empty or holds a value that is not a string — before
+     *         anything is logged
+     * @throws UnreadableEscrowException when the archive keeps an escrow that does not parse
+     */
+    public function compareArchiveEscrow(
+        string $userId,
+        string $archiveId,
+        string $caseRef,
+        string $sealedSecret,
+        #[\SensitiveParameter] string $passphrase,
+        string $adminPublicKeyB64,
+        #[\SensitiveParameter] array $declared,
+        Normalization $normalization
+    ): array {
+        $fieldNames = self::declaredList($declared);
+        return $this->perform('archive-escrow-compare', $userId, $caseRef, $archiveId, $fieldNames, ['fields' => $fieldNames, 'normalization' => $normalization->value], function (array $intent) use (
+            $userId, $archiveId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames, $declared, $normalization
+        ): array {
+            $compared = $this->withArchiveEscrow($userId, $archiveId, $caseRef, $sealedSecret, $passphrase, $adminPublicKeyB64, $fieldNames, $intent,
+                static fn (UnlockedEscrow $escrow, array $ciphertexts): array => self::compared($escrow, $ciphertexts, $declared, $normalization));
+            return [$compared, ['returned' => self::outcomes($compared)]];
         });
     }
 
@@ -146,7 +202,7 @@ final class EscrowCeremony
      */
     public function listArchives(string $userId, string $caseRef): array
     {
-        return $this->perform('archives-list', $userId, $caseRef, null, [], function () use ($userId): array {
+        return $this->perform('archives-list', $userId, $caseRef, null, [], [], function () use ($userId): array {
             $archives = $this->storage->listArchives($userId);
             return [$archives, ['returned' => array_column($archives, 'id')]];
         });
@@ -288,16 +344,17 @@ final class EscrowCeremony
     }
 
     /**
+     * @param list<string>                                          $fieldNames the fields the act reads or compares, for the arbiter
      * @param array<string, mixed>                                  $detail
      * @param callable(array<string, mixed>): array{0: mixed, 1: array<string, mixed>} $work
      *        given the intention as the log wrote it; returns the result, and what the log says of it
      */
-    private function perform(string $act, string $userId, string $caseRef, ?string $archiveId, array $detail, callable $work): mixed
+    private function perform(string $act, string $userId, string $caseRef, ?string $archiveId, array $fieldNames, array $detail, callable $work): mixed
     {
         $context = ['target' => $userId, 'case' => $caseRef, 'archive' => $archiveId, 'operator' => $this->operator] + $detail;
         $failure = [];
         try {
-            $verdict = $this->arbiter->verdict($userId, $caseRef, $archiveId);
+            $verdict = $this->arbiter->verdict($userId, $caseRef, $archiveId, $fieldNames);
         } catch (Throwable $e) {
             // A case table that cannot be read is the answer Unavailable names.
             $verdict = Verdict::Unavailable;
@@ -513,16 +570,178 @@ final class EscrowCeremony
     }
 
     /**
-     * @param array<string, string> $ciphertexts
-     * @return array<string, string>
+     * The live escrow of $userId, opened — through the keeper when it is sealed
+     * to one —, handed to $use with the ciphertexts of $fieldNames it holds, and
+     * locked again whatever $use does.
+     *
+     * @template T
+     * @param list<string>                                         $fieldNames
+     * @param array<string, mixed>                                 $intent
+     * @param callable(UnlockedEscrow, array<string, string>): T   $use
+     * @return T
      */
-    private function decrypt(UnlockedEscrow $escrow, array $ciphertexts): array
+    private function withLiveEscrow(
+        string $userId,
+        string $caseRef,
+        string $sealedSecret,
+        #[\SensitiveParameter] string $passphrase,
+        string $adminPublicKeyB64,
+        array $fieldNames,
+        array $intent,
+        callable $use
+    ): mixed {
+        [$snapshot, $ciphertexts] = EscrowSnapshot::read($this->storage, $userId, $fieldNames)
+            ?? throw new RuntimeException("No escrow compartment for '{$userId}'");
+        $this->checkPassphrase($sealedSecret, $passphrase);
+        $record = $this->throughKeeper($snapshot, $caseRef, $intent);
+        return $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): mixed => self::using(
+            self::openWrapAdmin($record, $sk, $adminPublicKeyB64),
+            $ciphertexts,
+            $use
+        ));
+    }
+
+    /**
+     * withLiveEscrow(), on the escrow of archive $archiveId.
+     *
+     * @template T
+     * @param list<string>                                         $fieldNames
+     * @param array<string, mixed>                                 $intent
+     * @param callable(UnlockedEscrow, array<string, string>): T   $use
+     * @return T
+     */
+    private function withArchiveEscrow(
+        string $userId,
+        string $archiveId,
+        string $caseRef,
+        string $sealedSecret,
+        #[\SensitiveParameter] string $passphrase,
+        string $adminPublicKeyB64,
+        array $fieldNames,
+        array $intent,
+        callable $use
+    ): mixed {
+        $archive = $this->storage->loadArchive($userId, $archiveId)
+            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for '{$userId}'");
+        if ($archive->record->userId !== $userId || self::archiveEscrow($archive) === null) {
+            throw new RuntimeException("No escrow compartment in archive '{$archiveId}' of '{$userId}'");
+        }
+        $ciphertexts = array_intersect_key($archive->escrowFields, array_flip($fieldNames));
+        $this->checkPassphrase($sealedSecret, $passphrase);
+        $escrow = $this->throughKeeper($archive->escrow, $caseRef, $intent);
+        return $this->withAdminKey($sealedSecret, $passphrase, fn (string $sk): mixed => self::using(
+            self::openWrapAdmin($escrow, $sk, $adminPublicKeyB64),
+            $ciphertexts,
+            $use
+        ));
+    }
+
+    /**
+     * @template T
+     * @param array<string, string>                              $ciphertexts
+     * @param callable(UnlockedEscrow, array<string, string>): T $use
+     * @return T
+     */
+    private static function using(UnlockedEscrow $escrow, array $ciphertexts, callable $use): mixed
     {
         try {
-            return EscrowFieldCrypter::decryptBatch($escrow, $ciphertexts);
+            return $use($escrow, $ciphertexts);
         } finally {
             $escrow->lock();
         }
+    }
+
+    /**
+     * @param array<string, string> $ciphertexts
+     * @return array<string, string>
+     */
+    private static function decrypted(UnlockedEscrow $escrow, array $ciphertexts): array
+    {
+        return EscrowFieldCrypter::decryptBatch($escrow, $ciphertexts);
+    }
+
+    /**
+     * Each declared value against the field of its name, both under
+     * $normalization; the field's value is wiped once compared.
+     *
+     * @param array<string, string> $ciphertexts
+     * @param array<string, string> $declared
+     * @return array<string, Comparison>
+     */
+    private static function compared(
+        UnlockedEscrow $escrow,
+        array $ciphertexts,
+        #[\SensitiveParameter] array $declared,
+        Normalization $normalization
+    ): array {
+        $compared = [];
+        foreach ($declared as $name => $value) {
+            $name = (string) $name;
+            if (!isset($ciphertexts[$name])) {
+                $compared[$name] = Comparison::Unavailable;
+                continue;
+            }
+            try {
+                $plain = EscrowFieldCrypter::decrypt($escrow, $name, $ciphertexts[$name]);
+            } catch (Throwable) {
+                $compared[$name] = Comparison::Unavailable;
+                continue;
+            }
+            $held  = $normalization->apply($plain);
+            $given = $normalization->apply($value);
+            $compared[$name] = hash_equals($held, $given) ? Comparison::Matches : Comparison::Differs;
+            Primitives::zeroize($plain);
+            Primitives::zeroize($held);
+            Primitives::zeroize($given);
+        }
+        return $compared;
+    }
+
+    /**
+     * @param array<string, Comparison> $compared
+     * @return array<string, string> what the log says of a comparison: each field's outcome, never a value
+     */
+    private static function outcomes(array $compared): array
+    {
+        return array_map(static fn (Comparison $c): string => $c->value, $compared);
+    }
+
+    /**
+     * $fieldNames as an act takes them: at least one, each a name, none twice —
+     * an act on every field is never one by omission.
+     *
+     * @param array<mixed> $fieldNames
+     * @return list<string>
+     */
+    private static function fieldList(array $fieldNames): array
+    {
+        if ($fieldNames === []) {
+            throw new InvalidArgumentException('Name the escrow fields to read or compare: no act reaches every field by omission');
+        }
+        $names = [];
+        foreach ($fieldNames as $name) {
+            if (!is_string($name) || $name === '' || in_array($name, $names, true)) {
+                throw new InvalidArgumentException('Escrow field names are non-empty strings, each named once');
+            }
+            $names[] = $name;
+        }
+        return $names;
+    }
+
+    /**
+     * The fields $declared names, once each value is found to be a string.
+     *
+     * @param array<mixed> $declared
+     * @return list<string>
+     */
+    private static function declaredList(#[\SensitiveParameter] array $declared): array
+    {
+        foreach ($declared as $value) {
+            if (!is_string($value)) {
+                throw new InvalidArgumentException('A declared value is a string');
+            }
+        }
+        return self::fieldList(array_map('strval', array_keys($declared)));
     }
 
     /**

@@ -5,8 +5,9 @@ declare(strict_types=1);
 /**
  * escrow-ceremony — CLI de récupération escrow (couche déploiement de l'application appelante).
  *
- * Lit les champs escrow d'un compte EN CAS DE RÉCUP, par EscrowCeremony, la seule
- * voie de la bibliothèque : l'arbitre dit si le dossier autorise la lecture,
+ * Lit les champs escrow d'un compte EN CAS DE RÉCUP, ou les compare à une valeur
+ * déclarée sans les afficher, par EscrowCeremony, la seule voie de la
+ * bibliothèque : l'arbitre dit si le dossier autorise la lecture des champs nommés,
  * l'intention part au journal d'audit chaîné et signé puis chez le témoin de
  * tête, et la passphrase admin ne descelle la clé privée de récupération
  * qu'ensuite. Chaque acte — accordé, refusé ou échoué — est au journal. L'admin
@@ -29,8 +30,10 @@ declare(strict_types=1);
  * cérémonie un témoin sur une réserve neuve, puis l'amorcer sur cette ancre.
  *
  * Usage :
- *   php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]
- *   php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]
+ *   php bin/escrow-ceremony.php unlock <user> <dossier> <champ> [champ...]
+ *   php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> <champ> [champ...]
+ *   php bin/escrow-ceremony.php compare <user> <dossier> <champ> [champ...] [--normalisation <n>]
+ *   php bin/escrow-ceremony.php compare-archive <user> <archive> <dossier> <champ> [champ...] [--normalisation <n>]
  *   php bin/escrow-ceremony.php archives <user> <dossier>
  *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
  *   php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>
@@ -46,8 +49,19 @@ declare(strict_types=1);
  * un autre, elle ne scelle rien. Un compte en échec est nommé et journalisé, et la passe
  * continue : elle sort en 2 à la fin, avec la liste des comptes à relancer.
  *
- * Sorties : 0 fait · 1 journal rompu · 2 refusé · 3 configuration · 4 lecture
- * annoncée, à relancer après l'échéance.
+ * Une lecture nomme ses champs : aucune ne les prend tous par omission. `compare`
+ * demande, pour chaque champ nommé, la valeur que le dossier déclare (saisie masquée,
+ * ou une ligne par champ sur STDIN après la passphrase), et rend par champ
+ * « concorde », « ne concorde pas sous la normalisation <n> » ou « indisponible »,
+ * sans afficher le séquestre. Normalisations : `exact` (par défaut, octet pour octet)
+ * et `case-and-spaces` (espaces aux bords retirés, suites d'espaces réduites à une,
+ * minuscules) — accents, tirets et formats de date restent tels quels, si bien qu'un
+ * « ne concorde pas » ne dit jamais qui a déclaré la valeur. Une comparaison est une
+ * lecture : même arbitre, même journal, même gardien, même délai, même objection.
+ *
+ * Sorties : 0 fait (pour `compare`, chaque champ concorde) · 1 journal rompu · 2 refusé
+ * · 3 configuration · 4 lecture annoncée, à relancer après l'échéance · 5 comparaison
+ * faite, au moins un champ ne concorde pas ou est indisponible.
  *
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (coffres + escrow)
@@ -73,6 +87,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
+use Pierroons\SelfDataGuard\Escrow\Comparison;
 use Pierroons\SelfDataGuard\Escrow\EscrowArbiter;
 use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
 use Pierroons\SelfDataGuard\Escrow\EscrowCeremony;
@@ -80,6 +95,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowKeeper;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
 use Pierroons\SelfDataGuard\Escrow\EscrowRefusedException;
 use Pierroons\SelfDataGuard\Escrow\HeadWitness;
+use Pierroons\SelfDataGuard\Escrow\Normalization;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
 use Pierroons\SelfDataGuard\Vault\WrongSecretException;
@@ -301,11 +317,26 @@ if ($cmd === 'seal-to-keeper') {
     exit($gele === 0 && $echecs === [] ? 0 : 2);
 }
 
-$arites = ['unlock' => 2, 'unlock-archive' => 3, 'archives' => 2];
-if (!isset($arites[$cmd]) || count($argv) < 2 + $arites[$cmd]) {
+$arites = ['unlock' => 3, 'unlock-archive' => 4, 'archives' => 2, 'compare' => 3, 'compare-archive' => 4];
+$args   = array_slice($argv, 2);
+$normalisation = Normalization::Exact;
+foreach ($args as $i => $arg) {
+    if ($arg === '--normalisation' || str_starts_with($arg, '--normalisation=')) {
+        $nom = $arg === '--normalisation' ? ($args[$i + 1] ?? '') : substr($arg, strlen('--normalisation='));
+        $normalisation = Normalization::tryFrom($nom) ?? (function () use ($nom): never {
+            fwrite(STDERR, "❌ normalisation inconnue « {$nom} » : exact ou case-and-spaces\n");
+            exit(3);
+        })();
+        array_splice($args, $i, $arg === '--normalisation' ? 2 : 1);
+        break;
+    }
+}
+if (!isset($arites[$cmd]) || count($args) < $arites[$cmd]) {
     fwrite(STDERR, "Usage:\n"
-        . "  php bin/escrow-ceremony.php unlock <user> <dossier> [champ...]\n"
-        . "  php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> [champ...]\n"
+        . "  php bin/escrow-ceremony.php unlock <user> <dossier> <champ> [champ...]\n"
+        . "  php bin/escrow-ceremony.php unlock-archive <user> <archive> <dossier> <champ> [champ...]\n"
+        . "  php bin/escrow-ceremony.php compare <user> <dossier> <champ> [champ...] [--normalisation exact|case-and-spaces]\n"
+        . "  php bin/escrow-ceremony.php compare-archive <user> <archive> <dossier> <champ> [champ...] [--normalisation exact|case-and-spaces]\n"
         . "  php bin/escrow-ceremony.php archives <user> <dossier>\n"
         . "  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n"
         . "  php bin/escrow-ceremony.php seed-witness --ancre <seq:hmac>\n"
@@ -313,14 +344,21 @@ if (!isset($arites[$cmd]) || count($argv) < 2 + $arites[$cmd]) {
     exit(3);
 }
 
-$user    = $argv[2];
-$archive = $cmd === 'unlock-archive' ? $argv[3] : null;
-$dossier = $argv[$cmd === 'unlock-archive' ? 4 : 3];
-$fields  = array_slice($argv, $cmd === 'unlock-archive' ? 5 : 4);   // vide = tous les champs escrow
+$surArchive = $cmd === 'unlock-archive' || $cmd === 'compare-archive';
+$compare    = $cmd === 'compare' || $cmd === 'compare-archive';
+$user       = $args[0];
+$archive    = $surArchive ? $args[1] : null;
+$dossier    = $args[$surArchive ? 2 : 1];
+$fields     = array_slice($args, $surArchive ? 3 : 2);
+if (count(array_unique($fields)) !== count($fields)) {
+    fwrite(STDERR, "❌ un champ est nommé deux fois : " . implode(' ', $fields) . "\n");
+    exit(3);
+}
 $ctx      = operatorContext();
 $ceremony = ceremonie($auditLog, $ctx);
 
 $passphrase = '';
+$declare    = [];
 try {
     if ($cmd === 'archives') {
         echo "📦 Archives de « {$user} » (dossier {$dossier})\n";
@@ -333,9 +371,18 @@ try {
     $passphrase = readPassphrase("Passphrase admin de récupération : ");
     $sealed     = fileEnv('DATAGUARD_ADMIN_SEALED_FILE');
     $adminPub   = fileEnv('DATAGUARD_ADMIN_PUBKEY_FILE');
-    $plain = $archive === null
-        ? $ceremony->readEscrow($user, $dossier, $sealed, $passphrase, $adminPub, $fields)
-        : $ceremony->readArchiveEscrow($user, $archive, $dossier, $sealed, $passphrase, $adminPub, $fields);
+    if ($compare) {
+        foreach ($fields as $champ) {
+            $declare[$champ] = readPassphrase("Valeur déclarée pour « {$champ} » : ");
+        }
+        $resultat = $archive === null
+            ? $ceremony->compareEscrow($user, $dossier, $sealed, $passphrase, $adminPub, $declare, $normalisation)
+            : $ceremony->compareArchiveEscrow($user, $archive, $dossier, $sealed, $passphrase, $adminPub, $declare, $normalisation);
+    } else {
+        $plain = $archive === null
+            ? $ceremony->readEscrow($user, $dossier, $sealed, $passphrase, $adminPub, $fields)
+            : $ceremony->readArchiveEscrow($user, $archive, $dossier, $sealed, $passphrase, $adminPub, $fields);
+    }
 } catch (EscrowAnnouncedException $e) {
     fwrite(STDERR, "⏳ Lecture annoncée chez le gardien : rien n'est descellé avant " . gmdate('Y-m-d H:i', $e->due)
         . " UTC. Le titulaire la voit et peut s'y opposer d'ici là ; relance la même commande ensuite.\n");
@@ -360,14 +407,31 @@ try {
     exit(2);
 } finally {
     sodium_memzero($passphrase);
+    foreach (array_keys($declare) as $champ) {
+        sodium_memzero($declare[$champ]);
+    }
 }
 
-echo "🔓 Escrow déverrouillé pour « {$user} »" . ($archive !== null ? " (archive {$archive})" : '') . " — dossier {$dossier}\n";
-echo "   opérateur : {$ctx['operator']}" . ($ctx['ip'] ? " · IP {$ctx['ip']}" : '') . "\n";
+$cible = "« {$user} »" . ($archive !== null ? " (archive {$archive})" : '') . " — dossier {$dossier}";
+$qui   = "   opérateur : {$ctx['operator']}" . ($ctx['ip'] ? " · IP {$ctx['ip']}" : '') . "\n";
+if ($compare) {
+    echo "🔎 Comparaison pour {$cible} — normalisation « {$normalisation->value} »\n" . $qui;
+    foreach ($resultat as $name => $issue) {
+        echo "   {$name} : " . match ($issue) {
+            Comparison::Matches     => 'concorde',
+            Comparison::Differs     => "ne concorde pas sous la normalisation « {$normalisation->value} »",
+            Comparison::Unavailable => "indisponible — le séquestre ne porte pas ce champ, ou il ne s'ouvre pas",
+        } . "\n";
+    }
+    echo "   Aucune valeur du séquestre n'est affichée. La comparaison est au journal ; sous un gardien, le titulaire la voit comme une remise.\n";
+    exit(array_filter($resultat, static fn (Comparison $c): bool => $c !== Comparison::Matches) === [] ? 0 : 5);
+}
+echo "🔓 Escrow déverrouillé pour {$cible}\n" . $qui;
 echo "   ─────────────────────────────────────────────\n";
 foreach ($plain as $name => $value) {
     echo "   {$name} = {$value}\n";
 }
 echo "   ─────────────────────────────────────────────\n";
-echo "   ⚠️  Vérifie hors-bande. En cas de mismatch : imposteur → laisse traîner ou clôture.\n";
+echo "   Cette lecture est au journal ; sous un gardien, le titulaire la voit comme une remise. Pour confronter une\n"
+    . "   déclaration sans afficher le séquestre : la commande compare.\n";
 exit(0);

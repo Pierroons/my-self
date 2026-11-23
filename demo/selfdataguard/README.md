@@ -72,7 +72,7 @@ To use a different port: `PORT=9000 ./run.sh`.
   require __DIR__ . '/../../self-security/selfdataguard/src/autoload.php';
   use Pierroons\SelfDataGuard\Escrow\{EscrowArbiter, Verdict};
   return new class implements EscrowArbiter {
-      public function verdict(string $userId, string $caseRef, ?string $archiveId): Verdict
+      public function verdict(string $userId, string $caseRef, ?string $archiveId, array $fieldNames): Verdict
       {
           return $caseRef === 'essai-local' ? Verdict::Open : Verdict::Unknown;
       }

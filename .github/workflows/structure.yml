@@ -1112,8 +1112,8 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
-            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=231 [sanity_keys]=30 [sanity_migration]=45 [sanity_primitives]=56
+            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=52 [sanity_conformance]=122 [sanity_escrow]=89
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=235 [sanity_keys]=30 [sanity_migration]=45 [sanity_primitives]=56
             [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=44
           )
           rc=0
@@ -1659,12 +1659,12 @@ jobs:
             "        if (false) {" $K 'changeKeeper() took a keeper the database did not record'
           canari $D/bin/escrow-ceremony.php "        if (!\$gardien instanceof EscrowKeeper) {" \
             "        if (false) {" $D/tests/sanity_ceremony.php 'a former keeper file that returns no keeper did not exit 3'
-          canari $D/src/Escrow/EscrowCeremony.php "            \$this->checkPassphrase(\$sealedSecret, \$passphrase);
-                      \$record = \$this->throughKeeper(\$snapshot, \$caseRef, \$intent);" \
-            "            \$record = \$this->throughKeeper(\$snapshot, \$caseRef, \$intent);" $K 'a wrong passphrase reached the keeper before it was refused'
-          canari $D/src/Escrow/EscrowCeremony.php "            \$this->checkPassphrase(\$sealedSecret, \$passphrase);
-                      \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" \
-            "            \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" $K 'a wrong passphrase announced the read of an archive before it was refused'
+          canari $D/src/Escrow/EscrowCeremony.php "        \$this->checkPassphrase(\$sealedSecret, \$passphrase);
+                  \$record = \$this->throughKeeper(\$snapshot, \$caseRef, \$intent);" \
+            "        \$record = \$this->throughKeeper(\$snapshot, \$caseRef, \$intent);" $K 'a wrong passphrase reached the keeper before it was refused'
+          canari $D/src/Escrow/EscrowCeremony.php "        \$this->checkPassphrase(\$sealedSecret, \$passphrase);
+                  \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" \
+            "        \$escrow = \$this->throughKeeper(\$archive->escrow, \$caseRef, \$intent);" $K 'a wrong passphrase announced the read of an archive before it was refused'
           canari $D/src/Escrow/UnlockedEscrow.php "        if (\$keeper !== null && !hash_equals(KeeperSeal::escrowIdFor(\$this->objectionPublic()), (string) \$escrowId)) {" \
             "        if (false) {" $K 'an escrow whose escrowId is not the fingerprint of its objection key was taken'
           canari $D/src/Escrow/KeeperSeal.php "        return hash_equals(self::escrowIdFor(\$public), \$escrowId)
@@ -1948,7 +1948,7 @@ jobs:
           " "" $K 'a row with a revision stored as a blob hides what the keeper holds announced'
           canari $D/src/Storage/SqliteAdapter.php "FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]])" "FILTER_VALIDATE_INT)" \
             $K 'a row with a revision the next write cannot bump hides what the keeper holds announced'
-          canari $SDG "            \$read = \$this->snapshot(\$session->userId, \$fieldNames) ?? throw \$this->mismatch(\$session->userId);" \
+          canari $SDG "            \$read = \$this->snapshot(\$session->userId, \$names) ?? throw \$this->mismatch(\$session->userId);" \
             "            throw \$this->mismatch(\$session->userId);" \
             $K "a first deposit landing between the reads of the row and of the fields: the holder's read says the row was deleted"
           canari $D/src/Storage/SqliteAdapter.php "            if (\$held->fetchColumn() === false) {" "            if (\$this->loadEscrow(\$record->userId) === null) {" \
@@ -2338,6 +2338,62 @@ jobs:
             $K '❌ after the pin, the read once due did not open the field'
           canari $FA "                ? \$row === 'not-keeper-sealed' || \$row === 'not-pinned'" '                ? false' \
             $K '❌ the escrow of an archive sealed by the pass was not reported as such'
+
+      # Lot 8a de SelfDataGuard 0.10.0 : une lecture de la cérémonie nomme ses champs,
+      # l'arbitre est interrogé sur eux, et la comparaison répond champ par champ sans
+      # rendre de valeur — l'outil ne qualifie plus personne d'imposteur.
+      - name: Canaris — la cérémonie nomme ses champs et compare sans rendre de valeur
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FC=$D/src/Escrow/EscrowCeremony.php
+          FN=$D/src/Escrow/Normalization.php
+          B=$D/bin/escrow-ceremony.php
+          E=$D/tests/sanity_escrow.php
+          C=$D/tests/sanity_ceremony.php
+          canari $FC '        if ($fieldNames === []) {' '        if (false) {' \
+            $E '❌ a read given no field was refused after the arbiter or the log'
+          canari $FC '            $verdict = $this->arbiter->verdict($userId, $caseRef, $archiveId, $fieldNames);' '            $verdict = $this->arbiter->verdict($userId, $caseRef, $archiveId, []);' \
+            $E '❌ the read or the arbiter did not keep to the fields named'
+          canari $D/src/Escrow/EscrowSnapshot.php '        if ($fieldNames === []) {' '        if (false) {' \
+            $E '❌ EscrowSnapshot::read() took an empty list for every field'
+          canari $FC '            if (!isset($ciphertexts[$name])) {' '            if (!isset($ciphertexts[$name])) { $compared[$name] = Comparison::Differs; continue; } if (false) {' \
+            $E '❌ wrong comparison'
+          canari $FC "            } catch (Throwable) {
+                          \$compared[\$name] = Comparison::Unavailable;" "            } catch (\\Pierroons\\SelfDataGuard\\Crypto\\LegacyCipherUnavailableException) {
+                          \$compared[\$name] = Comparison::Unavailable;" \
+            $E '❌ a field that does not open stopped the comparison'
+          canari $FC '            if (!is_string($value)) {' '            if (false) {' \
+            $E '❌ a comparison given a value that is not a string failed past the log'
+          canari $FC '        return array_map(static fn (Comparison $c): string => $c->value, $compared);' '        return [];' \
+            $E '❌ the comparison is not logged as one'
+          canari $FN "        if (\$this === self::Exact || !mb_check_encoding(\$value, 'UTF-8')) {" '        if (true) {' \
+            $E '❌ case-and-spaces did not fold case and white space'
+          canari $FN "        if (\$this === self::Exact || !mb_check_encoding(\$value, 'UTF-8')) {" '        if ($this === self::Exact) {' \
+            $E '❌ a value that is not UTF-8 was changed'
+          canari $B "\$arites = ['unlock' => 3, 'unlock-archive' => 4," "\$arites = ['unlock' => 2, 'unlock-archive' => 4," \
+            $C '❌ unlock without a field went on'
+          canari $B 'if (count(array_unique($fields)) !== count($fields)) {' 'if (false) {' \
+            $C '❌ a field named twice went on'
+          canari $B 'echo "   Cette lecture est au journal ; sous un gardien,' 'echo "   ⚠️  En cas de mismatch : imposteur. Cette lecture est au journal ; sous un gardien,' \
+            $C '❌ the read still ends on a verdict about the claimant'
+          canari $B '    exit(array_filter($resultat, static fn (Comparison $c): bool => $c !== Comparison::Matches) === [] ? 0 : 5);' '    exit(0);' \
+            $C '❌ a value in another case was not answered under its normalization'
+          canari $B '$normalisation = Normalization::tryFrom($nom) ?? (function () use ($nom): never {' '$normalisation = Normalization::tryFrom($nom) ?? Normalization::Exact ?? (function () use ($nom): never {' \
+            $C '❌ an unknown normalization went on'
 
   selfrecover-1:
     needs: modules

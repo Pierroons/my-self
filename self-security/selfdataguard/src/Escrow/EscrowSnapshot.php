@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pierroons\SelfDataGuard\Escrow;
 
+use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 
 /**
@@ -18,19 +19,23 @@ final class EscrowSnapshot
     private const ATTEMPTS = 3;
 
     /**
-     * @param list<string> $fieldNames empty = all escrow fields
+     * @param list<string>|null $fieldNames the fields to read; null for every one — an empty list is refused
      * @return array{0: EscrowRecord, 1: array<string, string>}|null the envelope and the
      *         ciphertexts it opens; null when the account holds no escrow
      * @throws StaleEscrowException when deposits kept landing between the reads
+     * @throws InvalidArgumentException when $fieldNames is an empty list
      */
-    public static function read(StorageInterface $storage, string $userId, array $fieldNames = []): ?array
+    public static function read(StorageInterface $storage, string $userId, ?array $fieldNames): ?array
     {
+        if ($fieldNames === []) {
+            throw new InvalidArgumentException('Name the escrow fields to read, or pass null for every one');
+        }
         for ($attempt = 1; $attempt <= self::ATTEMPTS; $attempt++) {
             $record = $storage->loadEscrow($userId);
             if ($record === null) {
                 return null;
             }
-            $fields = $storage->loadEscrowFields($userId, $fieldNames);
+            $fields = $storage->loadEscrowFields($userId, $fieldNames ?? []);
             $again  = $storage->loadEscrow($userId);
             if ($again !== null && $again->revision === $record->revision && hash_equals($again->wrapUser->toBase64(), $record->wrapUser->toBase64())) {
                 return [$record, $fields];

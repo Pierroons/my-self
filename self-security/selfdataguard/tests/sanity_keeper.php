@@ -23,6 +23,7 @@ require __DIR__ . '/keeper_fixture.php';
 require __DIR__ . '/keeper_doubles.php';
 require __DIR__ . '/storage_doubles.php';
 
+use Pierroons\SelfDataGuard\Escrow\Comparison;
 use Pierroons\SelfDataGuard\Escrow\EscrowAnnouncedException;
 use Pierroons\SelfDataGuard\Escrow\EscrowEnvelopeMismatchException;
 use Pierroons\SelfDataGuard\Escrow\EscrowKeeperException;
@@ -31,6 +32,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Escrow\KeeperConformance;
 use Pierroons\SelfDataGuard\Escrow\KeeperSeal;
 use Pierroons\SelfDataGuard\Escrow\NoKeeper;
+use Pierroons\SelfDataGuard\Escrow\Normalization;
 use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
@@ -150,7 +152,7 @@ $old->lock();
 
 section('The ceremony reads through the keeper, which records the release');
 
-$read = $ceremony->readEscrow('alice', 'LIT-1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+$read = $ceremony->readEscrow('alice', 'LIT-1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 ksort($read);
 $read === $fields
     ? ok('the administrator reads the escrow, the keeper having handed back the inner box')
@@ -206,7 +208,7 @@ $reads = $replayDg->escrowReads($alice);
 $typoLog = sys_get_temp_dir() . '/sdg-keeper-typo-' . bin2hex(random_bytes(4)) . '.log';
 $releasesBefore = count($keeper->releases[bin2hex((string) $escrowId)] ?? []);
 try {
-    benchCeremony($storage, logPath: $typoLog, keeper: $keeper)->readEscrow('alice', 'LIT-TYPO', $admin['sealedSecret'], 'une passphrase mal tapée', $admin['publicKey']);
+    benchCeremony($storage, logPath: $typoLog, keeper: $keeper)->readEscrow('alice', 'LIT-TYPO', $admin['sealedSecret'], 'une passphrase mal tapée', $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a wrong passphrase read the escrow');
 } catch (Pierroons\SelfDataGuard\Vault\WrongSecretException) {
     $last = logEntries($typoLog);
@@ -224,7 +226,7 @@ section('Without its keeper, a compartment sealed to one does not open');
 
 $noKeeperLog = sys_get_temp_dir() . '/sdg-keeper-none-' . bin2hex(random_bytes(4)) . '.log';
 try {
-    benchCeremony($storage, logPath: $noKeeperLog)->readEscrow('alice', 'LIT-2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($storage, logPath: $noKeeperLog)->readEscrow('alice', 'LIT-2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a ceremony with NoKeeper opened an escrow sealed to a keeper');
 } catch (EscrowKeeperException $e) {
     $last = logEntries($noKeeperLog);
@@ -234,7 +236,7 @@ try {
 }
 $keeper->down = true;
 try {
-    $ceremony->readEscrow('alice', 'LIT-3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $ceremony->readEscrow('alice', 'LIT-3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a keeper that does not answer let the escrow open');
 } catch (EscrowKeeperException $e) {
     $e->reason === 'keeper-failed'
@@ -249,7 +251,7 @@ $bobRecord = $storage->loadEscrow('bob');
 $moved = new EscrowRecord('bob', $bobRecord->wrapUser, $storage->loadEscrow('alice')->wrapAdmin, $bobRecord->createdAt, new DateTimeImmutable(), $bobRecord->revision);
 $storage->replaceEscrow($dg->generationOf('bob'), $moved);
 try {
-    $ceremony->readEscrow('bob', 'LIT-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $ceremony->readEscrow('bob', 'LIT-4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko("alice's keeper box, moved into bob's record, was released as bob's");
 } catch (EscrowKeeperException $e) {
     $e->reason === 'keeper-failed'
@@ -258,7 +260,7 @@ try {
 }
 $otherLog = sys_get_temp_dir() . '/sdg-keeper-other-' . bin2hex(random_bytes(4)) . '.log';
 try {
-    benchCeremony($storage, logPath: $otherLog, keeper: new BenchKeeper())->readEscrow('alice', 'LIT-OTHER', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($storage, logPath: $otherLog, keeper: new BenchKeeper())->readEscrow('alice', 'LIT-OTHER', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a ceremony given another keeper than the database recorded read the escrow');
 } catch (EscrowKeeperException $e) {
     $last = logEntries($otherLog);
@@ -277,7 +279,7 @@ $aliceOuter  = KeeperSeal::outerOf($aliceRecord->wrapAdmin);
 $keeper->announce((string) $escrowId, $aliceOuter, 'alice', 'LIT-MAX', PHP_INT_MAX, 'h');
 $keeper->release((string) $escrowId, $aliceOuter, 'LIT-MAX', PHP_INT_MAX, 'h');
 try {
-    $ceremony->readEscrow('alice', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === $fields
+    $ceremony->readEscrow('alice', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS) === $fields
         ? ok('a release at the highest head, by whoever reaches the keeper with what the database holds, does not close it to the next ceremony')
         : ko('the ceremony after a release at the highest head did not read');
 } catch (Throwable $e) {
@@ -285,7 +287,7 @@ try {
 }
 $freshLog = sys_get_temp_dir() . '/sdg-keeper-fresh-' . bin2hex(random_bytes(4)) . '.log';
 try {
-    benchCeremony($storage, logPath: $freshLog, keeper: $keeper)->readEscrow('alice', 'LIT-11', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === $fields
+    benchCeremony($storage, logPath: $freshLog, keeper: $keeper)->readEscrow('alice', 'LIT-11', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS) === $fields
         ? ok('a new audit log, whose heads start again from 0, reads through the keeper')
         : ko('the ceremony on a new audit log did not read');
 } catch (Throwable $e) {
@@ -305,7 +307,7 @@ $slowCeremony = benchCeremony($slowDb, logPath: $slowLog, keeper: $slow);
 $carol = $slowDg->register('carol', 'motdepasse-carol-01');
 $slowDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'carol-secours@example.org']);
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-5', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readEscrow('carol', 'LIT-5', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a read under a delay was unsealed at once');
 } catch (EscrowAnnouncedException $e) {
     $last = logEntries($slowLog);
@@ -321,14 +323,14 @@ $slowDg->objectToEscrowRead($carol, 'LIT-5');
 $heldKey = array_key_first($slow->pending);
 $slow->pending[$heldKey]['due'] = time() - 1;
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-5', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readEscrow('carol', 'LIT-5', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a read the holder objected to went through once due');
 } catch (EscrowKeeperException $e) {
     ok('a read the holder objected to does not go through, even once due');
 }
 $carolEscrowId = (string) KeeperSeal::escrowIdOf($slowDb->loadEscrow('carol')->wrapAdmin);
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-8', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readEscrow('carol', 'LIT-8', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $forged = KeeperSeal::token(KeeperSeal::objectionMessage($carolEscrowId, 'LIT-8'), sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair()));
@@ -343,16 +345,16 @@ try {
 }
 unset($slow->pending[bin2hex($carolEscrowId) . '|LIT-8']);
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readEscrow('carol', 'LIT-6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $slow->pending[(string) array_key_last($slow->pending)]['due'] = time() - 1;
-$slowCeremony->readEscrow('carol', 'LIT-6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']) === ['contact' => 'carol-secours@example.org']
+$slowCeremony->readEscrow('carol', 'LIT-6', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS) === ['contact' => 'carol-secours@example.org']
     ? ok('without an objection, the same ceremony run again once due reads')
     : ko('a due read without objection did not go through');
 $boxBefore = KeeperSeal::outerOf($slowDb->loadEscrow('carol')->wrapAdmin);
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readEscrow('carol', 'LIT-9', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $slowDg->setEscrowFields($carol, $admin['publicKey'], ['contact' => 'carol-secours@example.org']);
@@ -373,13 +375,13 @@ try {
     ok('the box of before the deposit, kept from a copy, is not released over the holder\'s objection');
 }
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readEscrow('carol', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $slowDg->setEscrowFields($carol, $admin['publicKey'], ['indice' => 'deposé pendant l\'annonce']);
 $slow->pending[bin2hex($carolEscrowId) . '|LIT-10']['due'] = time() - 1;
 try {
-    ($slowCeremony->readEscrow('carol', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])['indice'] ?? null) === 'deposé pendant l\'annonce'
+    ($slowCeremony->readEscrow('carol', 'LIT-10', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS)['indice'] ?? null) === 'deposé pendant l\'annonce'
         ? ok('the announcement holds the case: a deposit during it is read at its due, without a new delay')
         : ko('the read at the due did not open the escrow as it stands');
 } catch (Throwable $e) {
@@ -392,13 +394,13 @@ section('An archive keeps its keeper, and its reads wait the delay like any othe
 
 $l3 = $slowDg->reEnroll($slowDg->generationOf('carol'), 'motdepasse-carol-02');
 try {
-    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('the read of an archive skipped the delay');
 } catch (EscrowAnnouncedException) {
     ok('the read of an archive is announced like any other: a live read cannot pass for one to skip the delay');
 }
 $slow->pending[bin2hex($carolEscrowId) . '|LIT-7']['due'] = time() - 1;
-($slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])['contact'] ?? null)
+($slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS)['contact'] ?? null)
     === 'carol-secours@example.org'
     ? ok('once due, the escrow of the archive is read through the keeper')
     : ko('the archive escrow did not read through the keeper');
@@ -408,11 +410,11 @@ $archiveReads['established'] && in_array('LIT-7', array_column($archiveReads['re
     ? ok('the holder who reopens the archive sees its reads, LIT-7 among them — and no reseal is asked of an archive')
     : ko('archiveEscrowReads() did not show the archive read', json_encode($archiveReads));
 try {
-    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 try {
-    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-TYPO-A', $admin['sealedSecret'], 'une passphrase mal tapée', $admin['publicKey']);
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-TYPO-A', $admin['sealedSecret'], 'une passphrase mal tapée', $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a wrong passphrase read an archive escrow');
 } catch (Pierroons\SelfDataGuard\Vault\WrongSecretException) {
     !isset($slow->pending[bin2hex($carolEscrowId) . '|LIT-TYPO-A'])
@@ -424,13 +426,59 @@ try {
 $slowDg->objectToArchiveEscrowRead($archive, 'LIT-12');
 $slow->pending[bin2hex($carolEscrowId) . '|LIT-12']['due'] = time() - 1;
 try {
-    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $slowCeremony->readArchiveEscrow('carol', $l3['archiveId'], 'LIT-12', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a read of an archive its holder objected to went through once due');
 } catch (EscrowKeeperException) {
     ok('the holder objects to a read of an archive under the archive\'s own key, and it does not go through');
 }
 
 // -----------------------------------------------------------------------------
+
+section('A comparison is a read: announced, held the delay, refused to an objection, shown as a release');
+
+$cDeclared = ['contact' => 'carol-secours@example.org'];
+try {
+    $slowCeremony->compareArchiveEscrow('carol', $l3['archiveId'], 'LIT-C1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $cDeclared, Normalization::Exact);
+    ko('a comparison under a delay was made at once');
+} catch (EscrowAnnouncedException) {
+    $cLast = logEntries($slowLog);
+    (end($cLast)['event']['action'] ?? null) === 'archive-escrow-compare-announced'
+        && in_array('LIT-C1', array_column($slowDg->archiveEscrowReads($archive)['pending'], 'case'), true)
+        ? ok('a comparison under a delay is announced like a read, and the holder sees it pending before it happens')
+        : ko('the comparison was announced, but not logged or shown as one', json_encode([end($cLast), $slowDg->archiveEscrowReads($archive)]));
+}
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-C1']['due'] = time() - 1;
+$slowCeremony->compareArchiveEscrow('carol', $l3['archiveId'], 'LIT-C1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $cDeclared, Normalization::Exact)
+    === ['contact' => Comparison::Matches]
+    && in_array('LIT-C1', array_column($slowDg->archiveEscrowReads($archive)['reads'], 'case'), true)
+    ? ok('once due, the comparison is made through the keeper, and the holder sees its release among the reads')
+    : ko('the due comparison did not go through the keeper, or is not shown as a release');
+try {
+    $slowCeremony->compareArchiveEscrow('carol', $l3['archiveId'], 'LIT-C2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $cDeclared, Normalization::Exact);
+} catch (EscrowAnnouncedException) {
+}
+$slowDg->objectToArchiveEscrowRead($archive, 'LIT-C2');
+$slow->pending[bin2hex($carolEscrowId) . '|LIT-C2']['due'] = time() - 1;
+try {
+    $slowCeremony->compareArchiveEscrow('carol', $l3['archiveId'], 'LIT-C2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], $cDeclared, Normalization::Exact);
+    ko('a comparison the holder objected to was made once due');
+} catch (EscrowKeeperException) {
+    ok('the holder objects to a comparison as to a read, and it is not made');
+}
+$cora = $slowDg->register('cora', 'motdepasse-cora-01');
+$slowDg->setEscrowFields($cora, $admin['publicKey'], ['contact' => 'cora-secours@example.org']);
+try {
+    $slowCeremony->compareEscrow('cora', 'LIT-C3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact' => 'quelqu-un@example.org'], Normalization::Exact);
+    ko('a comparison on the live escrow skipped the delay');
+} catch (EscrowAnnouncedException) {
+    $coraId = (string) KeeperSeal::escrowIdOf($slowDb->loadEscrow('cora')->wrapAdmin);
+    $slow->pending[bin2hex($coraId) . '|LIT-C3']['due'] = time() - 1;
+    $slowCeremony->compareEscrow('cora', 'LIT-C3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], ['contact' => 'quelqu-un@example.org'], Normalization::Exact)
+        === ['contact' => Comparison::Differs]
+        && in_array('LIT-C3', array_column($slowDg->escrowReads($cora)['reads'], 'case'), true)
+        ? ok('on the live escrow too: announced, then made once due, and shown to the holder as a release')
+        : ko('the live comparison did not go through as a read');
+}
 
 section('An objection from a secret alone: the seal no longer holds, or the current vault is someone else\'s');
 
@@ -452,8 +500,8 @@ $oSet      = static fn (string $set) => $oPdo->exec("UPDATE selfdataguard_vaults
 $oAnnounce = static function (string $case, ?string $archiveId = null) use ($oCeremony, $admin): void {
     try {
         $archiveId === null
-            ? $oCeremony->readEscrow('olga', $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])
-            : $oCeremony->readArchiveEscrow('olga', $archiveId, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+            ? $oCeremony->readEscrow('olga', $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS)
+            : $oCeremony->readArchiveEscrow('olga', $archiveId, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     } catch (EscrowAnnouncedException) {
     }
 };
@@ -461,8 +509,8 @@ $oRefusedOnceDue = static function (string $case, ?string $archiveId = null) use
     $oKeeper->pending[bin2hex($olgaId) . '|' . $case]['due'] = time() - 1;
     try {
         $archiveId === null
-            ? $oCeremony->readEscrow('olga', $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])
-            : $oCeremony->readArchiveEscrow('olga', $archiveId, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+            ? $oCeremony->readEscrow('olga', $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS)
+            : $oCeremony->readArchiveEscrow('olga', $archiveId, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
         return false;
     } catch (EscrowKeeperException) {
         return true;
@@ -631,7 +679,7 @@ $pDg       = new SelfDataGuard($pDb, $blindKey, keeper: $pKeeper, pepper: benchP
 $pPdo      = new PDO("sqlite:{$pPath}");
 $pRead     = static function (string $case) use ($pCeremony, $pArchive, $admin): array|string {
     try {
-        return $pCeremony->readArchiveEscrow('pia', $pArchive, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+        return $pCeremony->readArchiveEscrow('pia', $pArchive, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     } catch (EscrowAnnouncedException) {
         return 'announced';
     } catch (EscrowKeeperException) {
@@ -883,7 +931,7 @@ $ivan = $dgA->register('ivan', 'motdepasse-ivan-01');
 $dgA->setEscrowFields($ivan, $admin['publicKey'], ['contact' => 'ivan-secours@example.org']);
 $changeLog = sys_get_temp_dir() . '/sdg-keeper-change-' . bin2hex(random_bytes(4)) . '.log';
 try {
-    benchCeremony($changeDb, logPath: $changeLog, keeper: $keeperA)->readEscrow('ivan', 'LIT-I1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($changeDb, logPath: $changeLog, keeper: $keeperA)->readEscrow('ivan', 'LIT-I1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $keeperA->down = true;
@@ -909,7 +957,7 @@ $deafDg = new SelfDataGuard($deafDb, $blindKey, keeper: $deafKeeper, pepper: ben
 $ines   = $deafDg->register('ines', 'motdepasse-ines-01');
 $deafDg->setEscrowFields($ines, $admin['publicKey'], ['contact' => 'ines@example.org']);
 try {
-    benchCeremony($deafDb, keeper: $deafKeeper)->readEscrow('ines', 'LIT-N1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($deafDb, keeper: $deafKeeper)->readEscrow('ines', 'LIT-N1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 foreach (['LIT-N1' => 'a keeper that holds the read announced and does not record the objection', 'LIT-N2' => 'an objection to a case no keeper holds announced'] as $case => $what) {
@@ -962,7 +1010,7 @@ try {
 SelfDataGuard::changeKeeper($swapDb, $oldKeeper, $newKeeper);
 $swapLog = sys_get_temp_dir() . '/sdg-keeper-swap-' . bin2hex(random_bytes(4)) . '.log';
 try {
-    benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper)->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper)->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('an archive sealed to the replaced keeper read through the new one');
 } catch (EscrowKeeperException) {
     ok('without the replaced keeper, an archive sealed to it does not read');
@@ -970,13 +1018,13 @@ try {
 $bothCeremony = benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper, formerKeepers: [$oldKeeper]);
 $leaEscrowId = (string) KeeperSeal::escrowIdOf($swapDb->loadArchive('lea', $leaL3['archiveId'])->escrow->wrapAdmin);
 try {
-    $bothCeremony->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $bothCeremony->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
     $oldKeeper->pending[bin2hex($leaEscrowId) . '|LIT-A1']['due'] = time() - 1;
 } catch (Throwable) {
 }
 try {
-    ($bothCeremony->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'])['contact'] ?? null) === 'lea@example.org'
+    ($bothCeremony->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS)['contact'] ?? null) === 'lea@example.org'
         ? ok('given the replaced keeper the database recorded, the ceremony reads an archive sealed to it — the façades stay up')
         : ko('the archive did not read through the replaced keeper');
 } catch (Throwable $e) {
@@ -984,7 +1032,7 @@ try {
 }
 try {
     benchCeremony($swapDb, logPath: $swapLog, keeper: $newKeeper, formerKeepers: [new BenchKeeper()])
-        ->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+        ->readArchiveEscrow('lea', $leaL3['archiveId'], 'LIT-A2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a former keeper the database never recorded was taken');
 } catch (EscrowKeeperException $e) {
     $e->reason === 'keeper-mismatch'
@@ -994,7 +1042,7 @@ try {
 $kimEscrowId = (string) KeeperSeal::escrowIdOf($swapDb->loadEscrow('kim')->wrapAdmin);
 $kimOldBox   = KeeperSeal::outerOf($swapDb->loadEscrow('kim')->wrapAdmin);
 try {
-    $bothCeremony->readEscrow('kim', 'LIT-K', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $bothCeremony->readEscrow('kim', 'LIT-K', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $dgNew = new SelfDataGuard($swapDb, $blindKey, keeper: $newKeeper, formerKeepers: [$oldKeeper], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
@@ -1153,7 +1201,7 @@ $dgVA->setEscrowFields($olga, $admin['publicKey'], ['contact' => 'olga@example.o
 $quinn = $dgVA->register('quinn', 'motdepasse-quinn-01');
 $dgVA->setEscrowFields($quinn, $admin['publicKey'], ['contact' => 'quinn@example.org']);
 try {
-    benchCeremony($viewDb, keeper: $kA2)->readEscrow('quinn', 'LIT-Q1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($viewDb, keeper: $kA2)->readEscrow('quinn', 'LIT-Q1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 SelfDataGuard::changeKeeper($viewDb, $kA2, $kB2);
@@ -1187,7 +1235,7 @@ $paulOld = $rowOf($pdoP, 'paul');
 $dgP = new SelfDataGuard($restDb, $blindKey, keeper: $kP, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgP->setEscrowFields($paul, $admin['publicKey'], ['contact' => 'paul@example.org']);
 try {
-    benchCeremony($restDb, keeper: $kP)->readEscrow('paul', 'LIT-P1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($restDb, keeper: $kP)->readEscrow('paul', 'LIT-P1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $pdoP->prepare("UPDATE selfdataguard_escrow SET wrap_user = ? WHERE user_id = 'paul'")->execute([$paulOld]);
@@ -1225,7 +1273,7 @@ SelfDataGuard::changeKeeper($backDb, $kU1, $kU2);
 $dgU = new SelfDataGuard($backDb, $blindKey, keeper: $kU2, formerKeepers: [$kU1], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgU->setEscrowFields($ursula, $admin['publicKey'], ['contact' => 'ursula-2@example.org']);
 try {
-    benchCeremony($backDb, keeper: $kU2, formerKeepers: [$kU1])->readEscrow('ursula', 'LIT-U1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($backDb, keeper: $kU2, formerKeepers: [$kU1])->readEscrow('ursula', 'LIT-U1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $pdoU->prepare('UPDATE selfdataguard_escrow SET wrap_user = ?, wrap_admin = ? WHERE user_id = ?')
@@ -1273,7 +1321,7 @@ try {
     ko('a deposit under an unreadable record of former keepers raised a bare error', get_class($e));
 }
 try {
-    benchCeremony($viewDb, keeper: $kB2, formerKeepers: [$kA2])->readEscrow('olga', 'LIT-O1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($viewDb, keeper: $kB2, formerKeepers: [$kA2])->readEscrow('olga', 'LIT-O1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('the ceremony read under an unreadable record of former keepers');
 } catch (EscrowKeeperException $e) {
     $e->reason === 'keeper-mismatch'
@@ -1296,7 +1344,7 @@ $reads['reason'] === 'keeper-mismatch'
 $viewDb->replaceSetting(SelfDataGuard::SETTING_FORMER_KEEPERS, '[""]', $formerHeld);
 $kB2->down = true;
 try {
-    benchCeremony($viewDb, keeper: $kB2, formerKeepers: [$kA2])->readEscrow('olga', 'LIT-O2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($viewDb, keeper: $kB2, formerKeepers: [$kA2])->readEscrow('olga', 'LIT-O2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('the ceremony read with its keeper down');
 } catch (EscrowKeeperException $e) {
     str_contains($e->getMessage(), 'the keeper: The keeper does not answer') && str_contains($e->getMessage(), 'former keeper 1:')
@@ -1369,7 +1417,7 @@ $dgY2 = new SelfDataGuard($y2Db, $blindKey, keeper: $kY2, pepper: benchPepper(),
 $zoe = $dgY2->register('zoe', 'motdepasse-zoe-01');
 $dgY2->setEscrowFields($zoe, $admin['publicKey'], ['contact' => 'zoe@example.org']);
 try {
-    benchCeremony($y2Db, keeper: $kY2)->readEscrow('zoe', 'LIT-Z1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($y2Db, keeper: $kY2)->readEscrow('zoe', 'LIT-Z1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 foreach (['not even base64' => 'n0t-base64!!', 'random base64' => base64_encode(random_bytes(150))] as $what => $garbage) {
@@ -1423,7 +1471,7 @@ SelfDataGuard::changeKeeper($y3Db, $kY3a, $kY3b);
 $dgY3 = new SelfDataGuard($y3Db, $blindKey, keeper: $kY3b, formerKeepers: [$kY3a], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgY3->setEscrowFields($yann, $admin['publicKey'], ['contact' => 'yann-2@example.org']);
 try {
-    benchCeremony($y3Db, keeper: $kY3b, formerKeepers: [$kY3a])->readEscrow('yann', 'LIT-Y3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($y3Db, keeper: $kY3b, formerKeepers: [$kY3a])->readEscrow('yann', 'LIT-Y3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $pdoY3->prepare("UPDATE selfdataguard_escrow SET wrap_user = ?, wrap_admin = ? WHERE user_id = 'yann'")->execute([$yannBackup['wrap_user'], $yannBackup['wrap_admin']]);
@@ -1449,7 +1497,7 @@ $y4Db = new SqliteAdapter('sqlite::memory:');
 $yves = (new SelfDataGuard($y4Db, $blindKey, keeper: $kY4a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->register('yves', 'motdepasse-yves-01');
 (new SelfDataGuard($y4Db, $blindKey, keeper: $kY4a, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle()))->setEscrowFields($yves, $admin['publicKey'], ['contact' => 'yves@example.org']);
 SelfDataGuard::changeKeeper($y4Db, $kY4a, $kY4b);
-benchCeremony($y4Db, keeper: $kY4b, formerKeepers: [$kY4a])->readEscrow('yves', 'LIT-Y4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+benchCeremony($y4Db, keeper: $kY4b, formerKeepers: [$kY4a])->readEscrow('yves', 'LIT-Y4', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 $dgY4 = new SelfDataGuard($y4Db, $blindKey, keeper: $kY4b, formerKeepers: [$kY4a], pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgY4->setEscrowFields($yves, $admin['publicKey'], ['contact' => 'yves-2@example.org']);
 $reads = $dgY4->escrowReads($yves);
@@ -1505,7 +1553,7 @@ try {
     ko('a former keeper forgotten still blocks the deposits', $e->getMessage());
 }
 try {
-    benchCeremony($y8Db, keeper: $kY8b, formerKeepers: [$kY8a])->readEscrow('yara', 'LIT-Y8', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($y8Db, keeper: $kY8b, formerKeepers: [$kY8a])->readEscrow('yara', 'LIT-Y8', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('the ceremony read through a former keeper the operator forgot');
 } catch (EscrowKeeperException $e) {
     $e->reason === 'keeper-mismatch'
@@ -1778,7 +1826,7 @@ $dgV = new SelfDataGuard($vDb, $blindKey, keeper: $kV, pepper: benchPepper(), fo
 $vera = $dgV->register('vera', 'motdepasse-vera-01');
 $dgV->setEscrowFields($vera, $admin['publicKey'], ['contact' => 'vera@example.org']);
 try {
-    benchCeremony($vDb, keeper: $kV)->readEscrow('vera', 'LIT-V1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($vDb, keeper: $kV)->readEscrow('vera', 'LIT-V1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $veraRow = $pdoV2->query("SELECT wrap_admin, created_at, revision FROM selfdataguard_escrow WHERE user_id = 'vera'")->fetch(PDO::FETCH_ASSOC);
@@ -1844,7 +1892,7 @@ $dgT = new SelfDataGuard($tDb, $blindKey, keeper: $kT, pepper: benchPepper(), fo
 $tess = $dgT->register('tess', 'motdepasse-tess-01');
 $dgT->setEscrowFields($tess, $admin['publicKey'], ['contact' => 'tess@example.org']);
 try {
-    benchCeremony($tInner, keeper: $kT)->readEscrow('tess', 'LIT-T1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($tInner, keeper: $kT)->readEscrow('tess', 'LIT-T1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 $tDb->raise = new RuntimeException('the storage does not answer');
@@ -2210,7 +2258,7 @@ try {
         ? ok('a deposit read again under one revision keeps the field the other deposit wrote')
         : ko('a deposit lost a field written meanwhile', json_encode($got));
     $racing->between = $depositMeanwhile(['indice' => 'jules-4']);
-    $read = benchCeremony($racing, keeper: $keeper)->readEscrow('jules', 'LIT-J1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    $read = benchCeremony($racing, keeper: $keeper)->readEscrow('jules', 'LIT-J1', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ($read['indice'] ?? null) === 'jules-4'
         ? ok('the ceremony reads the envelope and the fields under one revision before the keeper')
         : ko('the ceremony read fields of another revision', json_encode($read));
@@ -2282,7 +2330,7 @@ $stormy = new DepositAtEveryRead($storage);
 $stormy->between = $depositMeanwhile(['indice' => 'jules-orage']);
 $stormLog = sys_get_temp_dir() . '/sdg-keeper-storm-' . bin2hex(random_bytes(4)) . '.log';
 try {
-    benchCeremony($stormy, logPath: $stormLog, keeper: $keeper)->readEscrow('jules', 'LIT-J2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    benchCeremony($stormy, logPath: $stormLog, keeper: $keeper)->readEscrow('jules', 'LIT-J2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
     ko('a ceremony under deposits that never stop read anyway');
 } catch (StaleEscrowException) {
     $last = logEntries($stormLog);

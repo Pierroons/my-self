@@ -1666,7 +1666,7 @@ final class SelfDataGuard
     /**
      * Decrypt escrow fields as the USER (daily access) via the active session.
      *
-     * @param array<string> $fieldNames Empty = all escrow fields
+     * @param array<string> $fieldNames Empty = all escrow fields: the holder's own
      * @return array<string, string>    field_name => plaintext
      * @throws EscrowEnvelopeMismatchException when the escrow row does not open its fields, or was deleted while
      *         they stayed
@@ -1674,13 +1674,14 @@ final class SelfDataGuard
     public function getEscrowFieldsAsUser(UnlockedVault $session, array $fieldNames = []): array
     {
         $this->currentRecord($session);
-        $read = $this->snapshot($session->userId, $fieldNames);
+        $names = $fieldNames === [] ? null : array_values($fieldNames);
+        $read  = $this->snapshot($session->userId, $names);
         if ($read === null) {
             if ($this->storage->loadEscrowFields($session->userId) === []) {
                 return [];
             }
             // As in escrowReads(): only a row still absent is one deleted.
-            $read = $this->snapshot($session->userId, $fieldNames) ?? throw $this->mismatch($session->userId);
+            $read = $this->snapshot($session->userId, $names) ?? throw $this->mismatch($session->userId);
         }
         return $this->openFields($session, ...$read);
     }
@@ -1727,10 +1728,10 @@ final class SelfDataGuard
      * EscrowSnapshot::read(), a row that does not parse raised as one that
      * does not open its fields.
      *
-     * @param list<string> $fieldNames
+     * @param list<string>|null $fieldNames null for every field
      * @return array{0: EscrowRecord, 1: array<string, string>}|null
      */
-    private function snapshot(string $userId, array $fieldNames = []): ?array
+    private function snapshot(string $userId, ?array $fieldNames = null): ?array
     {
         try {
             return EscrowSnapshot::read($this->storage, $userId, $fieldNames);

@@ -14,15 +14,26 @@ use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\Escrow\Verdict;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 
-/** The same verdict for every case — a bench fixture, never an arbiter to deploy. */
+/**
+ * Every escrow field a bench deposits, for the reads that take them all: a
+ * ceremony reads only the fields it is given, and a field the escrow does not
+ * hold is not returned.
+ */
+const BENCH_ESCROW_FIELDS = ['contact', 'contact_secours', 'indice', 'indice_recup', 'contact_a', 'contact_b', 'autre', 'c'];
+
+/** The same verdict for every case — a bench fixture, never an arbiter to deploy. It keeps the fields it was last asked about. */
 final class FixedArbiter implements EscrowArbiter
 {
+    /** @var list<string>|null */
+    public ?array $askedFields = null;
+
     public function __construct(private readonly Verdict $verdict = Verdict::Open)
     {
     }
 
-    public function verdict(string $userId, string $caseRef, ?string $archiveId): Verdict
+    public function verdict(string $userId, string $caseRef, ?string $archiveId, array $fieldNames): Verdict
     {
+        $this->askedFields = $fieldNames;
         return $this->verdict;
     }
 }

@@ -68,7 +68,7 @@ file_put_contents($arbiterFile, sprintf(<<<'PHP'
     use Pierroons\SelfDataGuard\Escrow\Verdict;
     return new class (%s) implements EscrowArbiter {
         public function __construct(private readonly string $db) {}
-        public function verdict(string $userId, string $caseRef, ?string $archiveId): Verdict
+        public function verdict(string $userId, string $caseRef, ?string $archiveId, array $fieldNames): Verdict
         {
             $st = (new PDO('sqlite:' . $this->db))->prepare('SELECT status, user_id FROM litiges WHERE id = ?');
             $st->execute([$caseRef]);
@@ -124,7 +124,7 @@ function run(array $args, string $stdin, array $env): array
 
 section('Happy path — open litige + correct passphrase');
 
-$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", $env);
 $r['code'] === 0 ? ok('exit 0') : ko('exit code', (string) $r['code'] . ' err=' . trim($r['err']));
 str_contains($r['out'], CONTACT) ? ok('escrow contact_secours revealed to admin') : ko('secret not in output', $r['out']);
 
@@ -175,7 +175,7 @@ foreach ([['--anchor', '999:' . str_repeat('0', 64)], ['--ancre'], ['--ancre', '
 section('Anti-curieux — closed litige is refused');
 
 $before = count((new AuditLog($auditLog, $auditSecret))->readAll());
-$r = run(['unlock', 'alice', 'L3-closed'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-closed', 'contact_secours'], ADMIN_PASS . "\n", $env);
 $r['code'] === 2 ? ok('exit 2 (refused)') : ko('should refuse closed litige', (string) $r['code']);
 str_contains($r['err'], 'Refusé') ? ok('stderr says Refusé') : ko('no refusal message');
 $denyEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
@@ -187,11 +187,11 @@ $deny['event']['action'] === 'escrow-unlock-denied' && $deny['event']['reason'] 
 
 section('Anti-curieux — unknown litige is refused');
 
-$r = run(['unlock', 'alice', 'L3-does-not-exist'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-does-not-exist', 'contact_secours'], ADMIN_PASS . "\n", $env);
 $r['code'] === 2 ? ok('unknown litige → exit 2') : ko('should refuse unknown litige');
 
 foreach (['DATAGUARD_ARBITER_FILE' => "{$ws}/absent.php", 'DATAGUARD_WITNESS_FILE' => $arbiterFile, 'DATAGUARD_KEEPER_FILE' => $witnessFile] as $key => $wrong) {
-    $r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", [$key => $wrong] + $env);
+    $r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", [$key => $wrong] + $env);
     $r['code'] === 3 && str_contains($r['err'], $key)
         ? ok("{$key} that does not return its object → exit 3, nothing attempted")
         : ko("{$key} pointing elsewhere was accepted", $r['code'] . ' ' . trim($r['err']));
@@ -205,7 +205,7 @@ $r = run(['archives', 'bob', 'L3-bob'], '', $env);
 $r['code'] === 0 && str_contains($r['out'], $bobArchive)
     ? ok('archives → the archive id of bob, for the operator to name')
     : ko('archives did not list bob\'s archive', $r['code'] . ' ' . trim($r['out'] . $r['err']));
-$r = run(['unlock-archive', 'bob', $bobArchive, 'L3-bob'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock-archive', 'bob', $bobArchive, 'L3-bob', 'contact_secours'], ADMIN_PASS . "\n", $env);
 $r['code'] === 0 && str_contains($r['out'], 'bob-secours@example.org')
     ? ok('unlock-archive → the escrow of the archive, after its own intention in the log')
     : ko('unlock-archive did not read the archived escrow', $r['code'] . ' ' . trim($r['out'] . $r['err']));
@@ -216,9 +216,60 @@ $r['code'] === 2
 
 // -----------------------------------------------------------------------------
 
+section('A read names its fields; a comparison prints no value of the escrow');
+
+$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $env);
+$r['code'] === 3 && str_contains($r['err'], 'unlock <user> <dossier> <champ>')
+    ? ok('unlock without a field stops at the usage: no read takes every field by omission')
+    : ko('unlock without a field went on', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours', 'contact_secours'], ADMIN_PASS . "\n", $env);
+$r['code'] === 3 && str_contains($r['err'], 'deux fois')
+    ? ok('a field named twice stops before the ceremony')
+    : ko('a field named twice went on', $r['code'] . ' ' . trim($r['err']));
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", $env);
+$r['code'] === 0 && !str_contains($r['out'] . $r['err'], 'imposteur') && str_contains($r['out'], 'remise')
+    ? ok('the read ends without calling anyone an impostor: it says the read is logged, and shown as a release')
+    : ko('the read still ends on a verdict about the claimant', trim($r['out']));
+$r = run(['compare', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n" . CONTACT . "\n", $env);
+$r['code'] === 0 && str_contains($r['out'], 'contact_secours : concorde') && !str_contains($r['out'] . $r['err'], CONTACT)
+    ? ok('compare: the declared value matches, exit 0 — and the value of the escrow is not printed')
+    : ko('compare did not answer concorde without the value', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$all  = (new AuditLog($auditLog, $auditSecret))->readAll();
+$last = end($all);
+($last['event']['action'] ?? null) === 'escrow-compare' && ($last['event']['returned'] ?? null) === ['contact_secours' => 'matches']
+    && ($last['event']['normalization'] ?? null) === 'exact' && !str_contains((string) file_get_contents($auditLog), CONTACT)
+    ? ok('the log writes the comparison, its normalization and its outcome — never the value')
+    : ko('the comparison is not logged as one', json_encode($last));
+$r = run(['compare', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n" . strtoupper(CONTACT) . "\n", $env);
+$r['code'] === 5 && str_contains($r['out'], 'ne concorde pas sous la normalisation « exact »') && !str_contains($r['out'] . $r['err'], CONTACT)
+    ? ok('another case: exit 5, « ne concorde pas sous la normalisation exact », and still no value printed')
+    : ko('a value in another case was not answered under its normalization', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['compare', 'alice', 'L3-open', 'contact_secours', '--normalisation', 'case-and-spaces'], ADMIN_PASS . "\n " . strtoupper(CONTACT) . "\n", $env);
+$r['code'] === 0 && str_contains($r['out'], 'contact_secours : concorde') && str_contains($r['out'], '« case-and-spaces »')
+    ? ok('--normalisation case-and-spaces folds case and spaces, and the output names it')
+    : ko('case-and-spaces did not match', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['compare', 'alice', 'L3-open', 'absent'], ADMIN_PASS . "\nquoi que ce soit\n", $env);
+$r['code'] === 5 && str_contains($r['out'], 'absent : indisponible')
+    ? ok('a field the escrow does not hold: « indisponible », exit 5 — never « ne concorde pas »')
+    : ko('an absent field was not answered unavailable', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['compare', 'alice', 'L3-open', 'contact_secours', '--normalisation=phonetique'], ADMIN_PASS . "\n" . CONTACT . "\n", $env);
+$r['code'] === 3 && str_contains($r['err'], 'normalisation inconnue')
+    ? ok('a normalization the library does not have stops at the configuration, before the ceremony')
+    : ko('an unknown normalization went on', $r['code'] . ' ' . trim($r['err']));
+$r = run(['compare', 'alice', 'L3-closed', 'contact_secours'], ADMIN_PASS . "\n" . CONTACT . "\n", $env);
+$r['code'] === 2
+    ? ok('a comparison under a closed case is refused like a read: the arbiter decides it too')
+    : ko('a comparison went through under a closed case', (string) $r['code']);
+$r = run(['compare-archive', 'bob', $bobArchive, 'L3-bob', 'contact_secours'], ADMIN_PASS . "\nbob-secours@example.org\n", $env);
+$r['code'] === 0 && str_contains($r['out'], 'contact_secours : concorde') && !str_contains($r['out'], 'bob-secours@example.org')
+    ? ok('compare-archive: the escrow of the archive, compared without being printed')
+    : ko('compare-archive did not compare', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+
+// -----------------------------------------------------------------------------
+
 section('Passphrase gate — wrong passphrase is refused + logged');
 
-$r = run(['unlock', 'alice', 'L3-open'], "mauvaise-passphrase\n", $env);
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], "mauvaise-passphrase\n", $env);
 $r['code'] === 2 ? ok('wrong passphrase → exit 2') : ko('should refuse wrong passphrase', (string) $r['code']);
 !str_contains($r['out'], CONTACT) ? ok('no secret leaked on wrong passphrase') : ko('LEAK on wrong passphrase');
 $badEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
@@ -228,7 +279,7 @@ $deny['event']['reason'] === 'bad-passphrase' ? ok('bad-passphrase attempt logge
 // A sealed-key file with an out-of-range profile is a broken file, not a wrong passphrase.
 $sealIntact = file_get_contents($sealFile);
 file_put_contents($sealFile, preg_replace('/^v2:\d+:/', 'v2:0:', $sealIntact));
-$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", $env);
 file_put_contents($sealFile, $sealIntact);
 $brokenEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
 $deny = end($brokenEntries);
@@ -254,9 +305,9 @@ file_put_contents($fileWitness, sprintf(<<<'PHP'
     PHP, var_export(__DIR__ . '/../src/autoload.php', true), var_export($headFile, true)));
 $seedEnv = ['DATAGUARD_AUDIT_LOG' => $seedLog, 'DATAGUARD_WITNESS_FILE' => $fileWitness] + $env;
 
-run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
+run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", $seedEnv);
 unlink($headFile);
-$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", $seedEnv);
 $r['code'] === 2 && !str_contains($r['out'], CONTACT) && str_contains($r['err'], 'seedWitness()')
     ? ok('a witness that lost its store is refused, and the refusal names the seed')
     : ko('a witness that lost its store was not refused', $r['code'] . ' ' . trim($r['err']));
@@ -273,7 +324,7 @@ $r = run(['seed-witness', '--ancre', $seedHead[1] ?? ''], '', $seedEnv);
 $r['code'] === 0 && is_file($headFile)
     ? ok('seed-witness on the anchor the log holds → exit 0, and the witness holds a head')
     : ko('seed-witness refused the anchor the log holds', $r['code'] . ' ' . trim($r['err']));
-$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $seedEnv);
+$r = run(['unlock', 'alice', 'L3-open', 'contact_secours'], ADMIN_PASS . "\n", $seedEnv);
 $r['code'] === 0 && str_contains($r['out'], CONTACT)
     ? ok('the seeded witness serves the next ceremony')
     : ko('the seeded witness did not serve the next ceremony', $r['code'] . ' ' . trim($r['err']));
@@ -304,7 +355,7 @@ $kdg->setEscrowFields($erin, $admin['publicKey'], ['contact_secours' => 'erin-se
 $pdo->exec("INSERT INTO litiges VALUES ('K-erin','erin','open')");
 $kenv = ['DATAGUARD_DB' => $kdb, 'DATAGUARD_KEEPER_FILE' => $keeperBench, 'DATAGUARD_AUDIT_LOG' => "{$ws}/audit-k.log"] + $env;
 
-$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", $kenv);
+$r = run(['unlock', 'erin', 'K-erin', 'contact_secours'], ADMIN_PASS . "\n", $kenv);
 $r['code'] === 4 && str_contains($r['err'], 'Lecture annoncée') && !str_contains($r['out'], 'erin-secours@example.org')
     ? ok('a read under a delay exits 4: nothing unsealed, and the command says when to run it again')
     : ko('a read under a delay did not exit 4 as announced', $r['code'] . ' ' . trim($r['err']));
@@ -313,7 +364,7 @@ foreach ($state['pending'] as $k => $held) {
     $state['pending'][$k]['due'] = time() - 1;
 }
 file_put_contents($keeperState, json_encode($state));
-$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", $kenv);
+$r = run(['unlock', 'erin', 'K-erin', 'contact_secours'], ADMIN_PASS . "\n", $kenv);
 $r['code'] === 0 && str_contains($r['out'], 'erin-secours@example.org')
     ? ok('the same command, run again once due, reads: the keeper released the box')
     : ko('a due read did not go through the command', $r['code'] . ' ' . trim($r['err']));
@@ -333,7 +384,7 @@ $kdg->getEscrowFieldsAsUser($frank) === ['contact_secours' => 'frank-secours@exa
 foreach (['gus', 'hugo'] as $name) {
     $kplain->setEscrowFields($kplain->register($name, "motdepasse-{$name}-fort"), $admin['publicKey'], ['contact_secours' => "{$name}@example.org"]);
 }
-$r = run(['unlock', 'erin', 'K-erin'], ADMIN_PASS . "\n", ['DATAGUARD_FORMER_KEEPER_FILES' => "{$ws}/absent-gardien.php"] + $kenv);
+$r = run(['unlock', 'erin', 'K-erin', 'contact_secours'], ADMIN_PASS . "\n", ['DATAGUARD_FORMER_KEEPER_FILES' => "{$ws}/absent-gardien.php"] + $kenv);
 $r['code'] === 3 && str_contains($r['err'], 'DATAGUARD_FORMER_KEEPER_FILES')
     ? ok('a former keeper file that returns no keeper exits 3, naming the variable')
     : ko('a former keeper file that returns no keeper did not exit 3', $r['code'] . ' ' . trim($r['err']));

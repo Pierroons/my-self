@@ -522,7 +522,7 @@ section('The admin reaches the archived escrow; deletion is explicit');
 
 benchCeremony($storage)->readArchiveEscrow(
     'user-l3', $archiveId, 'case-l3', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
-) === ['contact' => 'contact de secours']
+, BENCH_ESCROW_FIELDS) === ['contact' => 'contact de secours']
     ? ok('the ceremony reads the backup memo of the archive')
     : ko('the admin cannot reach the archived escrow');
 
@@ -1411,7 +1411,7 @@ $carolL3   = $kDg->reEnroll($carol->generation(), 'carol-password-02');
 try {
     benchCeremony($kStorage, keeper: $kKeeper)->readArchiveEscrow(
         'user-carol', $carolL3['archiveId'], 'case-carol', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
-    );
+    , BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
 unparseArchiveEscrow($kPdo, $carolL3['archiveId'], '$.escrow.created_at', "'pas une date'");
@@ -1474,7 +1474,7 @@ unparseArchiveEscrow($keeperPdo, $escKeeperL3['archiveId']);
 foreach ([
     'the ceremony\'s readArchiveEscrow()' => static fn () => benchCeremony($storage)->readArchiveEscrow(
         'user-escbad', $escBadL3['archiveId'], 'case-escbad', $admin['sealedSecret'], 'admin passphrase for the facade bench', $admin['publicKey']
-    ),
+    , BENCH_ESCROW_FIELDS),
     'the ceremony\'s sealToKeeper()'  => static fn () => benchCeremony($keeperDb, keeper: new BenchKeeper())->sealToKeeper('user-escbad'),
 ] as $reader => $call) {
     try {
