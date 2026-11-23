@@ -142,6 +142,6 @@ if [ "$DECLARE" -gt "$PLAFOND" ]; then
     exit 1
 fi
 echo "✓ ${DECLARE} ouvriers tiennent dans le budget (plafond mesuré : ${PLAFOND})."
-echo "  ⚠️ Ce contrôle borne la MÉMOIRE, rien d'autre. \`request_terminate_timeout\` reste"
-echo "     le seul garde-fou contre un ouvrier qu'un script tient indéfiniment, et le"
-echo "     gabarit le laisse au défaut — c'est-à-dire sans limite."
+echo "  ⚠️ Ce contrôle borne la MÉMOIRE, rien d'autre. Le temps qu'un script peut"
+echo "     retenir un ouvrier est borné ailleurs, par le \`request_terminate_timeout\`"
+echo "     du gabarit — à relire là-bas, pas ici."
