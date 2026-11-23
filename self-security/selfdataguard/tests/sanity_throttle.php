@@ -19,6 +19,7 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 require_once __DIR__ . '/pepper_fixture.php';
 require_once __DIR__ . '/storage_doubles.php';
+require_once __DIR__ . '/keeper_fixture.php';
 
 use Pierroons\SelfDataGuard\Pepper\PepperUnavailableException;
 use Pierroons\SelfDataGuard\Pepper\RemotePepperSource;
@@ -222,6 +223,22 @@ foreach ($doors as $name => [$door, $call]) {
 }
 $throttle->refusal = null;
 
+$kAdmin   = SelfDataGuard::generateAdminRecoveryKey('throttle-admin-passphrase-2026');
+$kStore   = new ReadCountingStorage(new SqliteAdapter('sqlite:' . "{$work}/keeper.sqlite"));
+$kDg      = new SelfDataGuard($kStore, $key, benchPepper(), PepperForms::LayeredOnly, $throttle, keeper: new BenchKeeper());
+$kSession = $kDg->register('kim', PWD);
+$kDg->setEscrowFields($kSession, $kAdmin['publicKey'], ['contact' => 'kim@example.org']);
+$kArchive = $kDg->reEnroll($kSession->generation(), 'throttle-password-07')['archiveId'];
+$throttle->take();
+$throttle->refusal = new ThrottledException('slow down');
+$kStore->reads = 0;
+$e = caught(fn () => $kDg->pinArchiveEscrow('kim', $kArchive, Lock::Password, PWD, $kAdmin['publicKey']));
+$calls = $throttle->take();
+$e === $throttle->refusal && $kStore->reads === 0 && $calls === 'admit pin-archive kim'
+    ? ok('pinArchiveEscrow: the host\'s ThrottledException comes back as thrown, after admit(pin-archive, kim) alone — 0 reads')
+    : ko('pinArchiveEscrow: the refusal did not come before the read', sprintf('%s, %d reads, [%s]', $e === null ? 'nothing thrown' : get_class($e), $kStore->reads, $calls));
+$throttle->refusal = null;
+
 // -----------------------------------------------------------------------------
 
 section('Settled once, with what the secret did');
@@ -305,6 +322,15 @@ $settles('openForObjection of an archive that does not exist', fn () => $dg->ope
     VaultNotFoundException::class, 'admit objection alice | settle objection alice Refused');
 $settles('openForObjection on an account that does not exist', fn () => $dg->openForObjection('nobody', Lock::Password, PWD),
     VaultNotFoundException::class, 'admit objection nobody | settle objection nobody Refused');
+$settles('pinArchiveEscrow by the right old password, on an archive already pinned: nothing to do, the secret held',
+    fn () => $kDg->pinArchiveEscrow('kim', $kArchive, Lock::Password, PWD, $kAdmin['publicKey']) === false ?: throw new LogicException('pinned twice'), null,
+    'admit pin-archive kim | settle pin-archive kim Opened');
+$settles('pinArchiveEscrow by a wrong old password', fn () => $kDg->pinArchiveEscrow('kim', $kArchive, Lock::Password, 'wrong-password-01', $kAdmin['publicKey']),
+    WrongSecretException::class, 'admit pin-archive kim | settle pin-archive kim Refused');
+$settles('pinArchiveEscrow of an archive that does not exist', fn () => $kDg->pinArchiveEscrow('kim', 'no-such-archive', Lock::Password, PWD, $kAdmin['publicKey']),
+    VaultNotFoundException::class, 'admit pin-archive kim | settle pin-archive kim Refused');
+$settles('pinArchiveEscrow on an account that does not exist', fn () => $kDg->pinArchiveEscrow('nobody', 'no-such-archive', Lock::Password, PWD, $kAdmin['publicKey']),
+    VaultNotFoundException::class, 'admit pin-archive nobody | settle pin-archive nobody Refused');
 $stale = $current;
 $dg->reEnroll($dg->generationOf('alice'), 'throttle-password-04', $mot, PHRASE);
 $throttle->take();
@@ -337,6 +363,9 @@ $alike('openForObjection, unknown account against a wrong password',
 $alike('openForObjection, unknown archive against a wrong old password',
     fn () => $dg->openForObjection('alice', Lock::Password, 'wrong-password-01', $archive),
     fn () => $dg->openForObjection('alice', Lock::Password, 'wrong-password-01', 'no-such-archive'));
+$alike('pinArchiveEscrow, unknown account against a wrong old password',
+    fn () => $kDg->pinArchiveEscrow('kim', $kArchive, Lock::Password, 'wrong-password-01', $kAdmin['publicKey']),
+    fn () => $kDg->pinArchiveEscrow('nobody', 'no-such-archive', Lock::Password, 'wrong-password-01', $kAdmin['publicKey']));
 $alike('a bare lock under LayeredOnly against a wrong password',
     fn () => $dg->loginWithPassword('bob', 'wrong-password-01'), fn () => $bareDg->loginWithPassword('carol', PWD));
 $throttle->take();

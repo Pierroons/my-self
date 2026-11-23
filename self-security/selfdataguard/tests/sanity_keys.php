@@ -33,6 +33,7 @@ use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\ObjectionKey;
 use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\UserVault;
@@ -116,9 +117,10 @@ $MAGIC = ['__clone', '__construct', '__debugInfo', '__destruct', '__serialize', 
 section('The public methods of each key-holding class are a closed list');
 
 $closed = [
-    UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'escrowId', 'generation', 'isLocked', 'lock', 'openEscrow', 'sealLock', 'signEscrowObjection', 'signEscrowRetirement'],
+    UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'escrowId', 'generation', 'isLocked', 'lock', 'openEscrow', 'pinEscrow', 'sealLock', 'signEscrowObjection', 'signEscrowRetirement'],
     UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper'],
     UnlockedArchive::class => ['decryptFields', 'escrowId', 'lock', 'openEscrow', 'signEscrowObjection', 'userId'],
+    ObjectionKey::class    => ['escrowId', 'isLocked', 'lock', 'signEscrowObjection'],
 ];
 foreach ($closed as $class => $expected) {
     $actual = array_values(array_diff(publicMethods($class), $MAGIC));
@@ -127,7 +129,7 @@ foreach ($closed as $class => $expected) {
         : ko(substr($class, strrpos($class, '\\') + 1) . ' gained or lost a public method — read it, then update this list',
             'now: ' . implode(', ', $actual));
 }
-foreach ([[UnlockedVault::class, 'masterKey'], [UnlockedEscrow::class, 'escrowKey'], [UnlockedEscrow::class, 'objectionSeed']] as [$class, $property]) {
+foreach ([[UnlockedVault::class, 'masterKey'], [UnlockedEscrow::class, 'escrowKey'], [UnlockedEscrow::class, 'objectionSeed'], [ObjectionKey::class, 'seed']] as [$class, $property]) {
     (new ReflectionProperty($class, $property))->isPrivate()
         ? ok(substr($class, strrpos($class, '\\') + 1) . "::\${$property} is private")
         : ko(substr($class, strrpos($class, '\\') + 1) . "::\${$property} is reachable");
@@ -152,6 +154,10 @@ $probes = [
     'UnlockedVault::decryptField()' => static fn () => $vault->decryptField('note', $field),
     'UnlockedVault::sealLock()'     => static fn () => $vault->sealLock(Lock::Password, 'keys-password-0002'),
     'UnlockedVault::createEscrow()' => static fn () => $vault->createEscrow($admin['publicKey'], $now)['record'],
+    'UnlockedVault::pinEscrow()'    => static fn () => $vault->pinEscrow($created['record'], $admin['publicKey'], [
+        'sign' => sodium_crypto_sign_publickey(sodium_crypto_sign_keypair()),
+        'box'  => sodium_crypto_box_publickey(sodium_crypto_box_keypair()),
+    ], $now),
     'UnlockedVault::isLocked()'     => static fn () => $vault->isLocked(),
     'UnlockedVault::escrowId()'     => static fn () => $vault->escrowId(),
     'UnlockedVault::signEscrowObjection()'  => static fn () => $vault->signEscrowObjection('LIT-1'),

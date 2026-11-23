@@ -1113,8 +1113,8 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=41 [sanity_conformance]=122 [sanity_escrow]=68
-            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=222 [sanity_keys]=27 [sanity_migration]=45 [sanity_primitives]=56
-            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=38
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=231 [sanity_keys]=30 [sanity_migration]=45 [sanity_primitives]=56
+            [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=44
           )
           rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
@@ -1824,14 +1824,14 @@ jobs:
             "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$forgotten, true)) {" $K 'changeKeeper() took back a keeper the database recorded as former'
           canari $SDG "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$former, true) || in_array(\$toPrint, \$forgotten, true)) {" \
             "        if (hash_equals(\$fromPrint, \$toPrint) || in_array(\$toPrint, \$former, true)) {" $K 'changeKeeper() took back a keeper the operator forgot'
-          canari $SDG "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
-            "            'reseal'  => false," $K 'a keeper other than the one the deposit pinned answered for it'
-          canari $SDG "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
-            "            'reseal'  => !\$archive && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," $K 'an absent row asks a re-sealing'
-          canari $SDG "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
-            "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable'," $K "the façade's own keeper retired the escrow, and the view asks a re-sealing that changes nothing"
-          canari $SDG "            'reseal'  => !\$archive && \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
-            "            'reseal'  => !\$archive && \$row !== 'absent' && !(\$row === null && \$ownHead)," $K 'a row that does not open asks a re-sealing that is refused'
+          canari $SDG "                : \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
+            "                : false," $K 'a keeper other than the one the deposit pinned answered for it'
+          canari $SDG "                : \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
+            "                : \$row !== 'unreadable' && !(\$row === null && \$ownHead)," $K 'an absent row asks a re-sealing'
+          canari $SDG "                : \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
+            "                : \$row !== 'absent' && \$row !== 'unreadable'," $K "the façade's own keeper retired the escrow, and the view asks a re-sealing that changes nothing"
+          canari $SDG "                : \$row !== 'absent' && \$row !== 'unreadable' && !(\$row === null && \$ownHead)," \
+            "                : \$row !== 'absent' && !(\$row === null && \$ownHead)," $K 'a row that does not open asks a re-sealing that is refused'
           canari $SDG "        if (\$pinned === null || KeeperSeal::fingerprint(\$pinned) === \$current['print']) {" \
             "        if (\$pinned !== null && KeeperSeal::fingerprint(\$pinned) === \$current['print']) {
                       return [\$current];
@@ -2290,7 +2290,9 @@ jobs:
       # L'objection sans session (P6, P7) : une seule porte, freinée, qui rend la clé
       # d'objection d'un coffre ou d'une archive depuis un secret, sous le profil que le
       # sceau couvre, sans rien écrire ; la clé ne fait rien d'autre, et les types
-      # d'UnlockedArchive et d'ObjectionKey ne se bâtissent que dans la façade.
+      # d'UnlockedArchive et d'ObjectionKey ne se bâtissent que dans la façade. Puis
+      # l'épinglage de l'archive par son titulaire : la même clé de compartiment, sous
+      # la clé d'objection de l'archive, et la clé d'administration jamais inscrite par lui.
       - name: Canaris — l'objection sans session rougit quand on retire une garde
         run: |
           # @plante
@@ -2312,13 +2314,13 @@ jobs:
           FK=$D/src/Vault/ObjectionKey.php
           K=$D/tests/sanity_keeper.php
           T=$D/tests/sanity_throttle.php
-          PORTE='        return $this->throttled(Door::Objection, $userId, function () use ($userId, $lock, $secret, $archiveId): ObjectionKey {'
+          PORTE='        return $this->throttled($door, $userId, function () use ($userId, $archiveId, $lock, $secret): array {'
           canari $FA "$PORTE" "        \$this->storage->loadVault(\$userId); $PORTE" \
             $T '❌ openForObjection: the refusal did not come before the read'
           canari $FA '        $published = array_values(array_unique(Primitives::PUBLISHED_PROFILES, SORT_REGULAR));' '        return [[$opslimit, $memlimit]];' \
             $K '❌ the profile changed, openForObjection() by the password derives under the profile the seal vouches for'
-          OUVRE='            $session = $this->unlockUnderAny($record, $lock, $secret, $profiles);'
-          canari $FA "$OUVRE" "$OUVRE if (\$archiveId === null) { \$this->repairProfile(\$userId); }" \
+          OUVRE='            return [$this->unlockUnderAny($record, $lock, $secret, $profiles), $escrow];'
+          canari $FA "$OUVRE" "            if (\$archiveId === null) { \$this->repairProfile(\$userId); } $OUVRE" \
             $K 'the seal vouches for — the database was written'
           canari $FA '        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row]);' "        return [null, 'not-pinned'];" \
             $K 'the view is not established on a pinned keeper'
@@ -2328,6 +2330,14 @@ jobs:
             $K '❌ a constructor of UnlockedArchive or ObjectionKey is open to the integrator'
           canari $FK '    private function __construct(' '    public function __construct(' \
             $K '❌ a constructor of UnlockedArchive or ObjectionKey is open to the integrator'
+          canari $FA '            $this->assertEscrowAdmin($adminPublicKey, claims: false);' '            $this->assertEscrowAdmin($adminPublicKey);' \
+            $K '❌ a database that recorded no administrator key: the key given is not recorded'
+          canari $FA "            if (\$row !== 'not-keeper-sealed' && \$row !== 'not-pinned') {" '            if (true) {' \
+            $K '❌ the pin did not go through once, then stop'
+          canari $D/src/Vault/UnlockedVault.php '            $escrowKey = substr($plain, 0, Primitives::KEY_LEN);' '            $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);' \
+            $K '❌ after the pin, the read once due did not open the field'
+          canari $FA "                ? \$row === 'not-keeper-sealed' || \$row === 'not-pinned'" '                ? false' \
+            $K '❌ the escrow of an archive sealed by the pass was not reported as such'
 
   selfrecover-1:
     needs: modules

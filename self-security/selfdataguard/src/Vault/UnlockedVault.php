@@ -134,9 +134,64 @@ final class UnlockedVault
         int $revision = 0
     ): array {
         $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);
-        $seed      = null;
-        $escrowId  = null;
-        $plain     = $escrowKey;
+        try {
+            return $this->sealEscrowKey($escrowKey, $adminPublicKeyB64, $now, $keeperPublicKeys, $createdAt ?? $now, $revision);
+        } finally {
+            Primitives::zeroize($escrowKey);
+        }
+    }
+
+    /**
+     * The compartment $record holds, sealed again to the keeper
+     * $keeperPublicKeys under this vault's objection key, its escrow key kept:
+     * the fields it encrypts stay as they are. It is how the escrow of an
+     * archive, whose fields no write changes, comes under its holder's
+     * objection key (SelfDataGuard::pinArchiveEscrow()). The record keeps its
+     * creation date and its revision, which the storage compares.
+     *
+     * @param array{sign: string, box: string} $keeperPublicKeys
+     * @throws RuntimeException if the record is another account's, or wrap_user does not open
+     */
+    public function pinEscrow(
+        EscrowRecord $record,
+        string $adminPublicKeyB64,
+        array $keeperPublicKeys,
+        DateTimeImmutable $now
+    ): EscrowRecord {
+        $plain = $this->wrapUserPlain($record);
+        try {
+            EscrowVault::unwrapUserPlain($record->userId, $plain)->lock();
+            $escrowKey = substr($plain, 0, Primitives::KEY_LEN);
+        } finally {
+            Primitives::zeroize($plain);
+        }
+        try {
+            $sealed = $this->sealEscrowKey($escrowKey, $adminPublicKeyB64, $now, $keeperPublicKeys, $record->createdAt, $record->revision);
+        } finally {
+            Primitives::zeroize($escrowKey);
+        }
+        $sealed['unlocked']->lock();
+        return $sealed['record'];
+    }
+
+    /**
+     * $escrowKey wrapped under the master key and sealed to the administrator
+     * — and to the keeper, given its keys (createEscrow()).
+     *
+     * @param array{sign: string, box: string}|null $keeperPublicKeys
+     * @return array{record: EscrowRecord, unlocked: UnlockedEscrow}
+     */
+    private function sealEscrowKey(
+        #[\SensitiveParameter] string $escrowKey,
+        string $adminPublicKeyB64,
+        DateTimeImmutable $now,
+        ?array $keeperPublicKeys,
+        DateTimeImmutable $createdAt,
+        int $revision
+    ): array {
+        $seed     = null;
+        $escrowId = null;
+        $plain    = $escrowKey;
         try {
             if ($keeperPublicKeys !== null) {
                 $keeperPublicKeys = KeeperSeal::checkKeys($keeperPublicKeys);
@@ -149,7 +204,6 @@ final class UnlockedVault
                 ? new UnlockedEscrow(userId: $this->userId, escrowKey: $escrowKey)
                 : new UnlockedEscrow($this->userId, $escrowKey, $escrowId, $keeperPublicKeys, $seed);
         } finally {
-            Primitives::zeroize($escrowKey);
             Primitives::zeroize($plain);
             if ($seed !== null) {
                 Primitives::zeroize($seed);
@@ -161,7 +215,7 @@ final class UnlockedVault
             wrapAdmin: $keeperPublicKeys === null
                 ? $unlocked->sealToAdmin($adminPublicKeyB64)
                 : $unlocked->sealToKeeper($adminPublicKeyB64),
-            createdAt: $createdAt ?? $now,
+            createdAt: $createdAt,
             updatedAt: $now,
             revision:  $revision
         );
@@ -175,11 +229,27 @@ final class UnlockedVault
      */
     public function openEscrow(EscrowRecord $record): UnlockedEscrow
     {
+        $escrowKey = $this->wrapUserPlain($record);
+        try {
+            return EscrowVault::unwrapUserPlain($record->userId, $escrowKey);
+        } finally {
+            Primitives::zeroize($escrowKey);
+        }
+    }
+
+    /**
+     * The plaintext of wrap_user, under the master key: the escrow key, and
+     * its keeper binding when it has one (EscrowVault::unwrapUserPlain()).
+     *
+     * @throws RuntimeException if the record is another account's, or the wrap fails
+     */
+    private function wrapUserPlain(EscrowRecord $record): string
+    {
         if ($record->userId !== $this->userId) {
             throw new InvalidArgumentException('Session userId does not match escrow record');
         }
         try {
-            $escrowKey = Primitives::decryptAcrossFormats(
+            return Primitives::decryptAcrossFormats(
                 $record->wrapUser,
                 $this->key(),
                 EscrowVault::wrapAad($record->userId),
@@ -190,11 +260,6 @@ final class UnlockedVault
             throw $e;
         } catch (RuntimeException $e) {
             throw new RuntimeException('Could not unwrap escrow with user master key', previous: $e);
-        }
-        try {
-            return EscrowVault::unwrapUserPlain($record->userId, $escrowKey);
-        } finally {
-            Primitives::zeroize($escrowKey);
         }
     }
 

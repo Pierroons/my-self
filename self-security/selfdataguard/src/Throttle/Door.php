@@ -16,4 +16,5 @@ enum Door: string
     case OpenArchive    = 'open-archive';
     case SetLockWhileFrozen = 'set-lock-while-frozen';
     case Objection      = 'objection';
+    case PinArchive     = 'pin-archive';
 }

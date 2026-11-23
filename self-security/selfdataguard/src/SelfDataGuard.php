@@ -149,7 +149,8 @@ final class SelfDataGuard
      * @param Throttle $throttle the host's brake on the doors where a secret
      *        from outside costs an Argon2id — loginWithPassword(),
      *        loginWithMemorized(), recover(), openArchive(),
-     *        setLockWhileFrozen(), openForObjection(). Each attempt is
+     *        setLockWhileFrozen(), openForObjection(), pinArchiveEscrow().
+     *        Each attempt is
      *        admitted before anything is read, then settled with what the
      *        secret did. NoThrottle when the host brakes before the call.
      * @param list<string> $sharedIndexes the indexed fields several accounts may
@@ -1401,21 +1402,74 @@ final class SelfDataGuard
         #[\SensitiveParameter] string $secret,
         ?string $archiveId = null
     ): ObjectionKey {
-        return $this->throttled(Door::Objection, $userId, function () use ($userId, $lock, $secret, $archiveId): ObjectionKey {
-            [$record, $profiles, $escrow] = $this->orInVain(fn (): array => $this->forObjection($userId, $archiveId), $userId, $lock, $secret);
-            $session = $this->unlockUnderAny($record, $lock, $secret, $profiles);
-            try {
-                $escrowId = $session->escrowId();
-                $open     = $archiveId === null
-                    ? fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session)
-                    : static fn (EscrowRecord $r): UnlockedEscrow => $session->openEscrow($r);
-                [$pinned, $row] = $this->rowOf($escrow, $open, $escrowId);
-                $seed = self::inScope(UnlockedVault::class, static fn (): string => $session->objectionSeed());
-                return self::inScope(ObjectionKey::class, static fn (): ObjectionKey => new ObjectionKey($userId, $archiveId, $seed, $pinned, $row));
-            } finally {
-                $session->lock();
+        [$session, $escrow] = $this->openForEscrow(Door::Objection, $userId, $archiveId, $lock, $secret);
+        try {
+            $escrowId = $session->escrowId();
+            $open     = $archiveId === null
+                ? fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session)
+                : static fn (EscrowRecord $r): UnlockedEscrow => $session->openEscrow($r);
+            [$pinned, $row] = $this->rowOf($escrow, $open, $escrowId);
+            $seed = self::inScope(UnlockedVault::class, static fn (): string => $session->objectionSeed());
+            return self::inScope(ObjectionKey::class, static fn (): ObjectionKey => new ObjectionKey($userId, $archiveId, $seed, $pinned, $row));
+        } finally {
+            $session->lock();
+        }
+    }
+
+    /**
+     * Seal the escrow of archive $archiveId to the façade's keeper, under the
+     * archive's own objection key, from one of its old secrets — without a
+     * session on the current vault, which after a level 3 the holder did not
+     * ask for is someone else's. The escrow key stays, and the fields with it:
+     * an escrow the operator's pass sealed to the keeper, or one sealed to the
+     * administrator alone, becomes the holder's to object to. The view of the
+     * archive is then established, an objection goes through, and a read
+     * objected to is refused once due.
+     *
+     * The archive is opened as openForObjection() opens it, behind the
+     * throttle. The administrator key must be the one the database recorded:
+     * a database that recorded none is refused, since the key given would
+     * otherwise become the one every later deposit is sealed to.
+     *
+     * A copy of the database taken before keeps the box of before: a read
+     * announced from it is neither shown nor opposable — the keeper is asked
+     * about the archive's escrowId, not the one the operator's pass drew.
+     *
+     * False when there is nothing to do: no keeper, no escrow, or one already
+     * pinned to a keeper — this façade's or a former one.
+     *
+     * @throws InvalidArgumentException when $adminPublicKey is not the one the database recorded, or none is
+     * @throws EscrowEnvelopeMismatchException when the escrow of the archive does not parse or does not open
+     * @throws WrongSecretException   if the old secret opens no envelope of the archive
+     * @throws VaultNotFoundException if this userId has no such archive
+     * @throws Throttle\ThrottledException when the throttle refuses, before anything is read
+     */
+    public function pinArchiveEscrow(
+        string $userId,
+        string $archiveId,
+        Lock $lock,
+        #[\SensitiveParameter] string $oldSecret,
+        string $adminPublicKey
+    ): bool {
+        if (!$this->hasKeeper()) {
+            return false;
+        }
+        [$session, $escrow] = $this->openForEscrow(Door::PinArchive, $userId, $archiveId, $lock, $oldSecret);
+        try {
+            [, $row] = $this->rowOf($escrow, static fn (EscrowRecord $r): UnlockedEscrow => $session->openEscrow($r), $session->escrowId());
+            if ($row === 'unreadable' || $row === 'escrow-replaced') {
+                throw $this->mismatch($userId);
             }
-        });
+            if ($row !== 'not-keeper-sealed' && $row !== 'not-pinned') {
+                return false;
+            }
+            $this->assertEscrowAdmin($adminPublicKey, claims: false);
+            $pinned = $session->pinEscrow($escrow, $adminPublicKey, (array) $this->keeperKeys(), new DateTimeImmutable());
+            $this->storage->replaceArchiveEscrow($userId, $archiveId, $pinned);
+            return true;
+        } finally {
+            $session->lock();
+        }
     }
 
     /**
@@ -1476,9 +1530,10 @@ final class SelfDataGuard
      *     refused while a former keeper cannot be asked, and while the row does
      *     not open its fields (EscrowEnvelopeMismatchException) — a row put
      *     back from a backup without them. False for an absent row — there is
-     *     nothing to re-seal —, for a row that does not parse or open, for an
-     *     archive, and for a row that pins the façade's own keeper, retired
-     *     there or not: no re-sealing changes it.
+     *     nothing to re-seal —, for a row that does not parse or open, and for
+     *     a row that pins the façade's own keeper, retired there or not: no
+     *     re-sealing changes it. For an archive, it says pinArchiveEscrow()
+     *     has something to do: a row that pins no keeper.
      *
      * A release is the keeper handing the inner box back: the read that
      * follows may still fail — a wrong passphrase —, and is listed all the
@@ -1509,9 +1564,10 @@ final class SelfDataGuard
 
     /**
      * escrowReads() for the escrow of an archive opened with one of its old
-     * locks. `reseal` is always false: no act re-seals an archive's escrow. An
-     * escrow the archive keeps and that does not parse reads as a live row
-     * that does not: `escrow-replaced`, the keepers asked all the same.
+     * locks. `reseal` says pinArchiveEscrow() would seal it under the
+     * archive's objection key: a row that pins no keeper. An escrow the
+     * archive keeps and that does not parse reads as a live row that does
+     * not: `escrow-replaced`, the keepers asked all the same.
      */
     public function archiveEscrowReads(UnlockedArchive $opened): array
     {
@@ -1783,11 +1839,16 @@ final class SelfDataGuard
      * $adminPublicKey is the one the database seals escrows to: recorded at the
      * first deposit, compared at every one after.
      */
-    private function assertEscrowAdmin(string $adminPublicKey): void
+    private function assertEscrowAdmin(string $adminPublicKey, bool $claims = true): void
     {
         $print = substr(hash('sha256', "selfdataguard/escrow-admin/v1\0" . EscrowVault::decodePublicKey($adminPublicKey)), 0, 32);
         $held  = $this->storage->loadSetting(self::SETTING_ESCROW_ADMIN)
-            ?? $this->storage->claimSetting(self::SETTING_ESCROW_ADMIN, $print);
+            ?? ($claims ? $this->storage->claimSetting(self::SETTING_ESCROW_ADMIN, $print) : null);
+        if ($held === null) {
+            throw new InvalidArgumentException(
+                'This database recorded no administrator key: the first deposit records it, and nothing else does'
+            );
+        }
         if (!hash_equals($held, $print)) {
             throw new InvalidArgumentException(
                 "Escrows here are sealed to the administrator key {$held}, and this call was given {$print}: each "
@@ -2244,7 +2305,9 @@ final class SelfDataGuard
             'reads'      => $reads,
             'pending'    => $pending,
             'unanswered' => array_map(static fn (array $m): array => ['keeper' => $m[0], 'reason' => $m[1]], $missing),
-            'reseal'  => !$archive && $row !== 'absent' && $row !== 'unreadable' && !($row === null && $ownHead),
+            'reseal'  => $archive
+                ? $row === 'not-keeper-sealed' || $row === 'not-pinned'
+                : $row !== 'absent' && $row !== 'unreadable' && !($row === null && $ownHead),
         ] + $out;
         if ($headRetired) {
             return ['reason' => 'retired'] + $seen;
@@ -2605,7 +2668,22 @@ final class SelfDataGuard
     }
 
     /**
-     * For openForObjection(): the live vault of $userId or its archive
+     * The live vault of $userId or its archive $archiveId, opened by $secret
+     * behind the throttle whatever its seal says, and its escrow row. What
+     * follows the opening is not the throttle's to hear.
+     *
+     * @return array{0: UnlockedVault, 1: EscrowRecord|false|null}
+     */
+    private function openForEscrow(Door $door, string $userId, ?string $archiveId, Lock $lock, #[\SensitiveParameter] string $secret): array
+    {
+        return $this->throttled($door, $userId, function () use ($userId, $archiveId, $lock, $secret): array {
+            [$record, $profiles, $escrow] = $this->orInVain(fn (): array => $this->forObjection($userId, $archiveId), $userId, $lock, $secret);
+            return [$this->unlockUnderAny($record, $lock, $secret, $profiles), $escrow];
+        });
+    }
+
+    /**
+     * For openForEscrow(): the live vault of $userId or its archive
      * $archiveId, read without its seal, the profiles to derive under, and its
      * escrow row.
      *

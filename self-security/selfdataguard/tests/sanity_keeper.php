@@ -609,6 +609,115 @@ $closed(\Pierroons\SelfDataGuard\Vault\UnlockedArchive::class) && class_exists(\
 
 // -----------------------------------------------------------------------------
 
+section('The holder pins the escrow of an archive to the keeper, from an old secret: sealed by the operator\'s pass, it was opposable to no one');
+
+const PIA_PWD = 'motdepasse-pia-01';
+
+$pPath     = sys_get_temp_dir() . '/sdg-keeper-pin-' . bin2hex(random_bytes(4)) . '.sqlite';
+$pLog      = sys_get_temp_dir() . '/sdg-keeper-pin-' . bin2hex(random_bytes(4)) . '.log';
+$pKeeper   = new BenchKeeper(delay: 3600);
+$pDb       = new SqliteAdapter("sqlite:{$pPath}");
+$pPlain    = new SelfDataGuard($pDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$pia       = $pPlain->register('pia', PIA_PWD);
+$pPlain->setEscrowFields($pia, $admin['publicKey'], ['contact' => 'pia-secours@example.org']);
+$piaId     = $pia->escrowId();
+$pia->lock();
+$pTaken    = $pPlain->reEnroll($pPlain->generationOf('pia'), 'motdepasse-de-qui-a-pris-pia');
+$pArchive  = $pTaken['archiveId'];
+$pTaken['unlocked']->lock();
+$pCeremony = benchCeremony($pDb, logPath: $pLog, keeper: $pKeeper);
+$pCeremony->sealToKeeper('pia');
+$pDg       = new SelfDataGuard($pDb, $blindKey, keeper: $pKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$pPdo      = new PDO("sqlite:{$pPath}");
+$pRead     = static function (string $case) use ($pCeremony, $pArchive, $admin): array|string {
+    try {
+        return $pCeremony->readArchiveEscrow('pia', $pArchive, $case, $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey']);
+    } catch (EscrowAnnouncedException) {
+        return 'announced';
+    } catch (EscrowKeeperException) {
+        return 'refused';
+    } catch (Throwable $e) {
+        return get_class($e);
+    }
+};
+$pDue      = static function (string $case) use ($pKeeper, $piaId): void {
+    $pKeeper->pending[bin2hex($piaId) . '|' . $case]['due'] = time() - 1;
+};
+$pBox      = static fn (): string => $pDb->loadArchive('pia', $pArchive)->escrow->wrapAdmin;
+$pPin      = static fn (string $secret, string $adminKey) => $pDg->pinArchiveEscrow('pia', $pArchive, Lock::Password, $secret, $adminKey);
+
+try {
+    $key  = $pDg->openForObjection('pia', Lock::Password, PIA_PWD, $pArchive);
+    $view = $pDg->escrowReads($key);
+    !$view['established'] && $view['reason'] === 'not-pinned' && $view['reseal']
+        ? ok('sealed by the operator\'s pass, the escrow of the archive reads "not-pinned", and reseal says the pin has something to do')
+        : ko('the escrow of an archive sealed by the pass was not reported as such', json_encode($view));
+    $pRead('LIT-P1');
+    try {
+        $pDg->objectToEscrowRead($key, 'LIT-P1');
+        ko('an objection reached a read announced under the escrowId the pass drew');
+    } catch (EscrowKeeperException) {
+        ok('before the pin, a read of the archive is held under the escrowId the pass drew: the objection reaches nothing');
+    }
+    $key->lock();
+} catch (Throwable $e) {
+    ko('the escrow of the archive could not be looked at before the pin', get_class($e) . ': ' . $e->getMessage());
+}
+
+$adminSetting = (string) $pPdo->query("SELECT value FROM selfdataguard_settings WHERE name = 'selfdataguard.escrow-admin'")->fetchColumn();
+$other        = SelfDataGuard::generateAdminRecoveryKey('une-autre-cle-admin-tres-longue-2026')['publicKey'];
+$pPdo->exec("DELETE FROM selfdataguard_settings WHERE name = 'selfdataguard.escrow-admin'");
+foreach ([
+    'a database that recorded no administrator key: the key given is not recorded' => [static fn () => $pPin(PIA_PWD, $other), InvalidArgumentException::class],
+    'another administrator key than the recorded one'                              => [static fn () => $pPin(PIA_PWD, $other), InvalidArgumentException::class],
+    'a wrong old password'                                                         => [static fn () => $pPin('mauvais-mot-de-passe-pia', $admin['publicKey']), \Pierroons\SelfDataGuard\Vault\WrongSecretException::class],
+] as $label => [$call, $class]) {
+    $boxBefore = $pBox();
+    try {
+        $call();
+        ko("{$label}: the pin went through");
+    } catch (Throwable $e) {
+        $recorded = $pPdo->query("SELECT value FROM selfdataguard_settings WHERE name = 'selfdataguard.escrow-admin'")->fetchColumn();
+        $e instanceof $class && $pBox() === $boxBefore && ($recorded === false || $recorded === $adminSetting)
+            ? ok("{$label}: refused (" . (new ReflectionClass($e))->getShortName() . '), the box of the archive and the recorded key as before')
+            : ko($label, get_class($e) . ': ' . $e->getMessage() . ($recorded === false || $recorded === $adminSetting ? '' : '; the key given was recorded'));
+    }
+    if ((int) $pPdo->query("SELECT COUNT(*) FROM selfdataguard_settings WHERE name = 'selfdataguard.escrow-admin'")->fetchColumn() === 0) {
+        $pPdo->prepare("INSERT INTO selfdataguard_settings (name, value) VALUES ('selfdataguard.escrow-admin', :v)")->execute([':v' => $adminSetting]);
+    }
+}
+
+try {
+    $once  = $pPin(PIA_PWD, $admin['publicKey']);
+    $twice = $pPin(PIA_PWD, $admin['publicKey']);
+    $once && !$twice
+        ? ok('pinArchiveEscrow() seals the escrow of the archive under its objection key, from the old password alone; a second call has nothing to do')
+        : ko('the pin did not go through once, then stop', json_encode([$once, $twice]));
+    $key  = $pDg->openForObjection('pia', Lock::Password, PIA_PWD, $pArchive);
+    $view = $pDg->escrowReads($key);
+    $view['established'] && $view['pinned'] && !$view['reseal']
+        ? ok('after the pin, the view of the archive is established on the keeper it pins')
+        : ko('the view of the pinned archive is not established', json_encode($view));
+    $pRead('LIT-P2');
+    $pDg->objectToEscrowRead($key, 'LIT-P2');
+    $key->lock();
+    $pDue('LIT-P2');
+    $pRead('LIT-P2') === 'refused'
+        ? ok('a read announced after the pin is opposable: the objection is recorded, and once due the read is refused')
+        : ko('the read of the pinned archive went through over the objection');
+    $pRead('LIT-P3');
+    $pDue('LIT-P3');
+    $pRead('LIT-P3') === ['contact' => 'pia-secours@example.org']
+        ? ok('without an objection, a read once due opens the same field: the pin kept the escrow key and the fields')
+        : ko('after the pin, the read once due did not open the field');
+} catch (Throwable $e) {
+    ko('the holder could not pin the escrow of the archive', get_class($e) . ': ' . $e->getMessage());
+}
+@unlink($pLog);
+@unlink($pPath);
+
+// -----------------------------------------------------------------------------
+
 section('A database that recorded a keeper refuses a façade without it, or with another');
 
 foreach (['no keeper' => null, 'NoKeeper' => new NoKeeper(), 'another keeper' => new BenchKeeper()] as $label => $other) {
