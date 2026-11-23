@@ -54,11 +54,31 @@ alerter() {
         echo "[$(date -Iseconds)] ALERTE NON ENVOYÉE (jeton illisible : $NTFY_TOKEN_FILE) — $titre" >&2
         return 0
     fi
-    curl -fsS -m 10 --retry 2 \
+    # 🔑 Le code de retour du `curl` se LIT. La forme d'avant
+    # — `> /dev/null 2>&1 || true` — avalait tout : silencieuse, sortie jetée,
+    # code ignoré. Un canal injoignable, un jeton révoqué ou un refus de l'hôte
+    # ne laissaient donc aucune trace, et le script continuait comme si l'alerte
+    # était partie. Mesuré le 23/11/2026 : l'alerte « date du contenu LEGI
+    # illisible » du 15/11 a bien été journalisée ici, et elle n'a été vue que
+    # huit jours plus tard, par un autre canal. Un canal qui ne remet pas doit le
+    # dire là où on le lira.
+    # ⚠️ La sortie est tronquée : un corps de réponse HTML complet remplirait le
+    # journal que cette ligne existe pour rendre lisible.
+    local sortie
+    local rc
+    sortie=$(curl -fsS -m 10 --retry 2 \
         -H "Authorization: Bearer $(cat "$NTFY_TOKEN_FILE")" \
         -H "Title: $titre" \
         -H "Priority: high" -H "Tags: warning,scroll" \
-        -d "$message" "$NTFY_URL" > /dev/null 2>&1 || true
+        -d "$message" "$NTFY_URL" 2>&1)
+    rc=$?
+    sortie=${sortie:0:200}
+    if [ "$rc" -ne 0 ]; then
+        echo "[$(date -Iseconds)] ALERTE NON REMISE (curl rc=$rc : ${sortie:-sans message}) — $titre" >&2
+    fi
+    # 🔑 `alerter` ne fait jamais échouer son appelant : une alerte non
+    # remise est un défaut du canal, pas de la moisson.
+    return 0
 }
 
 trap 'alerter "SelfAct — mise a jour du catalogue en echec" \

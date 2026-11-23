@@ -10,6 +10,28 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Une alerte qui n'a pas pu être remise le dit — ce que la correction de la veille laissait passer — 23 novembre 2026
+
+Les quatre scripts de mise à jour terminaient leur notification par `curl -fsS … > /dev/null 2>&1 || true` :
+silencieuse, sortie jetée, code de retour avalé. Un canal injoignable, un jeton révoqué ou un refus de
+l'hôte ne laissaient donc **aucune trace**, et le script continuait comme si l'alerte était partie. Le code
+de retour est désormais lu, et un échec s'écrit « ALERTE NON REMISE » avec son code et le début du message
+de l'outil, dans le journal du script.
+
+**Ce qui a rendu ce défaut visible.** Une alerte « date du contenu LEGI illisible » a été journalisée le
+15 novembre et n'a été vue que **huit jours plus tard**, par un autre canal. Le signalement avait
+fonctionné ; c'est sa remise qui n'était pas mesurée. ⚠️ Savoir si cet envoi-là est arrivé n'est plus
+possible : les journaux du serveur frontal ne remontent pas si loin.
+
+**L'entrée de la veille ne couvrait que la moitié du défaut** : elle journalisait le renoncement quand le
+*jeton* est illisible, et laissait le `|| true` du *curl*. Le cas corrigé était celui qu'on lisait dans le
+code, pas celui qui se produit en service. Éprouvé dans les deux sens, avec témoin : sur un hôte
+injoignable, canal configuré et jeton lisible, les quatre versions corrigées écrivent la non-remise et les
+versions d'avant restent muettes.
+
+`alerter()` continue de rendre 0 en toute circonstance : une alerte non remise est un défaut du canal, pas
+de la moisson, et elle ne doit pas faire échouer une mise à jour qui a réussi.
+
 ### La clé Judilibre se cherche au même endroit des deux côtés, et une alerte qui ne part pas le dit — 21 novembre 2026
 
 **Un seul secret était cherché à deux chemins par défaut différents.** `JUDILIBRE_KEY_FILE` valait
