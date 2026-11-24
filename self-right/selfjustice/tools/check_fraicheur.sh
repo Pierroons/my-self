@@ -138,13 +138,14 @@ provenances = {}
 # mesure. Chacune donne son titre à la notification — sous un titre unique, une
 # route trop lente pour répondre se lisait « base en retard », et envoyait
 # chercher la panne dans une base saine.
-sources, volumes, empreintes = {}, {}, {}
+sources, volumes, empreintes, syncs = {}, {}, {}, {}
 renvois, aveugle = [], []
 try:
     st = lire(f"{API}/status")
     for cle, nom in (("legi", "LEGI"), ("eu", "conventionnalité"), ("jurisprudence", "jurisprudence")):
         bloc = st.get(cle) or {}
         sources[nom] = bloc.get("last_update")
+        syncs[nom] = bloc.get("last_sync")
         volumes[nom] = volume(bloc)
         empreintes[nom] = empreinte(bloc)
         provenances[nom] = bloc.get("provenance") or {}
@@ -231,6 +232,7 @@ for nom in sources:
     inchangee = veille.get("date") == date_brute and veille.get("vu_le")
     etat_courant[nom] = {
         "date": date_brute,
+        "sync": syncs.get(nom),
         "volume": volumes.get(nom),
         "empreinte": empreintes.get(nom),
         "vu_le": veille["vu_le"] if inchangee else today.isoformat(),
@@ -332,10 +334,30 @@ for nom, courant in etat_courant.items():
         # devenue trop vieille. Tous deux NOMMENT la source et tiennent quel que
         # soit le volume, là où le trompe-l'œil ne sait dire que « quelque chose
         # ne va pas » et se répéterait à chaque quinzaine pour un état connu.
+        # 🔑 **Une date de contenu peut avancer sans qu'aucun passage ait eu
+        # lieu** : c'est ce qui arrive quand on corrige à la main un marqueur
+        # qui vieillissait la base. Le 24/11/2026, la règle a crié
+        # « synchronisation en trompe-l'œil » sur la correction de la veille,
+        # alors que `last_sync` n'avait pas bougé — aucune synchronisation
+        # n'avait tourné, et il n'y avait donc aucune synchronisation à
+        # accuser. Un vrai trompe-l'œil fait toujours avancer `last_sync`,
+        # puisque c'est le passage lui-même qui l'écrit : exiger son mouvement
+        # ne masque rien.
+        # ⚠️ Un état écrit avant cette clé n'en a pas : on retombe alors sur
+        # l'alerte, le temps d'un passage. Un garde-fou se trompe du côté du
+        # bruit, jamais du côté du silence.
+        s_now, s_old = courant.get("sync"), veille.get("sync")
+        hors_passage = bool(s_now and s_old and s_now == s_old)
         if provenances.get(nom):
             lignes.append(
                 f"  ✓ {nom:20} figé à {courant['volume']} — "
                 f"{len(provenances[nom])} sources déclarées, voir leur provenance"
+            )
+        elif hors_passage:
+            n, quoi = compte_juge(courant)
+            lignes.append(
+                f"  ⓘ {nom:20} date du contenu révisée hors passage — {quoi} figé "
+                f"à {n}, synchronisation inchangée ({s_now})"
             )
         else:
             n, quoi = compte_juge(courant)

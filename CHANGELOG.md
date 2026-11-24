@@ -10,6 +10,31 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Une date de contenu révisée à la main ne s'accuse plus d'une fausse synchronisation — 24 novembre 2026
+
+Le contrôle de fraîcheur porte une règle dite du trompe-l'œil : une date qui avance sur une base dont le
+volume ne bouge pas signale du mouvement affiché sans travail derrière. Elle ne regardait que la date du
+contenu. Or cette date peut aussi avancer parce qu'on **corrige** un marqueur qui vieillissait la base, sans
+qu'aucune synchronisation ait tourné — et la règle criait alors « synchronisation en trompe-l'œil » là où il
+n'y avait aucune synchronisation à accuser.
+
+La règle exige désormais que la date de synchronisation ait bougé elle aussi. Quand elle est figée, le
+mouvement du marqueur se dit au rapport — « date du contenu révisée hors passage » — sans déclencher
+d'alerte. Un vrai trompe-l'œil fait toujours avancer cette date, puisque c'est le passage lui-même qui
+l'écrit : la garde ne masque donc rien.
+
+⚠️ **Un état mémorisé avant cette clé n'en porte pas.** La garde exige deux valeurs présentes et égales ; à
+défaut, l'alerte tient, le temps d'un passage. Un garde-fou se trompe du côté du bruit, jamais du côté du
+silence.
+
+**Éprouvé** : deux contrôles ajoutés au garde-fou de la sentinelle, qui peut maintenant servir une date de
+synchronisation dans son faux `/status` ; trois mutants vus rouges chacun sur sa raison — la garde qui se
+tait dès que la date existe (un vrai trompe-l'œil passe), la garde retirée (le cas neuf n'est plus vu), et
+la garde qui ne vérifie pas que les deux valeurs sont présentes. Ce dernier est le plus instructif :
+comparer deux valeurs absentes revient à les déclarer égales, ce qui aurait rendu la règle muette sur tout
+état d'avant — **quatre détections tombent d'un coup**, dont le trompe-l'œil historique et un index figé
+derrière le mouvement d'une source voisine.
+
 ### Un refus de l'amont nomme la source qu'il concerne, et le journal de la synchronisation reprend son ordre — 24 novembre 2026
 
 La construction de la base de conventionnalité télécharge six sources. Ses messages de réussite portent le
