@@ -94,12 +94,19 @@ lecture du code — il ferme l'accès à l'**état**.
    constat a été déposé — le faire ici sans savoir ce que ses minuteries
    attendent casserait les synchronisations.
 
-   ⚠️ **Et un répertoire d'état vit DANS l'arbre servi** :
-   `demo/selfdataguard/storage`, `drwxrwxr-x www-data www-data`. Sous
-   `php-dataguard`, le site n'y écrira plus. Deux issues — lui donner ce
-   propriétaire, ou le déplacer sous `/var/lib/selfdataguard/`, qui est plus
-   propre. **Le choix dépend de ce que l'application y écrit : il appartient à la
-   conv Recover**, et il doit être tranché avant cette étape.
+   ✅ **Et un répertoire d'état vit DANS l'arbre servi — il ne change PAS de
+   propriétaire.** `demo/selfdataguard/storage` reste à `www-data`, donc
+   inaccessible en écriture à ce groupe. Le choix appartenait à la conv Recover,
+   qui l'a tranché le 24/11/2026 : mesuré sur l'instance à 17:45, il ne contient
+   que `.gitkeep` (`root`, 0 octet), et l'application n'y écrit que par les
+   replis de ses essais locaux (`run.sh`). Sur l'instance, les chemins d'état
+   lui sont donnés par `fastcgi_param` et vivent tous sous
+   `/var/lib/selfdataguard/`.
+
+   🔑 **C'est l'absence de droit qui protège ici.** Si un `fastcgi_param`
+   venait à manquer, la démo doit échouer en le nommant — pas se replier en
+   écrivant un secret dans l'arbre servi. Lui donner `php-dataguard` rendrait ce
+   repli possible, donc silencieux.
 
 4. **Faire suivre les deux minuteries de purge**, sans quoi elles perdent l'accès
    à ce qu'elles purgent :
