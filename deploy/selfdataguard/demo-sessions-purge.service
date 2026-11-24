@@ -6,7 +6,17 @@ ConditionPathIsDirectory=/var/lib/selfdataguard/sessions
 
 [Service]
 Type=oneshot
-User=www-data
+# ⚠️ **Cette identité suit celle du groupe d'ouvriers de SelfDataGuard**
+# (`deploy/selfdataguard/php-fpm-dataguard.conf`), et les deux ne se changent QUE
+# ensemble. Depuis le découpage du 24/11/2026, `/var/lib/selfdataguard/`
+# appartient à `php-dataguard` et n'est plus traversable par `www-data` : sous
+# l'ancienne identité, le `find` ci-dessous ne trouverait plus rien et
+# n'effacerait donc plus rien. ⚠️ **Et cet échec serait MUET** : `find` sur un
+# répertoire interdit écrit sur stderr mais rend un code non nul que
+# `Type=oneshot` consigne sans alerter — le minuteur tournerait toutes les cinq
+# minutes en ne purgeant rien, et les sessions de démonstration
+# s'accumuleraient. C'est à vérifier après la pose, pas à supposer.
+User=php-dataguard
 # 30 minutes = DEMO_TTL_SECONDES de demo/selfdataguard/api/_bootstrap.php, qui purge
 # aussi à chaque requête ; le banc de la démo exige que les deux valeurs concordent.
 # Tout ce que contient sessions/ est éphémère : les bases et les quotas par adresse.

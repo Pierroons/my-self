@@ -43,7 +43,13 @@ ConditionPathExists=/opt/selfrecover/tools/purger.php
 
 [Service]
 Type=oneshot
-User=www-data
+# ⚠️ **Cette identité suit celle du groupe d'ouvriers de bi-self**
+# (`deploy/bi-self/php-fpm-biself.conf`), et les deux ne se changent QUE
+# ensemble. Depuis le découpage du 24/11/2026, `/var/lib/selfrecover/`
+# appartient à `php-biself` et n'est plus lisible par `www-data` : une purge
+# restée sous l'ancienne identité échouerait à ouvrir la base, et son échec
+# serait silencieux — `Type=oneshot` sous minuteur ne réveille personne.
+User=php-biself
 # 🔑 Aucun sel de service ici, et c'est voulu : les deux purges délèguent au
 # stockage, qui n'a besoin que d'une connexion. Passer par `Escalade`
 # obligerait ce cron à porter un secret dont il n'a aucun usage.
