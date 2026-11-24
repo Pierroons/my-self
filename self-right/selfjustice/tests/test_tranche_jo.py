@@ -15,7 +15,9 @@ local qui répond comme le défi d'AWS WAF.
     python3 tests/test_tranche_jo.py
 """
 
+import contextlib
 import http.server
+import io
 import sys
 import threading
 import time
@@ -81,6 +83,16 @@ class Defi(http.server.BaseHTTPRequestHandler):
         pass
 
 
+class Refus(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(403)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, *a):
+        pass
+
+
 def main():
     print("▸ Un traité, ses articles, et rien d'autre")
     tue = articles(TUE, "TUE")
@@ -110,6 +122,48 @@ def main():
     verdict(rendu == b"", "le défi rend un contenu vide")
     verdict(Defi.appels == 1 and duree < 2,
             f"une seule requête, sans attente ({Defi.appels} requête(s), {duree:.1f} s)")
+
+    print("\n▸ Un refus de l'amont nomme la source qu'il concerne")
+    refus = http.server.HTTPServer(("127.0.0.1", 0), Refus)
+    threading.Thread(target=refus.serve_forever, daemon=True).start()
+    adresse = f"http://127.0.0.1:{refus.server_port}/"
+    dit = io.StringIO()
+    with contextlib.redirect_stderr(dit):
+        rendu = b.fetch_url(adresse, max_retries=3, source="CEDH")
+    refuse = dit.getvalue()
+    verdict(rendu == b"", "le refus rend un contenu vide")
+    verdict("[CEDH]" in refuse, f"le refus nomme sa source ({refuse.strip()!r})")
+
+    anonyme = io.StringIO()
+    with contextlib.redirect_stderr(anonyme):
+        b.fetch_url(adresse, max_retries=3)
+    refus.shutdown()
+    verdict("[" not in anonyme.getvalue(),
+            f"sans source nommée, aucun crochet vide ({anonyme.getvalue().strip()!r})")
+
+    # Le compteur de Defi sert au verdict ci-dessus ; il est relu ici.
+    Defi.appels = 0
+    defi = http.server.HTTPServer(("127.0.0.1", 0), Defi)
+    threading.Thread(target=defi.serve_forever, daemon=True).start()
+    nomme = io.StringIO()
+    with contextlib.redirect_stderr(nomme):
+        b.fetch_url(f"http://127.0.0.1:{defi.server_port}/", max_retries=3, source="CHARTE_UE")
+    defi.shutdown()
+    verdict("[CHARTE_UE]" in nomme.getvalue(),
+            f"le défi anti-robot nomme la sienne aussi ({nomme.getvalue().strip()!r})")
+
+    titre = io.StringIO()
+    with contextlib.redirect_stderr(titre):
+        b.tranche_jo(JO.encode(), r"CHARTE DES DROITS FONDAMENTAUX", r"AVIS AU LECTEUR",
+                     source="CHARTE_UE")
+    verdict("[CHARTE_UE]" in titre.getvalue(),
+            f"un titre introuvable au Journal officiel nomme sa source ({titre.getvalue().strip()!r})")
+
+    vide = io.StringIO()
+    with contextlib.redirect_stderr(vide):
+        b.parse_articles(b"", "RGPD")
+    verdict("[RGPD]" in vide.getvalue(),
+            f"une erreur de parsing nomme la sienne ({vide.getvalue().strip()!r})")
 
     print("\n▸ CELLAR reste en HTTPS d'un bout à l'autre")
     verdict(b.CELLAR.startswith("https://"), "CELLAR interrogé en HTTPS")

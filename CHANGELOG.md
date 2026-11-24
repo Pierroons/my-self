@@ -56,6 +56,65 @@ aucun de ces utilisateurs n'entre dans le groupe `www-data` — 74 répertoires 
 inscriptibles par lui, et un membre y déposerait un fichier PHP que tous les groupes exécuteraient.
 Le réflexe qui « donne les droits » défait exactement ce que le découpage construit.
 
+### Une date de contenu révisée à la main ne s'accuse plus d'une fausse synchronisation — 24 novembre 2026
+
+Le contrôle de fraîcheur porte une règle dite du trompe-l'œil : une date qui avance sur une base dont le
+volume ne bouge pas signale du mouvement affiché sans travail derrière. Elle ne regardait que la date du
+contenu. Or cette date peut aussi avancer parce qu'on **corrige** un marqueur qui vieillissait la base, sans
+qu'aucune synchronisation ait tourné — et la règle criait alors « synchronisation en trompe-l'œil » là où il
+n'y avait aucune synchronisation à accuser.
+
+La règle exige désormais que la date de synchronisation ait bougé elle aussi. Quand elle est figée, le
+mouvement du marqueur se dit au rapport — « date du contenu révisée hors passage » — sans déclencher
+d'alerte. Un vrai trompe-l'œil fait toujours avancer cette date, puisque c'est le passage lui-même qui
+l'écrit : la garde ne masque donc rien.
+
+⚠️ **Un état mémorisé avant cette clé n'en porte pas.** La garde exige deux valeurs présentes et égales ; à
+défaut, l'alerte tient, le temps d'un passage. Un garde-fou se trompe du côté du bruit, jamais du côté du
+silence.
+
+**Éprouvé** : deux contrôles ajoutés au garde-fou de la sentinelle, qui peut maintenant servir une date de
+synchronisation dans son faux `/status` ; trois mutants vus rouges chacun sur sa raison — la garde qui se
+tait dès que la date existe (un vrai trompe-l'œil passe), la garde retirée (le cas neuf n'est plus vu), et
+la garde qui ne vérifie pas que les deux valeurs sont présentes. Ce dernier est le plus instructif :
+comparer deux valeurs absentes revient à les déclarer égales, ce qui aurait rendu la règle muette sur tout
+état d'avant — **quatre détections tombent d'un coup**, dont le trompe-l'œil historique et un index figé
+derrière le mouvement d'une source voisine.
+
+### Un refus de l'amont nomme la source qu'il concerne, et le journal de la synchronisation reprend son ordre — 24 novembre 2026
+
+La construction de la base de conventionnalité télécharge six sources. Ses messages de réussite portent le
+nom de la source — `[CEDH]`, `[TUE]`, `[RGPD]`… —, ses messages d'échec n'en portaient aucun : ils venaient
+d'une table de codes HTTP commune à toutes. Un « HTTP 403 — accès refusé par le serveur » au journal ne
+disait donc pas **quelle** source avait été refusée.
+
+Les dix messages de diagnostic du chemin de téléchargement nomment désormais leur source : les six de
+`fetch_url`,
+la redirection refusée de `telecharger`, l'erreur de parsing de `parse_articles`, et les deux du
+découpage du Journal officiel — `tranche_jo` ne recevait pas la source, elle la reçoit. Le cas où elle est inconnue reste
+sans préfixe plutôt que d'écrire des crochets vides.
+
+**Le journal recevait aussi ses lignes dans le désordre, et c'est la moitié du défaut.** Le script est lancé
+avec ses deux flux vers un même fichier (`>> "$LOG_FILE" 2>&1`). La sortie standard vers un fichier est
+bufferisée par blocs, la sortie d'erreur non : le refus arrivait donc **avant** la ligne qui nomme la source
+en cours, et avant les lignes que le script appelant écrit lui-même. Mesuré sur le motif réel : un refus en
+première ligne pour une source téléchargée en cinquième. La sortie standard est désormais rendue
+ligne à ligne, et les deux flux s'entrelacent dans l'ordre où ils sont écrits.
+
+🔑 **Un message d'erreur qui ne nomme pas son objet coûte deux fois** : il n'aide pas sur le moment, et il
+empêche l'enquête plus tard. Celui-ci a rendu inexploitable le journal du 15 novembre, où l'on cherchait à
+savoir si le repli de la Convention européenne des droits de l'homme sur une copie locale venait d'un refus
+de sa source — question à laquelle le journal ne pouvait pas répondre, alors qu'il contenait la réponse.
+
+⚠️ **Ce que ce changement ne fait pas** : il ne rend pas la source joignable. Le domaine du Conseil de
+l'Europe est derrière un défi anti-robot depuis le 20 août 2026, et la Convention est servie depuis une
+copie déposée à la main — ce que l'état des bases annonce désormais, avec sa date de dépôt.
+
+**Éprouvé** : six contrôles ajoutés au garde-fou du découpage du Journal officiel, avec un serveur local qui
+refuse ; cinq mutants vus rouges chacun sur sa raison — le préfixe neutralisé dans chacune des trois
+fonctions, le préfixe appliqué sans son cas sans source (crochets vides), et la garde qui protège un banc
+remplaçant la sortie standard, sans laquelle le banc de la mise à jour LEGI tombe.
+
 ### Une alerte qui n'a pas pu être remise le dit — ce que la correction de la veille laissait passer — 23 novembre 2026
 
 Les quatre scripts de mise à jour terminaient leur notification par `curl -fsS … > /dev/null 2>&1 || true` :
