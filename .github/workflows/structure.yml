@@ -1663,7 +1663,7 @@ jobs:
             "$W/conformite.php" '❌ escrow-compare-and-swap'
           canari $A "            \$this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = :uid')" \
             "            \$this->pdo->prepare('SELECT 1 WHERE :uid IS NOT NULL')" "$W/conformite.php" '❌ rotate-escrow'
-          canari $A "            if (\$held !== \$record->revision) {" '            if (false) {' "$W/conformite.php" '❌ replace-archive-escrow'
+          canari $A "            if (\$held === null || \$held !== \$record->revision) {" '            if (false) {' "$W/conformite.php" '❌ replace-archive-escrow'
           canari $A "\$stmt = \$this->pdo->prepare('SELECT * FROM selfdataguard_escrow WHERE user_id = :uid');" \
             "\$stmt = \$this->pdo->prepare('SELECT wrap_user, wrap_admin, created_at, updated_at FROM selfdataguard_escrow WHERE user_id = :uid');" \
             "$W/conformite.php" 'the archive did not keep the revision of its escrow'
@@ -1812,7 +1812,7 @@ jobs:
                           'reason' => get_class(\$e), 'operator' => \$this->operator]);" \
             "" $K 'the pass was refused, but sealed something or logged nothing'
           canari $SDG "            throw new EscrowKeeperException('keeper-unreachable', 'The keeper gave no attestation', \$e);" \
-            "            return ['releases' => [], 'pending' => [], 'retired' => false];" $K 'a silent keeper read as no read'
+            "            return ['releases' => [], 'pending' => [], 'consents' => [], 'retired' => false];" $K 'a silent keeper read as no read'
           canari $SDG "        } catch (InvalidArgumentException \$e) {
                       throw new EscrowKeeperException('keeper-mismatch', \$e->getMessage(), \$e);" "        } catch (InvalidArgumentException \$e) {
                       throw \$e;" $K 'escrowReads() threw on a keeper the database did not record'
@@ -2048,7 +2048,7 @@ jobs:
                       throw new UnreadableEscrowException(" $K 'a row with wrap_admin not base64: escrowReads() threw before asking the keeper'
           canari $D/src/Storage/SqliteAdapter.php "                || (\$row['revision_type'] ?? 'integer') !== 'integer'
           " "" $K 'a row with a revision stored as a blob hides what the keeper holds announced'
-          canari $D/src/Storage/SqliteAdapter.php "FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]])" "FILTER_VALIDATE_INT)" \
+          canari $D/src/Storage/SqliteAdapter.php "filter_var(\$revision, FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]])" "filter_var(\$revision, FILTER_VALIDATE_INT)" \
             $K 'a row with a revision the next write cannot bump hides what the keeper holds announced'
           canari $SDG "            \$read = \$this->snapshot(\$session->userId, \$names) ?? throw \$this->mismatch(\$session->userId);" \
             "            throw \$this->mismatch(\$session->userId);" \
@@ -2083,7 +2083,7 @@ jobs:
           canari $SDG "        if (\$current !== null && in_array(\$current, \$prints, true)) {" "        if (false) {" \
             $K "a deposit retired the escrow at a keeper that became the database's keeper meanwhile"
           canari $SDG "        if (\$keeper !== null && hash_equals(\$keeper, \$print)) {" "        if (false) {" \
-            $K "forgetFormerKeeper() forgot the database's keeper"
+            $K "forgetFormerKeeper() refused the database's keeper, but changed a record"
           canari $D/src/Escrow/EscrowRecord.php "        } catch (Exception|TypeError|ValueError \$e) {" "        } catch (Exception \$e) {" \
             $K 'EscrowRecord::parse(): a TypeError in the build comes out bare'
           canari $D/src/Escrow/EscrowRecord.php "        } catch (UnreadableEscrowException \$e) {
@@ -2104,7 +2104,7 @@ jobs:
             $K 'a deposit whose record of former keepers keeps changing does not stop'
           canari $SDG "            if (\$attempt > self::DEPOSIT_ATTEMPTS) {" "            if (false) {" \
             $K 'a first deposit whose escrow keeps appearing does not stop'
-          canari $D/src/Storage/SqliteAdapter.php "['max_range' => PHP_INT_MAX - 1]" "['max_range' => PHP_INT_MAX - 2]" \
+          canari $D/src/Storage/SqliteAdapter.php "filter_var(\$revision, FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 1]])" "filter_var(\$revision, FILTER_VALIDATE_INT, ['options' => ['max_range' => PHP_INT_MAX - 2]])" \
             $K 'a revision one below the maximum reads as a row rewritten'
 
   selfdataguard-6:
@@ -2359,8 +2359,8 @@ jobs:
           canari $FA '            $this->vault->deriveInVain($userId, $lock, $secret);' '' \
             $T '❌ loginWithPassword, unknown account against a wrong password'
 
-      # Sous gel, une serrure ne se re-scelle que depuis une ouverture par le mot mémorisé
-      # (D2, décision 3) : le mot de passe et la passphrase d'un tiers revenu n'ouvrent pas
+      # Sous gel, une serrure ne se re-scelle que depuis une ouverture par le mot mémorisé :
+      # le mot de passe et la passphrase d'un tiers revenu n'ouvrent pas
       # le geste, et le refus d'un coffre non gelé vient après l'ouverture.
       - name: Canaris — sous gel, le re-scellement par le mot rougit quand on retire une garde
         run: |
@@ -2389,7 +2389,7 @@ jobs:
           canari $FA "$OUVRE" "        if (\$this->storage->frozenState(\$userId) === null) { throw new LogicException('not frozen'); } $OUVRE" \
             $FC '❌ the gesture tells whoever lacks the memorized secret whether the vault is frozen'
 
-      # L'objection sans session (P6, P7) : une seule porte, freinée, qui rend la clé
+      # L'objection sans session : une seule porte, freinée, qui rend la clé
       # d'objection d'un coffre ou d'une archive depuis un secret, sous le profil que le
       # sceau couvre, sans rien écrire ; la clé ne fait rien d'autre, et les types
       # d'UnlockedArchive et d'ObjectionKey ne se bâtissent que dans la façade. Puis
@@ -2441,7 +2441,7 @@ jobs:
           canari $FA "                ? \$row === 'not-keeper-sealed' || \$row === 'not-pinned'" '                ? false' \
             $K '❌ the escrow of an archive sealed by the pass was not reported as such'
 
-      # Lot 8a de SelfDataGuard 0.10.0 : une lecture de la cérémonie nomme ses champs,
+      # SelfDataGuard 0.10.0 : une lecture de la cérémonie nomme ses champs,
       # l'arbitre est interrogé sur eux, et la comparaison répond champ par champ sans
       # rendre de valeur — l'outil ne qualifie plus personne d'imposteur.
       - name: Canaris — la cérémonie nomme ses champs et compare sans rendre de valeur
@@ -2497,7 +2497,7 @@ jobs:
           canari $B '$normalisation = Normalization::tryFrom($nom) ?? (function () use ($nom): never {' '$normalisation = Normalization::tryFrom($nom) ?? Normalization::Exact ?? (function () use ($nom): never {' \
             $C '❌ an unknown normalization went on'
 
-      # Lot 8b de SelfDataGuard 0.10.0 : la clé d'administration ne s'inscrit que par
+      # SelfDataGuard 0.10.0 : la clé d'administration ne s'inscrit que par
       # l'acte de l'exploitant qui la prouve ; un dépôt sans elle est refusé, sous une
       # exception nommée ; chaque séquestre porte l'étiquette de sa clé, que la cérémonie
       # compare avant tout gardien.
@@ -2603,7 +2603,7 @@ jobs:
           canari $D/src/Storage/SqliteAdapter.php '                adminKey:  $adminKey,' '                adminKey:  null,' \
             $D/tests/sanity_conformance.php '❌ escrow-admin-label'
 
-      # Lot 8c de SelfDataGuard 0.10.0 : la clé d'administration se change par l'acte de
+      # SelfDataGuard 0.10.0 : la clé d'administration se change par l'acte de
       # l'exploitant, la passe re-scelle ce que l'ancienne tient seule et rend ce qu'elle
       # laisse ; et deux actes sur les gardiens en même temps se voient l'un l'autre.
       - name: Canaris — la clé d'administration se change, et la passe dit ce qu'elle laisse

@@ -1175,7 +1175,7 @@ if ($args === null || !in_array('email', $args, true)) {
 
 section('reinstateArchive() — the holder comes back, the requester\'s vault waits as an archive');
 
-$holderSession = $dg->register('user-back', 'back-password-0001', hash('sha256', 'back-memorized'), 'pivert lagune ardoise tambour');
+$holderSession = $dg->register('user-back', 'back-password-0001', hash('sha256', 'back-memorized'), 'circulaire jalmince sifflante angle');
 $dg->setFields($holderSession, ['email' => 'back@example.org', 'note' => 'du titulaire'], indexed: ['email']);
 $taken = $dg->reEnroll($holderSession->generation(), 'back-password-0002');
 $dg->setFields($taken['unlocked'], ['note' => 'du demandeur']);
@@ -1258,7 +1258,7 @@ $frozenAt  = $dg->frozenState('user-back');
 $untouched = static fn (): array => [$storage->loadFields('user-back'), $storage->loadEscrowFields('user-back')];
 $fieldsBefore = $untouched();
 $revBefore    = $storage->loadVault('user-back')->revision;
-foreach (['the password' => 'back-password-0001', 'the passphrase' => 'pivert lagune ardoise tambour'] as $what => $stolen) {
+foreach (['the password' => 'back-password-0001', 'the passphrase' => 'circulaire jalmince sifflante angle'] as $what => $stolen) {
     try {
         $dg->setLockWhileFrozen('user-back', $stolen, Lock::Memorized, hash('sha256', 'stolen-memorized'));
         ko("{$what}, given as the memorized secret, re-sealed a lock under the freeze");
@@ -1303,8 +1303,8 @@ try {
         ? ok('the fingerprint rule holds under the freeze: the word itself is refused, nothing written')
         : ko('the word itself was refused, but the vault changed');
 }
-$dg->setLockWhileFrozen('user-back', $backMot, Lock::Passphrase, 'merle falaise couvreur ardoise');
-(new UserVault())->unlockWithPassphrase($storage->loadVault('user-back'), 'merle falaise couvreur ardoise')->userId === 'user-back'
+$dg->setLockWhileFrozen('user-back', $backMot, Lock::Passphrase, 'phono jappement navrante coyote');
+(new UserVault())->unlockWithPassphrase($storage->loadVault('user-back'), 'phono jappement navrante coyote')->userId === 'user-back'
     ? ok('the passphrase is re-sealed the same way')
     : ko('the passphrase was not re-sealed under the freeze');
 try {

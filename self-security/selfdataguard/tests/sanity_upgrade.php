@@ -146,7 +146,7 @@ is_a((string) thrown(fn () => new SelfDataGuard($fresh, $key, otherPepper($work)
     ? ok('a façade given another pepper is refused')
     : ko('a façade with another pepper was built on the database');
 
-section('The memorized secret is sealed as its fingerprint only (P2)');
+section('The memorized secret is sealed as its fingerprint only');
 
 thrown(fn () => $dg->register('bob', PWD, 'le mot lui-même', PHRASE)) === InvalidArgumentException::class
     ? ok('the word itself is refused at register()')

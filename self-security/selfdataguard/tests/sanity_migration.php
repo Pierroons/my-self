@@ -414,6 +414,7 @@ $wrongKey = random_bytes(32);
 $pinPdo->prepare('INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at) VALUES (?, ?, ?, ?, ?)')
     ->execute(['user-pin', 'email', 'c-email', BlindIndex::compute('pin@example.org', $rightKey, 'email'), '2026-01-01']);
 $pinStore = new SqliteAdapter($pinPdo);
+benchPepperRecorded($pinStore);
 try {
     new SelfDataGuard($pinStore, $wrongKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
     ko('a façade recorded the first key it brought to a database written before 0.7.0');
@@ -455,7 +456,6 @@ try {
         : ko('a missing seal is refused as if the key were wrong', $e->getMessage());
 }
 SelfDataGuard::adoptBlindKey($pinStore, $rightKey, [], 'user-pin', 'email', 'pin@example.org');
-benchPepperRecorded($pinStore);
 $dgPin = new SelfDataGuard($pinStore, $rightKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::AcceptBare, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
 $dgPin->sealProfile('user-pin') && $dgPin->findUserByField('email', 'pin@example.org') === 'user-pin'
     ? ok('the key the lookup proves is adopted: the vault is sealed under it, and the lookup answers')

@@ -408,19 +408,19 @@ $slow->dueNow(bin2hex($carolEscrowId), 'LIT-10');
     ? ok('once its own delay is over, the box deposited during the announcement is read as it stands')
     : ko('the box deposited during the announcement did not read once due');
 try {
-    $slowCeremony->readEscrow('carol', 'LIT-M7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+    $slowCeremony->readEscrow('carol', 'LIT-BOX', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 } catch (EscrowAnnouncedException) {
 }
-$slow->dueNow(bin2hex($carolEscrowId), 'LIT-M7');
-$slowCeremony->readEscrow('carol', 'LIT-M7', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+$slow->dueNow(bin2hex($carolEscrowId), 'LIT-BOX');
+$slowCeremony->readEscrow('carol', 'LIT-BOX', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
 try {
-    $slow->release($carolEscrowId, $boxBefore, 'LIT-M7', 901, 'h');
+    $slow->release($carolEscrowId, $boxBefore, 'LIT-BOX', 901, 'h');
     ko('a box kept from a copy was handed back under a case already due for another box, with no announcement of its own');
 } catch (RuntimeException) {
-    $copyDue  = $slow->announce($carolEscrowId, $boxBefore, 'carol', 'LIT-M7', 902, 'h');
+    $copyDue  = $slow->announce($carolEscrowId, $boxBefore, 'carol', 'LIT-BOX', 902, 'h');
     $view     = $slowDg->escrowReads($carol);
     $copy     = KeeperSeal::boxPrint($boxBefore);
-    $copyHeld = array_filter($view['pending'], static fn (array $p): bool => $p['case'] === 'LIT-M7' && $p['box'] === $copy);
+    $copyHeld = array_filter($view['pending'], static fn (array $p): bool => $p['case'] === 'LIT-BOX' && $p['box'] === $copy);
     $copyDue > time() && count($copyHeld) === 1 && $view['box'] !== $copy
         ? ok('a box kept from a copy, under a case already due for another box, waits a delay of its own, and the holder sees it pending as another box than the row\'s')
         : ko('the box of a copy was not announced on its own, or not shown as another box', json_encode([$copyDue, $view['box'], $view['pending']]));
@@ -1748,8 +1748,10 @@ SelfDataGuard::forgetFormerKeeper($zDb, KeeperSeal::fingerprint($kZa->publicKeys
 try {
     SelfDataGuard::changeKeeper($zDb, $kZb, $kZa);
     ko('changeKeeper() took back a keeper the operator forgot — escrows were retired from it');
-} catch (InvalidArgumentException) {
-    ok('a forgotten keeper is never taken back: changeKeeper() refuses it as the new keeper');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'records of former or forgotten keepers list')
+        ? ok('a forgotten keeper is never taken back: changeKeeper() refuses it as the new keeper, before it writes anything')
+        : ko('changeKeeper() took back a keeper the operator forgot, and gave it up only on reading the record again', $e->getMessage());
 }
 $pdoY2->prepare("UPDATE selfdataguard_escrow SET wrap_user = ? WHERE user_id = 'zoe'")->execute([base64_encode(random_bytes(150))]);
 $reads = $dgY2->escrowReads($zoe);
