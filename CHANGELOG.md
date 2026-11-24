@@ -10,6 +10,40 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Un refus de l'amont nomme la source qu'il concerne, et le journal de la synchronisation reprend son ordre — 24 novembre 2026
+
+La construction de la base de conventionnalité télécharge six sources. Ses messages de réussite portent le
+nom de la source — `[CEDH]`, `[TUE]`, `[RGPD]`… —, ses messages d'échec n'en portaient aucun : ils venaient
+d'une table de codes HTTP commune à toutes. Un « HTTP 403 — accès refusé par le serveur » au journal ne
+disait donc pas **quelle** source avait été refusée.
+
+Les dix messages de diagnostic du chemin de téléchargement nomment désormais leur source : les six de
+`fetch_url`,
+la redirection refusée de `telecharger`, l'erreur de parsing de `parse_articles`, et les deux du
+découpage du Journal officiel — `tranche_jo` ne recevait pas la source, elle la reçoit. Le cas où elle est inconnue reste
+sans préfixe plutôt que d'écrire des crochets vides.
+
+**Le journal recevait aussi ses lignes dans le désordre, et c'est la moitié du défaut.** Le script est lancé
+avec ses deux flux vers un même fichier (`>> "$LOG_FILE" 2>&1`). La sortie standard vers un fichier est
+bufferisée par blocs, la sortie d'erreur non : le refus arrivait donc **avant** la ligne qui nomme la source
+en cours, et avant les lignes que le script appelant écrit lui-même. Mesuré sur le motif réel : un refus en
+première ligne pour une source téléchargée en cinquième. La sortie standard est désormais rendue
+ligne à ligne, et les deux flux s'entrelacent dans l'ordre où ils sont écrits.
+
+🔑 **Un message d'erreur qui ne nomme pas son objet coûte deux fois** : il n'aide pas sur le moment, et il
+empêche l'enquête plus tard. Celui-ci a rendu inexploitable le journal du 15 novembre, où l'on cherchait à
+savoir si le repli de la Convention européenne des droits de l'homme sur une copie locale venait d'un refus
+de sa source — question à laquelle le journal ne pouvait pas répondre, alors qu'il contenait la réponse.
+
+⚠️ **Ce que ce changement ne fait pas** : il ne rend pas la source joignable. Le domaine du Conseil de
+l'Europe est derrière un défi anti-robot depuis le 20 août 2026, et la Convention est servie depuis une
+copie déposée à la main — ce que l'état des bases annonce désormais, avec sa date de dépôt.
+
+**Éprouvé** : six contrôles ajoutés au garde-fou du découpage du Journal officiel, avec un serveur local qui
+refuse ; cinq mutants vus rouges chacun sur sa raison — le préfixe neutralisé dans chacune des trois
+fonctions, le préfixe appliqué sans son cas sans source (crochets vides), et la garde qui protège un banc
+remplaçant la sortie standard, sans laquelle le banc de la mise à jour LEGI tombe.
+
 ### Une alerte qui n'a pas pu être remise le dit — ce que la correction de la veille laissait passer — 23 novembre 2026
 
 Les quatre scripts de mise à jour terminaient leur notification par `curl -fsS … > /dev/null 2>&1 || true` :
