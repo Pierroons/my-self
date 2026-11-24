@@ -3,6 +3,123 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.10.0] — 2026-11-24
+
+A minor release. The password and memorized-word locks go under a pepper kept outside the database, and the façade
+requires a throttle. The holder objects to a read without a session, and pins the escrow of an archive. The ceremony
+names the fields it reads, and compares without disclosing. The administrator's key is recorded by the operator,
+labelled on each escrow, and changed through a pass. A keeper's announcement holds its box, and the keeper records the
+holder's consent. The audit log rotates. The façade's constructor, `StorageInterface`, `EscrowArbiter`, `EscrowKeeper`
+and `Verdict` change: an integration upgrades as *Upgrading from 0.9.x* says.
+
+### Changed — what an integration must follow
+
+- **The constructor requires a pepper, its forms and a throttle**, after `$blindKey`:
+  `new SelfDataGuard($storage, $blindKey, $pepper, $forms, $throttle, …)`. A database that holds vaults and never
+  recorded its pepper is refused, naming `bin/pepper.php adopt`; a pepper other than the one recorded is refused, naming
+  both.
+- **`StorageInterface`** gains `accountIds($after, $limit)`, paged in binary order; `replaceArchiveVault()`, the
+  envelopes of an archive's vault; `updateFrozenLocks()`, the only write a frozen vault takes, checked in the same
+  statement as its salt, its revision and its freeze; and the escrow row stores the label of its admin key.
+  `EscrowRecord` takes its revision and that label as required arguments. The live vault's revision, and an archive
+  package's, are read as the escrow row's: rewritten as text, a blob, a real or a boolean, they are refused.
+- **The memorized secret is sealed only as the 64 lower-case hex digest** SelfRecover derives: `register()`,
+  `setLock()`, `recover()` and `reEnroll()` refuse anything else. Opening refuses nothing.
+- **No deposit records the admin key any more.** A database without one refuses every deposit until the operator
+  records it (`SelfDataGuard::adoptEscrowAdmin()`, `bin/escrow-ceremony.php adopt-admin`), on proof of its
+  passphrase. The refusal is `EscrowAdminException`, which is not an `InvalidArgumentException`.
+- **The ceremony names its fields.** `readEscrow()` and `readArchiveEscrow()` require a non-empty list — an empty one
+  no longer means every field —, `EscrowArbiter::verdict()` receives it, and `unlock` takes at least one field.
+- **`EscrowKeeper` gains `consent()`, and `Verdict` gains `OpenWithConsent`**: a keeper of your own implements it, and
+  an exhaustive `match` on `Verdict` handles the new case.
+- **A keeper's announcement holds the case and the box** (`KeeperSeal::boxPrint()`): another box of the same escrow is
+  another announcement, with its own delay. The conformance case `announcement-holds-the-case` is replaced by its
+  opposite, `announcement-holds-the-box`, and `attestation-names-the-box` is added.
+- **`HeadWitness` writes three duties** its signatures do not carry: take a head only from whoever holds the
+  instance's key, never reset its store, and show a head that goes back.
+- **`AuditLog` reports** give `total`, and `brokenAt` is a `seq` of the whole log.
+- `UnlockedArchive`'s constructor is closed: only the façade builds one.
+
+### Added
+
+- **The pepper** (`src/Pepper/`): `PepperSource`, `LocalPepperFile`, `RemotePepperSource` (it returns the
+  computation for a use, never the pepper; `PepperUnavailableException`, no fallback), and its form, with vectors a
+  second implementation recomputes. `PepperForms::AcceptBare` and `LayeredOnly`; three forms of a lock — bare, layer,
+  native —; `lockState()`. `bin/pepper.php new|adopt|status|unlayer`, and `SelfDataGuard::adoptPepper()`,
+  `pepperStatus()` and `unlayPepper()`, the operator's passes, with no secret of the users in hand.
+- **The throttle** (`src/Throttle/`): `Throttle::admit()` before anything is read, `settle()` once per admitted
+  attempt, at seven doors; `NoThrottle`, which says by its name that there is none; `ThrottledException`. An unknown
+  account pays the derivation a wrong secret pays.
+- `setLockWhileFrozen()`: under a freeze, one lock re-sealed from the current memorized word.
+- `openForObjection()`: the objection key alone, from a secret of the vault or of an archive, with no session.
+  `pinArchiveEscrow()`: under a keeper, the holder seals an archive's escrow to it under the archive's own objection
+  key.
+- `EscrowCeremony::compareEscrow()` and `compareArchiveEscrow()`, `compare` and `compare-archive`: field by field,
+  « concorde », « ne concorde pas sous la normalisation *n* » or « indisponible », each comparison a read.
+- `SelfDataGuard::changeEscrowAdmin()`, `EscrowCeremony::resealToAdmin()`, `change-admin` and `reseal-admin`, which
+  exits 5 when it leaves an escrow under the old key. The ceremony compares an escrow's label before the passphrase
+  and before the keeper: a wrong key no longer spends a release.
+- `consentToEscrowRead()`, `KeeperSeal::consentMessage()` and `verifyConsent()`; the attestation, still `v:1`, gains
+  `consents` and names the box of each release and announcement.
+- The rotation of `AuditLog` (`rotateAfter`, `mode`; `DATAGUARD_AUDIT_ROTATE_AFTER`, `DATAGUARD_AUDIT_MODE`) and
+  `verifyAll()`.
+- `WitnessConformance` and `bin/witness-conformance.php`.
+
+### Fixed
+
+- `changeKeeper()` reads the forgotten keepers again once the new keeper is written, and undoes its writes;
+  `forgetFormerKeeper()` reads the keeper again and refuses. The race in which a keeper ended both the database's
+  keeper and forgotten now fails loudly; when only the forgetting sees the change, it still leaves that keeper on the
+  record of forgotten keepers.
+- The demo sent the memorized word as typed; it sends the digest SelfRecover's `sr-derive.js` computes, and an
+  instance that names its database must name its blind-index key and its pepper.
+
+### Upgrading from 0.9.x
+
+The README says it step by step (*Upgrading a 0.9.x database*): draw the pepper, run `bin/pepper.php adopt` before a
+façade of 0.10.0 serves the database, serve under `AcceptBare`, read `status` until nothing is bare, then serve under
+`LayeredOnly`; `unlayer` takes the database back to 0.9.x before that last step, and 0.9.x opens no lock under the
+pepper until it has run. Then record the admin key (`adopt-admin`) before the first deposit; give every façade a
+`Throttle`; pass a field list to the ceremony and to your arbiter; implement `consent()` in a keeper of your own and the
+three new methods in a storage of your own; play your head witness through `bin/witness-conformance.php`.
+
+### Limits, declared
+
+- A lost pepper closes every vault without a passphrase lock. The passphrase lock is not under the pepper: drawn by
+  SelfRecover, it holds about 77.5 bits. A pepper written by hand is forced from the database alone, at one HMAC per
+  candidate.
+- In remote mode, the pepper's machine receives at each opening a 32-byte SHA-256 of the account's salt and the
+  secret, never the secret: whoever holds that machine while a holder opens, with the database, tries candidates at
+  the cost of a SHA-256. The library ships no remote source.
+- A copy of the database and a secret replaced since open the vault as the copy holds it: no write is needed.
+- The throttle, the objection door and the check of a consent run on the server: they hold against whoever writes the
+  database, not against whoever changes the code it serves. `UserVault::unlock()`, public and stateless, goes around
+  the throttle as it goes around the seal; a throttle keyed on the account alone locks its holder out.
+- Under a freeze, a holder who forgot the memorized word re-seals nothing until `unfreeze()`.
+- The objection door opens outside the seal: a profile rewritten or a seal removed no longer stops the holder from
+  objecting. An envelope rewritten closes its lock, and the vault's salt rewritten closes all three: whoever writes the
+  database can still keep the holder from objecting to an announced read, which goes through once due.
+- The library requires the memorized secret's form, not the length of the word behind it: the floor of the word is
+  the host's.
+- Whoever holds a secret of an archive, an old one included, objects with it to each of its reads; an objection reads
+  nothing. A copy of the database taken before an archive's escrow is pinned keeps the box of the operator's pass, and
+  a read announced on it is neither shown nor opposable. A holder who has nothing left pins nothing: the read of the
+  archive's escrow is then held by the delay and the arbiter only.
+- A comparison narrows what an honest operator sees; it does not stop whoever holds the admin key. A short value can be
+  guessed by successive comparisons, each a read. `case-and-spaces` does not fold accents.
+- A change of admin key serves a change of its holder, and repairs no leak; an escrow from before 0.10.0 carries no
+  label, and the ceremony cannot check it before the keeper.
+- Every writer of a rotating log takes the same `rotateAfter`; the directory is not synced after a rename; keep at
+  least the last archive; `chattr +a` stops the rotation, and so the writes.
+- Under `OpenWithConsent`, code changed on the machine that serves skips the check of the consent.
+
+### Tests
+
+1 401 checks across 18 suites (1 067 across 14 in 0.9.1), counted on PHP 8.4 on 24 November 2026: `sanity_pepper`,
+`sanity_upgrade`, `sanity_throttle` and `sanity_witness` are new, and `tests/vecteurs_poivre.py` recomputes the
+pepper's vectors. The demo gains `demo/selfdataguard/tests/sanity_mot.js`. Each new guard is seen red on its own line
+in CI.
+
 ## [v0.9.1] — 2026-11-20
 
 A patch release: the holder's return after a level 3. Three defects, each critical, kept the holder's vault from
@@ -158,7 +275,7 @@ of your own is conformant again once it follows them. The façade gains optional
   0.9.0 lacks, and none dies on loading; 0.9.0 runs 114 of the 121, 183 of the 189 and 110 of the 114 — a check that
   follows a refusal of 0.9.0 is not reached. The other checks it runs pass.
 
-## [v0.9.0] — 2026-11-02
+## [v0.9.0] — 2026-11-06
 
 An escrow the administrator alone no longer opens. Under a keeper — a second holder the integrator runs off the
 machine that serves — the escrow is sealed twice: the administrator opens the inner box only once the keeper has
@@ -241,7 +358,7 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   refuses. Nothing is written, and no former keeper is asked to retire the escrow; putting back the row that wrote the
   fields — or, for a field rewritten alone, that field — opens them again.
 - **`UnreadableEscrowException`**: what `StorageInterface::loadEscrow()` raises for a row that is there but does not
-  parse — a column rewritten, a revision that the next write cannot bump (`PHP_INT_MAX`) or that is not an integer. It
+  parse — a column rewritten, a revision that the next write cannot bump (the largest integer the column holds, `PHP_INT_MAX` on 64 bits) or that is not an integer. It
   is raised by **`EscrowRecord::parse()`**: the storage builds its record in the closure it hands to `parse()`, from the
   row it has already fetched. Any `Exception`, `TypeError` or `ValueError` the closure raises comes out as
   `UnreadableEscrowException`, whose message names the class of the cause; a key missing from a row spread into a
@@ -252,7 +369,8 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
 - **The storage conformance case `escrow-unreadable-row-named`** makes a row unreadable through a third file given to
   `bin/storage-conformance.php`, one column at a time — `wrap_admin`, `wrap_user`, `created_at`, `updated_at`,
   `revision` —, and requires `UnreadableEscrowException` for each column rewritten; the file may decline only the date
-  columns, `created_at` and `updated_at`, in which a typed storage cannot hold anything but a date. For the revision, it
+  columns, `created_at` and `updated_at`, when their type holds only dates PHP reads; where it admits a value PHP does
+  not read (`'infinity'` in PostgreSQL), the file writes it. For the revision, it
   also requires `replaceEscrow()` and `rotateEscrow()` over the record read before the rewrite to raise
   `StaleEscrowException`: the storage must test that the row is there without parsing it.
 - **The ceremony goes through the keeper**, after the intention, the witness's head and the passphrase checked — the
@@ -367,8 +485,9 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   keeper replaced without `changeKeeper()`: forget only a keeper gone for good.
 - The vault row has its own revision, which the vault's writes compare, without the check the escrow row's revision
   has (`UnreadableEscrowException`): rewritten as text, a blob or a real, that revision makes `setLock()`,
-  `removeLock()` and `recover()` refuse under `StaleVaultException`; at the largest integer, `setLock()` and `recover()`
-  write, then throw `TypeError`, and every write of the vault is refused from then on (`StaleVaultException`). Whoever writes the database can
+  `removeLock()` and `recover()` refuse under `StaleVaultException`; at the largest integer, `setLock()`, `removeLock()`,
+  `recover()` and `repairProfile()` write, then throw `TypeError`, and every write of the vault is refused from then on
+  (`StaleVaultException`). Since 0.10.0 the vault row's revision is read as the escrow row's. Whoever writes the database can
   already make the vault refuse every session (below).
 - A database put back from before a keeper change takes back a keeper the escrows were retired from: the view says
   `retired` and does not call for `sealEscrowToKeeper()` — no re-sealing changes it; the deposits go through and stay
@@ -392,7 +511,8 @@ row that does not parse. The ceremony takes a keeper, and its command a keeper f
   until a second `forgetFormerKeeper()`, which forgets the keeper the race promoted while it still serves: what that
   keeper holds leaves the holder's view, and the ceremony refuses that keeper.
 - The storage conformance trusts the file that makes a row unreadable to rewrite the column it is given: it does not
-  read the database itself, so a file that rewrites another column has the case judge a column it does not name.
+  read the database itself, so a file that rewrites another column has the case judge a column it does not name — save the revision, whose
+  rewrite the `replaceEscrow()` and `rotateEscrow()` clauses check.
 - A row written by a newer version of the library reads as one rewritten (`escrow-replaced`,
   `EscrowEnvelopeMismatchException`); its cause, returned by `getPrevious()`, says to upgrade.
 - `attest()` asks nothing of its caller: whoever holds an escrowId and reaches the keeper learns the cases of its

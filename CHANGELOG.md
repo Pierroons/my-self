@@ -972,6 +972,32 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfDataGuard v0.10.0] — 24 novembre 2026
+
+### SelfDataGuard 0.10.0 — un poivre hors de la base, un frein requis, et le titulaire qui s'oppose sans session — 24 novembre 2026
+
+Version mineure : le constructeur de la façade et le contrat de stockage changent.
+
+- **Les serrures du mot de passe et du mot mémorisé passent sous un poivre**, un secret du serveur rangé hors de la
+  base : une base volée seule ne permet plus d'essayer un mot de passe ni un mot hors ligne. La passphrase n'est pas
+  couverte. Une base 0.9.x monte par l'exploitant, sans secret d'utilisateur (`bin/pepper.php adopt`, `status`), et
+  redescend tant que la montée n'est pas close (`unlayer`).
+- **Le mot mémorisé ne se scelle plus qu'en empreinte de 64 hexadécimaux**, celle que dérive SelfRecover ; la démo
+  n'envoie plus le mot tel quel.
+- **Le frein est requis** aux sept portes où un secret venu de l'extérieur coûte un Argon2id, et un compte inconnu paie
+  la dérivation d'un secret faux.
+- **Le titulaire s'oppose à une lecture du séquestre sans session**, depuis un secret du coffre ou d'une archive, ancien
+  compris, et épingle au gardien le séquestre d'une archive. Il peut aussi **consentir** à une lecture, et le gardien
+  l'atteste.
+- **La cérémonie nomme les champs qu'elle lit**, et compare une valeur sans la rendre. **La clé d'administration
+  s'inscrit par l'exploitant**, s'étiquette sur chaque séquestre et se change par une passe.
+- **L'annonce du gardien tient sa boîte**, et **le journal d'audit tourne** sans perdre sa chaîne.
+
+1 401 contrôles sur 18 suites. Le détail, la montée, les intégrateurs à suivre et les limites déclarées :
+[`self-security/selfdataguard/CHANGELOG.md`](./self-security/selfdataguard/CHANGELOG.md).
+
+---
+
 ## [SelfDataGuard v0.9.1] — 20 novembre 2026
 
 ### SelfDataGuard 0.9.1 — le retour du titulaire tient, et rien ne s'efface pendant un litige — 20 novembre 2026
@@ -1074,7 +1100,7 @@ sans effet sur une fenêtre encore ouverte : corrigé ici par le refus.
 
 ## [SelfDataGuard v0.9.0] — 6 novembre 2026
 
-### SelfDataGuard 0.9.0 — un séquestre que l'administrateur seul n'ouvre plus — 2 novembre 2026
+### SelfDataGuard 0.9.0 — un séquestre que l'administrateur seul n'ouvre plus — 6 novembre 2026
 
 Sous un **gardien** — un second détenteur que l'intégrateur fait tourner hors de la machine qui sert —, le séquestre
 est scellé deux fois : l'administrateur n'ouvre la boîte intérieure qu'une fois le gardien la lui a rendue, après avoir

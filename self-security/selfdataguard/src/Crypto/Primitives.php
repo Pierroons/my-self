@@ -54,6 +54,14 @@ final class Primitives
     public const ARGON2_MEMLIMIT = 65536 * 1024;
 
     /**
+     * The parallelism every derivation here runs under. sodium_crypto_pwhash()
+     * takes no parameter for it: libsodium's Argon2id runs with one lane. Written
+     * down so that a profile derived elsewhere — the browser's, SelfRecover's —
+     * can be compared with it.
+     */
+    public const ARGON2_PARALLELISM = 1;
+
+    /**
      * The profile of every vault and admin key sealed before 0.6.0, which did not
      * record theirs. Frozen: it describes data already written, so it must not
      * follow ARGON2_* when they change.

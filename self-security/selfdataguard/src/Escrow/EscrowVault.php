@@ -33,9 +33,11 @@ use Pierroons\SelfDataGuard\Crypto\Aad;
  *
  * The user opens wrap_user with the master key they already hold. The admin
  * opens wrap_admin with the recovery secret key (itself passphrase-sealed, see
- * AdminKey), through EscrowCeremony alone — arbiter, audit log and head witness
- * first. Either path yields escrow_key — and ONLY escrow_key, so the private
- * zone (notes, passwords…) stays out of reach.
+ * AdminKey): the library does it only through EscrowCeremony — arbiter, audit
+ * log and head witness first —, and whoever holds the sealed key file and its
+ * passphrase can do it outside the library, with no log, unless the escrow is
+ * sealed to a keeper. Either path yields escrow_key — and ONLY escrow_key, so
+ * the private zone (notes, passwords…) stays out of reach.
  */
 final class EscrowVault
 {

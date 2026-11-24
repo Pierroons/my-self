@@ -10,7 +10,7 @@
 #
 # La valeur du navigateur est DÉFINIE par SelfDataGuard ; `client/sr-kdf.js` la
 # reprend sans la définir, et `sanity_couplage_dataguard.php` tient l'égalité des
-# dix valeurs partagées. Mais rien ne tenait la PHRASE qui nomme le propriétaire.
+# valeurs partagées. Mais rien ne tenait la PHRASE qui nomme le propriétaire.
 #
 # Le 7 octobre 2026, `demo/lab/README.md` annonçait « Argon2id (m=64 Mo, t=4, p=2)
 # pour tout » : vrai des seules empreintes serveur. Le 10 octobre, la page security

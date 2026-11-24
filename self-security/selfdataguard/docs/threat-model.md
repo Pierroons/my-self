@@ -13,7 +13,7 @@ of the user's secrets, any one of which opens it. The module holds the envelope,
 encryption, a blind index for lookups, an administrative escrow compartment and its ceremony. It
 holds no HTTP route, no session and no client-side code: the application calls it.
 
-Untrusted input enters at eight places:
+Untrusted input enters at nine places:
 
 1. **The user's secrets** — password, memorized word, passphrase. Arbitrary byte strings, no upper
    bound on length, supplied by the application's forms.
@@ -46,10 +46,15 @@ Untrusted input enters at eight places:
    keeper it was given, writes it into the record, and retires the escrow from each at every deposit — emptying the
    record hides none from it, and `changeKeeper()` never promotes a keeper written there — unless a deposit writes it
    during the change, a race the CHANGELOG declares, which leaves every deposit refused until a second change, or, if
-   the operator forgets that keeper at the same instant, leaves it both the keeper and forgotten. A box is
+   the operator forgets that keeper at the same instant, is refused, and can still leave it on the record of forgotten
+   keepers while it is the keeper. A box is
    input too — anyone can seal one to the keeper's public key: the keeper refuses one whose objection key is not the
    one the escrowId is the fingerprint of, checks an objection against the escrowId alone, and a retirement against the
    escrowId and its own fingerprint.
+9. **The pepper** — the file `LocalPepperFile` reads, refused when it is missing, unreadable, not a regular file, under
+   the web server's document root, readable by others or writable by its group, malformed, or holding fewer than 16
+   distinct bytes; or what a remote `PepperSource` returns, with no fallback when it does not answer. The database
+   records a check of the pepper, and a façade given another is refused.
 
 ## Components that matter most, and least
 
@@ -83,8 +88,9 @@ self-contained and exits non-zero on the first failure.
 
 | what | how |
 |---|---|
-| the library, suite by suite | `php self-security/selfdataguard/tests/sanity_<name>.php` — the vault, the fields, the keys, the escrow, the archive, the audit log, the ceremony, the storage, the façade, the primitives, the migrations, the conformance suite and the frozen vectors. The README states the current count; `scripts/check-portes.sh` replays every suite and checks each total still matches the count the CI workflow asserts |
-| frozen test vectors | `tests/vecteurs-argon2.json`, recomputed in CI by a second implementation (argon2-cffi) through `tests/vecteurs_argon2.py`. The three lock keys are pinned: a derivation that drifts locks out every existing vault, and no other check would see it |
+| the library, suite by suite | `php self-security/selfdataguard/tests/sanity_<name>.php` — the vault, the fields, the keys, the escrow, the archive, the audit log, the ceremony, the storage, the façade, the primitives, the migrations, the conformance suite, the frozen vectors, the pepper, the upgrade from 0.9.x, the throttle and the witness conformance suite. The README states the current count; `scripts/check-portes.sh` replays every suite and checks each total still matches the count the CI workflow asserts |
+| frozen test vectors | `tests/vecteurs-argon2.json`, recomputed in CI by a second implementation (argon2-cffi) through `tests/vecteurs_argon2.py`, and `tests/vecteurs-poivre.json`, the pepper's form, recomputed by `tests/vecteurs_poivre.py`. The three lock keys are pinned: a derivation that drifts locks out every existing vault, and no other check would see it |
+| **your own head witness** | `php bin/witness-conformance.php <factory.php>`: a forged head, a store reset and a head that goes back must each be refused. A store that takes a head from anyone who can write to it lets a single forged head close every ceremony |
 | **your own storage** | `php bin/storage-conformance.php` against an implementation of `StorageInterface`. It is the contract made executable: generation checks inside the write's own transaction, the unique blind index, the archive swap, a frozen vault refusing writes, concurrent swaps. `tests/storage_doubles.php` carries deliberately broken storages, each of which must make it go red |
 | the ceremony, end to end | `php bin/escrow-ceremony.php`, with `verify-log` and `verify-log --ancre seq:hmac`. Without an anchor, verification cannot see that the end of the log was cut off — that is the limit the anchor closes, and it is checked as such |
 | the guards themselves | `scripts/check-canaris.sh` plants, in the code, the very defect each CI guard claims to catch and requires it to go red. ⚠️ It mutates files of the repository and restores them: run it on a clean tree, and on one tree at a time |
@@ -146,11 +152,23 @@ promise instead.
 - **No padding.** A ciphertext carries none, so a dump leaks each value's length, each field's name
   and the date it last changed. Give fields neutral names, and pad to one length the fields that take
   only a few values.
-- **Response time tells whether an account exists**, and whether its vault is sealed yet. Not which
-  locks it carries.
-- **An old vault row put back by a database write opens with the secrets it carried**, a consumed
-  passphrase included. Nothing in the vault distinguishes a restored revision: the defence is the
-  integrity of the database and its backups.
+- **The passphrase lock is not under the pepper.** Drawn by SelfRecover, a passphrase holds about 77.5
+  bits; chosen by its holder, what a password holds.
+- **The pepper is a single point of loss for every vault without a passphrase lock**: lost, they close
+  for good. Keep a copy off the server, and out of the database's backups. A pepper file written by
+  hand rather than drawn by `bin/pepper.php new` is forced from the database alone, at one HMAC per
+  candidate, against the database's check and against each layer.
+- **A copy of the database and a secret its holder has replaced since open the vault as the copy holds
+  it** — no write is needed —, and an old vault row put back opens with the secrets it carried, a
+  consumed passphrase included. Nothing in the vault distinguishes a restored revision: the defence is
+  the integrity of the database and its backups.
+- **Whoever writes the database can keep the holder from objecting.** The objection door opens outside the seal, so a
+  profile rewritten or a seal removed no longer stops an objection; an envelope rewritten closes its lock, and the
+  vault's salt rewritten closes all three. Meanwhile an announced read cannot be objected to, and it goes through once
+  due.
+- **The throttle, the objection door and the check of a consent run on the server.** They hold against
+  whoever writes the database, not against whoever changes the code it serves; under a keeper, a read
+  still waits the keeper's delay, announced to the holder.
 - **The blind-index key is a single point of loss.** Lose it and nothing opens until it is back; keep
   it with the database's backups, and know that a backup holding both makes enumerable indexed values
   findable by dictionary across every account.

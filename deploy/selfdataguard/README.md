@@ -85,14 +85,12 @@ avoir reposé l'ancien code.
 ## Une base qui dure
 
 La démo ne fait pas monter ses bases. Une base qui dure, chez un intégrateur,
-passe par une montée en quatre temps, que décrit l'en-tête de
-`self-security/selfdataguard/bin/pepper.php` :
-
-1. la façade construite en `PepperForms::AcceptBare` ;
-2. `pepper.php adopt`, qui pose une couche sous le poivre sur chaque serrure, sans secret
-   d'utilisateur ;
-3. `pepper.php status`, jusqu'à ce que plus rien ne soit nu ;
-4. la façade construite en `PepperForms::LayeredOnly`.
+monte par l'exploitant, sans secret d'utilisateur : `pepper.php adopt` avant
+qu'une façade 0.10.0 la serve, puis la façade en `PepperForms::AcceptBare`,
+`pepper.php status` jusqu'à ce que plus rien ne soit nu, et enfin
+`PepperForms::LayeredOnly`. Le détail et le retour arrière sont dans le README de
+la bibliothèque (`self-security/selfdataguard/README.md`, « Upgrading a 0.9.x
+database »).
 
 Pour une telle base, la perte du poivre ferme tout coffre qui n'a pas de
 passphrase : garde-en une copie hors du serveur.

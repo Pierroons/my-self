@@ -53,7 +53,7 @@ To use a different port: `PORT=9000 ./run.sh`.
   DATAGUARD_ARBITER_FILE=arbitre-essai.php \
   DATAGUARD_WITNESS_FILE=temoin-essai.php \
   DATAGUARD_KEEPER_FILE=gardien-essai.php \
-  php ../../self-security/selfdataguard/bin/escrow-ceremony.php unlock <user> essai-local
+  php ../../self-security/selfdataguard/bin/escrow-ceremony.php unlock <user> essai-local contact_secours indice_recup
   ```
 
   `DATAGUARD_AUDIT_SECRET` signs the escrow audit chain: the floor is **32 characters**
@@ -140,7 +140,7 @@ The pepper of a local run lives in the system temporary directory (`selfdataguar
 - **No session management**: each request reaches the server with the full credentials (the demo cookie only picks the visitor's database). A real app would use a short-lived session token + memory-only master key. The demo is intentionally simple to make the cryptography obvious.
 - **The memorized word's salt is derived from the identifier** (`mot.js`). SelfRecover draws it at registration and keeps it with the account; the demo has no SelfRecover account to keep it. The salt still differs from one account to the next, but it is known before the account exists.
 - **No password policy enforcement** beyond ≥12 chars. Production deployments must add HaveIBeenPwned checks, common-password blocklists, and zxcvbn entropy on the memorized secret (whitepaper §7).
-- **No rate limiting in the code**: the demo accepts unlimited authentication attempts. The public instance throttles its PHP in nginx (20 requests a minute per address); `run.sh` does not. Production needs Argon2id-based rate limits per user, anti-bruteforce on memorized secrets, IP throttling.
+- **No throttle in the code**: the demo gives the library `NoThrottle`, which says there is none. The public instance throttles its PHP in nginx (20 requests a minute per address); `run.sh` does not. A deployment gives the façade a `Throttle` of its own, keyed on the account and on the address.
 - **No TLS**: the demo runs on plain HTTP localhost. Production REQUIRES HTTPS with HSTS strict.
 - **No admin operational key**: only Lite mode is wired (master key in memory during session only). Hybrid mode (admin can read operational fields offline) is whitepaper §4.2 and is still not wired: `wrapAdmin` stays null, and a sanity check fails if it ever stops being null. The escrow compartment shipped in v0.2.0 solves the recovery case with a dedicated key instead.
 - **No 2FA**: the demo only authenticates via password OR memorized secret. Production would layer SelfRecover on top for multi-factor account recovery.

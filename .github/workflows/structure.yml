@@ -3718,8 +3718,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 14/14 ' \
-            || { echo "::error::le banc du couplage n'a pas jugé ses 14 valeurs"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 15/15 ' \
+            || { echo "::error::le banc du couplage n'a pas jugé ses 15 valeurs"; exit 1; }
           F=self-security/selfdataguard/src/Vault/UserVault.php
           cp "$F" /tmp/UserVault.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -3745,6 +3745,21 @@ jobs:
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ la sonde rougit quand les normalisations divergent"
+          # Le parallélisme : le navigateur dérive sous p, la bibliothèque sous un seul fil.
+          K=bi-self/selfrecover/client/sr-kdf.js
+          cp "$K" /tmp/sr-kdf.couplage.intact; avantK=$(md5sum "$K" | cut -d" " -f1)
+          sed -i "s/t: 3, m: 65536, p: 1, dkLen: 32/t: 3, m: 65536, p: 2, dkLen: 32/" "$K"
+          grep -q 'm: 65536, p: 2, dkLen: 32' "$K" || { echo "::error::canari non planté — motif introuvable"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php); then
+            cp /tmp/sr-kdf.couplage.intact "$K"
+            echo "::error::un parallélisme désaccordé rend encore vert"; exit 1
+          fi
+          cp /tmp/sr-kdf.couplage.intact "$K"
+          echo "$sortie" | grep -q '✗ sr-kdf.js p = Primitives::ARGON2_PARALLELISM' \
+            || { echo "$sortie"; echo "::error::le rouge ne vient pas du parallélisme"; exit 1; }
+          [ "$(md5sum "$K" | cut -d" " -f1)" = "$avantK" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ la sonde rougit quand les parallélismes divergent"
 
       # Un coffre SelfDataGuard traverse chaque récupération de SelfRecover, sur les
       # vrais chemins des deux bibliothèques. Le canari fait oublier à recover() le
@@ -3805,8 +3820,8 @@ jobs:
             echo "→ $(basename "$t")"
             php "$t" || { echo "::error::$(basename "$t") rouge sous PHP ${{ matrix.php }}"; rc=1; }
           done
-          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 14/14 ' \
-            || { echo "::error::couplage hors 14/14 sous PHP ${{ matrix.php }}"; rc=1; }
+          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 15/15 ' \
+            || { echo "::error::couplage hors 15/15 sous PHP ${{ matrix.php }}"; rc=1; }
           php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 27/27$' \
             || { echo "::error::parcours hors 27/27 sous PHP ${{ matrix.php }}"; rc=1; }
           exit $rc

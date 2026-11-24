@@ -113,8 +113,29 @@ else
 fi
 
 
+echo "▸ Dérivations par sodium_crypto_pwhash hors de Primitives"
+# Le profil de clé du coffre — t et m, et p = 1, que libsodium impose
+# (`Primitives::ARGON2_PARALLELISM`) — vit dans `Primitives`, et le banc de couplage
+# le compare à celui du navigateur. Un appel direct ailleurs dérive sous un profil
+# qu'aucun banc ne compare. Les exemptions sont nominatives, chacune pour sa raison :
+#   - `bi-self/selfrecover/tests/argon2.php` recalcule des vecteurs : comparer est
+#     son propos ;
+#   - `demo/lab/selfrecover-su` chiffre la sauvegarde de la console SU sous un
+#     profil à lui, choisi (`MODERATE` de libsodium).
+PRIMITIVES="self-security/selfdataguard/src/Crypto/Primitives.php"
+EXEMPTS_PWHASH="${PRIMITIVES}|bi-self/selfrecover/tests/argon2.php|demo/lab/selfrecover-su"
+derivations=$(git grep -lE 'sodium_crypto_pwhash[[:space:]]*\(' -- "${PHP_PATHS[@]}" \
+    | grep -vE "^(${EXEMPTS_PWHASH})$" || true)
+if [ -n "$derivations" ]; then
+    echo "  ✗ dérivation Argon2id hors de ${PRIMITIVES} :"
+    echo "$derivations" | sed 's/^/     /'
+    echec=1
+else
+    echo "  ✓ les dérivations de clé passent par Primitives (deux exemptions nommées)"
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔑 Les quatre contrôles ci-dessus ne regardent QUE du PHP, et c'est le trou par
+# 🔑 Les contrôles ci-dessus ne regardent QUE du PHP, et c'est le trou par
 # lequel l'écart a vécu : un profil de dérivation écrit dans un `.js` ne
 # déclenchait rien. La bibliothèque annonçait Argon2id pour le facteur « cet
 # appareil » pendant que la seule implémentation faisait PBKDF2, et aucune sonde
