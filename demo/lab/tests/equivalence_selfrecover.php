@@ -518,8 +518,8 @@ verifier('⭐ une peine purgée ne se lit plus — en cours seulement', $purgee 
 verifier('lire les faits n\'écrit rien en base, même sur une peine échue que le moteur constaterait',
     $ecrituresApres === $ecrituresAvant, ($ecrituresApres - $ecrituresAvant) . ' écriture(s)');
 $pdoP->prepare('UPDATE member_moderation SET vote_muted_until = ? WHERE account_id = 1')->execute([$jusqua]);
-verifier('une suspension de vote encore en base se lit, avec la seule origine qui en ait posé',
-    $sanctionLue() === ['sanction' => 'vote_suspendu', 'sanction_jusqu_au' => gmdate('Y-m-d', $jusqua), 'sanction_origine' => 'meute_detectee'],
+verifier('une suspension de vote se lit, avec son origine : un arbitre',
+    $sanctionLue() === ['sanction' => 'vote_suspendu', 'sanction_jusqu_au' => gmdate('Y-m-d', $jusqua), 'sanction_origine' => 'arbitre'],
     json_encode($sanctionLue()));
 
 echo "\n→ ⭐ Le dégel est atteignable, et il rend la porte\n";

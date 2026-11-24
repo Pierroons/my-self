@@ -7,6 +7,11 @@
  * les lit ici aussi, par `Moderate::config()`. Changer de jeu (`demo()`,
  * `prod()`, ou le sien) change donc à la fois ce que le moteur applique et ce
  * que les pages annoncent.
+ *
+ * L'hôte déclare sa messagerie et son usage, sans valeur par défaut : le moteur
+ * ne voit ni l'un ni l'autre. En service, aucun réglage de sécurité ne descend
+ * sous `prod()` ; durcir reste permis. Durcir, c'est réduire ce que l'adversaire
+ * obtient du moteur : éteindre un pouvoir automatique durcit.
  */
 
 declare(strict_types=1);
@@ -17,10 +22,38 @@ use InvalidArgumentException;
 
 final class Config
 {
+    /** Le plus long palier de ban automatique qu'une démonstration accepte. */
+    public const PALIER_DEMONSTRATION_MAX = 3600;
+
+    /** Ce que `prod()` change aux valeurs du constructeur. */
+    private const SERVICE = [
+        'fenetreSalveSecondes'            => 300,
+        'ageMinPourVoterSecondes'         => 86400,
+        'dureesBan'                       => [86400, 604800, 2592000],
+        'intervalleConvalescenceSecondes' => 604800,
+        'fenetreCroiseeSecondes'          => 259200,
+        'arrondiFinBanSecondes'           => 3600,
+        'ageEtabliSecondes'               => 2592000,
+    ];
+
+    /** En service, ces réglages ne descendent pas sous `prod()`. */
+    private const PLANCHERS_SERVICE = [
+        'ageMinPourVoterSecondes', 'ageEtabliSecondes', 'fenetreSalveSecondes', 'arrondiFinBanSecondes', 'fenetreFarmingJours',
+    ];
+
+    /** En service, ces réglages ne montent pas au-dessus de `prod()`. */
+    private const PLAFONDS_SERVICE = [
+        'ciblesParVotantMax', 'farmingDownvotesMax', 'farmingUpvotesMax', 'salveVotantsMin', 'messagesPourVoterAvantAge',
+    ];
+
     /**
+     * @param Messagerie $messagerie          Où passent les messages privés : `dm`, que le
+     *                                        quorum lit, ou hors du moteur.
+     * @param Usage    $usage                 Service : la machine signale, un arbitre sanctionne.
+     *                                        Démonstration : ban et perte du vote automatiques.
      * @param int      $banA                  Plancher de la réputation ET seuil du ban automatique :
      *                                        aucun vote ne la descend plus bas, et l'atteindre
-     *                                        bannit (voir `banAutomatique`).
+     *                                        bannit en démonstration, et se signale en service.
      * @param int      $fenetreSalveSecondes  Salve rapide : plusieurs downvotes groupés
      *                                        dans ce délai, que leurs votants soient liés ou non ;
      *                                        un vote que la part des comptes récents a neutralisé
@@ -61,13 +94,6 @@ final class Config
      *                                        desquels l'enchaînement est signalé à
      *                                        l'arbitre : chacun alourdit le ban
      *                                        automatique suivant.
-     * @param bool     $banAutomatique        La réputation au plancher bannit, journal branché et
-     *                                        hors de la transaction de l'hôte. Faux : elle est
-     *                                        signalée à l'arbitre, sans ban — la machine signale,
-     *                                        l'arbitre décide.
-     * @param bool     $signalPerteDuVote     Signale à l'arbitre le compte qui perd son droit de
-     *                                        vote sous `perteDroitDeVoteSous` ; le signal tombe
-     *                                        quand le droit revient.
      * @param int      $messagesPourVoterAvantAge Messages publiés qui dispensent de
      *                                        `ageMinPourVoterSecondes` ; 0 n'en dispense personne.
      * @param int      $motifsVotantsMin      `reasonsFor()` ne rend les motifs reçus qu'à partir
@@ -107,6 +133,8 @@ final class Config
      *                                        distincts, jamais le volume des messages.
      */
     public function __construct(
+        public readonly Messagerie $messagerie,
+        public readonly Usage $usage,
         public readonly int $reputationInitiale = 20,
         public readonly int $reputationMax = 30,
         public readonly int $perteDroitDeVoteSous = 5,
@@ -126,8 +154,6 @@ final class Config
         public readonly float $plancherFraction = 1 / 3,
         public readonly int $bansArbitreSignal = 2,
         public readonly int $balayageFiletMax = 50,
-        public readonly bool $banAutomatique = true,
-        public readonly bool $signalPerteDuVote = true,
         public readonly int $messagesPourVoterAvantAge = 1,
         public readonly int $motifsVotantsMin = 1,
         public readonly int $fenetreCroiseeSecondes = 600,
@@ -183,6 +209,15 @@ final class Config
         if ($this->quorumRecherchesMax < 1) {
             throw new InvalidArgumentException('quorumRecherchesMax compte des recherches dans un index : 1 ou plus.');
         }
+        if ($this->usage === Usage::DEMONSTRATION && max($this->dureesBan) > self::PALIER_DEMONSTRATION_MAX) {
+            throw new InvalidArgumentException(sprintf(
+                'En démonstration, un palier de dureesBan dure au plus une heure (%d s demandés) : la démonstration ne prononce pas de vrais bans.',
+                max($this->dureesBan)
+            ));
+        }
+        if ($this->usage === Usage::SERVICE) {
+            $this->exigerLeService();
+        }
         if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {
             throw new InvalidArgumentException(sprintf(
                 'arrondiFinBanSecondes (%d s, 60 par défaut) dépasse le plus court palier de dureesBan (%d s) : l\'arrondi allongerait la peine de plus qu\'elle ne dure.',
@@ -195,21 +230,47 @@ final class Config
     /** Les valeurs raccourcies, pour qu'une démonstration tienne dans une séance. */
     public static function demo(): self
     {
-        return new self();
+        return new self(Messagerie::DM, Usage::DEMONSTRATION);
     }
 
-    /** Les valeurs de service. */
-    public static function prod(): self
+    /** Les valeurs de service : chacune est aussi ce qu'un hôte de service ne peut pas affaiblir. */
+    public static function prod(Messagerie $messagerie): self
     {
-        return new self(
-            fenetreSalveSecondes: 300,
-            ageMinPourVoterSecondes: 86400,
-            dureesBan: [86400, 604800, 2592000],
-            intervalleConvalescenceSecondes: 604800,
-            fenetreCroiseeSecondes: 259200,
-            arrondiFinBanSecondes: 3600,
-            ageEtabliSecondes: 2592000,
-        );
+        return new self($messagerie, Usage::SERVICE, ...self::SERVICE);
+    }
+
+    /**
+     * Refuse en service un réglage de sécurité plus faible que `prod()` : plus
+     * court pour un plancher, plus large pour un plafond, le quorum éteint.
+     * La valeur de comparaison est celle de `prod()`, à défaut celle du
+     * constructeur.
+     */
+    private function exigerLeService(): void
+    {
+        if (!$this->quorumAuxSeuils) {
+            throw new InvalidArgumentException('En service, quorumAuxSeuils reste vrai : sans lui, des comptes sans lien entre eux ne sont plus exigés avant une chute.');
+        }
+        $reference = self::demo();
+        foreach (self::PLANCHERS_SERVICE as $champ) {
+            $minimum = self::SERVICE[$champ] ?? $reference->$champ;
+            if ($this->$champ < $minimum) {
+                throw new InvalidArgumentException(sprintf(
+                    'En service, %s ne descend pas sous %d, la valeur de Config::prod() : un réglage plus faible rend à l\'adversaire ce que le service lui retire. Durcir reste permis.',
+                    $champ,
+                    $minimum
+                ));
+            }
+        }
+        foreach (self::PLAFONDS_SERVICE as $champ) {
+            $maximum = self::SERVICE[$champ] ?? $reference->$champ;
+            if ($this->$champ > $maximum) {
+                throw new InvalidArgumentException(sprintf(
+                    'En service, %s ne dépasse pas %d, la valeur de Config::prod() : un réglage plus large rend à l\'adversaire ce que le service lui retire. Durcir reste permis.',
+                    $champ,
+                    $maximum
+                ));
+            }
+        }
     }
 
     /**

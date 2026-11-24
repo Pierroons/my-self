@@ -37,16 +37,17 @@ interface Journal
      * Inscrit un acte. Le moteur passe un tableau dont les clés sont stables :
      *
      *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_prolonge` | `ban_maintenu` | `grace` |
-     *              `revue_classee`
+     *              `revue_classee` | `vote_retire` | `vote_rendu`
      *   compte     identifiant numérique du membre visé
-     *   origine    `auto` (réputation à zéro) | `admin` (arbitre) ; null pour un ban
-     *              posé avant que l'origine ne soit enregistrée
+     *   origine    `auto` (la machine, en démonstration) | `admin` (arbitre) ; null pour
+     *              un ban posé avant que l'origine ne soit enregistrée
      *   arbitre    nom du compte de l'arbitre au moment du geste, ou null quand
      *              c'est la machine
      *   arbitre_id identifiant de ce compte (`accounts.id`), celui que l'hôte a
      *              passé au geste ; null quand c'est la machine. Le nom peut
      *              changer, l'identifiant reste
-     *   motif      `reputation_zero` pour la machine (`meute_detectee` dans les actes
+     *   motif      `reputation_zero` pour un ban de la machine, `perte_droit_de_vote`
+     *              pour son retrait du vote (`meute_detectee` dans les actes
      *              d'avant la 0.9.0), texte validé
      *              par `validateReason()` pour un arbitre ; le même au début et à la
      *              fin d'un ban
@@ -56,9 +57,12 @@ interface Journal
      *              Compté depuis la 0.7.0 : une base migrée part de zéro
      *   duree      durée de la peine en secondes ; null pour   ban_debut
      *              un ban sans fin
-     *   debut      horodatage du début de la peine             ban_debut, ban_fin
+     *   debut      horodatage du début de la peine, ou du      ban_debut, ban_fin, vote_retire,
+     *              geste                                       vote_rendu
      *   jusqu_a    horodatage de fin prévue ; `Moderate::SANS_FIN`  ban_debut, ban_fin, ban_maintenu,
-     *              pour un ban sans fin                        ban_prolonge
+     *              pour un ban sans fin ; null pour un vote    ban_prolonge, vote_retire,
+     *              que la machine retire jusqu'à la remontée ;  vote_rendu
+     *              l'échéance qu'un `vote_rendu` devance
      *   sans_fin   le ban n'a pas d'échéance                   ban_debut, ban_leve, ban_prolonge
      *   de         l'échéance que la prolongation repousse     ban_prolonge
      *   observe_a  instant où la fin s'est inscrite : la       ban_fin
@@ -70,7 +74,8 @@ interface Journal
      *   reste      secondes de peine qui restaient ; null      ban_leve
      *              pour un ban sans fin
      *   plancher   horodatage du plancher, ou null             ban_leve
-     *   reputation réputation avant la grâce                   grace
+     *   reputation réputation avant la grâce, ou au retrait    grace, vote_retire
+     *              du vote
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
      *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
      *   raison     cause du signal fermé ; pour un ban         revue_classee, ban_maintenu,
@@ -78,8 +83,8 @@ interface Journal
      *              unique aurait portée, ou null
      *   ouverts    les causes ouvertes sur le compte quand     tous
      *              l'acte se décide, sous le verrou
-     *   ferme      les signaux que l'acte ferme, ou retire de  tous ; `[]` pour un ban
-     *              la file sans les fermer (un état vu reste   d'arbitre
+     *   ferme      les signaux que l'acte ferme, ou retire de  tous ; un ban d'arbitre
+     *              la file sans les fermer (un état vu reste   ferme les sanctions dues
      *              en base jusqu'à ce qu'il cesse), chacun
      *              `{signal, cause, ouvert_le, occurrences, detections}`
      *

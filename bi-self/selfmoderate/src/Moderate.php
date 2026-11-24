@@ -235,14 +235,24 @@ class Moderate
     /** Le journal des sanctions. Sans lui, le moteur ne bannit pas seul. */
     private static ?Journal $journal = null;
 
+    /** Les sanctions que la machine signale dues : un ban d'arbitre y répond. */
+    private const CAUSES_DUES = ['reputation_zero', 'ban_en_attente', 'perte_du_vote_due'];
+
     public static function setConfig(?Config $config): void
     {
         self::$config = $config;
     }
 
+    /**
+     * Sans `setConfig()`, le moteur refuse au lieu de prendre une démonstration :
+     * un hôte qui oublie l'appel servirait des durées de quelques minutes et des
+     * bans automatiques sans le savoir.
+     */
     public static function config(): Config
     {
-        return self::$config ??= Config::demo();
+        return self::$config ?? throw new \LogicException(static::t(
+            'SelfModerate attend sa configuration : l\'hôte appelle Moderate::setConfig() avec Config::prod(Messagerie::DM ou Messagerie::HORS_MOTEUR), ou Config::demo() pour une démonstration, avant tout appel au moteur.'
+        ));
     }
 
     /**
@@ -284,10 +294,10 @@ class Moderate
             : null;
     }
 
-    /** Le bannissement automatique est-il armé sur ce déploiement ? */
+    /** Le bannissement automatique est-il armé sur ce déploiement ? Seulement en démonstration. */
     public static function banAutomatiqueArme(): bool
     {
-        return self::$journal !== null && self::config()->banAutomatique;
+        return self::$journal !== null && self::config()->usage === Usage::DEMONSTRATION;
     }
 
     /**
@@ -499,9 +509,12 @@ class Moderate
                 // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
                 // reste de temps est acquis et compte pour le point suivant.
                 $l['last_regen_at'] = $last + $gagnes * self::config()->intervalleConvalescenceSecondes;
+                if ($rep > self::config()->banA) {
+                    $tombentRegen[] = 'ban_en_attente';
+                }
                 if ($rep >= self::config()->perteDroitDeVoteSous) {
                     $l['voting_rights'] = 1;
-                    array_push($tombentRegen, 'droit_de_vote_perdu', 'chute_sans_quorum');
+                    array_push($tombentRegen, 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum');
                 }
                 if ($rep >= self::config()->sortieConvalescence()) {
                     $l['convalescent'] = 0;
@@ -536,7 +549,7 @@ class Moderate
                 $tombentFin[] = 'droit_de_vote_perdu';
             }
             if ((int) $l['reputation'] >= self::config()->perteDroitDeVoteSous) {
-                $tombentFin[] = 'chute_sans_quorum';
+                array_push($tombentFin, 'chute_sans_quorum', 'perte_du_vote_due');
             }
             $tombentFin[]      = 'journal_en_panne';
             $l['banned_until'] = 0;
@@ -715,7 +728,7 @@ class Moderate
               WHERE (banned_until > 0 AND banned_until <= :t)
                  OR (convalescent = 1 AND (last_regen_at <= 0 OR last_regen_at <= :t - :i OR reputation >= :sortie
                                            OR (reputation >= :vote AND (voting_rights = 0 OR EXISTS (
-                                                   SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'chute_sans_quorum')))))
+                                                   SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause IN ('chute_sans_quorum', 'perte_du_vote_due'))))))
            ORDER BY EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),
                     (SELECT s.derniere_le FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause = 'journal_en_panne'),
                     banned_until = 0, banned_until
@@ -807,7 +820,7 @@ class Moderate
         // l'enverrait guetter une remontée qui ne lui rendra rien.
         if ($rep['vote_muted']) {
             return [false, sprintf(
-                static::t('Droit de vote suspendu jusqu\'au %s (participation à une meute).'),
+                static::t('Droit de vote suspendu par un arbitre jusqu\'au %s.'),
                 date('d/m/Y', $rep['vote_muted_until'])
             )];
         }
@@ -1096,7 +1109,7 @@ class Moderate
                 self::ordonner($pdo, 'UPDATE member_moderation SET account_id = account_id WHERE 0');
             }
             self::exigerSchema($pdo);
-            if (self::config()->quorumAuxSeuils) {
+            if (self::config()->quorumAuxSeuils && self::config()->messagerie === Messagerie::DM) {
                 self::exigerIndexPaire($pdo);
             }
             $resultat = $ecriture();
@@ -1492,10 +1505,15 @@ class Moderate
      * réponse ne dit aucune entente : écrire à des votants ne les lie à personne.
      *
      * Le contenu n'est jamais lu : seuls l'expéditeur, le destinataire et la
-     * date sont interrogés. Le chiffré reste fermé.
+     * date sont interrogés. Le chiffré reste fermé. Sur un hôte dont la
+     * messagerie passe hors du moteur, rien ne se lit : personne n'est lié.
      */
     public static function areLinked(PDO $pdo, int $a, int $b): bool
     {
+        if (self::config()->messagerie === Messagerie::HORS_MOTEUR) {
+            return false;
+        }
+
         return $a !== $b && self::mutualPairs($pdo, [$a, $b]) !== [];
     }
 
@@ -2128,7 +2146,7 @@ class Moderate
         }
         if (self::etat($pdo, $author)['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
-            self::designaler($pdo, $author, 'droit_de_vote_perdu', 'chute_sans_quorum');
+            self::designaler($pdo, $author, 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum');
         }
     }
 
@@ -2170,7 +2188,7 @@ class Moderate
     /** Les causes d'état, que lisent `famille()` et la reprise (`migrerSignaux()`). */
     private static function causesEtat(): array
     {
-        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'chute_sans_quorum'];
+        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum'];
     }
 
     /**
@@ -2694,7 +2712,9 @@ class Moderate
     /**
      * Les sanctions que la réputation appelle : sous `perteDroitDeVoteSous`, la
      * perte du vote ; au plancher (`banA`), le ban automatique
-     * (`sanctionnerReputationZero()`). Avec `quorumAuxSeuils`, chacune attend que
+     * (`sanctionnerReputationZero()`). En service, ni l'une ni l'autre ne tombe :
+     * la machine signale (`perte_du_vote_due`, `reputation_zero`), un arbitre
+     * décide ; en démonstration, les deux s'inscrivent au journal. Avec `quorumAuxSeuils`, chacune attend que
      * la chute soit portée par assez de voix sans lien entre elles
      * (`voixPourSanction()`, `voixDeLaChute()`) ; sinon rien n'est sanctionné, et
      * la chute est signalée à l'arbitre (`chute_sans_quorum`). Une sanction tombée
@@ -2715,13 +2735,18 @@ class Moderate
         if ($reputation >= self::config()->perteDroitDeVoteSous) {
             return;
         }
+        $service = self::config()->usage === Usage::SERVICE;
         $auPlancher = $reputation <= self::config()->banA;
         $enPeine = self::enPeineAutomatique($pdo, $accountId);
         $voix = null;
         $vote = $pdo->prepare('SELECT voting_rights FROM member_moderation WHERE account_id = ?');
         $vote->execute([$accountId]);
-        $voteEnJeu = (int) $vote->fetchColumn() === 1;
+        $votait = (int) $vote->fetchColumn() === 1;
         $vote->closeCursor();
+        // Une perte déjà signalée due est une décision rendue : le quorum du vote ne
+        // se recherche pas à chaque vote. En démonstration, le retrait se retente.
+        $voteDu = $votait && self::etatOuvert($pdo, $accountId, 'perte_du_vote_due');
+        $voteEnJeu = $votait && !$voteDu;
         if (self::config()->quorumAuxSeuils) {
             // Le quorum ne se cherche que s'il reste une sanction à décider : une
             // peine automatique EST la sanction du plancher, et un vote déjà retiré
@@ -2740,12 +2765,15 @@ class Moderate
         $perdLeVote = $voteEnJeu && $quorum(self::config()->perteDroitDeVoteSous - 1);
 
         if ($quorum(self::config()->perteDroitDeVoteSous - 1)) {
-            $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
+            $retire = $votait && !$service && self::retirerLeVote($pdo, $accountId, $reputation);
             // Au plancher, la chute prend sa place, et un ban automatique porte déjà
             // son signal : la perte du vote n'en ajoute pas.
             if (!$auPlancher) {
                 self::designaler($pdo, $accountId, 'chute_sans_quorum');
-                if (self::config()->signalPerteDuVote && !$enPeine) {
+                if ($votait && !$retire) {
+                    self::signaler($pdo, $accountId, 'perte_du_vote_due');
+                }
+                if (($retire || (!$votait && !$service)) && !$enPeine) {
                     self::signaler($pdo, $accountId, 'droit_de_vote_perdu');
                 }
             }
@@ -2756,6 +2784,11 @@ class Moderate
             if ($quorum(self::config()->banA)) {
                 self::sanctionnerReputationZero($pdo, $accountId);
                 self::designaler($pdo, $accountId, 'chute_sans_quorum');
+                // Un ban dû que l'arbitre a classé lui revient quand le compte
+                // retombe au plancher : il a jugé une chute, pas la suivante.
+                if ($service && $avant > self::config()->banA) {
+                    self::rouvrirEtat($pdo, $accountId, 'reputation_zero');
+                }
             } else {
                 self::signaler($pdo, $accountId, 'chute_sans_quorum');
                 if ($avant > self::config()->banA || $perdLeVote) {
@@ -2763,7 +2796,7 @@ class Moderate
                 }
             }
             // La chute prend la place de la perte du vote : un fait, un signal.
-            self::designaler($pdo, $accountId, 'droit_de_vote_perdu');
+            self::designaler($pdo, $accountId, 'droit_de_vote_perdu', 'perte_du_vote_due');
         }
 
         // Sous le seuil de vote, la convalescence s'ouvre, sanction ou non.
@@ -2871,6 +2904,17 @@ class Moderate
             }
         }
         $classe = min(1, $recents);
+        if (self::config()->messagerie === Messagerie::HORS_MOTEUR) {
+            // Les liens ne se lisent pas sur cet hôte : chaque votant établi fait
+            // sa voix, comme un votant lié à personne, sans aucune recherche.
+            return [
+                'voix'         => min(count($etablis), max(0, $assez - $classe)) + $classe,
+                'votants'      => count($etablis) + $recents,
+                'recents'      => $recents,
+                'paires_liees' => null,
+                'indecis'      => false,
+            ];
+        }
         $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumRecherchesMax);
         if ($paires === null) {
             $sansLien = count(self::liesAPersonne($pdo, $etablis, $t, $premiers, $assez - $classe, self::config()->quorumRecherchesMax));
@@ -2995,8 +3039,67 @@ class Moderate
     }
 
     /**
-     * Réputation au plancher : bannir quand l'hôte arme le ban automatique
-     * (`banAutomatique`) et que le journal le permet, signaler sinon.
+     * En démonstration, le vote se retire au journal d'abord, comme le ban
+     * automatique : sans journal, dans la transaction de l'hôte ou sur un refus
+     * du journal, il reste, et l'appelant signale la perte due.
+     */
+    private static function retirerLeVote(PDO $pdo, int $accountId, int $reputation): bool
+    {
+        if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {
+            return false;
+        }
+        // Au plancher, le ban qui suit exige qu'aucune peine ne soit ouverte, et
+        // défait tout le vote sinon : l'acte écrit avant lui survivrait à la base.
+        $ban = $pdo->prepare('SELECT banned_until FROM member_moderation WHERE account_id = ?');
+        $ban->execute([$accountId]);
+        $libre = (int) $ban->fetchColumn() === 0;
+        $ban->closeCursor();
+        if ($reputation <= self::config()->banA && $libre) {
+            self::exigerAucunePeineOuverte($pdo, $accountId);
+        }
+        $signaux = self::signauxDe($pdo, $accountId);
+        try {
+            self::inscrireAuJournal([
+                'acte'       => 'vote_retire',
+                'compte'     => $accountId,
+                'origine'    => 'auto',
+                'debut'      => self::maintenant(),
+                'jusqu_a'    => null,
+                'reputation' => $reputation,
+                'motif'      => 'perte_droit_de_vote',
+                'arbitre'    => null,
+                'arbitre_id' => null,
+                'ouverts'    => self::causesEnTexte($signaux),
+                'ferme'      => self::fermesEnTexte(self::deCause($signaux, 'perte_du_vote_due')),
+            ]);
+        } catch (\Throwable $e) {
+            if ($e instanceof LectureDansUneEcriture) {
+                throw $e;
+            }
+            error_log(sprintf('SelfModerate : retrait du vote du compte %d non inscrit au journal — %s', $accountId, $e->getMessage()));
+
+            return false;
+        }
+        $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
+        self::designaler($pdo, $accountId, 'perte_du_vote_due');
+
+        return true;
+    }
+
+    /** Un état est-il posé sur ce compte, vu ou non ? */
+    private static function etatOuvert(PDO $pdo, int $accountId, string $cause): bool
+    {
+        $stmt = $pdo->prepare('SELECT 1 FROM mod_signaux WHERE account_id = ? AND cause = ?');
+        $stmt->execute([$accountId, $cause]);
+        $ouvert = $stmt->fetchColumn() !== false;
+        $stmt->closeCursor();
+
+        return $ouvert;
+    }
+
+    /**
+     * Réputation au plancher : en démonstration, bannir quand le journal le
+     * permet ; en service, et sinon, signaler.
      * Dans la transaction d'un hôte, le journal ne le permet pas : l'hôte peut
      * encore annuler, et l'acte survivrait à la base. La réputation à zéro y est
      * signalée, comme sans journal ; le ban tombe au premier vote hors d'elle.
@@ -3012,7 +3115,7 @@ class Moderate
     {
         $maintenant = self::maintenant();
 
-        if (!self::config()->banAutomatique) {
+        if (self::config()->usage === Usage::SERVICE) {
             if (!self::enPeineAutomatique($pdo, $accountId)) {
                 self::signaler($pdo, $accountId, 'reputation_zero');
             }
@@ -3071,7 +3174,7 @@ class Moderate
                 'arbitre' => null,
                 'arbitre_id' => null,
                 'ouverts' => self::causesEnTexte($signaux),
-                'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero', 'ban_en_attente', 'droit_de_vote_perdu', 'chute_sans_quorum')),
+                'ferme'   => self::fermesEnTexte(self::deCause($signaux, 'reputation_zero', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum')),
             ]);
         } catch (\Throwable $e) {
             if ($e instanceof LectureDansUneEcriture) {
@@ -3482,7 +3585,7 @@ class Moderate
                 'arbitre_id' => $qui['id'],
                 'raison'  => $etat['review_reason'],
                 'ouverts' => self::causesEnTexte($etat['signaux']),
-                'ferme'   => self::fermesEnTexte([]),
+                'ferme'   => self::fermesEnTexte(self::deCause($etat['signaux'], ...self::CAUSES_DUES)),
             ]);
             // Le droit de vote n'est pas touché : un banni ne vote pas (`canVote()`),
             // et la perte du vote reste à la réputation et à son quorum — un ban
@@ -3494,6 +3597,12 @@ class Moderate
                   WHERE account_id = ?"
             )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
             self::ouvrirPeine($pdo, $accountId, 'admin', $episode, trim($motif), $qui, $maintenant, $jusqua);
+            // Le ban de l'arbitre répond à la sanction que la machine lui signalait due :
+            // le ban automatique refusé se ferme ; la chute et la perte du vote, qui
+            // durent tant que la réputation ne remonte pas, quittent la file et restent
+            // en base, pour revenir à l'arbitre si elles s'aggravent.
+            self::designaler($pdo, $accountId, 'ban_en_attente');
+            self::retirerDeLaFile($pdo, $accountId, self::deCause($etat['signaux'], 'reputation_zero', 'perte_du_vote_due'));
             // Un ban d'arbitre compte comme un épisode, et alourdit le ban automatique
             // suivant : la récidive se paie, quelle que soit la main qui l'a constatée.
             // Leur enchaînement sur un même compte passe sous un autre regard.
@@ -3509,6 +3618,138 @@ class Moderate
             return ['ok' => true, 'message' => $sansFin
                 ? static::t('Compte banni sans fin.')
                 : sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
+        });
+    }
+
+    /**
+     * Suspension du vote par un arbitre : le geste plus léger que le ban, qui
+     * répond en service à `perte_du_vote_due`. Le motif est exigé et contrôlé
+     * comme au ban ; la durée est celle d'un ban d'arbitre par défaut, un siècle
+     * au plus (`DUREE_MAX`). Elle s'inscrit au journal (`vote_retire`, origine
+     * `admin`), et se
+     * lève par `adminRendreVote()` ou par la grâce.
+     *
+     * @param int $arbitre
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function adminSuspendreVote(PDO $pdo, int $accountId, mixed $arbitre, string $motif, ?int $seconds = null): array
+    {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
+        $inconnu = self::refusCompteInconnu($pdo, $accountId);
+        if ($inconnu !== null) {
+            return $inconnu;
+        }
+        $arbitreId = self::identifiantArbitre($arbitre);
+        [$motifOk, $pourquoi] = self::validateReason($motif);
+        if (!$motifOk) {
+            return ['ok' => false, 'message' => $pourquoi];
+        }
+        $seconds ??= self::config()->dureeBanAdmin();
+        if ($seconds <= 0 || $seconds > self::DUREE_MAX) {
+            return ['ok' => false, 'message' => static::t('Durée de suspension invalide : strictement positive, et d\'au plus un siècle.')];
+        }
+        self::rattraperSeul($pdo, $accountId);
+
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif, $seconds): array {
+            $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
+            $enAttente = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
+            if ($etat['vote_muted']) {
+                return ['ok' => false, 'message' => sprintf(
+                    static::t('Vote déjà suspendu jusqu\'au %s : rends-le avant d\'en poser une autre suspension.'),
+                    date('d/m/Y H:i', $etat['vote_muted_until'])
+                )];
+            }
+            $maintenant = self::maintenant();
+            $jusqua = $maintenant + $seconds;
+            self::inscrireAuJournal([
+                'acte'       => 'vote_retire',
+                'compte'     => $accountId,
+                'origine'    => 'admin',
+                'debut'      => $maintenant,
+                'jusqu_a'    => $jusqua,
+                'reputation' => $etat['reputation'],
+                'motif'      => trim($motif),
+                'arbitre'    => $qui['nom'],
+                'arbitre_id' => $qui['id'],
+                'ouverts'    => self::causesEnTexte($etat['signaux']),
+                'ferme'      => self::fermesEnTexte(self::deCause($etat['signaux'], 'perte_du_vote_due')),
+            ]);
+            $pdo->prepare('UPDATE member_moderation SET vote_muted_until = ?, updated_at = ? WHERE account_id = ?')
+                ->execute([$jusqua, $maintenant, $accountId]);
+            self::designaler($pdo, $accountId, 'perte_du_vote_due');
+
+            return ['ok' => true, 'message' => sprintf(static::t('Vote suspendu jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
+        });
+    }
+
+    /**
+     * Fin d'une suspension du vote avant son échéance, par un arbitre, inscrite au
+     * journal (`vote_rendu`). Le motif est libre.
+     *
+     * @param int $arbitre
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function adminRendreVote(PDO $pdo, int $accountId, mixed $arbitre, ?string $motif = null): array
+    {
+        $sansTrace = self::refusSansJournal();
+        if ($sansTrace !== null) {
+            return $sansTrace;
+        }
+        $dansLHote = self::refusTransactionDeLHote($pdo);
+        if ($dansLHote !== null) {
+            return $dansLHote;
+        }
+        $inconnu = self::refusCompteInconnu($pdo, $accountId);
+        if ($inconnu !== null) {
+            return $inconnu;
+        }
+        $arbitreId = self::identifiantArbitre($arbitre);
+
+        return self::transaction($pdo, static function () use ($pdo, $accountId, $arbitreId, $motif): array {
+            $etat = self::etat($pdo, $accountId);
+            $qui = self::arbitre($pdo, $arbitreId, $accountId);
+            if (is_string($qui)) {
+                return ['ok' => false, 'message' => $qui];
+            }
+            $enAttente = self::refusFinEnAttente($etat);
+            if ($enAttente !== null) {
+                return $enAttente;
+            }
+            if (!$etat['vote_muted']) {
+                return ['ok' => false, 'message' => static::t('Aucune suspension du vote en cours sur ce compte.')];
+            }
+            $maintenant = self::maintenant();
+            self::inscrireAuJournal([
+                'acte'       => 'vote_rendu',
+                'compte'     => $accountId,
+                'debut'      => $maintenant,
+                'jusqu_a'    => $etat['vote_muted_until'],
+                'motif'      => $motif !== null && trim($motif) !== '' ? trim($motif) : null,
+                'arbitre'    => $qui['nom'],
+                'arbitre_id' => $qui['id'],
+                'ouverts'    => self::causesEnTexte($etat['signaux']),
+                'ferme'      => self::fermesEnTexte([]),
+            ]);
+            $pdo->prepare('UPDATE member_moderation SET vote_muted_until = 0, updated_at = ? WHERE account_id = ?')
+                ->execute([$maintenant, $accountId]);
+
+            return ['ok' => true, 'message' => static::t('Vote rendu.')];
         });
     }
 
@@ -3974,9 +4215,9 @@ class Moderate
             $vise = self::signalVise(
                 $etat['signaux'],
                 $vu,
-                static fn (array $s): bool => !in_array($s['cause'], ['ban_auto', 'journal_en_panne'], true),
+                static fn (array $s): bool => !in_array($s['cause'], ['ban_auto', 'journal_en_panne', 'ban_en_attente'], true),
                 static::t('Aucun signalement en cours sur ce compte.'),
-                static::t('Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine attend le journal.')
+                static::t('Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine ou un ban dû attend le journal.')
             );
             if (is_string($vise)) {
                 return ['ok' => false, 'message' => $vise];
@@ -4154,10 +4395,13 @@ class Moderate
      * `recents`, les votants que leur âge range dans une seule voix ;
      * `paires_liees`, les liens entre les autres, null quand la lecture des liens
      * dépasse sa borne (`quorumRecherchesMax`) ; `indecis`, une
-     * recherche qui n'a pas pu décider.
+     * recherche qui n'a pas pu décider ; `liens`, ce que valent ces liens :
+     * `lus`, `non_lus` sur un hôte dont la messagerie passe hors du moteur, `muets`
+     * quand l'hôte déclare `dm` et que la table n'a aucune ligne — chaque votant
+     * y fait alors sa voix (`etatDuSite()`).
      *
      * @return array{votants: int, ages_jours: list<int>, etalement: int, voix_sans_lien: int,
-     *               recents: int, paires_liees: int|null, indecis: bool}
+     *               recents: int, paires_liees: int|null, indecis: bool, liens: string}
      */
     public static function compositionChute(PDO $pdo, int $accountId, int $debut): array
     {
@@ -4176,7 +4420,50 @@ class Moderate
             'recents'        => $quorum['recents'],
             'paires_liees'   => $quorum['paires_liees'],
             'indecis'        => $quorum['indecis'],
+            'liens'          => self::config()->messagerie === Messagerie::HORS_MOTEUR
+                ? 'non_lus'
+                : (self::dmSansLigne($pdo) ? 'muets' : 'lus'),
         ];
+    }
+
+    /**
+     * L'état du site, que l'arbitre lit à côté de ses signaux : ce qui contredit
+     * la déclaration de l'hôte, calculé à la lecture, sans rien écrire — un état
+     * de site n'a pas de compte, et `mod_signaux` en exige un.
+     *
+     * `liens_muets` : l'hôte déclare `dm`, la table n'a aucune ligne, et le
+     * premier vote a plus de `fenetreMeuteJours` jours : depuis une fenêtre
+     * entière, le quorum compte chaque votant pour une voix sans que personne
+     * l'ait déclaré. Une `dm` vide est l'état d'un site neuf : l'alarme attend.
+     *
+     * @return list<array{cause: string, depuis: int}>
+     */
+    public static function etatDuSite(PDO $pdo): array
+    {
+        $etats = [];
+        if (self::config()->messagerie === Messagerie::DM && self::dmSansLigne($pdo)) {
+            $premier = $pdo->query('SELECT MIN(created_at) FROM mod_votes')->fetchColumn();
+            if ($premier !== null && $premier !== false
+                && self::maintenant() - (int) $premier > self::config()->fenetreMeuteJours * 86400) {
+                $etats[] = ['cause' => 'liens_muets', 'depuis' => (int) $premier];
+            }
+        }
+
+        return $etats;
+    }
+
+    /** La table `dm` est-elle sans aucune ligne ? Lue sur un hôte qui déclare `dm`. */
+    private static function dmSansLigne(PDO $pdo): bool
+    {
+        try {
+            $stmt = $pdo->query('SELECT 1 FROM dm LIMIT 1');
+        } catch (\PDOException $e) {
+            throw self::dmIntrouvable($pdo, $e);
+        }
+        $vide = $stmt->fetchColumn() === false;
+        $stmt->closeCursor();
+
+        return $vide;
     }
 
     /**

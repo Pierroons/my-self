@@ -268,8 +268,8 @@ return [
         => 'Reason too long: %d characters at most, this one has %d.',
     'Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'
         => 'Vote recorded but neutralised: you have already voted against %d different members over the last %d days.',
-    'Droit de vote suspendu jusqu\'au %s (participation à une meute).'
-        => 'Voting rights suspended until %s (took part in a pack).',
+    'Droit de vote suspendu par un arbitre jusqu\'au %s.'
+        => 'Voting rights suspended by an arbiter until %s.',
     'Ce motif n\'est pas du texte lisible : réécris-le.' => 'This reason is not readable text: write it again.',
     'Explique en %d caractères au moins : il en manque %d.' => 'Explain in at least %d characters: %d more needed.',
     'Un caractère est répété en rafale : écris une phrase.' => 'A character is repeated in a burst: write a sentence.',
@@ -314,13 +314,22 @@ return [
         => 'An arbiter takes no action on their own account.',
     'Ban prolongé sans fin.' => 'Ban extended with no end.',
     'Ban prolongé jusqu\'au %s.' => 'Ban extended until %s.',
+    'Durée de suspension invalide : strictement positive, et d\'au plus un siècle.'
+        => 'Invalid suspension length: strictly positive, and a century at most.',
+    'Vote déjà suspendu jusqu\'au %s : rends-le avant d\'en poser une autre suspension.'
+        => 'Vote already suspended until %s: give it back before setting another suspension.',
+    'Vote suspendu jusqu\'au %s.' => 'Vote suspended until %s.',
+    'Aucune suspension du vote en cours sur ce compte.' => 'No vote suspension in progress on this account.',
+    'Vote rendu.' => 'Vote given back.',
+    'SelfModerate attend sa configuration : l\'hôte appelle Moderate::setConfig() avec Config::prod(Messagerie::DM ou Messagerie::HORS_MOTEUR), ou Config::demo() pour une démonstration, avant tout appel au moteur.'
+        => 'SelfModerate is waiting for its configuration: the host calls Moderate::setConfig() with Config::prod(Messagerie::DM or Messagerie::HORS_MOTEUR), or Config::demo() for a demonstration, before any call to the engine.',
     'Un ban sans fin ne se lève qu\'avec un motif écrit.' => 'An endless ban is only lifted with a written reason.',
     'La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.' => 'The end of your penalty is waiting for the journal to record it: you can vote again as soon as it is.',
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
     'Ce ban n\'attend aucune revue : un signalement se classe.'
         => 'This ban awaits no review: a flag is closed instead.',
-    'Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine attend le journal.'
-        => 'This flag cannot be closed: an automatic ban is maintained, and a penalty end waits for the journal.',
+    'Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine ou un ban dû attend le journal.'
+        => 'This flag cannot be closed: an automatic ban is maintained, and a penalty end or a due ban waits for the journal.',
     'Ce signalement a changé depuis ton affichage : recharge la console.'
         => 'This flag has changed since it was displayed: reload the console.',
     'Ce signalement n\'est plus ouvert : recharge la console.'

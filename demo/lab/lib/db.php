@@ -10,6 +10,7 @@ namespace Pierroons\MySelfLab;
 use PDO;
 
 require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/moderation_config.php';
 
 final class Db
 {

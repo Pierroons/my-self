@@ -14,8 +14,9 @@
  * qu'au quorum des seuils (contrôles 171 et suivants).
  *
  * Le banc tourne sans journal branché jusqu'au contrôle 26 : à réputation
- * nulle, le moteur signale et ne bannit pas. Les contrôles du ban automatique
- * branchent le leur, et le retirent.
+ * nulle, le moteur signale et ne bannit pas ; sous le seuil du vote, il laisse
+ * le vote et signale la perte due. Les contrôles du ban automatique et du
+ * retrait du vote branchent le leur, et le retirent.
  *
  * Usage : php tests/sanity_moderate.php
  */
@@ -33,6 +34,8 @@ require_once __DIR__ . '/../lib/moderate.php';
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Moderate;
 use Pierroons\SelfModerate\Config;
+use Pierroons\SelfModerate\Messagerie;
+use Pierroons\SelfModerate\Usage;
 use Pierroons\SelfModerate\Moderate as Moteur;
 
 // 🔑 Le total se compte, il ne s'écrit pas.
@@ -160,7 +163,7 @@ function recalerCase(PDO $pdo, int $id): void
         "UPDATE member_moderation
             SET review_reason = COALESCE(
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL
-                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'chute_sans_quorum') ORDER BY id LIMIT 1),
+                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum') ORDER BY id LIMIT 1),
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL ORDER BY id DESC LIMIT 1)),
                 needs_review = EXISTS (SELECT 1 FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL)
           WHERE account_id = :id"
@@ -209,14 +212,14 @@ function voteBrut(PDO $pdo, int $votant, int $post, int $auteur): void
 }
 
 /**
- * La config du banc : celle de la démonstration, quorum aux seuils éteint. La
- * plupart des cas font tomber un compte avec un ou deux votants pour éprouver
- * autre chose — le journal, les peines, l'arbitre ; le quorum a ses propres cas,
- * qui l'allument.
+ * La config du banc : une démonstration dont les messages passent par `dm`,
+ * quorum aux seuils éteint. La plupart des cas font tomber un compte avec un ou
+ * deux votants pour éprouver autre chose — le journal, les peines, l'arbitre ;
+ * le quorum a ses propres cas, qui l'allument.
  */
 function configBanc(mixed ...$reglages): Config
 {
-    return new Config(...['quorumAuxSeuils' => false, ...$reglages]);
+    return new Config(...['messagerie' => Messagerie::DM, 'usage' => Usage::DEMONSTRATION, 'quorumAuxSeuils' => false, ...$reglages]);
 }
 
 /** Joue un cas sous une autre config, et rend celle du banc quoi qu'il arrive. */
@@ -227,6 +230,59 @@ function sousConfig(Config $config, callable $cas): mixed
         return $cas();
     } finally {
         Moderate::setConfig(configBanc());
+    }
+}
+
+/** Une config de service : les valeurs de `Config::prod()`, les réglages du cas par-dessus. */
+function configService(mixed ...$reglages): Config
+{
+    return new Config(...[...get_object_vars(Config::prod(Messagerie::DM)), ...$reglages]);
+}
+
+// ── Le ban tracé : un journal factice, relu par le banc ─────────────────────
+final class JournalDeBanc implements Pierroons\SelfModerate\Journal
+{
+    /** @var list<array<string, mixed>> */
+    public array $actes = [];
+
+    public function inscrire(array $acte): void
+    {
+        // Encodé comme le journal du lab, sans substitution : un acte qu'il
+        // refuserait, le banc le refuse aussi.
+        json_encode($acte, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $this->actes[] = $acte;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function de(int $compte, string $acte): array
+    {
+        return array_values(array_filter($this->actes, static fn (array $a): bool =>
+            $a['compte'] === $compte && $a['acte'] === $acte));
+    }
+}
+
+final class JournalEnPanne implements Pierroons\SelfModerate\Journal
+{
+    public function inscrire(array $acte): void
+    {
+        throw new RuntimeException('journal indisponible');
+    }
+}
+
+/**
+ * Joue un cas sous un journal neuf qu'il lui passe, et rend le journal d'avant
+ * quoi qu'il arrive : en démonstration, le retrait du vote s'inscrit au journal
+ * avant la base, comme le ban automatique.
+ */
+function sousJournal(callable $cas): mixed
+{
+    $avant = Moderate::journal();
+    $journal = new JournalDeBanc();
+    Moderate::setJournal($journal);
+    try {
+        return $cas($journal);
+    } finally {
+        Moderate::setJournal($avant);
     }
 }
 
@@ -260,14 +316,19 @@ $r = Moderate::applyVote($pdo, $votant, 'post', $sien, 1);
     : nok('l\'auto-vote est passé : ' . json_encode($r));
 
 // ── 4. Sous le seuil, le droit de vote est retiré ───────────────────────────
+// En démonstration, le retrait s'inscrit au journal avant la base : le cas
+// branche le sien.
 $chute = membre($pdo, 'chute');
 $p     = message($pdo, $chute, 'fil-chute');
 poserReputation($pdo, $chute, Moderate::config()->perteDroitDeVoteSous);   // exactement au seuil
-Moderate::applyVote($pdo, membre($pdo, 'passant'), 'post', $p, -1, motif(), 'hors_sujet');
-$rep = Moderate::getReputation($pdo, $chute);
-$rep['reputation'] === Moderate::config()->perteDroitDeVoteSous - 1 && !$rep['voting_rights']
-    ? ok('sous ' . Moderate::config()->perteDroitDeVoteSous . ', le droit de vote est retiré')
-    : nok('droit de vote conservé sous le seuil : ' . json_encode($rep));
+[$rep, $retraits4] = sousJournal(static function (JournalDeBanc $j) use ($pdo, $chute, $p): array {
+    Moderate::applyVote($pdo, membre($pdo, 'passant'), 'post', $p, -1, motif(), 'hors_sujet');
+
+    return [Moderate::getReputation($pdo, $chute), $j->de($chute, 'vote_retire')];
+});
+$rep['reputation'] === Moderate::config()->perteDroitDeVoteSous - 1 && !$rep['voting_rights'] && count($retraits4) === 1
+    ? ok('sous ' . Moderate::config()->perteDroitDeVoteSous . ', le droit de vote est retiré, et le retrait inscrit au journal')
+    : nok('droit de vote conservé sous le seuil : ' . json_encode([$rep, 'retraits' => count($retraits4)]));
 
 // ── 5. Le harcèlement d'un seul votant est neutralisé ───────────────────────
 // Des downvotes du même membre vers le même auteur, sur autant de messages
@@ -616,9 +677,9 @@ array_column($datesRecues, 'reason') === [$poses[1], $poses[0], $poses[2]]
         static fn (array $m): array => [$m['jour'], mb_substr($m['reason'], 0, 1)], $datesRecues), $colonnesRecues], JSON_UNESCAPED_UNICODE));
 
 // ── 22. 🔑 Une suspension de vote survit à la remontée de réputation ────────
-// Le moteur n'en pose plus, mais une base peut en porter une. La réputation dit
-// ce qu'on vaut, la suspension ce qu'on a fait : la convalescence, qui rend le
-// droit de vote, ne doit pas la lever.
+// Un arbitre la pose (`adminSuspendreVote()`). La réputation dit ce qu'on vaut,
+// la suspension ce qu'on a fait : la convalescence, qui rend le droit de vote,
+// ne doit pas la lever.
 $a = membre($pdo, 'suspendu-herite');
 poserReputation($pdo, $a, 2);
 $pdo->prepare(
@@ -626,7 +687,7 @@ $pdo->prepare(
 )->execute([time() - 10 * 86400, time() + 7 * 86400, $a]);
 $modA = Moderate::getReputation($pdo, $a);      // déclenche la convalescence
 [$peutVoter, $raison] = Moderate::canVote($pdo, $a);
-$modA['reputation'] === 12 && !$peutVoter && str_contains($raison, 'meute')
+$modA['reputation'] === 12 && !$peutVoter && str_contains($raison, 'par un arbitre')
     ? ok('la réputation remonte à ' . $modA['reputation'] . ' et la suspension tient : « ' . $raison . ' »')
     : nok('la remontée a effacé la peine : rep=' . $modA['reputation'] . ' vote=' . var_export($peutVoter, true) . ' ' . $raison);
 
@@ -659,12 +720,12 @@ $voteC && $modC['reputation'] === Moderate::config()->reputationInitiale && $por
 // `DUREE_MAX` non plus : c'est la plus longue échéance qui se lise encore comme
 // une échéance, et non comme `SANS_FIN`. `VOTE_AU_PLAFOND` et `VOTE_RECU` sont
 // des filtres SQL — les votes au plafond et dans la salve, les votes qui ont
-// porté —, sans nombre à régler ; `RAISONS_DU_CROISEMENT` est une
-// liste de noms.
+// porté —, sans nombre à régler ; `RAISONS_DU_CROISEMENT` et `CAUSES_DUES` sont
+// des listes de noms.
 $jumelles = array_values(array_filter(
     array_keys((new ReflectionClass(Moteur::class))->getConstants()),
     static fn (string $c): bool => !str_starts_with($c, 'REASON_')
-        && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_AU_PLAFOND', 'VOTE_RECU', 'RAISONS_DU_CROISEMENT'], true)
+        && !in_array($c, ['SANS_FIN', 'DUREE_MAX', 'VOTE_AU_PLAFOND', 'VOTE_RECU', 'RAISONS_DU_CROISEMENT', 'CAUSES_DUES'], true)
 ));
 $jumelles === []
     ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
@@ -740,11 +801,11 @@ $auPlafond === [21]
     : nok('seuil sourd à la config (reputationMax) : ' . $auPlafond[0] . ' au lieu de 21');
 
 $retire = membre($pdo, 'retire-config');
-$sousSeuil = sousConfig(configBanc(perteDroitDeVoteSous: 9), static function () use ($pdo, $retire): array {
+$sousSeuil = sousJournal(static fn (): array => sousConfig(configBanc(perteDroitDeVoteSous: 9), static function () use ($pdo, $retire): array {
     poserReputation($pdo, $retire, 9);
     Moderate::applyVote($pdo, membre($pdo, 'retire-votant'), 'member', $retire, -1, motif(), 'hors_sujet');
     return Moderate::getReputation($pdo, $retire);
-});
+}));
 $sousSeuil['reputation'] === 8 && !$sousSeuil['voting_rights']
     ? ok('le droit de vote se perd sous le seuil de la config')
     : nok('seuil sourd à la config (perteDroitDeVoteSous) : ' . json_encode($sousSeuil));
@@ -880,36 +941,6 @@ $troisieme = sousConfig(configBanc(ciblesParVotantMax: 2), static function () us
 ($troisieme['blocked_reason'] ?? '') === 'plafond_votant'
     ? ok('le nombre de membres qu\'un votant peut viser suit la config')
     : nok('seuil sourd à la config (ciblesParVotantMax) : ' . json_encode($troisieme));
-
-// ── Le ban tracé : un journal factice, relu par le banc ─────────────────────
-final class JournalDeBanc implements Pierroons\SelfModerate\Journal
-{
-    /** @var list<array<string, mixed>> */
-    public array $actes = [];
-
-    public function inscrire(array $acte): void
-    {
-        // Encodé comme le journal du lab, sans substitution : un acte qu'il
-        // refuserait, le banc le refuse aussi.
-        json_encode($acte, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-        $this->actes[] = $acte;
-    }
-
-    /** @return list<array<string, mixed>> */
-    public function de(int $compte, string $acte): array
-    {
-        return array_values(array_filter($this->actes, static fn (array $a): bool =>
-            $a['compte'] === $compte && $a['acte'] === $acte));
-    }
-}
-
-final class JournalEnPanne implements Pierroons\SelfModerate\Journal
-{
-    public function inscrire(array $acte): void
-    {
-        throw new RuntimeException('journal indisponible');
-    }
-}
 
 function etatBan(PDO $pdo, int $id): array
 {
@@ -1521,9 +1552,9 @@ function trancheBalayee(PDO $pdo): void
 // Une cible déjà visée par assez de votants sans lien pour atteindre le quorum du
 // vote, une autre par bien plus, chacune au seuil du vote : le downvote mesuré la
 // fait passer dessous, et le quorum lit ses votants et leurs liens — atteint des
-// deux côtés, pour que la même sanction s'écrive. Les deux sont posées AVANT les
-// deux mesures, pour que le reste de la base soit le même pour chacune : seul le
-// graphe de la cible diffère. Les liens se lisent votant par votant dans l'index de la
+// deux côtés, pour que la même sanction s'écrive, au journal que le cas branche.
+// Les deux sont posées AVANT les deux mesures, pour que le reste de la base soit
+// le même pour chacune : seul le graphe de la cible diffère. Les liens se lisent votant par votant dans l'index de la
 // paire : dix votants de plus coûtent au plus deux requêtes chacun. Tester chaque paire
 // par une requête ferait croître le coût comme le nombre de paires.
 trancheBalayee($pdo);
@@ -1540,7 +1571,7 @@ poserReputation($pdo, $cibleQ, Moderate::config()->perteDroitDeVoteSous);
 // `exigerIndexPaire()`), et n'entrent pas dans le coût d'un vote.
 Moderate::regenerate($compteur, $cibleP);
 Moderate::areLinked($compteur, $cibleP, $cibleQ);
-[$sept, $dixSept] = sousConfig(configBanc(quorumAuxSeuils: true), static fn (): array => [
+[$sept, $dixSept] = sousQuorum(static fn (): array => [
     coutDownvote($compteur, $pdo, $postP, '39p'),
     coutDownvote($compteur, $pdo, $postQ, '39q'),
 ]);
@@ -1625,15 +1656,16 @@ $perdant === $avant + 1 && $bruit
 // repli sur le français quand elles manquent : la page reste lisible, et aucun
 // contrôle ne voyait donc qu'une réponse sortait en français sur la page
 // anglaise. Une phrase qui contourne `static::t()` ne passe même pas par là.
+// La phrase peut commencer à la ligne suivante de l'appel.
 // ⚠️ L'extraction ne lit que les guillemets simples : une phrase entre
 // guillemets doubles lui échapperait, et le contrôle refuse donc d'en voir une.
 $sourceMoteur = (string) file_get_contents(__DIR__ . '/../../../bi-self/selfmoderate/src/Moderate.php');
-preg_match_all("/static::t\\('((?:[^'\\\\]|\\\\.)*)'\\)/", $sourceMoteur, $phrases);
+preg_match_all("/static::t\\(\\s*'((?:[^'\\\\]|\\\\.)*)'\\s*\\)/", $sourceMoteur, $phrases);
 $contenuEn = require __DIR__ . '/../lang/contenu-en.php';
 $sansAnglais = array_values(array_filter(array_unique(array_map('stripslashes', $phrases[1])),
     static fn (string $p): bool => !array_key_exists($p, $contenuEn)));
 preg_match_all("/'message'\\s*=>\\s*'([^']*)'/", $sourceMoteur, $horsT);
-$guillemetsDoubles = substr_count($sourceMoteur, 'static::t("');
+$guillemetsDoubles = preg_match_all('/static::t\\(\\s*"/', $sourceMoteur);
 count($phrases[1]) > 0 && $sansAnglais === [] && $horsT[1] === [] && $guillemetsDoubles === 0
     ? ok(count(array_unique($phrases[1])) . ' phrases du moteur passent par la traduction, et chacune a son anglais')
     : nok('une phrase du moteur sort en français sur la page anglaise : ' . json_encode([
@@ -2229,6 +2261,7 @@ function invariantsSignaux(PDO $p): array
                  OR (s.cause = 'ban_en_attente' AND NOT EXISTS (SELECT 1 FROM mod_signaux z
                         WHERE z.account_id = s.account_id AND z.cause = 'reputation_zero'))
                  OR (s.cause = 'droit_de_vote_perdu' AND m.voting_rights = 1)
+                 OR (s.cause = 'perte_du_vote_due' AND (m.voting_rights = 0 OR m.convalescent = 0))
                  OR (s.cause = 'ban_sans_fin' AND m.banned_until < " . Moteur::SANS_FIN . ")
                  OR (s.cause = 'chute_sans_quorum' AND (m.convalescent = 0 OR (m.ban_origine = 'auto' AND m.banned_until > 0)))"
         )->fetchAll(PDO::FETCH_ASSOC),
@@ -2249,7 +2282,7 @@ function invariantsSignaux(PDO $p): array
                        EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
                        COALESCE(
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
-                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'ban_sans_fin', 'chute_sans_quorum') ORDER BY id LIMIT 1),
+                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum') ORDER BY id LIMIT 1),
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
                        ) AS attendu_cause
                   FROM member_moderation m)
@@ -3324,12 +3357,12 @@ $leve91 !== null && !$panne91
 $refuses92 = [];
 foreach (['balayageFiletMax' => -1, 'bansArbitreSignal' => 0] as $champ92 => $valeur92) {
     try {
-        new Config(...[$champ92 => $valeur92]);
+        new Config(Messagerie::DM, Usage::DEMONSTRATION, ...[$champ92 => $valeur92]);
     } catch (InvalidArgumentException) {
         $refuses92[] = $champ92;
     }
 }
-$eteint92 = (new Config(balayageFiletMax: 0))->balayageFiletMax === 0;
+$eteint92 = (new Config(Messagerie::DM, Usage::DEMONSTRATION, balayageFiletMax: 0))->balayageFiletMax === 0;
 $refuses92 === ['balayageFiletMax', 'bansArbitreSignal'] && $eteint92
     ? ok('⭐ un filet négatif et un signal au zéroième ban d\'arbitre sont refusés ; un filet à 0 s\'éteint')
     : nok('⭐ un seuil neuf accepte une valeur qui le vide de sens : ' . json_encode(['refuses' => $refuses92, 'eteint' => $eteint92]));
@@ -3471,7 +3504,7 @@ $erreur96 === null && $droit96 === 1
 // La page de la personne en convalescence lui dit quand elle retrouve sa place.
 // Le rythme vient de la config, comme les autres seuils : « un point par jour »
 // écrit en dur lui annonçait vingt jours là où le service en compte cent quarante.
-$enService97 = sousConfig(Config::prod(), static fn (): array => Moderate::regles());
+$enService97 = sousConfig(Config::prod(Messagerie::DM), static fn (): array => Moderate::regles());
 $enDur97 = [];
 foreach (['fr', 'en'] as $langue97) {
     $phrase97 = (require __DIR__ . "/../lang/$langue97.php")['prf.mod.conv.txt'] ?? '';
@@ -4172,24 +4205,36 @@ Moderate::setJournal($journalAvant132);
     ? ok('un refus ordinaire du journal au début du ban est contenu : le vote tient, le ban dû se signale')
     : nok('un refus ordinaire du journal au début du ban passe pour une erreur d\'intégration : ' . json_encode([$vote132, causes($pdo, $cible132)]));
 
-// ── 133. ⭐ Le ban automatique éteint par l'hôte : la chute se signale, rien ne bannit ─
-$journal133 = new JournalDeBanc();
-$journalAvant133 = Moderate::journal();
-Moderate::setJournal($journal133);
+// ── 133. ⭐ En service, la réputation au plancher se signale, rien ne bannit ─
+// L'usage décide seul. Journal branché, sept critiques sans lien font le quorum du
+// ban — en démonstration, ils bannissent (172) : en service, la chute se signale
+// (`reputation_zero`), le vote reste, rien ne s'inscrit au journal, et
+// `banAutomatiqueArme()` le dit.
 $chute133 = membre($pdo, 'chute-133');
-poserReputation($pdo, $chute133, 1);
-[$arme133, $etat133, $causes133] = sousConfig(configBanc(banAutomatique: false), static function () use ($pdo, $chute133): array {
-    Moderate::applyVote($pdo, membre($pdo, 'votant-133'), 'member', $chute133, -1, motif(), 'agressif');
-    return [Moderate::banAutomatiqueArme(), etatBan($pdo, $chute133), causes($pdo, $chute133)];
-});
-$armeDefaut133 = Moderate::banAutomatiqueArme();
-Moderate::setJournal($journalAvant133);
-!$arme133 && $armeDefaut133 && (int) $etat133['banned_until'] === 0 && (int) $etat133['reputation'] === 0
-    && $causes133 === ['reputation_zero'] && $journal133->de($chute133, 'ban_debut') === []
-    ? ok('banAutomatique éteint : la réputation au plancher est signalée, rien ne bannit, et banAutomatiqueArme() le dit')
-    : nok('seuil sourd à la config (banAutomatique) : ' . json_encode([$arme133, $armeDefaut133, $etat133, $causes133]));
+poserReputation($pdo, $chute133, 20);
+$sept133 = membres($pdo, 'critique-133', 7);
+try {
+    $service133 = sousJournal(static fn (JournalDeBanc $j): array => sousConfig(configService(), static function () use ($pdo, $chute133, $sept133, $j): array {
+        frapper($pdo, $chute133, $sept133, 3, '133');
+
+        return ['arme' => Moderate::banAutomatiqueArme(), 'etat' => bilan($pdo, $chute133), 'actes' => array_column($j->actes, 'acte')];
+    }));
+} catch (Throwable $t133) {
+    $service133 = ['exception' => get_class($t133) . ' : ' . $t133->getMessage()];
+}
+$armeDemo133 = sousJournal(static fn (): bool => Moderate::banAutomatiqueArme());
+($service133['arme'] ?? true) === false && $armeDemo133
+    && ($service133['etat']['rep'] ?? null) === 0 && !$service133['etat']['banni'] && $service133['etat']['vote']
+    && array_values(array_diff($service133['etat']['causes'], ['salve_rapide'])) === ['reputation_zero']
+    && $service133['actes'] === []
+    ? ok('en service, la réputation au plancher est signalée sans ban ni retrait du vote, rien ne s\'inscrit, et banAutomatiqueArme() le dit')
+    : nok('seuil sourd à la config (usage) : ' . json_encode([$service133, $armeDemo133], JSON_UNESCAPED_UNICODE));
 
 // ── 134. ⭐ La perte du droit de vote se signale, et tombe quand le droit revient ─
+// En démonstration, le vote se retire et la perte se signale (`droit_de_vote_perdu`) ;
+// en service, six critiques sans lien font le quorum du vote, qui reste, et la perte se
+// signale due (`perte_du_vote_due`). L'une et l'autre tombent quand la réputation
+// repasse le seuil, et cèdent la place à la chute au plancher.
 $perte134 = membre($pdo, 'perte-134');
 poserReputation($pdo, $perte134, 5);
 Moderate::applyVote($pdo, membre($pdo, 'votant-134-a'), 'member', $perte134, -1, motif(), 'agressif');
@@ -4198,31 +4243,37 @@ $pdo->prepare('UPDATE member_moderation SET last_regen_at = last_regen_at - ? WH
     ->execute([Moderate::config()->intervalleConvalescenceSecondes, $perte134]);
 rattraper($pdo, $perte134);
 $apres134 = causes($pdo, $perte134);
-$muet134 = membre($pdo, 'muet-134');
-poserReputation($pdo, $muet134, 5);
-$sansSignal134 = sousConfig(configBanc(signalPerteDuVote: false), static function () use ($pdo, $muet134): array {
-    Moderate::applyVote($pdo, membre($pdo, 'votant-134-b'), 'member', $muet134, -1, motif(), 'agressif');
-    return causes($pdo, $muet134);
-});
+$du134 = membre($pdo, 'du-134');
+poserReputation($pdo, $du134, 10);
+$six134 = membres($pdo, 'critique-134', 6);
+try {
+    $service134 = sousConfig(configService(), static function () use ($pdo, $du134, $six134): array {
+        frapper($pdo, $du134, $six134, 1, '134');
+        $pendant = bilan($pdo, $du134);
+        $pdo->prepare('UPDATE member_moderation SET last_regen_at = last_regen_at - ? WHERE account_id = ?')
+            ->execute([Moderate::config()->intervalleConvalescenceSecondes, $du134]);
+        rattraper($pdo, $du134);
+
+        return [$pendant, bilan($pdo, $du134)];
+    });
+} catch (Throwable $t134) {
+    $service134 = ['exception' => get_class($t134) . ' : ' . $t134->getMessage()];
+}
 $plancher134 = membre($pdo, 'plancher-134');
 poserReputation($pdo, $plancher134, 2);
 Moderate::applyVote($pdo, membre($pdo, 'votant-134-c'), 'member', $plancher134, -1, motif(), 'agressif');
 $avantPlancher134 = causes($pdo, $plancher134);
 Moderate::applyVote($pdo, membre($pdo, 'votant-134-d'), 'member', $plancher134, -1, motif(), 'agressif');
 $auPlancher134 = causes($pdo, $plancher134);
-$sansBan134 = membre($pdo, 'sans-ban-134');
-poserReputation($pdo, $sansBan134, 2);
-$auPlancherSansBan134 = sousConfig(configBanc(banAutomatique: false), static function () use ($pdo, $sansBan134): array {
-    Moderate::applyVote($pdo, membre($pdo, 'votant-134-e'), 'member', $sansBan134, -1, motif(), 'agressif');
-    Moderate::applyVote($pdo, membre($pdo, 'votant-134-f'), 'member', $sansBan134, -1, motif(), 'agressif');
-    return causes($pdo, $sansBan134);
-});
+[$duPendant134, $duApres134] = isset($service134[1]) ? $service134 : [null, null];
 $pendant134 === ['droit_de_vote_perdu'] && $apres134 === [] && reputation($pdo, $perte134) === 5
-    && $sansSignal134 === [] && $avantPlancher134 === ['droit_de_vote_perdu']
+    && ($duPendant134['rep'] ?? null) === 4 && $duPendant134['vote']
+    && array_values(array_diff($duPendant134['causes'], ['salve_rapide'])) === ['perte_du_vote_due']
+    && ($duApres134['rep'] ?? null) === 5 && !in_array('perte_du_vote_due', $duApres134['causes'], true)
+    && $avantPlancher134 === ['droit_de_vote_perdu']
     && !in_array('droit_de_vote_perdu', $auPlancher134, true) && $auPlancher134 !== []
-    && $auPlancherSansBan134 === ['reputation_zero']
-    ? ok('la perte du droit de vote se signale, tombe quand il revient, se tait sur demande, et cède la place à la chute')
-    : nok('seuil sourd à la config (signalPerteDuVote), ou perte du vote muette : ' . json_encode([$pendant134, $apres134, reputation($pdo, $perte134), $sansSignal134, $avantPlancher134, $auPlancher134, $auPlancherSansBan134]));
+    ? ok('la perte du droit de vote se signale — retirée en démonstration, due en service, le vote gardé —, tombe quand il revient, et cède la place à la chute')
+    : nok('seuil sourd à la config (usage), ou perte du vote muette : ' . json_encode([$pendant134, $apres134, reputation($pdo, $perte134), $service134, $avantPlancher134, $auPlancher134], JSON_UNESCAPED_UNICODE));
 
 // ── 135. ⭐ Les messages qui dispensent de l'ancienneté se règlent ──────────────
 $jeune135 = membre($pdo, 'jeune-135');
@@ -4575,15 +4626,16 @@ $bornes143 === [[false, true], [false, true], [false, true]] && $bornesActes143 
 // `PHP_INT_MAX` dit « infini » à qui ne lit pas le moteur : comme palier, l'échéance
 // débordait en flottant, `estBanni()` répondait non, et le lab laissait publier un
 // banni ; un palier qui atteignait `SANS_FIN` faisait prononcer à la machine un ban
-// sans fin, au journal `sans_fin: false`.
+// sans fin, au journal `sans_fin: false`. Les paliers se jouent en service : en
+// démonstration, la borne d'une heure les refuserait avant celle-ci.
 $refus144 = [];
 foreach ([
-    'palier PHP_INT_MAX'   => static fn (): Config => new Config(dureesBan: [120, PHP_INT_MAX]),
-    'palier SANS_FIN'      => static fn (): Config => new Config(dureesBan: [Moderate::SANS_FIN - time()]),
-    'arbitre PHP_INT_MAX'  => static fn (): Config => new Config(dureeBanAdminSecondes: PHP_INT_MAX),
-    'arbitre nul'          => static fn (): Config => new Config(dureeBanAdminSecondes: 0),
-    'palier d\'un siècle et une seconde'  => static fn (): Config => new Config(dureesBan: [Moderate::DUREE_MAX + 1]),
-    'arbitre d\'un siècle et une seconde' => static fn (): Config => new Config(dureeBanAdminSecondes: Moderate::DUREE_MAX + 1),
+    'palier PHP_INT_MAX'   => static fn (): Config => configService(dureesBan: [86400, PHP_INT_MAX]),
+    'palier SANS_FIN'      => static fn (): Config => configService(dureesBan: [Moderate::SANS_FIN - time()]),
+    'arbitre PHP_INT_MAX'  => static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureeBanAdminSecondes: PHP_INT_MAX),
+    'arbitre nul'          => static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureeBanAdminSecondes: 0),
+    'palier d\'un siècle et une seconde'  => static fn (): Config => configService(dureesBan: [Moderate::DUREE_MAX + 1]),
+    'arbitre d\'un siècle et une seconde' => static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureeBanAdminSecondes: Moderate::DUREE_MAX + 1),
 ] as $nom144 => $faire144) {
     try {
         $faire144();
@@ -4593,7 +4645,7 @@ foreach ([
     }
 }
 try {
-    new Config(dureesBan: [120, 600, 100 * 365 * 86400], dureeBanAdminSecondes: 100 * 365 * 86400);
+    configService(dureesBan: [86400, 604800, 100 * 365 * 86400], dureeBanAdminSecondes: 100 * 365 * 86400);
     $siecle144 = 'accepté';
 } catch (InvalidArgumentException $e144) {
     $siecle144 = $e144->getMessage();
@@ -4748,6 +4800,8 @@ $refus148['banni d\'origine inconnue bannit un tiers'] = Moderate::adminBan($pdo
 // Banni par la machine : ses gestes passent, sauf sur lui-même.
 $auto148 = membre($pdo, 'auto-148');
 poserReputation($pdo, $auto148, 1);
+// À un point, il a déjà perdu son vote : le seul acte de la machine est le début du ban.
+$pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$auto148]);
 Moderate::applyVote($pdo, membre($pdo, 'votant-148'), 'member', $auto148, -1, motif(), 'agressif');
 $tiers148 = membre($pdo, 'tiers-148');
 poserReputation($pdo, $tiers148, 15);
@@ -4937,6 +4991,11 @@ $avant152 = [
         poserReputation($pdo, $orph152, 1);
         Moderate::applyVote($pdo, membre($pdo, 'votant-152'), 'member', $orph152, -1, motif(), 'agressif');
     }),
+    'auto_sans_vote' => $diag152(static function () use ($pdo, $orph152): void {
+        poserReputation($pdo, $orph152, 1);
+        $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$orph152]);
+        Moderate::applyVote($pdo, membre($pdo, 'votant-152b'), 'member', $orph152, -1, motif(), 'agressif');
+    }),
     'console' => $diag152(static fn () => Moderate::bansEnCours($pdo, 100000)),
 ];
 $inscrits152 = count($journal152->actes) - $actes152;
@@ -5036,7 +5095,7 @@ $troisieme152 = $reposee152 === 'passé' && is_array($apresReposee152) && count(
     && $apresReposee152[0]['debut'] === $debut152 && $apresReposee152[0]['echeance'] === $fin152
     && is_array($apresProlongee152) && ($apresProlongee152[0]['echeance'] ?? null) === $fin152 + 600 && count($apresProlongee152) === 2;
 Moderate::setJournal($journalAvant152);
-$avant152 === ['ban' => 'nommée', 'auto' => 'nommée', 'console' => 'nommée'] && $inscrits152 === 0 && $troisieme152 && $divergence152
+$avant152 === ['ban' => 'nommée', 'auto' => 'nommée', 'auto_sans_vote' => 'nommée', 'console' => 'nommée'] && $inscrits152 === 0 && $troisieme152 && $divergence152
     && $repare152 === 1 && $fermee152 === 'hors_moteur' && $apres152 === 'passé' && $rouvre152 === 'passé'
     && str_contains($lecture152, 'fermée hors du moteur') && is_array($lignes152) && count($lignes152) === 1 && $lignes152[0]['fin'] === null
     && $lignes152[0]['arbitre'] === ['id' => idDe($pdo, 'arbitre-un'), 'nom' => 'arbitre-un']
@@ -5400,7 +5459,7 @@ $heure160 = 1_800_000_000 - 1_800_000_000 % 3600;
 $pas160 = Moderate::config()->arrondiFinBanSecondes;
 $fins160 = [
     Moderate::finAffichee($heure160 + 1, 'auto') === $heure160 + $pas160,
-    sousConfig(configBanc(dureesBan: [7200], arrondiFinBanSecondes: 3600), static fn (): int => Moderate::finAffichee($heure160 + 1, 'auto')) === $heure160 + 3600,
+    sousConfig(configBanc(dureesBan: [3600], arrondiFinBanSecondes: 3600), static fn (): int => Moderate::finAffichee($heure160 + 1, 'auto')) === $heure160 + 3600,
     Moderate::finAffichee($heure160, 'auto') === $heure160,
     Moderate::finAffichee($heure160 + 1, 'admin') === $heure160 + 1,
     Moderate::finAffichee($heure160 + 1, null) === $heure160 + 1,
@@ -5620,7 +5679,7 @@ $journal164 = new JournalDeBanc();
 Moderate::setJournal($journal164);
 $fins164 = [];
 foreach ([60, 3600] as $pas164) {
-    $fins164[$pas164] = sousConfig(configBanc(dureesBan: [7200], arrondiFinBanSecondes: $pas164), static function () use ($pdo, $pas164, &$t164, $journal164): array {
+    $fins164[$pas164] = sousConfig(configBanc(dureesBan: [3600], arrondiFinBanSecondes: $pas164), static function () use ($pdo, $pas164, &$t164, $journal164): array {
         $debut = $t164;
         $chute = membre($pdo, "fin-reelle-164-$pas164");
         poserReputation($pdo, $chute, 1);
@@ -5651,9 +5710,13 @@ $fins164 === [60 => $attendu164, 3600 => $attendu164]
     ? ok('⭐ la fin d\'un ban automatique se pose arrondie — ligne, journal et historique d\'accord —, et la peine cède à elle, à la minute comme à l\'heure')
     : nok('⭐ la fin réelle d\'un ban automatique redonne la seconde du vote : ' . json_encode($fins164, JSON_UNESCAPED_UNICODE));
 $bornes164 = [];
+// Un palier d'un jour se joue en service, la démonstration le refusant ; les
+// autres en démonstration, où le pas descend sous l'heure.
 foreach ([[0, 120], [1, 120], [120, 120], [121, 120], [86400, 86400], [86401, 86400]] as [$pas164, $palier164]) {
     try {
-        new Config(dureesBan: [$palier164], arrondiFinBanSecondes: $pas164);
+        $palier164 > Config::PALIER_DEMONSTRATION_MAX
+            ? configService(dureesBan: [$palier164], arrondiFinBanSecondes: $pas164)
+            : new Config(Messagerie::DM, Usage::DEMONSTRATION, dureesBan: [$palier164], arrondiFinBanSecondes: $pas164);
         $bornes164["$pas164/$palier164"] = 'acceptée';
     } catch (InvalidArgumentException) {
         $bornes164["$pas164/$palier164"] = 'refusée';
@@ -5955,7 +6018,7 @@ foreach ([$recent170('recent-f1-170'), $recent170('recent-f2-170')] as $votant17
 $repF170 = reputation($pdo, $cibleF170);
 Moderate::setConfig(configBanc());
 try {
-    new Config(ageEtabliSecondes: -1);
+    new Config(Messagerie::DM, Usage::DEMONSTRATION, ageEtabliSecondes: -1);
     $refusNegatif170 = false;
 } catch (InvalidArgumentException) {
     $refusNegatif170 = true;
@@ -6012,14 +6075,8 @@ function membres(PDO $pdo, string $prefixe, int $combien): array
  */
 function sousQuorum(callable $cas, mixed ...$reglages): mixed
 {
-    $avant = Moderate::journal();
-    $journal = new JournalDeBanc();
-    Moderate::setJournal($journal);
-    try {
-        return sousConfig(configBanc(...['quorumAuxSeuils' => true, ...$reglages]), static fn (): mixed => $cas($journal));
-    } finally {
-        Moderate::setJournal($avant);
-    }
+    return sousJournal(static fn (JournalDeBanc $journal): mixed =>
+        sousConfig(configBanc(...['quorumAuxSeuils' => true, ...$reglages]), static fn (): mixed => $cas($journal)));
 }
 
 /** L'état d'une cible, réduit à ce que les cas du quorum regardent. */
@@ -6042,22 +6099,22 @@ function portent(PDO $pdo, int $cible): int
 // descendre du départ au seuil. Le nombre suit `farmingDownvotesMax` et les seuils ;
 // un budget de recherche nul est refusé.
 $q171 = [
-    Config::demo()->quorumAuxSeuils, Config::prod()->quorumAuxSeuils,
+    Config::demo()->quorumAuxSeuils, Config::prod(Messagerie::DM)->quorumAuxSeuils, Config::prod(Messagerie::HORS_MOTEUR)->quorumAuxSeuils,
     Config::demo()->voixPourSanction(Config::demo()->banA),
     Config::demo()->voixPourSanction(Config::demo()->perteDroitDeVoteSous - 1),
-    (new Config(farmingDownvotesMax: 4))->voixPourSanction(0),
-    (new Config(farmingDownvotesMax: 4))->voixPourSanction(4),
+    (new Config(Messagerie::DM, Usage::DEMONSTRATION, farmingDownvotesMax: 4))->voixPourSanction(0),
+    (new Config(Messagerie::DM, Usage::DEMONSTRATION, farmingDownvotesMax: 4))->voixPourSanction(4),
 ];
 $budget171 = [];
 foreach (['quorumTravailMax', 'quorumRecherchesMax'] as $cle171) {
     try {
-        new Config(...[$cle171 => 0]);
+        new Config(Messagerie::DM, Usage::DEMONSTRATION, ...[$cle171 => 0]);
         $budget171[$cle171] = 'accepté';
     } catch (InvalidArgumentException) {
         $budget171[$cle171] = 'refusé';
     }
 }
-$q171 === [true, true, 7, 6, 5, 4] && $budget171 === ['quorumTravailMax' => 'refusé', 'quorumRecherchesMax' => 'refusé']
+$q171 === [true, true, true, 7, 6, 5, 4] && $budget171 === ['quorumTravailMax' => 'refusé', 'quorumRecherchesMax' => 'refusé']
     ? ok('⭐ le quorum est allumé en démonstration et en service : 7 voix pour le ban, 6 pour le vote, 5 et 4 à quatre votes par votant')
     : nok('⭐ le quorum est éteint quelque part, ou ne suit pas la config : ' . json_encode([$q171, $budget171]));
 
@@ -7777,6 +7834,614 @@ $apres225 = bilan($pdo, $cible225)['rep'];
 $avant225 === Moderate::config()->reputationMax - 5 && $apres225 === $avant225 + 1
     ? ok('⭐ des votes sans effet au plafond n\'occupent plus la part quand la cible en est descendue : un compte récent honnête qui vote pour elle compte')
     : nok('⭐ des votes sans effet au plafond occupent la part hors du plafond : ' . json_encode([$avant225, $apres225]));
+
+// ── 226. ⭐ L'hôte déclare sa messagerie et son usage, et le moteur ne tourne pas sans sa config ─
+// Ni l'une ni l'autre n'a de valeur par défaut : une config qui ne les nomme pas ne se
+// construit pas. Sans `setConfig()`, le moteur refuse en lecture comme en écriture, en
+// nommant le geste, et n'écrit rien : il ne prend pas une démonstration à la place.
+$declaration226 = [];
+foreach ([
+    'rien'             => static fn (): Config => new Config(),
+    'messagerie seule' => static fn (): Config => new Config(Messagerie::DM),
+    'usage seul'       => static fn (): Config => new Config(usage: Usage::SERVICE),
+] as $forme226 => $faire226) {
+    try {
+        $faire226();
+        $declaration226[$forme226] = 'construite';
+    } catch (ArgumentCountError) {
+        $declaration226[$forme226] = 'refusée';
+    } catch (Throwable $e226) {
+        $declaration226[$forme226] = get_class($e226) . ' : ' . $e226->getMessage();
+    }
+}
+$cible226 = membre($pdo, 'cible-226');
+$votant226 = membre($pdo, 'votant-226');
+$votes226 = (int) $pdo->query('SELECT COUNT(*) FROM mod_votes')->fetchColumn();
+$sansConfig226 = [];
+Moderate::setConfig(null);
+try {
+    foreach ([
+        'config'  => static fn (): mixed => Moderate::config(),
+        'lecture' => static fn (): mixed => Moderate::getReputation($pdo, $cible226),
+        'vote'    => static fn (): mixed => Moderate::applyVote($pdo, $votant226, 'member', $cible226, -1, motif(), 'agressif'),
+    ] as $geste226 => $faire226) {
+        try {
+            $faire226();
+            $sansConfig226[$geste226] = 'passé';
+        } catch (LogicException $e226) {
+            $sansConfig226[$geste226] = str_contains($e226->getMessage(), 'setConfig()') ? 'refusé' : $e226->getMessage();
+        } catch (Throwable $e226) {
+            $sansConfig226[$geste226] = get_class($e226) . ' : ' . $e226->getMessage();
+        }
+    }
+} finally {
+    Moderate::setConfig(configBanc());
+}
+$ecrits226 = (int) $pdo->query('SELECT COUNT(*) FROM mod_votes')->fetchColumn() - $votes226;
+$declaration226 === ['rien' => 'refusée', 'messagerie seule' => 'refusée', 'usage seul' => 'refusée']
+    && $sansConfig226 === ['config' => 'refusé', 'lecture' => 'refusé', 'vote' => 'refusé'] && $ecrits226 === 0
+    && Moderate::config()->usage === Usage::DEMONSTRATION
+    ? ok('⭐ une config sans messagerie ni usage ne se construit pas ; sans setConfig(), le moteur refuse de lire et de voter en nommant le geste, sans rien écrire')
+    : nok('⭐ le moteur tourne sans déclaration, ou sans sa config : ' . json_encode(['declaration' => $declaration226, 'sans_config' => $sansConfig226, 'ecrits' => $ecrits226], JSON_UNESCAPED_UNICODE));
+
+// ── 227. ⭐ En service, aucun réglage de sécurité ne descend sous `Config::prod()` ─
+// Un plancher plus court d'une unité, un plafond plus large d'une unité, le quorum
+// éteint : chacun se refuse, en nommant le réglage. Durcir les dix d'un coup passe ;
+// la démonstration garde ses valeurs courtes ; la messagerie hors du moteur a les
+// mêmes planchers.
+$prod227 = Config::prod(Messagerie::DM);
+$planchers227 = ['ageMinPourVoterSecondes', 'ageEtabliSecondes', 'fenetreSalveSecondes', 'arrondiFinBanSecondes', 'fenetreFarmingJours'];
+$plafonds227 = ['ciblesParVotantMax', 'farmingDownvotesMax', 'farmingUpvotesMax', 'salveVotantsMin', 'messagesPourVoterAvantAge'];
+$essai227 = static function (callable $faire, string $nomme): string {
+    try {
+        $faire();
+
+        return 'accepté';
+    } catch (InvalidArgumentException $e) {
+        return str_contains($e->getMessage(), $nomme) ? 'refusé' : 'refusé sans le nommer : ' . $e->getMessage();
+    }
+};
+$affaiblis227 = [];
+$durci227 = [];
+foreach ($planchers227 as $champ227) {
+    $affaiblis227[$champ227] = $essai227(static fn (): Config => configService(...[$champ227 => $prod227->$champ227 - 1]), $champ227);
+    $durci227[$champ227] = $prod227->$champ227 + 1;
+}
+foreach ($plafonds227 as $champ227) {
+    $affaiblis227[$champ227] = $essai227(static fn (): Config => configService(...[$champ227 => $prod227->$champ227 + 1]), $champ227);
+    $durci227[$champ227] = $prod227->$champ227 - 1;
+}
+$affaiblis227['quorumAuxSeuils'] = $essai227(static fn (): Config => configService(quorumAuxSeuils: false), 'quorumAuxSeuils');
+$affaiblis227['hors du moteur'] = $essai227(static fn (): Config => new Config(...[
+    ...get_object_vars(Config::prod(Messagerie::HORS_MOTEUR)), 'ageMinPourVoterSecondes' => 60,
+]), 'ageMinPourVoterSecondes');
+$autorises227 = [
+    'durci'         => $essai227(static fn (): Config => configService(...$durci227), '-'),
+    'demonstration' => $essai227(static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION,
+        quorumAuxSeuils: false, ageMinPourVoterSecondes: 0, ageEtabliSecondes: 0, farmingDownvotesMax: 50, ciblesParVotantMax: 500), '-'),
+];
+$affaiblis227 === array_fill_keys(array_keys($affaiblis227), 'refusé') && count($affaiblis227) === 12
+    && $autorises227 === ['durci' => 'accepté', 'demonstration' => 'accepté']
+    ? ok('⭐ en service, chaque plancher et chaque plafond de prod() se refuse affaibli d\'une unité, le quorum éteint aussi, hors du moteur comme avec dm ; durcir passe, et la démonstration garde ses valeurs')
+    : nok('⭐ un service accepte un réglage plus faible que prod(), ou refuse de durcir : ' . json_encode(['affaiblis' => $affaiblis227, 'autorises' => $autorises227], JSON_UNESCAPED_UNICODE));
+
+// ── 228. ⭐ En démonstration, un palier de ban dure une heure au plus ───────────
+// La démonstration ne sert pas de porte vers de vrais bans : 3600 s passent, 3601 se
+// refusent en nommant la borne, au premier palier comme au dernier, hors du moteur
+// comme avec `dm`. Le ban d'arbitre, signé d'un humain, n'est pas borné ; le service
+// non plus.
+$essai228 = static function (callable $faire): string {
+    try {
+        $faire();
+
+        return 'accepté';
+    } catch (InvalidArgumentException $e) {
+        return str_contains($e->getMessage(), 'une heure') ? 'refusé' : 'refusé sans la borne : ' . $e->getMessage();
+    }
+};
+$paliers228 = [
+    'heure'          => $essai228(static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureesBan: [120, 600, 3600])),
+    'dernier'        => $essai228(static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureesBan: [120, 600, 3601])),
+    'premier'        => $essai228(static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureesBan: [3601, 3601])),
+    'hors du moteur' => $essai228(static fn (): Config => new Config(Messagerie::HORS_MOTEUR, Usage::DEMONSTRATION, dureesBan: [3601])),
+    'arbitre'        => $essai228(static fn (): Config => new Config(Messagerie::DM, Usage::DEMONSTRATION, dureeBanAdminSecondes: 30 * 86400)),
+    'service'        => $essai228(static fn (): Config => Config::prod(Messagerie::HORS_MOTEUR)),
+];
+Config::PALIER_DEMONSTRATION_MAX === 3600
+    && $paliers228 === ['heure' => 'accepté', 'dernier' => 'refusé', 'premier' => 'refusé', 'hors du moteur' => 'refusé', 'arbitre' => 'accepté', 'service' => 'accepté']
+    ? ok('⭐ en démonstration, un palier d\'une heure passe et une heure et une seconde se refuse ; le ban d\'arbitre et le service ne sont pas bornés')
+    : nok('⭐ la démonstration accepte un palier de plus d\'une heure, ou borne ce qu\'elle ne borne pas : ' . json_encode($paliers228, JSON_UNESCAPED_UNICODE));
+
+/** Le signal d'une cause sur un compte, vu ou non, tel que l'arbitre le lit ; null s'il n'y en a pas. */
+function signalDe(PDO $pdo, int $id, string $cause): ?array
+{
+    foreach (Moderate::getReputation($pdo, $id)['signaux'] as $s) {
+        if ($s['cause'] === $cause) {
+            return $s;
+        }
+    }
+
+    return null;
+}
+
+/** Ce que l'arbitre a vu d'un signal : ce que `adminClasser()` attend en `$vu`. */
+function vuDe(?array $signal): ?array
+{
+    return $signal === null ? null : ['signal' => $signal['signal'], 'detections' => $signal['detections']];
+}
+
+/**
+ * En service, des critiques sans lien votent contre un compte posé à `$depart`,
+ * `$tours` fois chacun : six font le quorum du vote, sept celui du ban.
+ */
+function chuteDeService(PDO $pdo, string $nom, int $depart, int $critiques, int $tours): int
+{
+    $cible = membre($pdo, $nom);
+    poserReputation($pdo, $cible, $depart);
+    $votants = membres($pdo, "critique-$nom", $critiques);
+    sousConfig(configService(), static fn () => frapper($pdo, $cible, $votants, $tours, $nom));
+
+    return $cible;
+}
+
+/** Un compte au plancher, en démonstration, dont le journal a refusé le début du ban : `ban_en_attente`. */
+function banEnAttente(PDO $pdo, string $nom): int
+{
+    $cible = membre($pdo, $nom);
+    poserReputation($pdo, $cible, 1);
+    $avant = Moderate::journal();
+    Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+        public function inscrire(array $acte): void
+        {
+            if ($acte['acte'] === 'ban_debut') {
+                throw new RuntimeException('début de ban refusé');
+            }
+        }
+    });
+    try {
+        Moderate::applyVote($pdo, membre($pdo, "votant-$nom"), 'member', $cible, -1, motif(), 'agressif');
+    } catch (Throwable $e) {
+        nok('un refus du journal au début du ban remonte au vote : ' . get_class($e) . ' : ' . $e->getMessage());
+    } finally {
+        Moderate::setJournal($avant);
+    }
+
+    return $cible;
+}
+
+// ── 229. ⭐ En service, le ban dû que l'arbitre a classé lui revient à la rechute ─
+// Sept critiques mènent la cible au plancher : `reputation_zero`, sans ban. L'arbitre le
+// classe. Un vote de plus au plancher ne le rouvre pas : la chute ne s'est pas
+// aggravée. Une remontée d'un point, puis une rechute, le rouvre : il a jugé une chute,
+// pas la suivante.
+try {
+    $r229 = sousConfig(configService(), static function () use ($pdo): array {
+        $cible = membre($pdo, 'cible-229');
+        poserReputation($pdo, $cible, 20);
+        frapper($pdo, $cible, membres($pdo, 'critique-229', 7), 3, '229');
+        $lu = ['chute' => bilan($pdo, $cible)];
+        $vu = signalDe($pdo, $cible, 'reputation_zero');
+        $lu['classe'] = Moderate::adminClasser($pdo, $cible, idDe($pdo, 'arbitre-banc'), motif(), vuDe($vu))['ok'];
+        $lu['classe_vu'] = signalDe($pdo, $cible, 'reputation_zero')['vu_le'] ?? null;
+        Moderate::applyVote($pdo, membre($pdo, 'insistant-229'), 'member', $cible, -1, motif(), 'agressif');
+        $lu['au_plancher_vu'] = signalDe($pdo, $cible, 'reputation_zero')['vu_le'] ?? null;
+        Moderate::applyVote($pdo, membre($pdo, 'soutien-229'), 'member', $cible, 1);
+        $lu['remonte'] = reputation($pdo, $cible);
+        Moderate::applyVote($pdo, membre($pdo, 'rechute-229'), 'member', $cible, -1, motif(), 'agressif');
+        $rouvert = signalDe($pdo, $cible, 'reputation_zero');
+        $lu['rechute'] = bilan($pdo, $cible);
+        $lu['rouvert'] = $rouvert === null ? null : ['vu_le' => $rouvert['vu_le'], 'plus_de_detections' => $rouvert['detections'] > $vu['detections']];
+
+        return $lu;
+    });
+} catch (Throwable $t229) {
+    $r229 = ['exception' => get_class($t229) . ' : ' . $t229->getMessage()];
+}
+($r229['chute']['rep'] ?? null) === 0 && !$r229['chute']['banni'] && $r229['chute']['vote']
+    && in_array('reputation_zero', $r229['chute']['causes'], true) && $r229['classe'] === true
+    && $r229['classe_vu'] !== null && $r229['au_plancher_vu'] !== null && $r229['remonte'] === 1
+    && $r229['rechute']['rep'] === 0 && !$r229['rechute']['banni']
+    && $r229['rouvert'] === ['vu_le' => null, 'plus_de_detections' => true]
+    ? ok('⭐ en service, le plancher se signale sans ban ; classé, le ban dû ne revient pas pour un vote au plancher, et revient à la rechute')
+    : nok('⭐ le ban dû classé ne revient pas à la rechute, ou revient sans elle : ' . json_encode($r229, JSON_UNESCAPED_UNICODE));
+
+// ── 230. ⭐ En service, la perte du vote due ne relance pas le quorum, et tombe à la remontée ─
+// Six critiques font le quorum du vote : il reste, `perte_du_vote_due` se pose, et
+// `canVote()` le laisse voter. Tant que le signal est posé, un vote de plus ne
+// recherche pas le quorum, la décision est rendue ; le témoin, à qui on l'a retiré, le
+// recherche. Remontée au seuil par des votes de soutien, sans point de convalescence
+// échu, la cible garde le signal en table jusqu'au balayage, qui le fait tomber. Classé,
+// il revient quand le compte recroise le seuil.
+final class PdoQuorum extends PDO
+{
+    public int $recherches = 0;
+
+    public function prepare(string $query, array $options = []): PDOStatement|false
+    {
+        // La lecture des votants d'une chute ouvre toute recherche du quorum.
+        if (str_contains($query, 'HAVING SUM(v.value) < 0')) {
+            $this->recherches++;
+        }
+
+        return parent::prepare($query, $options);
+    }
+}
+$c230 = new PdoQuorum('sqlite:' . getenv('LAB_DB_PATH'));
+$c230->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$c230->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$table230 = static fn (int $id): int => (int) $pdo->query("SELECT COUNT(*) FROM mod_signaux WHERE account_id = $id AND cause = 'perte_du_vote_due'")->fetchColumn();
+try {
+    $r230 = sousConfig(configService(), static function () use ($pdo, $c230, $table230): array {
+        $du = membre($pdo, 'du-230');
+        $temoin = membre($pdo, 'temoin-230');
+        foreach (['du' => $du, 'temoin' => $temoin] as $role => $cible) {
+            poserReputation($pdo, $cible, 10);
+            frapper($c230, $cible, membres($pdo, "critique-230-$role", 6), 1, "230-$role");
+        }
+        $lu = ['pendant' => bilan($pdo, $du), 'peut_voter' => Moderate::canVote($pdo, $du)[0]];
+        $pdo->prepare("DELETE FROM mod_signaux WHERE account_id = ? AND cause = 'perte_du_vote_due'")->execute([$temoin]);
+        recalerCase($pdo, $temoin);
+        foreach (['du' => $du, 'temoin' => $temoin] as $role => $cible) {
+            $c230->recherches = 0;
+            Moderate::applyVote($c230, membre($pdo, "encore-230-$role"), 'member', $cible, -1, motif(), 'agressif');
+            $lu['recherches'][$role] = $c230->recherches;
+        }
+        $lu['classe'] = Moderate::adminClasser($pdo, $du, idDe($pdo, 'arbitre-banc'), motif(), vuDe(signalDe($pdo, $du, 'perte_du_vote_due')))['ok'];
+        foreach (['a', 'b'] as $k) {
+            Moderate::applyVote($pdo, membre($pdo, "soutien-230-$k"), 'member', $du, 1);
+        }
+        $lu['remonte'] = [reputation($pdo, $du), $table230($du)];
+        try {
+            Moderate::balayerBansEchus($pdo);
+        } catch (\RuntimeException) {
+            // Un refus du journal sur un autre compte remonte en fin de passe, après elle.
+        }
+        $lu['balaye'] = $table230($du);
+        Moderate::applyVote($pdo, membre($pdo, 'rechute-230'), 'member', $du, -1, motif(), 'agressif');
+        $revenu = signalDe($pdo, $du, 'perte_du_vote_due');
+        $lu['recroise'] = [reputation($pdo, $du), Moderate::getReputation($pdo, $du)['voting_rights'], $revenu === null ? 'absent' : $revenu['vu_le']];
+
+        return $lu;
+    });
+} catch (Throwable $t230) {
+    $r230 = ['exception' => get_class($t230) . ' : ' . $t230->getMessage()];
+}
+$c230 = null;
+($r230['pendant']['rep'] ?? null) === 4 && $r230['pendant']['vote'] && $r230['peut_voter']
+    && array_values(array_diff($r230['pendant']['causes'], ['salve_rapide'])) === ['perte_du_vote_due']
+    && $r230['recherches']['du'] === 0 && $r230['recherches']['temoin'] >= 1
+    && $r230['classe'] === true && $r230['remonte'] === [5, 1] && $r230['balaye'] === 0
+    && $r230['recroise'] === [4, true, null]
+    ? ok('⭐ en service, sous le seuil du vote, le vote reste et la perte se signale due ; posée, elle ne relance pas le quorum, le balayage la fait tomber à la remontée, et classée elle revient quand le seuil est recroisé')
+    : nok('⭐ la perte du vote due relance le quorum, survit à la remontée, ou se perd : ' . json_encode($r230, JSON_UNESCAPED_UNICODE));
+
+// ── 231. ⭐ Le ban de l'arbitre répond aux sanctions que la machine lui signalait dues ─
+// En service, un compte au plancher (`reputation_zero`) et un compte sous le seuil du
+// vote (`perte_du_vote_due`) ; en démonstration, un ban que le journal a refusé
+// (`ban_en_attente`). Le ban de l'arbitre répond à chacun, et l'acte le nomme : le ban
+// en attente se ferme ; la chute et la perte due quittent la file et restent en base,
+// pour que le compte, à la fin du ban, ne soit pas au plancher sans aucun signal.
+$dus231 = [
+    'reputation_zero'   => chuteDeService($pdo, 'zero-231', 20, 7, 3),
+    'perte_du_vote_due' => chuteDeService($pdo, 'du-231', 10, 6, 1),
+    'ban_en_attente'    => banEnAttente($pdo, 'attente-231'),
+];
+$enFile231 = static function (int $id) use ($pdo): array {
+    $s = $pdo->prepare('SELECT cause FROM mod_signaux WHERE account_id = ? AND vu_le IS NULL');
+    $s->execute([$id]);
+
+    return $s->fetchAll(PDO::FETCH_COLUMN);
+};
+$fermes231 = [];
+foreach ($dus231 as $cause231 => $id231) {
+    $avant231 = causes($pdo, $id231);
+    $r231 = Moderate::adminBan($pdo, $id231, idDe($pdo, 'arbitre-banc'), motif(), 7 * 86400);
+    $acte231 = $journalC->de($id231, 'ban_debut')[0] ?? [];
+    $ferme231 = array_column(liste($acte231['ferme'] ?? null) ?? [], 'cause');
+    sort($ferme231);
+    $fermes231[$cause231] = [
+        'avait' => in_array($cause231, $avant231, true),
+        'ok'    => $r231['ok'],
+        'reste' => array_values(array_intersect(['reputation_zero', 'ban_en_attente', 'perte_du_vote_due'], causes($pdo, $id231))),
+        'file'  => array_values(array_intersect(['reputation_zero', 'ban_en_attente', 'perte_du_vote_due'], $enFile231($id231))),
+        'ferme' => $ferme231,
+    ];
+}
+$fermes231 === [
+    'reputation_zero'   => ['avait' => true, 'ok' => true, 'reste' => ['reputation_zero'], 'file' => [], 'ferme' => ['reputation_zero']],
+    'perte_du_vote_due' => ['avait' => true, 'ok' => true, 'reste' => ['perte_du_vote_due'], 'file' => [], 'ferme' => ['perte_du_vote_due']],
+    'ban_en_attente'    => ['avait' => true, 'ok' => true, 'reste' => ['reputation_zero'], 'file' => [], 'ferme' => ['ban_en_attente', 'reputation_zero']],
+]
+    ? ok('⭐ le ban de l\'arbitre ferme le ban en attente, sort de la file le ban dû et la perte due, qui restent en base, et son acte les nomme')
+    : nok('⭐ un ban d\'arbitre laisse ouverte une sanction due, ou ne la nomme pas : ' . json_encode($fermes231, JSON_UNESCAPED_UNICODE));
+
+// ── 232. ⭐ Le ban en attente ne se classe pas, et tombe quand la réputation quitte le plancher ─
+// Il attend le journal, pas l'arbitre : le classer le ferait taire alors que le vote
+// suivant le retente. La chute, elle, se classe. Un point de convalescence le fait
+// tomber, la chute reste.
+$attente232 = banEnAttente($pdo, 'attente-232');
+$avant232 = causes($pdo, $attente232);
+$refus232 = Moderate::adminClasser($pdo, $attente232, idDe($pdo, 'arbitre-banc'), motif(), vuDe(signalDe($pdo, $attente232, 'ban_en_attente')));
+$apresRefus232 = signalDe($pdo, $attente232, 'ban_en_attente');
+$chuteClassee232 = Moderate::adminClasser($pdo, $attente232, idDe($pdo, 'arbitre-banc'), motif(), vuDe(signalDe($pdo, $attente232, 'reputation_zero')))['ok'];
+$pdo->prepare('UPDATE member_moderation SET last_regen_at = last_regen_at - ? WHERE account_id = ?')
+    ->execute([Moderate::config()->intervalleConvalescenceSecondes, $attente232]);
+rattraper($pdo, $attente232);
+$apres232 = [reputation($pdo, $attente232), causes($pdo, $attente232)];
+in_array('ban_en_attente', $avant232, true) && !$refus232['ok'] && str_contains($refus232['message'], 'ban dû attend le journal')
+    && $apresRefus232 !== null && $apresRefus232['vu_le'] === null && $chuteClassee232
+    && $apres232 === [1, ['reputation_zero']]
+    ? ok('⭐ le ban en attente ne se classe pas, la chute si ; un point de convalescence le fait tomber, et la chute reste')
+    : nok('⭐ le ban en attente se classe, ou survit à la sortie du plancher : ' . json_encode([$avant232, $refus232, $apresRefus232, $chuteClassee232, $apres232], JSON_UNESCAPED_UNICODE));
+
+// ── 233. ⭐ L'arbitre suspend le vote et le rend, au journal, et rien d'autre ne le fait ─
+// Le geste qui répond en service à `perte_du_vote_due`, plus léger que le ban. Il
+// refuse comme les autres gestes : sans journal, dans la transaction de l'hôte, quand
+// une fin de peine attend le journal, sur un motif vide ou une durée hors bornes. Posé,
+// il ferme la perte due, s'inscrit (`vote_retire`, origine `admin`) et `canVote()` le
+// dit ; une seconde suspension se refuse. Rendu, il s'inscrit (`vote_rendu`) et le vote
+// revient ; rendre deux fois se refuse.
+$du233 = chuteDeService($pdo, 'du-233', 10, 6, 1);
+$arbitre233 = idDe($pdo, 'arbitre-banc');
+$suspendre233 = static fn (int $id, ?int $secondes = 3600, ?string $motif = null): array =>
+    Moderate::adminSuspendreVote($pdo, $id, $arbitre233, $motif ?? motif(), $secondes);
+$rendre233 = static fn (int $id): array => Moderate::adminRendreVote($pdo, $id, $arbitre233, 'Le vote revient : la suspension n\'a plus d\'objet.');
+$muet233 = static fn (int $id): int => (int) etatBan($pdo, $id)['vote_muted_until'];
+$refus233 = [];
+$journalAvant233 = Moderate::journal();
+Moderate::setJournal(null);
+try {
+    $refus233['sans journal'] = [$suspendre233($du233), $rendre233($du233)];
+} finally {
+    Moderate::setJournal($journalAvant233);
+}
+$pdo->beginTransaction();
+$refus233['transaction de l\'hôte'] = [$suspendre233($du233), $rendre233($du233)];
+$pdo->rollBack();
+$journal233 = new class implements \Pierroons\SelfModerate\Journal {
+    /** @var list<string> */
+    public array $actes = [];
+
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'ban_fin') {
+            throw new RuntimeException('fin refusée');
+        }
+        $this->actes[] = $acte['acte'];
+    }
+};
+$attente233 = membre($pdo, 'attente-233');
+Moderate::ensureRow($pdo, $attente233);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'auto', ban_motif = 'reputation_zero'
+                WHERE account_id = ?")->execute([time() - 10, time() - 130, $attente233]);
+Moderate::setJournal($journal233);
+try {
+    Moderate::migrerBans($pdo);
+    $journal233->actes = [];
+    $refus233['fin en attente'] = [$suspendre233($attente233), $rendre233($attente233)];
+} catch (Throwable $e) {
+    $refus233['fin en attente'] = [['ok' => true, 'message' => get_class($e) . ' : ' . $e->getMessage()]];
+} finally {
+    Moderate::setJournal($journalAvant233);
+}
+$refus233['motif vide'] = [$suspendre233($du233, 3600, 'court')];
+$refus233['durée nulle'] = [$suspendre233($du233, 0)];
+$refus233['durée d\'un siècle et une seconde'] = [$suspendre233($du233, Moderate::DUREE_MAX + 1)];
+$intact233 = $muet233($du233) === 0 && $journalC->de($du233, 'vote_retire') === [] && $journal233->actes === []
+    && etatBan($pdo, $attente233)['review_reason'] === 'journal_en_panne';
+$attendus233 = [
+    'sans journal'           => 'journal',
+    'transaction de l\'hôte' => 'transaction de l\'hôte',
+    'fin en attente'         => 'attend que le journal inscrive sa fin',
+];
+$refusMal233 = [];
+foreach ($refus233 as $cas233 => $reponses233) {
+    foreach ($reponses233 as $reponse233) {
+        if ($reponse233['ok'] || (isset($attendus233[$cas233]) && !str_contains($reponse233['message'], $attendus233[$cas233]))) {
+            $refusMal233[$cas233][] = $reponse233;
+        }
+    }
+}
+$ouverts233 = causes($pdo, $du233);
+$pose233 = $suspendre233($du233, 3600, '  Ses votes visent toujours les mêmes membres, sans un mot sur leurs messages.  ');
+$jusqua233 = $muet233($du233);
+$acte233 = $journalC->de($du233, 'vote_retire')[0] ?? [];
+$canVote233 = Moderate::canVote($pdo, $du233);
+$double233 = $suspendre233($du233);
+$defaut233 = membre($pdo, 'defaut-233');
+poserReputation($pdo, $defaut233, 15);
+$suspendre233($defaut233, null);
+$acteDefaut233 = $journalC->de($defaut233, 'vote_retire')[0] ?? [];
+$rendu233 = $rendre233($du233);
+$acteRendu233 = $journalC->de($du233, 'vote_rendu')[0] ?? [];
+$apres233 = [$muet233($du233), Moderate::canVote($pdo, $du233)[0], $rendre233($du233)];
+$rendre233($defaut233);
+$posee233 = $pose233['ok'] && in_array('perte_du_vote_due', $ouverts233, true)
+    && !in_array('perte_du_vote_due', causes($pdo, $du233), true)
+    && ($acte233['origine'] ?? null) === 'admin' && $acte233['arbitre_id'] === $arbitre233 && $acte233['arbitre'] === 'arbitre-banc'
+    && $acte233['motif'] === 'Ses votes visent toujours les mêmes membres, sans un mot sur leurs messages.'
+    && $acte233['jusqu_a'] === $jusqua233 && $jusqua233 - $acte233['debut'] === 3600 && $acte233['reputation'] === 4
+    && array_column(liste($acte233['ferme']) ?? [], 'cause') === ['perte_du_vote_due']
+    && $canVote233 === [false, sprintf('Droit de vote suspendu par un arbitre jusqu\'au %s.', date('d/m/Y', $jusqua233))]
+    && !$double233['ok'] && str_contains($double233['message'], 'déjà suspendu') && count($journalC->de($du233, 'vote_retire')) === 1
+    && ($acteDefaut233['jusqu_a'] ?? 0) - ($acteDefaut233['debut'] ?? 0) === Moderate::config()->dureeBanAdmin();
+$rendue233 = $rendu233['ok'] && ($acteRendu233['arbitre_id'] ?? null) === $arbitre233 && $acteRendu233['jusqu_a'] === $jusqua233
+    && $acteRendu233['motif'] === 'Le vote revient : la suspension n\'a plus d\'objet.'
+    && $apres233[0] === 0 && $apres233[1] === true && !$apres233[2]['ok'] && str_contains($apres233[2]['message'], 'Aucune suspension');
+$refusMal233 === [] && $intact233 && $posee233 && $rendue233
+    ? ok('⭐ la suspension du vote refuse sans journal, dans l\'hôte, sur une fin en attente ou un motif et une durée invalides ; posée, elle ferme la perte due, s\'inscrit et se dit ; rendue, elle s\'inscrit et le vote revient')
+    : nok('⭐ une suspension du vote passe sans ses gardes, sans son acte, ou ne se lève pas : ' . json_encode([
+        'refus' => $refusMal233, 'intact' => $intact233, 'pose' => [$pose233, $acte233, $canVote233, $double233, $acteDefaut233],
+        'rendu' => [$rendu233, $acteRendu233, $apres233],
+    ], JSON_UNESCAPED_UNICODE));
+
+// ── 234. ⭐ En démonstration, le vote se retire au journal d'abord, ou reste dû ─
+// Journal branché, la perte du vote s'inscrit (`vote_retire`, origine `auto`, motif
+// `perte_droit_de_vote`) et le vote tombe. Sans journal, dans la transaction de l'hôte,
+// ou sur un refus du journal, le vote reste et `perte_du_vote_due` se pose ; le
+// journal revenu, le vote suivant retente le retrait, qui ferme la perte due.
+$retire234 = membre($pdo, 'retire-234');
+poserReputation($pdo, $retire234, 5);
+Moderate::applyVote($pdo, membre($pdo, 'votant-234-a'), 'member', $retire234, -1, motif(), 'agressif');
+$avecJournal234 = [bilan($pdo, $retire234), $journalC->de($retire234, 'vote_retire')];
+$du234 = membre($pdo, 'du-234');
+poserReputation($pdo, $du234, 5);
+Moderate::setJournal(null);
+try {
+    Moderate::applyVote($pdo, membre($pdo, 'votant-234-b'), 'member', $du234, -1, motif(), 'agressif');
+} finally {
+    Moderate::setJournal($journalC);
+}
+$sansJournal234 = bilan($pdo, $du234);
+Moderate::applyVote($pdo, membre($pdo, 'votant-234-c'), 'member', $du234, -1, motif(), 'agressif');
+$retente234 = [bilan($pdo, $du234), $journalC->de($du234, 'vote_retire')];
+$hote234 = membre($pdo, 'hote-234');
+poserReputation($pdo, $hote234, 5);
+$actesAvant234 = count($journalC->actes);
+$pdo->beginTransaction();
+try {
+    Moderate::applyVote($pdo, membre($pdo, 'votant-234-d'), 'member', $hote234, -1, motif(), 'agressif');
+    $dansLHote234 = [bilan($pdo, $hote234), count($journalC->actes) - $actesAvant234];
+} finally {
+    $pdo->rollBack();
+}
+$refuse234 = membre($pdo, 'refuse-234');
+poserReputation($pdo, $refuse234, 5);
+Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'vote_retire') {
+            throw new RuntimeException('retrait refusé');
+        }
+    }
+});
+try {
+    $voteRefuse234 = Moderate::applyVote($pdo, membre($pdo, 'votant-234-e'), 'member', $refuse234, -1, motif(), 'agressif');
+} finally {
+    Moderate::setJournal($journalC);
+}
+$refusJournal234 = bilan($pdo, $refuse234);
+$acte234 = $avecJournal234[1][0] ?? [];
+$retenteActe234 = $retente234[1][0] ?? [];
+$avecJournal234[0]['rep'] === 4 && !$avecJournal234[0]['vote'] && $avecJournal234[0]['causes'] === ['droit_de_vote_perdu']
+    && count($avecJournal234[1]) === 1 && ($acte234['origine'] ?? null) === 'auto' && $acte234['motif'] === 'perte_droit_de_vote'
+    && $acte234['arbitre'] === null && $acte234['arbitre_id'] === null && $acte234['jusqu_a'] === null && $acte234['reputation'] === 4
+    && $sansJournal234['rep'] === 4 && $sansJournal234['vote'] && $sansJournal234['causes'] === ['perte_du_vote_due']
+    && $retente234[0]['rep'] === 3 && !$retente234[0]['vote'] && $retente234[0]['causes'] === ['droit_de_vote_perdu']
+    && count($retente234[1]) === 1 && array_column(liste($retenteActe234['ferme'] ?? null) ?? [], 'cause') === ['perte_du_vote_due']
+    && $dansLHote234[0]['vote'] && $dansLHote234[0]['causes'] === ['perte_du_vote_due'] && $dansLHote234[1] === 0
+    && ($voteRefuse234['ok'] ?? false) && $refusJournal234['vote'] && $refusJournal234['causes'] === ['perte_du_vote_due']
+    ? ok('⭐ en démonstration, le retrait du vote s\'inscrit avant la base ; sans journal, dans l\'hôte ou sur un refus, le vote reste et la perte se signale due, et le vote suivant retente le retrait')
+    : nok('⭐ le vote se retire sans trace, ou la perte due se perd : ' . json_encode([
+        'avec_journal' => $avecJournal234, 'sans_journal' => $sansJournal234, 'retente' => $retente234,
+        'dans_l_hote' => $dansLHote234, 'refus' => [$voteRefuse234, $refusJournal234],
+    ], JSON_UNESCAPED_UNICODE));
+
+// Un vote que la base défait ne laisse pas de retrait au journal. Au plancher, le ban
+// qui suit le retrait se refuse sur une peine orpheline (`migrerBans()`, n° 152) : le
+// vote lève, sa transaction est défaite, et le journal ne doit pas garder un retrait
+// que la base n'a jamais inscrit.
+$orph234 = membre($pdo, 'orpheline-234');
+poserReputation($pdo, $orph234, 15);
+Moderate::adminBan($pdo, $orph234, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+$pdo->prepare('UPDATE member_moderation SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL WHERE account_id = ?')
+    ->execute([$orph234]);
+poserReputation($pdo, $orph234, 1);
+try {
+    Moderate::applyVote($pdo, membre($pdo, 'votant-234-f'), 'member', $orph234, -1, motif(), 'agressif');
+    $leve234 = 'aucune erreur';
+} catch (\Pierroons\SelfModerate\RepriseManquante) {
+    $leve234 = 'nommée';
+} catch (Throwable $e234) {
+    $leve234 = get_class($e234) . ' : ' . $e234->getMessage();
+}
+$orphelin234 = [$leve234, Moderate::getReputation($pdo, $orph234)['voting_rights'], count($journalC->de($orph234, 'vote_retire'))];
+try {
+    Moderate::migrerBans($pdo);
+} catch (Throwable) {
+}
+$orphelin234 === ['nommée', true, 0]
+    ? ok('⭐ un vote défait par la base ne laisse aucun retrait du vote au journal')
+    : nok('⭐ un retrait du vote reste au journal pour un vote que la base a défait : ' . json_encode($orphelin234, JSON_UNESCAPED_UNICODE));
+
+// ── 235. ⭐ Hors du moteur, la messagerie ne se lit jamais : sans table `dm`, chaque votant fait sa voix ─
+// Un hôte dont les messages privés passent ailleurs le déclare : le moteur ne touche
+// pas à `dm`, ni pour son index, ni pour un lien. Sur une base qui n'en a pas, sept
+// critiques font sept voix et bannissent, `areLinked()` rend faux, la composition dit
+// des liens non lus, et l'état du site n'a rien à dire.
+$f235 = dirname((string) getenv('LAB_DB_PATH')) . '/hors-moteur-235.db';
+@unlink($f235);
+$a235 = new PDO('sqlite:' . $f235);
+$a235->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$a235->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$a235->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+$a235->exec('DROP TABLE dm');
+$cible235 = membre($a235, 'cible-235');
+poserReputation($a235, $cible235, 20);
+$sept235 = membres($a235, 'critique-235', 7);
+$a235 = null;
+try {
+    $r235 = sousQuorum(static function (JournalDeBanc $journal) use ($f235, $cible235, $sept235): array {
+        $b = new PDO('sqlite:' . $f235);
+        $b->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $b->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        frapper($b, $cible235, $sept235, 3, '235');
+        $chute = Moderate::compositionChute($b, $cible235, time());
+
+        return [
+            'bilan' => bilan($b, $cible235), 'bans' => count($journal->de($cible235, 'ban_debut')),
+            'chute' => [$chute['voix_sans_lien'], $chute['votants'], $chute['paires_liees'], $chute['indecis'], $chute['liens']],
+            'lies'  => Moderate::areLinked($b, $sept235[0], $sept235[1]), 'site' => Moderate::etatDuSite($b),
+        ];
+    }, messagerie: Messagerie::HORS_MOTEUR);
+} catch (Throwable $t235) {
+    $r235 = ['exception' => get_class($t235) . ' : ' . $t235->getMessage()];
+}
+($r235['bilan']['rep'] ?? null) === 0 && $r235['bilan']['banni'] && $r235['bans'] === 1
+    && $r235['chute'] === [7, 7, null, false, 'non_lus'] && $r235['lies'] === false && $r235['site'] === []
+    ? ok('⭐ hors du moteur, sans table dm, sept critiques font sept voix et bannissent, personne n\'est lié, et la composition dit des liens non lus')
+    : nok('seuil sourd à la config (messagerie) : ' . json_encode($r235, JSON_UNESCAPED_UNICODE));
+
+// ── 236. ⭐ Une `dm` déclarée et vide se dit à l'arbitre, une fois la fenêtre des liens passée ─
+// Le quorum n'y lit aucun lien : chaque votant fait sa voix, et la composition d'une
+// chute le dit (`muets`). Sur un site neuf, c'est l'état normal : l'état du site ne
+// signale `liens_muets` que quand le premier vote a plus de `fenetreMeuteJours` jours.
+// Hors du moteur, il n'y a rien à dire ; un seul message le fait taire, et la
+// composition lit alors des liens.
+$f236 = dirname((string) getenv('LAB_DB_PATH')) . '/liens-muets-236.db';
+@unlink($f236);
+$b236 = new PDO('sqlite:' . $f236);
+$b236->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b236->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$b236->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+$cible236 = membre($b236, 'cible-236');
+poserReputation($b236, $cible236, 20);
+$deux236 = membres($b236, 'critique-236', 2);
+frapper($b236, $cible236, $deux236, 1, '236');
+$fenetre236 = Moderate::config()->fenetreMeuteJours * 86400;
+$premier236 = static function (int $age) use ($b236, $deux236): int {
+    $quand = time() - $age;
+    $b236->prepare('UPDATE mod_votes SET created_at = ? WHERE voter_id = ?')->execute([$quand, $deux236[0]]);
+
+    return $quand;
+};
+$lu236 = ['neuf' => [Moderate::etatDuSite($b236), Moderate::compositionChute($b236, $cible236, time())['liens']]];
+$premier236($fenetre236 - 3600);
+$lu236['en_deca'] = Moderate::etatDuSite($b236);
+$depuis236 = $premier236($fenetre236 + 3600);
+$lu236['au_dela'] = Moderate::etatDuSite($b236);
+$lu236['hors_moteur'] = sousConfig(configBanc(messagerie: Messagerie::HORS_MOTEUR), static fn (): array => Moderate::etatDuSite($b236));
+messagePrive($b236, $deux236[0], $deux236[1]);
+$lu236['un_message'] = [Moderate::etatDuSite($b236), Moderate::compositionChute($b236, $cible236, time())['liens']];
+$b236 = null;
+$lu236 === [
+    'neuf' => [[], 'muets'], 'en_deca' => [], 'au_dela' => [['cause' => 'liens_muets', 'depuis' => $depuis236]],
+    'hors_moteur' => [], 'un_message' => [[], 'lus'],
+]
+    ? ok('⭐ une dm déclarée et vide fait dire « muets » à la composition, et liens_muets à l\'état du site passé la fenêtre des liens ; hors du moteur ou après un message, rien')
+    : nok('⭐ des liens muets passent sous silence, ou se signalent sur un site neuf : ' . json_encode([$lu236, $depuis236], JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

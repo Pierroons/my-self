@@ -80,15 +80,19 @@ $causes = [
     'levee_en_attente' => 'meute reconnue avant la 0.9.0, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',
     'ban_en_attente'  => 'réputation à zéro, ban automatique non inscrit : le journal l\'a refusé — le vote négatif suivant le retente',
     'droit_de_vote_perdu' => 'droit de vote perdu : réputation sous le seuil du vote',
+    'perte_du_vote_due' => 'droit de vote dû au retrait, que la machine n\'a pas fait : un arbitre décide',
     'ban_sans_fin'    => 'ban d\'arbitre sans fin en cours',
     'ban_auto'        => 'ban automatique en cours',
     'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
 ];
 // Ce que le quorum a lu d'une chute (`compositionChute()`) : l'arbitre décide sur ces faits.
 $quorumEnClair = static fn (array $ch): string => sprintf('%d voix sans lien sur %d votant(s)', $ch['voix_sans_lien'], $ch['votants'])
-    . ($ch['paires_liees'] === null
-        ? ' · liens trop nombreux pour être tous lus : seuls les votants liés à personne comptent'
-        : sprintf(' · %d paire(s) liée(s)', $ch['paires_liees']))
+    . match (true) {
+        $ch['liens'] === 'non_lus' => ' · liens non lus sur cet hôte : chaque votant fait sa voix',
+        $ch['liens'] === 'muets'   => ' · aucun message privé en base : chaque votant fait sa voix',
+        $ch['paires_liees'] === null => ' · liens trop nombreux pour être tous lus : seuls les votants liés à personne comptent',
+        default => sprintf(' · %d paire(s) liée(s)', $ch['paires_liees']),
+    }
     . ($ch['recents'] > 0 ? sprintf(' · %d compte(s) récent(s), une voix à eux tous', $ch['recents']) : '')
     . ($ch['indecis'] ? ' · recherche indécise : seules les voix trouvées comptent' : '');
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
@@ -191,6 +195,11 @@ table.adm tr:last-child td{border-bottom:none}
     <?php if ($finsEnPanne !== null): ?>
       <span style="color:var(--danger)">⚠ Des peines échues attendent leur clôture : le balayage a échoué (<?= h($finsEnPanne) ?>).</span><br>
     <?php endif; ?>
+    <?php foreach (Moderate::etatDuSite($pdo) as $etatSite): ?>
+      <?php if ($etatSite['cause'] === 'liens_muets'): ?>
+        <span style="color:var(--warn)">⚠ Aucun message privé en base depuis le <?= h(date('d/m/Y', $etatSite['depuis'])) ?> : le quorum ne lit aucun lien, chaque votant fait sa voix.</span><br>
+      <?php endif; ?>
+    <?php endforeach; ?>
     <?php if ($erreurJournal !== null): ?>
       <span style="color:var(--danger)">⚠ Journal de modération illisible : <?= h($erreurJournal) ?></span>
     <?php elseif ($etatJournal === null): ?>
@@ -250,8 +259,8 @@ table.adm tr:last-child td{border-bottom:none}
 <!-- Comptes -->
 <div class="card">
   <h2>👥 Comptes</h2>
-  <?php $enDemo = Moderate::regles(); $enService = \Pierroons\SelfModerate\Config::prod(); ?>
-  <p class="adm-warn" style="margin-top:0">⏱️ <strong>Durées de démonstration</strong> (volontaire, pour tester vite) : anti-Sybil <strong><?= h($enDemo['sybil']) ?></strong>, bans <strong><?= h($enDemo['paliers']) ?></strong>, dernier palier reconduit. En service (<code>Config::prod()</code>) : anti-Sybil <?= h(Moderate::dureeEnClair($enService->ageMinPourVoterSecondes)) ?>, bans <?= h(implode(' → ', array_map([Moderate::class, 'dureeEnClair'], $enService->dureesBan))) ?>. Jamais de ban définitif prononcé par la machine.</p>
+  <?php $enDemo = Moderate::regles(); $enService = \Pierroons\SelfModerate\Config::prod(\Pierroons\SelfModerate\Messagerie::DM); ?>
+  <p class="adm-warn" style="margin-top:0">⏱️ <strong>Durées de démonstration</strong> (volontaire, pour tester vite) : anti-Sybil <strong><?= h($enDemo['sybil']) ?></strong>, bans <strong><?= h($enDemo['paliers']) ?></strong>, dernier palier reconduit. En service (<code>Config::prod()</code>), la machine ne bannit ni ne retire le vote : elle signale, un arbitre décide ; anti-Sybil <?= h(Moderate::dureeEnClair($enService->ageMinPourVoterSecondes)) ?>. Jamais de ban définitif prononcé par la machine.</p>
   <table class="adm"><tr><th>ID</th><th>Identifiant</th><th>Réputation</th><th>Créé</th><th>Profil déchiffré</th><th>Modération</th></tr>
     <?php foreach ($comptes as $c): ?>
       <tr>

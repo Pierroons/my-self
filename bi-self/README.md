@@ -29,13 +29,13 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 **SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can get your account back without email, but there's no fabric for collective life.
 
-**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h with `Config::prod()`, 2 min by default — or a first post, accounts linked to each other that vote against the same target weigh no more than one, and a burst of unlinked votes goes to human review.
+**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h in service (`Config::prod()`), 2 min in demonstration (`Config::demo()`) — or a first post; where the engine reads private messages, accounts linked to each other that vote against the same target weigh no more than one; and a burst of unlinked votes goes to human review.
 
 **Together**:
 
 - An account survives a lost password (SelfRecover), so its reputation and its history survive too, instead of starting over under a new name.
 - Collective voting (SelfModerate) spreads moderation across the members.
-- Moderators remain, as arbiters of what the votes do not settle: every ban they impose, lift or uphold carries their name in the journal, which the host must plug in: without a journal, no arbiter action goes through.
+- Moderators remain, as arbiters: in service, the machine flags what the votes have done, and the arbiter is the one who sanctions. Every ban an arbiter imposes, lifts or upholds carries their name in the journal, which the host must plug in: without a journal, no arbiter action goes through.
 
 ---
 

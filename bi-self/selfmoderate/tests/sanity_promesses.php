@@ -21,6 +21,12 @@
  * passage qui en parle sans chiffre ; un chiffre ajouté hors de ce passage
  * n'est pas lu. Un champ ajouté sans être classé fait rougir le banc.
  *
+ * Une borne de régime (un plancher ou un plafond du service, le plus long
+ * palier d'une démonstration) se mesure : le banc construit la valeur promise,
+ * puis la valeur d'un cran plus faible, qui doit lever, et d'un cran plus dure,
+ * qui doit passer. Une borne qu'on retire de `Config` fait rougir le banc,
+ * même quand la valeur promise reste celle de `Config::prod()`.
+ *
  * Usage  : php tests/sanity_promesses.php
  *          SM_SRC=<copie de src> php tests/sanity_promesses.php    (canari)
  * Sortie : 0 si tous les contrôles passent, 1 sinon.
@@ -32,6 +38,8 @@ $racine = getenv('SM_SRC') ?: dirname(__DIR__) . '/src';   // surchargeable : ca
 require $racine . '/autoload.php';
 
 use Pierroons\SelfModerate\Config;
+use Pierroons\SelfModerate\Messagerie;
+use Pierroons\SelfModerate\Usage;
 
 $echecs = 0; $reussites = 0;
 function ok(string $m): void  { global $reussites; echo "  ✓ $m\n"; $reussites++; }
@@ -44,20 +52,99 @@ function deuxJeux(string $champ, mixed $valeur): array
 }
 
 /**
+ * Le jeu, ou le refus de le construire : une `Config` qui lève se lit comme un
+ * écart sur le champ, pas comme une panne du banc.
+ */
+function jeu(string $jeu): Config|string
+{
+    try {
+        return $jeu === 'prod' ? Config::prod(Messagerie::DM) : Config::demo();
+    } catch (Throwable $e) {
+        return "Config::$jeu() lève : " . $e->getMessage();
+    }
+}
+
+/** `Config` accepte-t-elle ces réglages ? Seul son refus de valeur répond non. */
+function construit(array $reglages): bool
+{
+    try {
+        new Config(...$reglages);
+        return true;
+    } catch (InvalidArgumentException) {
+        return false;
+    }
+}
+
+/**
+ * La borne qu'un hôte de service ne franchit pas : la valeur de `Config::prod()`
+ * si `Config` l'accepte, refuse un cran plus faible et accepte un cran plus dur.
+ * Un plancher durcit en montant, un plafond en descendant.
+ */
+function borneDuService(string $sens, string $champ): mixed
+{
+    $prod = jeu('prod');
+    if (is_string($prod)) {
+        return $prod;
+    }
+    $base = get_object_vars($prod);
+    $v = $base[$champ];
+    $durcir = $sens === 'plancher' ? 1 : -1;
+    $tient = construit([...$base, $champ => $v])
+        && !construit([...$base, $champ => $v - $durcir])
+        && construit([...$base, $champ => $v + $durcir]);
+    return $tient ? $v : "aucun $sens à $v en service";
+}
+
+/** Le quorum aux seuils : allumé, la config de service se construit ; éteint, elle lève. */
+function quorumExigeEnService(): bool|string
+{
+    $prod = jeu('prod');
+    if (is_string($prod)) {
+        return $prod;
+    }
+    $base = get_object_vars($prod);
+    return construit([...$base, 'quorumAuxSeuils' => true]) && !construit([...$base, 'quorumAuxSeuils' => false]);
+}
+
+/** Le plus long palier qu'une démonstration accepte, mesuré autour de `PALIER_DEMONSTRATION_MAX`. */
+function palierDemonstrationMax(): int|string
+{
+    $demo = jeu('demo');
+    if (is_string($demo)) {
+        return $demo;
+    }
+    if (!defined(Config::class . '::PALIER_DEMONSTRATION_MAX')) {
+        return 'Config::PALIER_DEMONSTRATION_MAX absente';
+    }
+    $max = Config::PALIER_DEMONSTRATION_MAX;
+    $base = get_object_vars($demo);
+    return construit([...$base, 'dureesBan' => [$max]]) && !construit([...$base, 'dureesBan' => [$max + 1]])
+        ? $max
+        : "aucune borne à $max s en démonstration";
+}
+
+/**
  * Ce que le jeu applique. Un nom terminé par `()` est une méthode de `Config`,
- * ou une valeur qui s'en déduit.
+ * ou une valeur qui s'en déduit ; `plancherService(x)` et `plafondService(x)`
+ * sont les bornes que `Config` tient en service.
  */
 function applique(string $jeu, string $champ): mixed
 {
-    $config = $jeu === 'prod' ? Config::prod() : Config::demo();
+    $config = jeu($jeu);
+    if (is_string($config)) {
+        return $config;
+    }
     $deduites = [
         'premierPalier()'           => static fn (Config $c): int => $c->dureesBan[0],
         'plancherDuDernierPalier()' => static fn (Config $c): int => $c->plancherDe(0, $c->dureesBan[count($c->dureesBan) - 1]),
         'quorumDuVote()'            => static fn (Config $c): int => $c->voixPourSanction($c->perteDroitDeVoteSous - 1),
         'quorumDuBan()'             => static fn (Config $c): int => $c->voixPourSanction($c->banA),
+        'quorumExigeEnService()'    => static fn (): bool|string => quorumExigeEnService(),
+        'palierDemonstrationMax()'  => static fn (): int|string => palierDemonstrationMax(),
     ];
     return match (true) {
         isset($deduites[$champ])     => $deduites[$champ]($config),
+        preg_match('/^(plancher|plafond)Service\((\w+)\)$/', $champ, $borne) === 1 => borneDuService($borne[1], $borne[2]),
         str_ends_with($champ, '()')  => $config->{substr($champ, 0, -2)}(),
         default                      => $config->$champ,
     };
@@ -68,7 +155,33 @@ function egal(mixed $a, mixed $b): bool
     return is_float($a) || is_float($b) ? abs((float) $a - (float) $b) < 1e-9 : $a === $b;
 }
 
+/** Une valeur lisible dans un écart : `json_encode` ne sait pas écrire un `enum` pur. */
+function montrer(mixed $v): string
+{
+    return $v instanceof UnitEnum
+        ? substr(strrchr('\\' . $v::class, '\\'), 1) . '::' . $v->name
+        : (string) json_encode($v, JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * Une ligne de la table des bornes du service. Le mot dit le sens (« au moins »,
+ * un plancher ; « au plus », un plafond) ; l'unité suit le suffixe du champ.
+ */
+function ligneDeBorne(string $fichier, string $champ): array
+{
+    $unites = str_ends_with($champ, 'Secondes')
+        ? ['h' => 3600, 'hour' => 3600, 'hours' => 3600, 'min' => 60, 'j' => 86400, 'days' => 86400]
+        : (str_ends_with($champ, 'Jours') ? ['j' => 1, 'days' => 1] : ['' => 1]);
+    $sens = ['au moins' => 'plancher', 'at least' => 'plancher', 'au plus' => 'plafond', 'at most' => 'plafond'];
+    return [$fichier, '/^\| `' . $champ . '` \| [^|\n]+ \| (au moins|au plus|at least|at most) \*\*(\d+)(?: (h|j|min|hours?|days))?\*\* \|$/mu',
+        static fn ($m) => [[$sens[$m[1]] . "Service($champ)", 'prod', (int) $m[2] * $unites[$m[3] ?? '']],
+                           [$champ, 'prod', (int) $m[2] * $unites[$m[3] ?? '']]]];
+}
+
 $h = 3600; $j = 86400;
+$bornesDuService = ['ageMinPourVoterSecondes', 'ageEtabliSecondes', 'fenetreSalveSecondes', 'arrondiFinBanSecondes',
+    'fenetreFarmingJours', 'ciblesParVotantMax', 'farmingDownvotesMax', 'farmingUpvotesMax', 'salveVotantsMin',
+    'messagesPourVoterAvantAge'];
 
 // [fichier, phrase, lecture] — `lecture` rend, depuis les captures, les valeurs
 // promises sous la forme [champ, jeu, valeur].
@@ -83,12 +196,13 @@ $porteurs = [
         fn ($m) => [...deuxJeux('perteDroitDeVoteSous', (int) $m[1]), ...deuxJeux('sortieConvalescence()', (int) $m[2])]],
     ['README.fr.md', '/Conditionner la remontée à « score < (\d+) » l\'arrête pile au seuil qui rend le droit de vote/u',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
-    ['README.fr.md', '/^- Score < (\d+) → \*\*perte du droit de vote\*\*$/mu',
+    ['README.fr.md', '/^- Score < (\d+) → \*\*perte du droit de vote\*\* : la machine le retire en démonstration, et l\'inscrit au journal \(`vote_retire`\) ; en service, elle signale la perte due à l\'arbitre/mu',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
-    ['README.fr.md', '/^- Score = (\d+) → \*\*ban temporaire, gradué\*\* : (\d+) h → (\d+) j → (\d+) j en service \(`Config::prod\(\)`\), (\d+) → (\d+) → (\d+) min en démonstration \(`Config::demo\(\)`\)\. Le dernier palier/mu',
+    ['README.fr.md', '/^- Score = (\d+) → \*\*ban temporaire, gradué\*\* : (\d+) → (\d+) → (\d+) min en démonstration \(`Config::demo\(\)`\)\. Le dernier palier/mu',
         fn ($m) => [...deuxJeux('banA', (int) $m[1]),
-                    ['dureesBan', 'prod', [$m[2] * $h, $m[3] * $j, $m[4] * $j]],
-                    ['dureesBan', 'demo', [$m[5] * 60, $m[6] * 60, $m[7] * 60]]]],
+                    ['dureesBan', 'demo', [$m[2] * 60, $m[3] * 60, $m[4] * 60]]]],
+    ['README.fr.md', '/En service, la machine ne bannit pas : la réputation au plancher se signale à l\'arbitre comme un ban dû \(`reputation_zero`\)\. Les paliers de `Config::prod\(\)`, (\d+) h → (\d+) j → (\d+) j, n\'y tombent pas seuls ; le premier donne la durée par défaut d\'un ban d\'arbitre et d\'une suspension du vote \(`dureeBanAdmin\(\)`\)/u',
+        fn ($m) => [['dureesBan', 'prod', [$m[1] * $h, $m[2] * $j, $m[3] * $j]], ['dureeBanAdmin()', 'prod', $m[1] * $h]]],
     ['README.fr.md', '/^- Après un ban automatique purgé : score remis à \*\*(\d+)\*\*, strikes préservés/mu',
         fn ($m) => deuxJeux('reputationInitiale', (int) $m[1])],
     ['README.fr.md', '/avant (un tiers) de la peine \*\*en cours\*\* \(`Config::\$plancherFraction`\), une levée exige/u',
@@ -132,12 +246,13 @@ $porteurs = [
         fn ($m) => [...deuxJeux('perteDroitDeVoteSous', (int) $m[1]), ...deuxJeux('sortieConvalescence()', (int) $m[2])]],
     ['README.md', '/Gating recovery on "score < (\d+)" stops it exactly at the threshold that restores voting rights/u',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
-    ['README.md', '/^- Score < (\d+) → \*\*loss of voting rights\*\*$/mu',
+    ['README.md', '/^- Score < (\d+) → \*\*loss of voting rights\*\*: the machine removes it in demonstration, and records it in the journal \(`vote_retire`\); in service, it flags the loss as due to the arbiter/mu',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
-    ['README.md', '/^- Score = (\d+) → \*\*temporary ban, graduated\*\*: (\d+) h → (\d+) d → (\d+) d in service \(`Config::prod\(\)`\), (\d+) → (\d+) → (\d+) min in demonstration \(`Config::demo\(\)`\)\. The last tier/mu',
+    ['README.md', '/^- Score = (\d+) → \*\*temporary ban, graduated\*\*: (\d+) → (\d+) → (\d+) min in demonstration \(`Config::demo\(\)`\)\. The last tier/mu',
         fn ($m) => [...deuxJeux('banA', (int) $m[1]),
-                    ['dureesBan', 'prod', [$m[2] * $h, $m[3] * $j, $m[4] * $j]],
-                    ['dureesBan', 'demo', [$m[5] * 60, $m[6] * 60, $m[7] * 60]]]],
+                    ['dureesBan', 'demo', [$m[2] * 60, $m[3] * 60, $m[4] * 60]]]],
+    ['README.md', '/In service, the machine does not ban: a reputation at the floor is flagged to the arbiter as a ban due \(`reputation_zero`\)\. The tiers of `Config::prod\(\)`, (\d+) h → (\d+) d → (\d+) d, do not fall there on their own; the first gives the default length of an arbiter\'s ban and of a voting suspension \(`dureeBanAdmin\(\)`\)/u',
+        fn ($m) => [['dureesBan', 'prod', [$m[1] * $h, $m[2] * $j, $m[3] * $j]], ['dureeBanAdmin()', 'prod', $m[1] * $h]]],
     ['README.md', '/^- After a served automatic ban: score back to \*\*(\d+)\*\*, strikes kept/mu',
         fn ($m) => deuxJeux('reputationInitiale', (int) $m[1])],
     ['README.md', '/before (one third) of the \*\*running\*\* penalty \(`Config::\$plancherFraction`\), a lift requires/u',
@@ -178,21 +293,34 @@ $porteurs = [
         fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
     ['README.md', '/for at most \*\*(\d+)\*\* accounts \(`balayageFiletMax`\)/u',
         fn ($m) => deuxJeux('balayageFiletMax', (int) $m[1])],
-    ['README.fr.md', '/\(`banAutomatique`, \*\*(actif|éteint)\*\* par défaut.*?\(`signalPerteDuVote`, \*\*(actif|éteint)\*\* par défaut.*?\(`messagesPourVoterAvantAge`, \*\*(\d+)\*\* par défaut.*?\(`motifsVotantsMin`, \*\*(\d+)\*\* par défaut/u',
-        fn ($m) => [...deuxJeux('banAutomatique', $m[1] === 'actif'), ...deuxJeux('signalPerteDuVote', $m[2] === 'actif'),
-                    ...deuxJeux('messagesPourVoterAvantAge', (int) $m[3]), ...deuxJeux('motifsVotantsMin', (int) $m[4])]],
-    ['README.md', '/\(`banAutomatique`, \*\*(on|off)\*\* by default.*?\(`signalPerteDuVote`, \*\*(on|off)\*\* by default.*?\(`messagesPourVoterAvantAge`, \*\*(\d+)\*\* by default.*?\(`motifsVotantsMin`, \*\*(\d+)\*\* by default/u',
-        fn ($m) => [...deuxJeux('banAutomatique', $m[1] === 'on'), ...deuxJeux('signalPerteDuVote', $m[2] === 'on'),
-                    ...deuxJeux('messagesPourVoterAvantAge', (int) $m[3]), ...deuxJeux('motifsVotantsMin', (int) $m[4])]],
+    ['README.fr.md', '/^\*\*Ce que l\'hôte règle en plus des seuils\*\*, toujours dans `Config` : sa messagerie et son usage, à déclarer .*?\(`messagesPourVoterAvantAge`, \*\*(\d+)\*\* par défaut.*?\(`motifsVotantsMin`, \*\*(\d+)\*\* par défaut/mu',
+        fn ($m) => [...deuxJeux('messagesPourVoterAvantAge', (int) $m[1]), ...deuxJeux('motifsVotantsMin', (int) $m[2])]],
+    ['README.md', '/^\*\*What the host sets besides the thresholds\*\*, still in `Config`: its messaging and its use, to be declared .*?\(`messagesPourVoterAvantAge`, \*\*(\d+)\*\* by default.*?\(`motifsVotantsMin`, \*\*(\d+)\*\* by default/mu',
+        fn ($m) => [...deuxJeux('messagesPourVoterAvantAge', (int) $m[1]), ...deuxJeux('motifsVotantsMin', (int) $m[2])]],
+
+    // Les deux régimes : la déclaration de chaque jeu, la borne de la
+    // démonstration, et les bornes du service, ligne par ligne.
+    ['README.fr.md', '/^`Config::prod\(Messagerie::DM\)` et `Config::prod\(Messagerie::HORS_MOTEUR\)` donnent les valeurs de service ;\s+`Config::demo\(\)` donne celles de démonstration, avec la messagerie `Messagerie::(DM|HORS_MOTEUR)`\./mu',
+        fn ($m) => [['usage', 'prod', Usage::SERVICE], ['usage', 'demo', Usage::DEMONSTRATION],
+                    ['messagerie', 'demo', constant(Messagerie::class . '::' . $m[1])]]],
+    ['README.md', '/^`Config::prod\(Messagerie::DM\)` and `Config::prod\(Messagerie::HORS_MOTEUR\)` give the service values; `Config::demo\(\)`\s+gives the demonstration ones, with the `Messagerie::(DM|HORS_MOTEUR)` messaging\./mu',
+        fn ($m) => [['usage', 'prod', Usage::SERVICE], ['usage', 'demo', Usage::DEMONSTRATION],
+                    ['messagerie', 'demo', constant(Messagerie::class . '::' . $m[1])]]],
+    ['README.fr.md', '/Un palier de `dureesBan` y dure \*\*(\d+) h\*\* au plus\s+\(`Config::PALIER_DEMONSTRATION_MAX`\)/u',
+        fn ($m) => [['palierDemonstrationMax()', 'demo', $m[1] * $h]]],
+    ['README.md', '/A `dureesBan` tier there lasts \*\*(\d+) hour\*\* at most\s+\(`Config::PALIER_DEMONSTRATION_MAX`\)/u',
+        fn ($m) => [['palierDemonstrationMax()', 'demo', $m[1] * $h]]],
+    ['README.fr.md', '/^\| `quorumAuxSeuils` \| [^|\n]+ \| \*\*(toujours actif|éteignable)\*\* \|$/mu',
+        fn ($m) => [['quorumExigeEnService()', 'prod', $m[1] === 'toujours actif']]],
+    ['README.md', '/^\| `quorumAuxSeuils` \| [^|\n]+ \| \*\*(always on|can be turned off)\*\* \|$/mu',
+        fn ($m) => [['quorumExigeEnService()', 'prod', $m[1] === 'always on']]],
+    ...array_map(static fn (string $c): array => ligneDeBorne('README.fr.md', $c), $bornesDuService),
+    ...array_map(static fn (string $c): array => ligneDeBorne('README.md', $c), $bornesDuService),
 ];
 
 // Les champs dont le README parle sans en donner la valeur, et la phrase qui
 // en parle ainsi, dans chaque langue.
 $nonPromis = [
-    'salveVotantsMin' => [
-        'README.fr.md' => '/\*\*Salve rapide\*\* : plusieurs votants contre la même cible/u',
-        'README.md'    => '/\*\*Fast burst\*\*: several voters against the same target/u',
-    ],
     'balayagePeriodeSecondes' => [
         'README.fr.md' => '/`mod_sweeps` \(une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ;/u',
         'README.md'    => '/`mod_sweeps` \(one row per `balayagePeriodeSecondes` slot already swept;/u',
@@ -231,7 +359,7 @@ foreach ($porteurs as [$fichier, $phrase, $lecture]) {
         ok("$fichier · « " . mb_substr(ltrim($trouvees[0][0], '- '), 0, 60) . ' » : la config applique la valeur promise');
     }
     foreach ($ecarts as [$champ, $jeu, $promis, $valeur]) {
-        nok("$champ ($jeu) : $fichier promet " . json_encode($promis) . ", Config::$jeu() applique " . json_encode($valeur));
+        nok("$champ ($jeu) : $fichier promet " . montrer($promis) . ", Config::$jeu() applique " . montrer($valeur));
     }
 }
 
@@ -253,7 +381,7 @@ $champs = array_map(
     static fn (ReflectionParameter $p): string => $p->getName(),
     (new ReflectionMethod(Config::class, '__construct'))->getParameters()
 );
-$portes = array_filter(array_keys($portes), static fn (string $c): bool => !str_ends_with($c, '()'));
+$portes = array_filter(array_keys($portes), static fn (string $c): bool => !str_contains($c, '('));
 $orphelins = array_diff($champs, $portes, array_keys($nonPromis));
 $deuxFois  = array_intersect($portes, array_keys($nonPromis));
 $perimes   = array_diff(array_keys($nonPromis), $champs);

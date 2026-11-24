@@ -29,13 +29,13 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 
 **SelfRecover sans SelfModerate** est un joli tour de passe-passe de récupération de compte, mais pas une communauté. On peut récupérer son compte sans email, mais il n'y a pas de tissu pour la vie collective.
 
-**SelfModerate, avec ou sans SelfRecover**, reste de la modération par vote, et un vote ne vaut que ce que coûte un compte de plus. SelfRecover n'augmente pas ce coût : il retire l'email, une barrière faible, et ne prouve pas qu'une personne ne tient qu'un compte. Les freins sont dans SelfModerate : un compte neuf ne vote qu'après un délai — 24 h avec `Config::prod()`, 2 min par défaut — ou un premier message, des comptes liés entre eux qui votent contre la même cible ne pèsent pas plus qu'un seul, et une rafale de votes sans lien part en revue humaine.
+**SelfModerate, avec ou sans SelfRecover**, reste de la modération par vote, et un vote ne vaut que ce que coûte un compte de plus. SelfRecover n'augmente pas ce coût : il retire l'email, une barrière faible, et ne prouve pas qu'une personne ne tient qu'un compte. Les freins sont dans SelfModerate : un compte neuf ne vote qu'après un délai — 24 h en service (`Config::prod()`), 2 min en démonstration (`Config::demo()`) — ou un premier message ; là où le moteur lit les messages privés, des comptes liés entre eux qui votent contre la même cible ne pèsent pas plus qu'un seul ; et une rafale de votes sans lien part en revue humaine.
 
 **Ensemble** :
 
 - Un compte survit à la perte de son mot de passe (SelfRecover) : sa réputation et son historique aussi, au lieu de repartir de zéro sous un autre nom.
 - Le vote collectif (SelfModerate) répartit la modération entre les membres.
-- Les modérateurs restent, comme arbitres de ce que les votes ne tranchent pas : chaque ban, levée ou maintien porte leur nom au journal, que l'hébergeur doit brancher : sans journal, aucun geste d'arbitre ne passe.
+- Les modérateurs restent, comme arbitres : en service, la machine signale ce que les votes ont fait, et c'est l'arbitre qui sanctionne. Chaque ban, levée ou maintien porte son nom au journal, que l'hébergeur doit brancher : sans journal, aucun geste d'arbitre ne passe.
 
 ---
 

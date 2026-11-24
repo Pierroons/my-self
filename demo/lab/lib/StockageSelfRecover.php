@@ -859,13 +859,12 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
                 },
             ];
         }
-        // Une suspension du vote ne vient que de la détection de meute ; le moteur
-        // n'en pose plus, mais une base peut encore en porter une en cours.
+        // Une suspension du vote vient d'un arbitre (`adminSuspendreVote()`).
         if ((int) $l['vote_muted_until'] > $maintenant) {
             return [
                 'sanction'          => 'vote_suspendu',
                 'sanction_jusqu_au' => gmdate('Y-m-d', (int) $l['vote_muted_until']),
-                'sanction_origine'  => 'meute_detectee',
+                'sanction_origine'  => 'arbitre',
             ];
         }
 
