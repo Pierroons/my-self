@@ -1623,6 +1623,8 @@ final class SelfDataGuard
      *     `pending` leaves out a keeper that retired the escrow. A keeper
      *     announces each box on its own: a read of the same case lists once
      *     per box;
+     *   - `consents`: the cases the holder consented to, as each keeper that
+     *     answered attests them (consentToEscrowRead()), `{case, at, keeper}`;
      *   - `box`: the KeeperSeal::boxPrint() of the box the row holds, null
      *     when it holds none sealed to a keeper — an entry of another box was
      *     read from a deposit made before, an archive's row, or a copy of the
@@ -1659,6 +1661,7 @@ final class SelfDataGuard
      * @return array{established: bool, reason: ?string, keeper: ?string, pinned: bool, box: ?string,
      *               reads: list<array{case: string, seq: int, at: int, box: string, keeper: string}>,
      *               pending: list<array{case: string, due: int, objected: bool, box: string, keeper: string}>,
+     *               consents: list<array{case: string, at: int, keeper: string}>,
      *               unanswered: list<array{keeper: string, reason: string}>, reseal: bool}
      */
     public function escrowReads(UnlockedVault|ObjectionKey $session): array
@@ -1728,6 +1731,43 @@ final class SelfDataGuard
         $escrowId = $opened->escrowId();
         [$pinned] = $this->rowOf($this->archiveEscrow($opened->archive), fn (EscrowRecord $r): UnlockedEscrow => $opened->openEscrow($r), $escrowId);
         $this->objectAt($pinned, $escrowId, $caseRef, $opened->signEscrowObjection($caseRef));
+    }
+
+    /**
+     * The holder's consent to the read of this vault's escrow for case
+     * $caseRef: signed from the session under the escrow's objection key, for
+     * the keeper the escrow answers to — the first of the keepers
+     * escrowReads() asks — and sent to it, whether the case is announced yet
+     * or not. A ceremony whose arbiter answers Verdict::OpenWithConsent reads
+     * the consent in that keeper's attestation before the keeper hands the box
+     * back; the administrator, who holds no objection key, cannot sign one in
+     * the holder's place. It lifts no objection.
+     *
+     * Only a session on the live vault consents: an archive's escrow, or an
+     * ObjectionKey, has no consent to give. Throws RuntimeException when the
+     * façade was given no keeper — nothing off the machine would verify the
+     * consent —; EscrowKeeperException keeper-mismatch, before any keeper is
+     * asked, when the façade's keeper is not the recorded one or the record of
+     * former keepers is unreadable; the reason of a keeper that cannot be
+     * asked; keeper-failed when it does not record the consent.
+     */
+    public function consentToEscrowRead(UnlockedVault $session, string $caseRef): void
+    {
+        if (!$this->hasKeeper()) {
+            throw new RuntimeException('This façade was given no keeper: nothing off this machine would verify the consent');
+        }
+        $this->currentRecord($session);
+        $escrowId = $session->escrowId();
+        [$pinned] = $this->rowOf($this->rowRecord($session->userId), fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session), $escrowId);
+        $head     = $this->keepersOf($pinned)[0];
+        if ($head['reason'] !== null) {
+            throw new EscrowKeeperException($head['reason'], "The keeper {$head['print']} cannot be asked: the consent is not recorded");
+        }
+        try {
+            $head['keeper']->consent($escrowId, $caseRef, $session->signEscrowConsent($caseRef, $head['print']));
+        } catch (Throwable $e) {
+            throw new EscrowKeeperException('keeper-failed', "The keeper {$head['print']} did not record the consent to case '{$caseRef}'", $e);
+        }
     }
 
     /**
@@ -2264,7 +2304,8 @@ final class SelfDataGuard
      *
      * @param array{sign: string, box: string} $keys
      * @return array{releases: list<array{case: string, seq: int, at: int, box: string}>,
-     *               pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool}
+     *               pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool,
+     *               consents: list<array{case: string, at: int}>}
      * @throws EscrowKeeperException keeper-unreachable, or the reason of KeeperAttestationException
      */
     private function attestAt(EscrowKeeper $keeper, array $keys, string $escrowId): array
@@ -2382,7 +2423,7 @@ final class SelfDataGuard
      */
     private function readsOf(array $rowState, bool $archive, string $escrowId): array
     {
-        $out = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'box' => $rowState[2], 'reads' => [], 'pending' => [], 'unanswered' => [], 'reseal' => false];
+        $out = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'box' => $rowState[2], 'reads' => [], 'pending' => [], 'consents' => [], 'unanswered' => [], 'reseal' => false];
         [$pinned, $row] = $rowState;
         if ($pinned !== null) {
             $out = ['pinned' => true, 'keeper' => KeeperSeal::fingerprint($pinned)] + $out;
@@ -2402,6 +2443,7 @@ final class SelfDataGuard
         }
         $reads       = [];
         $pending     = [];
+        $consents    = [];
         $missing     = [];
         $headRetired = false;
         foreach ($keepers as $i => $k) {
@@ -2415,7 +2457,8 @@ final class SelfDataGuard
                 continue;
             }
             $from  = static fn (array $entry): array => $entry + ['keeper' => $k['print']];
-            $reads = [...$reads, ...array_map($from, $view['releases'])];
+            $reads    = [...$reads, ...array_map($from, $view['releases'])];
+            $consents = [...$consents, ...array_map($from, $view['consents'])];
             if (!$view['retired']) {
                 $pending = [...$pending, ...array_map($from, $view['pending'])];
             }
@@ -2426,6 +2469,7 @@ final class SelfDataGuard
             'keeper'     => $keepers[0]['print'],
             'reads'      => $reads,
             'pending'    => $pending,
+            'consents'   => $consents,
             'unanswered' => array_map(static fn (array $m): array => ['keeper' => $m[0], 'reason' => $m[1]], $missing),
             'reseal'  => $archive
                 ? $row === 'not-keeper-sealed' || $row === 'not-pinned'

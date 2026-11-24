@@ -39,6 +39,7 @@ use Pierroons\SelfDataGuard\Escrow\Normalization;
 use Pierroons\SelfDataGuard\Escrow\EscrowExistsException;
 use Pierroons\SelfDataGuard\Escrow\StaleEscrowException;
 use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
+use Pierroons\SelfDataGuard\Escrow\Verdict;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Storage\UnreadableEscrowException;
@@ -2545,6 +2546,118 @@ rmdir($raceWork);
 
 // -----------------------------------------------------------------------------
 
+section('The holder\'s consent: signed from the session, recorded by the keeper, read by the ceremony under OpenWithConsent');
+
+$cKeeper   = new BenchKeeper(delay: 3600);
+$cDb       = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($cDb, $admin['publicKey']);
+$cDg       = new SelfDataGuard($cDb, $blindKey, keeper: $cKeeper, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$cLog      = sys_get_temp_dir() . '/sdg-keeper-consent-' . bin2hex(random_bytes(4)) . '.log';
+$cCeremony = benchCeremony($cDb, Verdict::OpenWithConsent, logPath: $cLog, keeper: $cKeeper);
+$dana      = $cDg->register('dana', 'motdepasse-dana-01');
+$cDg->setEscrowFields($dana, $admin['publicKey'], ['contact' => 'dana-secours@example.org']);
+$danaId    = $dana->escrowId();
+try {
+    $cCeremony->readEscrow('dana', 'LIT-CS', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+    ko('under OpenWithConsent, a read was unsealed at once');
+} catch (EscrowAnnouncedException) {
+    ok('under OpenWithConsent, the read is announced all the same: the holder sees what they are asked to agree to');
+} catch (Throwable $e) {
+    ko('under OpenWithConsent, the ceremony refused the read before announcing it', get_class($e) . ': ' . $e->getMessage());
+}
+$cKeeper->dueNow(bin2hex($danaId), 'LIT-CS');
+try {
+    $cCeremony->readEscrow('dana', 'LIT-CS', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+    ko('once due, a read the holder did not consent to went through');
+} catch (EscrowKeeperException $e) {
+    $last = logEntries($cLog);
+    $e->reason === 'consent-missing' && ($cKeeper->releases[bin2hex($danaId)] ?? []) === []
+        && (end($last)['event']['reason'] ?? null) === 'consent-missing'
+        ? ok('once due, a read the holder did not consent to is refused before the keeper hands anything back: consent-missing, logged')
+        : ko('refused, but not as consent-missing before any release', json_encode([$e->reason, $cKeeper->releases, end($last)['event'] ?? null]));
+}
+$stranger = sodium_crypto_sign_keypair();
+try {
+    $cKeeper->consent($danaId, 'LIT-CS', KeeperSeal::token(
+        KeeperSeal::consentMessage($danaId, 'LIT-CS', KeeperSeal::fingerprint($cKeeper->publicKeys())),
+        sodium_crypto_sign_secretkey($stranger)
+    ));
+    ko('the keeper took a consent signed under another key than the escrow\'s');
+} catch (RuntimeException) {
+    !$cKeeper->consentedTo(bin2hex($danaId), 'LIT-CS')
+        ? ok('a consent under another key than the escrow\'s is refused: the administrator cannot consent in the holder\'s place')
+        : ko('refused, yet recorded');
+}
+try {
+    $cDg->consentToEscrowRead($dana, 'LIT-CS');
+} catch (Throwable $e) {
+    ko('consentToEscrowRead() was refused by the keeper the escrow answers to', get_class($e) . ': ' . $e->getMessage());
+}
+$danaView = $cDg->escrowReads($dana);
+$cKeeper->consentedTo(bin2hex($danaId), 'LIT-CS')
+    && array_column($danaView['consents'], 'case') === ['LIT-CS']
+    && $danaView['consents'][0]['keeper'] === KeeperSeal::fingerprint($cKeeper->publicKeys())
+    ? ok('consentToEscrowRead() is recorded by the keeper the escrow answers to, and the holder sees it in the view')
+    : ko('the consent did not reach the keeper, or the view does not show it', json_encode($danaView['consents']));
+($cCeremony->readEscrow('dana', 'LIT-CS', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS)['contact'] ?? null) === 'dana-secours@example.org'
+    ? ok('with the holder\'s consent attested by the keeper, the same ceremony reads')
+    : ko('a consented read did not go through');
+try {
+    $cCeremony->readEscrow('dana', 'LIT-CS2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+} catch (EscrowAnnouncedException) {
+}
+$cKeeper->dueNow(bin2hex($danaId), 'LIT-CS2');
+try {
+    $cCeremony->readEscrow('dana', 'LIT-CS2', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+    ko('a consent to one case opened another');
+} catch (EscrowKeeperException $e) {
+    $e->reason === 'consent-missing'
+        ? ok('a consent opens its own case, no other')
+        : ko('refused, but not as consent-missing', $e->reason);
+}
+try {
+    $cCeremony->readEscrow('dana', 'LIT-CS3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+} catch (EscrowAnnouncedException) {
+}
+$cDg->objectToEscrowRead($dana, 'LIT-CS3');
+$cDg->consentToEscrowRead($dana, 'LIT-CS3');
+$cKeeper->dueNow(bin2hex($danaId), 'LIT-CS3');
+try {
+    $cCeremony->readEscrow('dana', 'LIT-CS3', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+    ko('a consent given after an objection lifted it');
+} catch (EscrowKeeperException) {
+    $cKeeper->objectedTo(bin2hex($danaId), 'LIT-CS3')
+        ? ok('a consent after an objection lifts nothing: the read stays refused')
+        : ko('the objection was lost');
+}
+$ncDb = new SqliteAdapter('sqlite::memory:');
+benchAdminRecorded($ncDb, $admin['publicKey']);
+$ncDg = new SelfDataGuard($ncDb, $blindKey, pepper: benchPepper(), forms: \Pierroons\SelfDataGuard\Vault\PepperForms::LayeredOnly, throttle: new \Pierroons\SelfDataGuard\Throttle\NoThrottle());
+$eve  = $ncDg->register('eve', 'motdepasse-eve-001');
+$ncDg->setEscrowFields($eve, $admin['publicKey'], ['contact' => 'eve-secours@example.org']);
+try {
+    $ncDg->consentToEscrowRead($eve, 'LIT-NC');
+    ko('a façade without keeper took a consent nothing off the machine verifies');
+} catch (EscrowKeeperException $e) {
+    ko('a façade without keeper refused the consent as a keeper failure', $e->reason);
+} catch (RuntimeException) {
+    ok('a façade without keeper takes no consent: nothing off the machine would verify it');
+}
+$ncLog = sys_get_temp_dir() . '/sdg-keeper-noconsent-' . bin2hex(random_bytes(4)) . '.log';
+try {
+    benchCeremony($ncDb, Verdict::OpenWithConsent, logPath: $ncLog)->readEscrow('eve', 'LIT-NC', $admin['sealedSecret'], ADMIN_PASS, $admin['publicKey'], BENCH_ESCROW_FIELDS);
+    ko('OpenWithConsent opened an escrow sealed to the administrator alone');
+} catch (EscrowKeeperException $e) {
+    $last = logEntries($ncLog);
+    $e->reason === 'consent-unverifiable' && (end($last)['event']['reason'] ?? null) === 'consent-unverifiable'
+        ? ok('OpenWithConsent opens no escrow sealed to the administrator alone: consent-unverifiable, logged')
+        : ko('refused, but not as consent-unverifiable', $e->reason);
+}
+@unlink($cLog);
+@unlink($ncLog);
+
+// -----------------------------------------------------------------------------
+
 section('The keeper conformance suite — the bench keeper passes, each broken one fails on its clause');
 
 $failedCases = static fn (array $results): array => array_column(
@@ -2583,6 +2696,12 @@ foreach ([
     UnboundRetirementKeeper::class            => 'retire-names-the-keeper',
     RetiresOnceKeeper::class                  => 'retire-is-idempotent',
     NoObjectionAfterReleaseKeeper::class      => 'objection-after-a-release',
+    ConsentBlindKeeper::class                 => 'consent-under-the-escrow-key',
+    UnsaidConsentKeeper::class                => 'consent-under-the-escrow-key',
+    UnboundConsentKeeper::class               => 'consent-names-the-keeper',
+    ConsentAfterAnnouncementKeeper::class     => 'consent-needs-no-announcement',
+    ObjectionAsConsentKeeper::class           => 'consent-is-its-own-message',
+    ConsentLiftsObjectionKeeper::class        => 'consent-lifts-no-objection',
 ] as $class => $case) {
     $failed = $failedCases(KeeperConformance::run($factoryOf($class)));
     isset($failed[$case])

@@ -318,3 +318,67 @@ final class ForgetsHistoryOnRetireKeeper extends BenchKeeper
         }
     }
 }
+
+/** Takes any consent: the administrator consents in the holder's place. */
+final class ConsentBlindKeeper extends BenchKeeper
+{
+    protected function consentVerifies(string $token, string $escrowId, string $caseRef): bool
+    {
+        return true;
+    }
+}
+
+/** Checks which key a consent token carries, not its signature nor the keeper it names: a former keeper replays it here. */
+final class UnboundConsentKeeper extends BenchKeeper
+{
+    protected function consentVerifies(string $token, string $escrowId, string $caseRef): bool
+    {
+        return hash_equals(KeeperSeal::escrowIdFor(substr($token, 0, SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES)), $escrowId);
+    }
+}
+
+/** Takes no consent before the case is announced: a holder who agrees first is turned away. */
+final class ConsentAfterAnnouncementKeeper extends BenchKeeper
+{
+    public function consent(string $escrowId, string $caseRef, string $token): void
+    {
+        if (!$this->caseHeld($escrowId, $caseRef)) {
+            throw new RuntimeException('No read of this escrow is announced for this case');
+        }
+        parent::consent($escrowId, $caseRef, $token);
+    }
+}
+
+/** Verifies a consent as an objection: the holder's objection to a case reads as their agreement to it. */
+final class ObjectionAsConsentKeeper extends BenchKeeper
+{
+    protected function consentVerifies(string $token, string $escrowId, string $caseRef): bool
+    {
+        return KeeperSeal::verifyObjection($token, $escrowId, $caseRef);
+    }
+}
+
+/** Lets a consent clear an objection: whoever replays an old consent undoes the holder's refusal. */
+final class ConsentLiftsObjectionKeeper extends BenchKeeper
+{
+    public function consent(string $escrowId, string $caseRef, string $token): void
+    {
+        parent::consent($escrowId, $caseRef, $token);
+        unset($this->objections[bin2hex($escrowId) . '|' . $caseRef]);
+    }
+}
+
+/** Takes a consent and never says so: an arbiter that asks for one never sees it. */
+final class UnsaidConsentKeeper extends BenchKeeper
+{
+    public function attest(string $escrowId, string $nonce): string
+    {
+        $consents = $this->consents;
+        $this->consents = [];
+        try {
+            return parent::attest($escrowId, $nonce);
+        } finally {
+            $this->consents = $consents;
+        }
+    }
+}

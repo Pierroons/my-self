@@ -25,16 +25,18 @@ use RuntimeException;
  * keeper's secret.
  *
  * An attestation is base64(json) . "." . base64(Ed25519 signature over the tag
- * and the json): what the keeper released for one escrow, and what it holds
- * announced, each naming its box by boxPrint(), and whether the escrow was
- * retired from it, for one nonce.
+ * and the json): what the keeper released for one escrow, what it holds
+ * announced, each naming its box by boxPrint(), the cases its holder consented
+ * to, and whether the escrow was retired from it, for one nonce.
  *
  * The objection key belongs to the escrow, not to a box: its secret seed is
  * derived from the holder's master key, and the escrowId of an escrow a holder
  * sealed is the fingerprint of its public half (escrowIdFor()). A keeper refuses
- * a box that carries another key than its escrowId names. An objection, and a
- * retirement, is a token — the public key, then an Ed25519 signature under it —
- * that the keeper checks against the escrowId alone, whatever box it holds.
+ * a box that carries another key than its escrowId names. An objection, a
+ * retirement and a consent are tokens — the public key, then an Ed25519
+ * signature under it — that the keeper checks against the escrowId alone,
+ * whatever box it holds; each message has a tag of its own, so that no token
+ * stands for another kind.
  * An announcement, though, holds one box: another box of the escrow — sealed
  * by a deposit since, kept by an archive, or put back from a copy — is
  * announced on its own, and waits a delay of its own.
@@ -50,6 +52,7 @@ final class KeeperSeal
     private const ID_TAG     = "selfdataguard/escrow-id/v1\0";
     private const RETIRE_TAG = "selfdataguard/keeper-retirement/v1\0";
     private const BOX_TAG    = "selfdataguard/keeper-box/v1\0";
+    private const CONSENT_TAG = "selfdataguard/keeper-consent/v1\0";
     private const TOKEN_LEN  = SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES + SODIUM_CRYPTO_SIGN_BYTES;
     private const FORM       = '/\Ak1:([0-9a-f]{32}):/';
     private const PREFIX_LEN = 3 + 2 * self::ESCROW_ID_LEN + 1;
@@ -239,6 +242,8 @@ final class KeeperSeal
      * @param list<array{case: string, seq: int, at: int, box: string}>          $releases
      * @param list<array{case: string, due: int, objected: bool, box: string}>   $pending
      *        box: the boxPrint() of the box released, or announced
+     * @param list<array{case: string, at: int}>                                 $consents
+     *        the cases the holder consented to (verifyConsent()), and when the keeper took each
      */
     public static function attestation(
         string $escrowId,
@@ -246,7 +251,8 @@ final class KeeperSeal
         array $releases,
         array $pending,
         #[\SensitiveParameter] string $signSecret,
-        bool $retired = false
+        bool $retired = false,
+        array $consents = []
     ): string {
         $json = json_encode([
             'v'        => 1,
@@ -255,6 +261,7 @@ final class KeeperSeal
             'releases' => array_values($releases),
             'pending'  => array_values($pending),
             'retired'  => $retired,
+            'consents' => array_values($consents),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         return base64_encode($json) . '.' . base64_encode(sodium_crypto_sign_detached(self::ATTEST_TAG . $json, $signSecret));
     }
@@ -263,9 +270,10 @@ final class KeeperSeal
      * The holder's side: the attestation, verified under the keeper's sign key
      * and for this escrow and nonce. Throws KeeperAttestationException, naming
      * why, when it does not hold. An entry without `box` — a keeper that
-     * names none, or a release it recorded before 0.10.0 — reads ''.
+     * names none, or a release it recorded before 0.10.0 — reads ''; an
+     * attestation without `consents`, none.
      *
-     * @return array{releases: list<array{case: string, seq: int, at: int, box: string}>, pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool}
+     * @return array{releases: list<array{case: string, seq: int, at: int, box: string}>, pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool, consents: list<array{case: string, at: int}>}
      */
     public static function verifyAttestation(string $attestation, string $signPublic, string $escrowId, string $nonce): array
     {
@@ -280,7 +288,7 @@ final class KeeperSeal
         }
         $body = json_decode($json, true);
         if (!is_array($body) || ($body['v'] ?? null) !== 1
-            || !is_array($body['releases'] ?? null) || !is_array($body['pending'] ?? null)) {
+            || !is_array($body['releases'] ?? null) || !is_array($body['pending'] ?? null) || !is_array($body['consents'] ?? [])) {
             throw new KeeperAttestationException('unreadable', 'the signed attestation is not in the keeper format');
         }
         if (!hash_equals(bin2hex($escrowId), (string) ($body['escrowId'] ?? ''))) {
@@ -297,7 +305,11 @@ final class KeeperSeal
         foreach ($body['pending'] as $p) {
             $pending[] = ['case' => (string) ($p['case'] ?? ''), 'due' => (int) ($p['due'] ?? 0), 'objected' => (bool) ($p['objected'] ?? false), 'box' => (string) ($p['box'] ?? '')];
         }
-        return ['releases' => $releases, 'pending' => $pending, 'retired' => ($body['retired'] ?? false) === true];
+        $consents = [];
+        foreach ($body['consents'] ?? [] as $c) {
+            $consents[] = ['case' => (string) ($c['case'] ?? ''), 'at' => (int) ($c['at'] ?? 0)];
+        }
+        return ['releases' => $releases, 'pending' => $pending, 'retired' => ($body['retired'] ?? false) === true, 'consents' => $consents];
     }
 
     /** What an objection signs. */
@@ -310,6 +322,19 @@ final class KeeperSeal
     public static function retirementMessage(string $escrowId, string $keeperPrint): string
     {
         return self::RETIRE_TAG . $escrowId . $keeperPrint;
+    }
+
+    /**
+     * What a consent signs: the holder agrees that the escrow be read for
+     * case $caseRef, at the keeper whose fingerprint is $keeperPrint and no
+     * other — a token made for one keeper does not pass at the next.
+     */
+    public static function consentMessage(string $escrowId, string $caseRef, string $keeperPrint): string
+    {
+        if (preg_match('/\A[0-9a-f]{32}\z/', $keeperPrint) !== 1) {
+            throw new InvalidArgumentException('A keeper fingerprint is 32 hex characters (fingerprint())');
+        }
+        return self::CONSENT_TAG . $escrowId . $keeperPrint . pack('N', strlen($caseRef)) . $caseRef;
     }
 
     /** A token: the public key, then the signature of $message under its secret. */
@@ -332,6 +357,16 @@ final class KeeperSeal
     public static function verifyRetirement(string $token, string $escrowId, string $keeperPrint): bool
     {
         return self::verifyToken($token, $escrowId, self::retirementMessage($escrowId, $keeperPrint));
+    }
+
+    /**
+     * The keeper's side: whether $token consents to the read of $escrowId for
+     * case $caseRef at the keeper whose fingerprint is $keeperPrint — its own
+     * —, under the key $escrowId is the fingerprint of.
+     */
+    public static function verifyConsent(string $token, string $escrowId, string $caseRef, string $keeperPrint): bool
+    {
+        return self::verifyToken($token, $escrowId, self::consentMessage($escrowId, $caseRef, $keeperPrint));
     }
 
     private static function verifyToken(string $token, string $escrowId, string $message): bool

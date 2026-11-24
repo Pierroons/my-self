@@ -16,9 +16,11 @@ use Throwable;
  * of another box, or to a box that carries another objection key than the
  * escrow is named after, that does not say which box it released, or that
  * forgets at a retirement what it released, satisfies every signature and
- * leaves the holder blind; one that takes a retirement meant for another
- * keeper lets a former keeper retire the escrow from it. These cases are what
- * tells them apart. They play one caller at a time: that each call is atomic
+ * leaves the holder blind; one that takes a retirement or a consent meant for
+ * another keeper lets a former keeper act at it in the holder's place, and one
+ * that takes a consent it cannot verify, or lets a consent lift an objection,
+ * reads the holder's silence as an agreement. These cases are what tells them
+ * apart. They play one caller at a time: that each call is atomic
  * against the others is the contract's (EscrowKeeper), not played here.
  *
  * It takes a factory, `$make(int $delay, callable $clock): EscrowKeeper`: each
@@ -104,6 +106,11 @@ final class KeeperConformance
             'retire-is-final'                     => ['retireIsFinal', 0],
             'retire-names-the-keeper'             => ['retireNamesTheKeeper', 0],
             'retire-is-idempotent'                => ['retireIsIdempotent', 0],
+            'consent-under-the-escrow-key'        => ['consentUnderTheEscrowKey', 0],
+            'consent-names-the-keeper'            => ['consentNamesTheKeeper', 0],
+            'consent-needs-no-announcement'       => ['consentNeedsNoAnnouncement', 0],
+            'consent-is-its-own-message'          => ['consentIsItsOwnMessage', 0],
+            'consent-lifts-no-objection'          => ['consentLiftsNoObjection', self::DELAY],
         ];
     }
 
@@ -447,6 +454,77 @@ final class KeeperConformance
         $this->assert($this->attested($box['escrowId'])['retired'], 'the attestation does not say the escrow is retired here');
     }
 
+    private function consentUnderTheEscrowKey(): void
+    {
+        $box = $this->box();
+        $this->announce($box, 'K-consent');
+        $stranger = sodium_crypto_sign_keypair();
+        $this->expectRefused(
+            fn () => $this->keeper->consent($box['escrowId'], 'K-consent', KeeperSeal::token(
+                KeeperSeal::consentMessage($box['escrowId'], 'K-consent', $this->print()),
+                sodium_crypto_sign_secretkey($stranger)
+            )),
+            'a consent signed under another key than the one the escrowId is the fingerprint of'
+        );
+        $this->assert(!$this->consented($box['escrowId'], 'K-consent'), 'a consent signed under another key shows in the attestation');
+        $this->keeper->consent($box['escrowId'], 'K-consent', $this->consentOf($box, 'K-consent'));
+        $this->assert($this->consented($box['escrowId'], 'K-consent'), 'the attestation does not show the holder\'s consent');
+    }
+
+    private function consentNamesTheKeeper(): void
+    {
+        $box = $this->box();
+        $this->announce($box, 'K-consent-elsewhere');
+        $this->expectRefused(
+            fn () => $this->keeper->consent($box['escrowId'], 'K-consent-elsewhere', $this->consentOf($box, 'K-consent-elsewhere', str_repeat('0', 32))),
+            'a consent signed for another keeper — the one a former keeper would replay here'
+        );
+        $this->assert(!$this->consented($box['escrowId'], 'K-consent-elsewhere'), 'a consent for another keeper shows in the attestation');
+    }
+
+    private function consentNeedsNoAnnouncement(): void
+    {
+        $box = $this->box();
+        $this->keeper->consent($box['escrowId'], 'K-consent-first', $this->consentOf($box, 'K-consent-first'));
+        $this->assert($this->consented($box['escrowId'], 'K-consent-first'), 'a consent given before the case is announced is not attested');
+    }
+
+    private function consentIsItsOwnMessage(): void
+    {
+        $box = $this->box();
+        $this->announce($box, 'K-kinds');
+        $this->expectRefused(
+            fn () => $this->keeper->consent($box['escrowId'], 'K-kinds', $this->objection($box, 'K-kinds')),
+            'an objection token taken as a consent'
+        );
+        $this->expectRefused(
+            fn () => $this->keeper->object($box['escrowId'], 'K-kinds', $this->consentOf($box, 'K-kinds')),
+            'a consent token taken as an objection'
+        );
+        $this->assert(
+            !$this->consented($box['escrowId'], 'K-kinds') && ($this->pendingOf($box['escrowId'], 'K-kinds')['objected'] ?? false) === false,
+            'a token of one kind left the record of another'
+        );
+    }
+
+    private function consentLiftsNoObjection(): void
+    {
+        $box = $this->box();
+        $due = $this->announce($box, 'K-both');
+        $this->keeper->object($box['escrowId'], 'K-both', $this->objection($box, 'K-both'));
+        try {
+            $this->keeper->consent($box['escrowId'], 'K-both', $this->consentOf($box, 'K-both'));
+        } catch (Throwable) {
+            // Refusing a consent to a case objected to is the keeper's to choose: the objection stands either way.
+        }
+        $this->assert(($this->pendingOf($box['escrowId'], 'K-both')['objected'] ?? false) === true, 'a consent cleared the holder\'s objection');
+        $this->now = $due;
+        $this->expectRefused(
+            fn () => $this->keeper->release($box['escrowId'], $box['outer'], 'K-both', ++$this->seq, 'h'),
+            'the release of a read objected to, once consented to'
+        );
+    }
+
     // -- Fixtures -----------------------------------------------------------------
 
     /**
@@ -501,6 +579,17 @@ final class KeeperConformance
         return KeeperSeal::token(KeeperSeal::retirementMessage($box['escrowId'], $keeperPrint ?? $this->print()), $box['objectionSecret']);
     }
 
+    /** @param array{escrowId: string, objectionSecret: string} $box */
+    private function consentOf(array $box, string $caseRef, ?string $keeperPrint = null): string
+    {
+        return KeeperSeal::token(KeeperSeal::consentMessage($box['escrowId'], $caseRef, $keeperPrint ?? $this->print()), $box['objectionSecret']);
+    }
+
+    private function consented(string $escrowId, string $caseRef): bool
+    {
+        return in_array($caseRef, array_column($this->attested($escrowId)['consents'], 'case'), true);
+    }
+
     private function print(): string
     {
         return KeeperSeal::fingerprint($this->keys);
@@ -517,7 +606,7 @@ final class KeeperConformance
         return null;
     }
 
-    /** @return array{releases: list<array{case: string, seq: int, at: int}>, pending: list<array{case: string, due: int, objected: bool}>, retired: bool} */
+    /** @return array{releases: list<array{case: string, seq: int, at: int, box: string}>, pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool, consents: list<array{case: string, at: int}>} */
     private function attested(string $escrowId): array
     {
         $nonce = random_bytes(16);

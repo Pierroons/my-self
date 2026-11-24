@@ -43,6 +43,12 @@ namespace Pierroons\SelfDataGuard\Escrow;
  * A keeper counts no failure and shuts nothing out after one: a counter here
  * would close the holder's last door to whoever runs the ceremony. The
  * refusals that last are the holder's own: an objection, a retirement.
+ *
+ * A consent is the holder's too: signed from a session under the same key, it
+ * says the holder agrees to the read of a case. The keeper records and attests
+ * it, and releases nothing more for it: what asks for a consent is the
+ * arbiter (Verdict::OpenWithConsent), and the ceremony reads it in the
+ * keeper's attestation, signed off the machine that serves.
  */
 interface EscrowKeeper
 {
@@ -96,8 +102,8 @@ interface EscrowKeeper
     /**
      * KeeperSeal::attestation() of what it released for $escrowId, of what it
      * holds announced — lapsed announcements left out, objected ones kept —,
-     * each naming its box by KeeperSeal::boxPrint(), and whether $escrowId was
-     * retired here, for $nonce.
+     * each naming its box by KeeperSeal::boxPrint(), of the consents it took,
+     * and whether $escrowId was retired here, for $nonce.
      */
     public function attest(string $escrowId, string $nonce): string;
 
@@ -123,4 +129,15 @@ interface EscrowKeeper
      * Throws when the token does not verify.
      */
     public function retire(string $escrowId, string $token): void;
+
+    /**
+     * Record the holder's consent to the read of $escrowId for $caseRef, when
+     * $token verifies under the key $escrowId is the fingerprint of, for this
+     * keeper's own fingerprint (KeeperSeal::verifyConsent()) — a consent made
+     * for another keeper is refused. It is taken whether or not a box is
+     * announced for that case yet, at the time of its first taking, and taken
+     * again changes nothing. It lifts no objection: a case objected to stays
+     * refused, consented to or not. Throws when the token does not verify.
+     */
+    public function consent(string $escrowId, string $caseRef, string $token): void;
 }

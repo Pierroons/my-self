@@ -31,7 +31,7 @@ use Throwable;
  *      witness took: a log cut or rewritten since stops the ceremony here;
  *   2. the head of the log taken out of the machine by the witness, which
  *      stops the ceremony when it fails;
- *   3. a verdict of Open;
+ *   3. a verdict of Open, or of OpenWithConsent;
   *   4. the escrow's label compared with the admin key given: an escrow sealed
  *      to another key stops here; then the passphrase checked — the admin key
  *      unsealed, found to be the private half of the public key given, then
@@ -40,7 +40,10 @@ use Throwable;
  *      intention's head: it records the read and hands back the inner box —
  *      or holds it until a delay ends, or refuses it to an objection. Without
  *      a keeper (NoKeeper), such a compartment does not open; with another
- *      than the one the database recorded, it does not either. The admin key
+ *      than the one the database recorded, it does not either. Under
+ *      OpenWithConsent, the keeper that holds the box must attest the
+ *      holder's consent to the case before it is asked to hand it back, and a
+ *      compartment sealed to no keeper does not open at all. The admin key
  *      is unsealed again to open it, and never held across the call to the
  *      keeper.
  *
@@ -549,7 +552,7 @@ final class EscrowCeremony
             $this->log->append(['action' => "{$act}-denied", 'reason' => 'witness-failed'] + $context);
             throw new RuntimeException("The head witness did not take the log's head: nothing is unsealed", previous: $e);
         }
-        if ($verdict !== Verdict::Open) {
+        if ($verdict !== Verdict::Open && $verdict !== Verdict::OpenWithConsent) {
             $this->log->append(['action' => "{$act}-denied", 'reason' => 'verdict', 'verdict' => $verdict->value] + $context);
             throw new EscrowRefusedException($verdict, $userId, $caseRef);
         }
@@ -630,7 +633,15 @@ final class EscrowCeremony
      */
     private function throughKeeper(EscrowRecord $record, string $caseRef, array $intent): EscrowRecord
     {
+        $withConsent = ($intent['event']['verdict'] ?? null) === Verdict::OpenWithConsent->value;
         if (!EscrowVault::isKeeperSealed($record)) {
+            if ($withConsent) {
+                throw new EscrowKeeperException(
+                    'consent-unverifiable',
+                    "The case asks for the consent of the holder of '{$record->userId}', and the escrow is sealed to no keeper: "
+                    . 'nothing off this machine verifies a consent — the escrow stays sealed'
+                );
+            }
             return $record;
         }
         if ($this->keeper instanceof NoKeeper) {
@@ -667,6 +678,9 @@ final class EscrowCeremony
             if ($due > time()) {
                 throw new EscrowAnnouncedException($due, $record->userId, $caseRef);
             }
+            if ($withConsent) {
+                $this->assertConsent($keeper, $escrowId, $caseRef, $record->userId);
+            }
             try {
                 $inner = $keeper->release($escrowId, $outer, $caseRef, $seq, $hmac);
             } catch (Throwable $e) {
@@ -680,6 +694,34 @@ final class EscrowCeremony
             . implode('; ', array_map(static fn (array $f): string => "{$f[0]}: {$f[1]->getMessage()}", $failures)),
             $failures[0][1]
         );
+    }
+
+    /**
+     * The holder's consent to case $caseRef, as $keeper attests it for
+     * $escrowId under its own sign key, for a nonce drawn here: it verified
+     * the holder's signature, off this machine. EscrowKeeperException
+     * consent-missing when it attests none, keeper-failed when no attestation
+     * that verifies comes.
+     */
+    private function assertConsent(EscrowKeeper $keeper, string $escrowId, string $caseRef, string $userId): void
+    {
+        $nonce = random_bytes(16);
+        try {
+            $seen = KeeperSeal::verifyAttestation(
+                $keeper->attest($escrowId, $nonce),
+                KeeperSeal::checkKeys($keeper->publicKeys())['sign'],
+                $escrowId,
+                $nonce
+            );
+        } catch (Throwable $e) {
+            throw new EscrowKeeperException('keeper-failed', "The keeper gave no attestation that verifies: the holder's consent cannot be read — the escrow stays sealed", $e);
+        }
+        if (!in_array($caseRef, array_column($seen['consents'], 'case'), true)) {
+            throw new EscrowKeeperException(
+                'consent-missing',
+                "The holder of '{$userId}' has not consented, at the keeper, to the read for case '{$caseRef}': the escrow stays sealed"
+            );
+        }
     }
 
     /**

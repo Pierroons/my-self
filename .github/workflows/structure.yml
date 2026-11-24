@@ -1113,7 +1113,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=65 [sanity_conformance]=123 [sanity_escrow]=119
-            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=248 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=263 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
             [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=44
           )
           rc=0
@@ -1646,6 +1646,11 @@ jobs:
           canari $KC "            'announcement-lapses'                 => ['announcementLapses', self::DELAY]," '' $K 'NeverLapsesKeeper passed a case it breaks'
           canari $KC "            'attestation-fresh-and-scoped'        => ['attestationFreshAndScoped', 0]," '' $K 'StaleAttestationKeeper passed a case it breaks'
           canari $KC "            'attestation-names-the-box'           => ['attestationNamesTheBox', 0]," '' $K 'BoxlessAttestationKeeper passed a case it breaks'
+          canari $KC "            'consent-under-the-escrow-key'        => ['consentUnderTheEscrowKey', 0]," '' $K 'ConsentBlindKeeper passed a case it breaks'
+          canari $KC "            'consent-names-the-keeper'            => ['consentNamesTheKeeper', 0]," '' $K 'UnboundConsentKeeper passed a case it breaks'
+          canari $KC "            'consent-needs-no-announcement'       => ['consentNeedsNoAnnouncement', 0]," '' $K 'ConsentAfterAnnouncementKeeper passed a case it breaks'
+          canari $KC "            'consent-is-its-own-message'          => ['consentIsItsOwnMessage', 0]," '' $K 'ObjectionAsConsentKeeper passed a case it breaks'
+          canari $KC "            'consent-lifts-no-objection'          => ['consentLiftsNoObjection', self::DELAY]," '' $K 'ConsentLiftsObjectionKeeper passed a case it breaks'
           canari $KC "            'objection-under-the-escrow-key'      => ['objectionUnderTheEscrowKey', self::DELAY]," '' $K 'ObjectionBlindKeeper passed a case it breaks'
           canari $KC "            'objection-needs-an-announcement'     => ['objectionNeedsAnAnnouncement', self::DELAY]," '' $K 'ObjectionWithoutAnnouncementKeeper passed a case it breaks'
           canari $KC "            'objection-survives-re-announce'      => ['objectionSurvivesReAnnounce', self::DELAY]," '' $K 'ForgetsObjectionKeeper passed a case it breaks'
@@ -1734,7 +1739,7 @@ jobs:
             "        if (false) {
                       throw new VaultFrozenException(\"The vault of '{\$session->userId}' is frozen: nothing is retired, nothing re-sealed\");" \
             $K 'a frozen vault: the deposit was refused after the escrow was retired from the former keeper'
-          canari $D/src/Escrow/KeeperSeal.php "'retired' => (\$body['retired'] ?? false) === true]" "'retired' => false]" \
+          canari $D/src/Escrow/KeeperSeal.php "'retired' => (\$body['retired'] ?? false) === true," "'retired' => false," \
             $K 'an escrow retired at the keeper its row pins shows as readable'
           canari $SDG "        if (\$pinned !== null) {
                       \$out = ['pinned' => true" "        if (\$row === 'unreadable') {
@@ -2590,6 +2595,58 @@ jobs:
             $K '❌ the bench keeper fails the suite'
           canari $KS "'box' => (string) (\$p['box'] ?? '')];" "'box' => ''];" \
             $K '❌ the view does not tell the two boxes of one case apart'
+
+      # SelfDataGuard 0.10.0 : le titulaire signe son accord à la lecture d'un dossier, sous
+      # la clé d'objection et pour le gardien auquel le séquestre répond ; le gardien l'inscrit
+      # et l'atteste, et la cérémonie ne lit sous OpenWithConsent qu'une fois l'accord attesté.
+      - name: Canaris — l'accord du titulaire, signé, attesté par le gardien, lu par la cérémonie
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FA=$D/src/SelfDataGuard.php
+          FC=$D/src/Escrow/EscrowCeremony.php
+          KS=$D/src/Escrow/KeeperSeal.php
+          K=$D/tests/sanity_keeper.php
+          canari $FC '        if ($verdict !== Verdict::Open && $verdict !== Verdict::OpenWithConsent) {' '        if ($verdict !== Verdict::Open) {' \
+            $K '❌ under OpenWithConsent, the ceremony refused the read before announcing it'
+          canari $FC '                $this->assertConsent($keeper, $escrowId, $caseRef, $record->userId);' '' \
+            $K '❌ once due, a read the holder did not consent to went through'
+          canari $FC "        \$withConsent = (\$intent['event']['verdict'] ?? null) === Verdict::OpenWithConsent->value;" '        $withConsent = false;' \
+            $K '❌ once due, a read the holder did not consent to went through'
+          canari $FC "        if (!in_array(\$caseRef, array_column(\$seen['consents'], 'case'), true)) {" '        if (false) {' \
+            $K '❌ a consent to one case opened another'
+          canari $FC '        if (!EscrowVault::isKeeperSealed($record)) {
+                      if ($withConsent) {' '        if (!EscrowVault::isKeeperSealed($record)) {
+                      if (false) {' \
+            $K '❌ OpenWithConsent opened an escrow sealed to the administrator alone'
+          canari $KS '        return self::CONSENT_TAG . $escrowId . $keeperPrint . pack(' '        return self::OBJECT_TAG . $escrowId . pack(' \
+            $K '❌ the bench keeper fails the suite'
+          canari $KS '        return self::CONSENT_TAG . $escrowId . $keeperPrint . pack(' '        return self::CONSENT_TAG . $escrowId . pack(' \
+            $K '❌ the bench keeper fails the suite'
+          canari $KS "            \$consents[] = ['case' => (string) (\$c['case'] ?? ''), 'at' => (int) (\$c['at'] ?? 0)];" '' \
+            $K '❌ the consent did not reach the keeper, or the view does not show it'
+          canari $FA "            \$consents = [...\$consents, ...array_map(\$from, \$view['consents'])];" '' \
+            $K '❌ the consent did not reach the keeper, or the view does not show it'
+          canari $FA "            \$head['keeper']->consent(\$escrowId, \$caseRef, \$session->signEscrowConsent(\$caseRef, \$head['print']));" \
+            "            \$head['keeper']->consent(\$escrowId, \$caseRef, \$session->signEscrowConsent(\$caseRef, str_repeat('0', 32)));" \
+            $K '❌ consentToEscrowRead() was refused by the keeper the escrow answers to'
+          canari $FA "        if (!\$this->hasKeeper()) {
+                      throw new RuntimeException('This façade was given no keeper: nothing off this machine would verify the consent');" "        if (false) {
+                      throw new RuntimeException('This façade was given no keeper: nothing off this machine would verify the consent');" \
+            $K '❌ a façade without keeper'
 
   selfrecover-1:
     needs: modules

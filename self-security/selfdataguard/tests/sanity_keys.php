@@ -118,7 +118,7 @@ $MAGIC = ['__clone', '__construct', '__debugInfo', '__destruct', '__serialize', 
 section('The public methods of each key-holding class are a closed list');
 
 $closed = [
-    UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'escrowId', 'generation', 'isLocked', 'lock', 'openEscrow', 'pinEscrow', 'sealLock', 'signEscrowObjection', 'signEscrowRetirement'],
+    UnlockedVault::class   => ['createEscrow', 'decryptField', 'encryptField', 'escrowId', 'generation', 'isLocked', 'lock', 'openEscrow', 'pinEscrow', 'sealLock', 'signEscrowConsent', 'signEscrowObjection', 'signEscrowRetirement'],
     UnlockedEscrow::class  => ['decryptField', 'encryptField', 'isLocked', 'lock', 'sealToAdmin', 'sealToKeeper'],
     UnlockedArchive::class => ['decryptFields', 'escrowId', 'lock', 'openEscrow', 'signEscrowObjection', 'userId'],
     ObjectionKey::class    => ['escrowId', 'isLocked', 'lock', 'signEscrowObjection'],

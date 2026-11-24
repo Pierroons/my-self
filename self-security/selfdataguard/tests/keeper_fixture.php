@@ -22,6 +22,9 @@ class BenchKeeper implements EscrowKeeper
     /** @var array<string, list<array{case: string, seq: int, at: int, box: string}>> by escrowId hex */
     public array $releases = [];
 
+    /** @var array<string, list<array{case: string, at: int}>> the consents taken, by escrowId hex */
+    public array $consents = [];
+
     /** @var array<string, true> escrowIds (hex) a box with an objection key was seen for */
     public array $keyed = [];
 
@@ -104,7 +107,7 @@ class BenchKeeper implements EscrowKeeper
                 $pending[] = ['case' => $held['case'], 'due' => $held['due'], 'objected' => $objected, 'box' => $held['box']];
             }
         }
-        return KeeperSeal::attestation($escrowId, $nonce, $this->releases[$hex] ?? [], $pending, $this->signSecret, isset($this->retired[$hex]));
+        return KeeperSeal::attestation($escrowId, $nonce, $this->releases[$hex] ?? [], $pending, $this->signSecret, isset($this->retired[$hex]), $this->consents[$hex] ?? []);
     }
 
     public function object(string $escrowId, string $caseRef, string $token): void
@@ -126,6 +129,24 @@ class BenchKeeper implements EscrowKeeper
             throw new RuntimeException('This retirement is not signed, for this keeper, by the key this escrow is named after');
         }
         $this->retired[bin2hex($escrowId)] = true;
+    }
+
+    public function consent(string $escrowId, string $caseRef, string $token): void
+    {
+        $this->answer();
+        $hex = bin2hex($escrowId);
+        if (!$this->consentVerifies($token, $escrowId, $caseRef)) {
+            throw new RuntimeException('This consent is not signed, for this keeper, by the key this escrow is named after');
+        }
+        if (!in_array($caseRef, array_column($this->consents[$hex] ?? [], 'case'), true)) {
+            $this->consents[$hex][] = ['case' => $caseRef, 'at' => $this->time()];
+        }
+    }
+
+    /** Bench: whether the holder consented to $caseRef of the escrow $escrowIdHex. */
+    public function consentedTo(string $escrowIdHex, string $caseRef): bool
+    {
+        return in_array($caseRef, array_column($this->consents[$escrowIdHex] ?? [], 'case'), true);
     }
 
     /** Bench: every box announced for $caseRef of the escrow $escrowIdHex falls due. Throws when none is. */
@@ -197,6 +218,11 @@ class BenchKeeper implements EscrowKeeper
     protected function releasedBox(string $escrowId, string $outerBox): array
     {
         return $this->boxOf($escrowId, $outerBox);
+    }
+
+    protected function consentVerifies(string $token, string $escrowId, string $caseRef): bool
+    {
+        return KeeperSeal::verifyConsent($token, $escrowId, $caseRef, KeeperSeal::fingerprint($this->publicKeys()));
     }
 
     /** Where the announcement of $outerBox for $caseRef of $escrowId is held. */
@@ -303,6 +329,11 @@ final class FileBenchKeeper extends BenchKeeper
         $this->locked(fn () => parent::retire($escrowId, $token));
     }
 
+    public function consent(string $escrowId, string $caseRef, string $token): void
+    {
+        $this->locked(fn () => parent::consent($escrowId, $caseRef, $token));
+    }
+
     /** $op on the state read from the file, written back, under one lock: two processes never lose one another's record. */
     private function locked(callable $op): mixed
     {
@@ -332,6 +363,7 @@ final class FileBenchKeeper extends BenchKeeper
         );
         $this->pending    = $d['pending'];
         $this->objections = $d['objections'];
+        $this->consents   = $d['consents'];
         $this->releases   = $d['releases'];
         $this->keyed    = $d['keyed'];
         $this->retired  = $d['retired'];
@@ -347,6 +379,7 @@ final class FileBenchKeeper extends BenchKeeper
             'signSecret' => base64_encode($this->signSecret),
             'pending'    => (object) $this->pending,
             'objections' => (object) $this->objections,
+            'consents'   => (object) $this->consents,
             'releases'   => (object) $this->releases,
             'keyed'      => (object) $this->keyed,
             'retired'    => (object) $this->retired,

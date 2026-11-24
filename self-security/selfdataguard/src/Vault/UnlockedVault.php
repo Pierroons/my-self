@@ -292,6 +292,17 @@ final class UnlockedVault
         return $this->signEscrowToken(KeeperSeal::retirementMessage($this->escrowId(), $keeperPrint));
     }
 
+    /**
+     * The holder's consent to the read of this vault's escrow for $caseRef, at
+     * the keeper whose fingerprint is $keeperPrint (KeeperSeal::verifyConsent()).
+     * Only a session on the live vault signs one: neither an ObjectionKey nor
+     * an archive does.
+     */
+    public function signEscrowConsent(string $caseRef, string $keeperPrint): string
+    {
+        return $this->signEscrowToken(KeeperSeal::consentMessage($this->escrowId(), $caseRef, $keeperPrint));
+    }
+
     private function signEscrowToken(string $message): string
     {
         $seed = $this->objectionSeed();

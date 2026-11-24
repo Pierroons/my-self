@@ -42,4 +42,9 @@ final class NoKeeper implements EscrowKeeper
     {
         throw new RuntimeException('NoKeeper holds no escrow to retire');
     }
+
+    public function consent(string $escrowId, string $caseRef, string $token): void
+    {
+        throw new RuntimeException('NoKeeper takes no consent');
+    }
 }
