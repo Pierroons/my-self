@@ -101,8 +101,8 @@ Trois propriétés en découlent, et chacune se perd facilement :
 - **nginx ne retient qu'un bloc `location`.** Celui de `/` et sa zone `biself`
   ne s'appliquent donc à aucune route d'API : chacune doit nommer sa file. Les
   quatre familles qui n'en avaient aucune — `session`, `events`, les neuf de
-  `moderate`, `duo/sybil-attack` — ont été relevées par la conv Recover
-  (`REC-1811-2203`) alors qu'elles étaient en service depuis le 06/10.
+  `moderate`, `duo/sybil-attack` — ont été relevées en relecture le 18/11/2026
+  alors qu'elles étaient en service depuis le 06/10.
 
 ⚠️ **Et le gabarit n'est pas ce qui sert.** Mesuré le 03/11 puis le 19/11 : le
 vhost en service ne portait **aucune** limite de débit, là où le gabarit en
