@@ -97,6 +97,12 @@ declare(strict_types=1);
  *                               neuf : sous lui, l'ancien se rompt à sa première ligne. L'ancien se
  *                               vérifie une dernière fois avec son ancre et se garde ; le neuf part
  *                               d'un fichier neuf, la réserve du témoin vidée
+ *   DATAGUARD_AUDIT_ROTATE_AFTER (optionnel) nombre d'entrées d'un fichier du journal avant que l'écriture
+ *                               suivante ne l'archive (`journal.log` → `journal.1.log`, `journal.2.log`, jamais
+ *                               renumérotés, rien d'effacé) ; tout ce qui écrit ce journal reçoit la même valeur.
+ *                               Garder au moins la dernière archive : une ancre prise juste avant une rotation
+ *                               s'y relit
+ *   DATAGUARD_AUDIT_MODE        (optionnel) droits, en octal (`0640`), de chaque fichier que le journal crée
  *   DATAGUARD_ARBITER_FILE      fichier PHP qui renvoie l'EscrowArbiter
  *   DATAGUARD_WITNESS_FILE      fichier PHP qui renvoie le HeadWitness
  *   DATAGUARD_KEEPER_FILE       fichier PHP qui renvoie l'EscrowKeeper (`return new NoKeeper();` sans gardien, choisi
@@ -136,6 +142,20 @@ function envOrDie(string $key): string
         exit(3);
     }
     return $v;
+}
+
+/** Une valeur facultative en entier : absente → null ; illisible → sortie 3. */
+function entierEnv(string $key, int $base): ?int
+{
+    $v = getenv($key);
+    if ($v === false || $v === '') {
+        return null;
+    }
+    if (preg_match($base === 8 ? '/\A0?[0-7]{3}\z/' : '/\A[1-9][0-9]*\z/', $v) !== 1) {
+        fwrite(STDERR, "Config illisible : {$key} (" . ($base === 8 ? 'des droits en octal, comme 0640' : 'un entier positif') . ")\n");
+        exit(3);
+    }
+    return $base === 8 ? (int) octdec($v) : (int) $v;
 }
 
 function fileEnv(string $key): string
@@ -246,7 +266,17 @@ function ceremonie(AuditLog $auditLog, array $ctx): EscrowCeremony
 
 $cmd = $argv[1] ?? '';
 
-$auditLog = new AuditLog(envOrDie('DATAGUARD_AUDIT_LOG'), envOrDie('DATAGUARD_AUDIT_SECRET'));
+try {
+    $auditLog = new AuditLog(
+        envOrDie('DATAGUARD_AUDIT_LOG'),
+        envOrDie('DATAGUARD_AUDIT_SECRET'),
+        entierEnv('DATAGUARD_AUDIT_ROTATE_AFTER', 10),
+        entierEnv('DATAGUARD_AUDIT_MODE', 8)
+    );
+} catch (InvalidArgumentException $e) {
+    fwrite(STDERR, "Config illisible : {$e->getMessage()}\n");
+    exit(3);
+}
 
 if ($cmd === 'seed-witness') {
     $ancre = ancreDes(array_slice($argv, 2), 'seed-witness --ancre seq:hmac');
@@ -272,13 +302,15 @@ if ($cmd === 'verify-log') {
     // machine : sans elle, un journal tronqué ou supprimé reste une chaîne valide.
     $ancre = ancreDes(array_slice($argv, 2), 'verify-log [--ancre seq:hmac]');
     try {
-        $r = $ancre === null ? $auditLog->verifyUnanchored() : $auditLog->verify($ancre);
+        // Sans ancre, chaque fichier du journal et chaque liaison entre eux ; avec elle, depuis le fichier qui la porte.
+        $r = $ancre === null ? $auditLog->verifyAll() : $auditLog->verify($ancre);
     } catch (InvalidArgumentException $e) {
         fwrite(STDERR, "❌ ancre illisible : {$e->getMessage()}\n");
         exit(2);
     }
     if ($r['ok']) {
-        echo "✅ journal d'audit intègre — {$r['count']} entrée(s), chaîne + signatures valides"
+        echo "✅ journal d'audit intègre — {$r['count']} entrée(s) vérifiée(s) sur {$r['total']}, chaîne + signatures valides"
+            . (($r['segments'] ?? 1) > 1 ? ", {$r['segments']} fichiers liés" : '')
             . ($ancre !== null ? ", ancre retrouvée" : '') . "\n";
         if ($r['head'] !== null) {
             echo "   tête : {$r['head']['seq']}:{$r['head']['hmac']}\n"
@@ -295,10 +327,15 @@ if ($cmd === 'verify-log') {
     $raison = match ($r['reason']) {
         'truncated' => "TRONQUÉ : l'entrée #{$r['brokenAt']} de l'ancre a disparu",
         'rewritten' => "RÉÉCRIT : l'entrée #{$r['brokenAt']} n'a plus le hmac de l'ancre",
-        'unsigned-tail' => "QUEUE NON SIGNÉE à partir de la ligne #{$r['brokenAt']} : le prochain acte la mettra en quarantaine",
+        'unsigned-tail' => "QUEUE NON SIGNÉE à partir de l'entrée #{$r['brokenAt']} : le prochain acte la mettra en quarantaine",
+        'segment-missing' => "UNE ARCHIVE MANQUE : l'entrée #{$r['brokenAt']} et celles d'avant ne se lisent plus depuis la tête — "
+            . 'une archive retirée, par la rétention ou par quelqu\'un ; ce qui suit est vérifié',
+        'segment-mismatch' => $r['brokenAt'] === null
+            ? 'ARCHIVE HORS CHAÎNE : un fichier porte le nom d\'une archive du journal, et aucune entrée n\'y mène'
+            : "DÉSACCORDÉ : l'archive que l'entrée #{$r['brokenAt']} scelle ne finit plus comme elle le dit",
         default     => "ROMPU à l'entrée #{$r['brokenAt']}",
     };
-    fwrite(STDERR, "❌ journal d'audit {$raison} (sur {$r['count']})\n");
+    fwrite(STDERR, "❌ journal d'audit {$raison} ({$r['count']} entrée(s) vérifiée(s) sur {$r['total']})\n");
     exit(1);
 }
 

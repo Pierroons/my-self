@@ -172,6 +172,34 @@ foreach ([['--anchor', '999:' . str_repeat('0', 64)], ['--ancre'], ['--ancre', '
         : ko('verify-log ' . implode(' ', $mal) . ' was accepted', $r['code'] . ' ' . trim($r['out'] . $r['err']));
 }
 
+section('verify-log on a log that rotates: every file and every link, and a config it cannot read');
+
+$rotDir = sys_get_temp_dir() . '/dg_ceremony_rot_' . bin2hex(random_bytes(4));
+mkdir($rotDir, 0700);
+$rotLog = "{$rotDir}/journal.log";
+$rotEnv = ['DATAGUARD_AUDIT_LOG' => $rotLog, 'DATAGUARD_AUDIT_ROTATE_AFTER' => '2', 'DATAGUARD_AUDIT_MODE' => '0640'] + $env;
+$rotAudit = new AuditLog($rotLog, $auditSecret, rotateAfter: 2, mode: 0o640);
+foreach (['r0', 'r1', 'r2', 'r3', 'r4'] as $act) {
+    $rotAudit->append(['action' => $act]);
+}
+$r = run(['verify-log'], '', $rotEnv);
+$r['code'] === 0 && str_contains($r['out'], '8 entrée(s) vérifiée(s) sur 8') && str_contains($r['out'], '4 fichiers liés')
+    ? ok('verify-log without anchor verifies every file of a rotated log: 8 entries over 4 linked files')
+    : ko('verify-log did not verify the whole rotated log', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+unlink("{$rotDir}/journal.1.log");
+$r = run(['verify-log'], '', $rotEnv);
+$r['code'] === 1 && str_contains($r['err'], 'UNE ARCHIVE MANQUE')
+    ? ok('an archive removed: verify-log says one is missing, exit 1')
+    : ko('verify-log missed a removed archive', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+foreach (['DATAGUARD_AUDIT_ROTATE_AFTER' => '1', 'DATAGUARD_AUDIT_MODE' => '640x'] as $key => $bad) {
+    $r = run(['verify-log'], '', [$key => $bad] + $rotEnv);
+    $r['code'] === 3 && str_contains($r['err'], 'Config illisible')
+        ? ok("{$key}={$bad} → exit 3, Config illisible")
+        : ko("{$key}={$bad} was taken", $r['code'] . ' ' . trim($r['out'] . $r['err']));
+}
+array_map('unlink', glob("{$rotDir}/*") ?: []);
+rmdir($rotDir);
+
 // -----------------------------------------------------------------------------
 
 section('Anti-curieux — closed litige is refused');

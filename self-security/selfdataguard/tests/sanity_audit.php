@@ -439,6 +439,321 @@ if ($args === null || !in_array($path, $args, true)) {
 
 // -----------------------------------------------------------------------------
 
+/** A directory of its own for one rotating log, removed when the bench ends. */
+function rotationDir(): string
+{
+    $dir = sys_get_temp_dir() . '/dg_audit_rot_' . bin2hex(random_bytes(4));
+    mkdir($dir, 0700);
+    register_shutdown_function(static function () use ($dir): void {
+        @chmod($dir, 0700);
+        array_map('unlink', glob("{$dir}/*") ?: []);
+        @rmdir($dir);
+    });
+    return $dir;
+}
+
+/** @return list<string> the names in $dir, sorted */
+function namesIn(string $dir): array
+{
+    $names = array_map('basename', glob("{$dir}/*") ?: []);
+    sort($names);
+    return $names;
+}
+
+/** @return list<int> the number of lines of each file of $files */
+function lineCounts(string ...$files): array
+{
+    return array_map(static fn (string $f): int => is_file($f) ? count(file($f, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES)) : -1, $files);
+}
+
+section('Rotation — files numbered once, and a chain that goes on across them');
+
+$rdir  = rotationDir();
+$rpath = "{$rdir}/journal.log";
+$rlog  = new AuditLog($rpath, $secret, rotateAfter: 3);
+$acts  = [];
+for ($i = 0; $i < 7; $i++) {
+    $acts[] = $rlog->append(['action' => "a{$i}"]);
+}
+namesIn($rdir) === ['journal.1.log', 'journal.2.log', 'journal.log', 'journal.log.lock']
+    ? ok('rotateAfter 3, seven acts: two archives numbered before the extension, the current file at the path given, the lock in a file of its own')
+    : ko('the files of a rotating log are not the ones announced', json_encode(namesIn($rdir)));
+array_column($acts, 'seq') === [0, 1, 2, 4, 5, 7, 8]
+    ? ok('seq goes on across files: the acts carry 0, 1, 2, 4, 5, 7, 8 — 3 and 6 open the new files')
+    : ko('seq does not go on across files', json_encode(array_column($acts, 'seq')));
+$opening = json_decode((string) strtok((string) file_get_contents($rpath), "\n"), true);
+($opening['event'] ?? null) === [AuditLog::RESERVED_KEY => 'segment', 'previous' => 'journal.2.log', 'head' => '5:' . $acts[4]['hmac'], 'count' => 3]
+    && ($opening['prev'] ?? null) === $acts[4]['hmac'] && ($opening['seq'] ?? null) === 6
+    ? ok('the new file opens on the archive: its name, its head and its count, chained on its last entry')
+    : ko('the opening entry does not seal the archive it follows', json_encode($opening));
+$r = $rlog->verifyAll();
+$r['ok'] && $r['count'] === 9 && $r['total'] === 9 && $r['segments'] === 3 && ($r['head']['seq'] ?? null) === 8
+    ? ok('verifyAll() walks the three files and their links: 9 entries, total 9')
+    : ko('verifyAll() does not verify the whole rotated log', json_encode($r));
+$r = $rlog->verifyUnanchored();
+$r['ok'] && $r['count'] === 3 && $r['total'] === 9
+    ? ok('verifyUnanchored() reads the current file alone: 3 entries verified, total 9')
+    : ko('verifyUnanchored() did not read the current file alone', json_encode($r));
+array_column($rlog->readAll(), 'seq') === range(0, 8)
+    ? ok('readAll() lists every entry of every file, in order')
+    : ko('readAll() does not list the whole log', json_encode(array_column($rlog->readAll(), 'seq')));
+$oldAnchor = '1:' . $acts[1]['hmac'];
+$r = $rlog->verify($oldAnchor);
+$r['ok'] && $r['count'] === 9
+    ? ok('an anchor taken two rotations ago is found in its archive, each link checked on the way')
+    : ko('an anchor in an archive was not found', json_encode($r));
+$firstArchive = md5_file("{$rdir}/journal.1.log");
+try {
+    $rlog->append(['action' => 'anchored'], $oldAnchor);
+    is_file("{$rdir}/journal.3.log") && md5_file("{$rdir}/journal.1.log") === $firstArchive && $rlog->verifyAll()['ok']
+        ? ok('append() given an anchor from an archive writes, rotates as due, and never renumbers: journal.1.log is byte for byte what it was')
+        : ko('the anchored append did not rotate, or renumbered an archive');
+} catch (RuntimeException $e) {
+    ko('append() refused an anchor held by an archive', $e->getMessage());
+}
+
+section('Rotation — a rotation that fails writes the act nowhere, and the next one finishes it');
+
+/** Append to $log until its current file $path holds $upTo entries: the next append rotates. */
+function fillTo(AuditLog $log, string $path, int $upTo): void
+{
+    while (lineCounts($path)[0] < $upTo) {
+        $log->append(['action' => 'fill']);
+    }
+}
+
+/** The archive the next rotation of `journal.log` in $dir names. */
+function nextArchiveIn(string $dir): string
+{
+    $numbers = array_map(static fn (string $f): int => (int) explode('.', basename($f))[1], glob("{$dir}/journal.*.log") ?: []);
+    return sprintf('%s/journal.%d.log', $dir, ($numbers === [] ? 0 : max($numbers)) + 1);
+}
+
+fillTo($rlog, $rpath, 3);
+$inTheWay = nextArchiveIn($rdir);
+file_put_contents($inTheWay, "not an archive\n");
+$rlog->append(['action' => 'past a file in the way']);
+$r    = $rlog->verifyAll();
+$past = sprintf('%s/journal.%d.log', $rdir, (int) explode('.', basename($inTheWay))[1] + 1);
+file_get_contents($inTheWay) === "not an archive\n" && is_file($past) && !$r['ok'] && $r['reason'] === 'segment-mismatch'
+    ? ok('a file in the way of the numbering is never overwritten: the rotation numbers past it, and verifyAll() names it, outside the chain')
+    : ko('a file in the way of the numbering was overwritten, or went unseen', json_encode($r));
+unlink($inTheWay);
+$rlog->verifyAll()['ok']
+    ? ok('once it is gone the log verifies: an archive is found by the name its opening entry gives, not by counting')
+    : ko('a gap in the numbering broke the log', json_encode($rlog->verifyAll()));
+
+fillTo($rlog, $rpath, 3);
+if (posix_getuid() === 0) {
+    echo "  ⏭️  rotation refusée par le répertoire : NON ÉPROUVÉ ici (lancé en root, qui outrepasse les droits)\n";
+} else {
+    $before = lineCounts($rpath);
+    $next   = nextArchiveIn($rdir);
+    chmod($rdir, 0500);
+    try {
+        $rlog->append(['action' => 'in a closed directory']);
+        ko('a rotation went through in a directory that cannot be written');
+    } catch (RuntimeException) {
+        chmod($rdir, 0700);
+        lineCounts($rpath) === $before && !is_file($next)
+            ? ok('a rename that fails fails the append: no archive, no act')
+            : ko('a failed rename left an archive or an act');
+    }
+    chmod($rdir, 0700);
+}
+
+$cutArchive = nextArchiveIn($rdir);
+rename($rpath, $cutArchive);
+$lastSeq = (int) json_decode((string) array_slice(file($cutArchive, FILE_IGNORE_NEW_LINES), -1)[0], true)['seq'];
+$r = $rlog->verifyUnanchored();
+$r['ok'] && ($r['head']['seq'] ?? null) === $lastSeq && $r['total'] === $lastSeq + 1
+    ? ok('a rotation cut short — the archive renamed, no current file — reads as its last archive, never as an empty log')
+    : ko('a rotation cut short read as something else', json_encode($r));
+$cutDone = $rlog->append(['action' => 'after the cut']);
+$first   = json_decode((string) strtok((string) file_get_contents($rpath), "\n"), true);
+($first['event']['previous'] ?? null) === basename($cutArchive) && ($first['seq'] ?? null) === $lastSeq + 1
+    && $cutDone['seq'] === $lastSeq + 2 && $rlog->verifyAll()['ok']
+    ? ok('the next append finishes it: the new file opens on that archive, and seq goes on, never back to 0')
+    : ko('a rotation cut short was not finished', json_encode([$first, $cutDone['seq'], $rlog->verifyAll()]));
+
+$cutArchive = nextArchiveIn($rdir);
+rename($rpath, $cutArchive);
+file_put_contents($rpath, '{"seq":99,"ts":"cut');
+$rlog->append(['action' => 'after a cut first write']);
+$first = json_decode((string) (file($rpath, FILE_IGNORE_NEW_LINES)[1] ?? ''), true);
+$r     = $rlog->verifyAll();
+($first['event']['lines'] ?? null) === 1 && ($first['event']['previous'] ?? null) === basename($cutArchive) && $r['ok'] && $r['quarantined'] === 1
+    ? ok('a new file whose first write was cut short: its opening entry quarantines the line in front of it')
+    : ko('a cut first write of a new file was not covered', json_encode([$first, $r]));
+$covered = file($rpath, FILE_IGNORE_NEW_LINES);
+$covered[0] = str_replace('cut', 'cux', $covered[0]);
+file_put_contents($rpath, implode("\n", $covered) . "\n");
+$r = $rlog->verifyAll();
+!$r['ok'] && $r['reason'] === 'chain'
+    ? ok('the line an opening entry covers, changed afterwards, breaks the chain')
+    : ko('a change to the line an opening entry covers went unseen', json_encode($r));
+
+$qdir  = rotationDir();
+$qrot  = "{$qdir}/journal.log";
+$qrlog = new AuditLog($qrot, $secret, rotateAfter: 3);
+$qrlog->append(['action' => 'q0']);
+$qrlog->append(['action' => 'q1']);
+file_put_contents($qrot, '{"seq":2,"ts":"cut', FILE_APPEND);
+$qrlog->append(['action' => 'q2']);
+$lastOfArchive = json_decode((string) array_slice(file("{$qdir}/journal.1.log", FILE_IGNORE_NEW_LINES), -1)[0], true);
+($lastOfArchive['event'][AuditLog::RESERVED_KEY] ?? null) === 'quarantine' && ($r = $qrlog->verifyAll())['ok'] && $r['quarantined'] === 1
+    ? ok('a cut tail is quarantined in the file it covers, before the rotation')
+    : ko('the quarantine did not stay in the file it covers', json_encode([$lastOfArchive, $qrlog->verifyAll()]));
+
+section('Rotation — what verifyAll() sees that the current file cannot');
+
+/** @return array{0: string, 1: string, 2: AuditLog, 3: list<array<string, mixed>>} nine entries over three files */
+function rotatedLog(string $secret): array
+{
+    $dir  = rotationDir();
+    $path = "{$dir}/journal.log";
+    $log  = new AuditLog($path, $secret, rotateAfter: 3);
+    $acts = [];
+    for ($i = 0; $i < 7; $i++) {
+        $acts[] = $log->append(['action' => "a{$i}"]);
+    }
+    return [$dir, $path, $log, $acts];
+}
+
+[$tdir, $tpath, $tlog] = rotatedLog($secret);
+file_put_contents("{$tdir}/journal.1.log", str_replace('"a1"', '"A1"', (string) file_get_contents("{$tdir}/journal.1.log")));
+$r = $tlog->verifyAll();
+!$r['ok'] && $r['reason'] === 'chain' && $r['brokenAt'] === 1 && $tlog->verifyUnanchored()['ok']
+    ? ok('an archive edited: verifyAll() breaks at seq 1, while verifyUnanchored(), on the current file alone, cannot see it')
+    : ko('an edited archive was not seen by verifyAll()', json_encode($r));
+try {
+    $tlog->readAll();
+    ko('readAll() listed a log with an edited archive');
+} catch (RuntimeException) {
+    ok('readAll() refuses a log with an edited archive');
+}
+
+[$tdir, $tpath, $tlog, $tacts] = rotatedLog($secret);
+unlink("{$tdir}/journal.2.log");
+$r = $tlog->verifyAll();
+!$r['ok'] && $r['reason'] === 'segment-missing' && $r['brokenAt'] === 5
+    ? ok('an archive deleted: segment-missing, before seq 6 that opened on it')
+    : ko('a deleted archive was not reported missing', json_encode($r));
+try {
+    $tlog->append(['action' => 'over a gap'], '1:' . $tacts[1]['hmac']);
+    ko('append() given an anchor that only a deleted archive held wrote');
+} catch (Pierroons\SelfDataGuard\Escrow\AuditAnchorException $e) {
+    $e->found === 'truncated'
+        ? ok('append() given an anchor held only by a deleted archive refuses it as truncated')
+        : ko('refused, but not as truncated', $e->found);
+}
+
+[$tdir, $tpath, $tlog] = rotatedLog($secret);
+copy("{$tdir}/journal.1.log", "{$tdir}/journal.7.log");
+$r = $tlog->verifyAll();
+!$r['ok'] && $r['reason'] === 'segment-mismatch' && $r['brokenAt'] === null
+    ? ok('an archive on disk that the chain does not reach: segment-mismatch')
+    : ko('a stray archive went unseen', json_encode($r));
+
+[$tdir, $tpath, $tlog] = rotatedLog($secret);
+$one = (string) file_get_contents("{$tdir}/journal.1.log");
+file_put_contents("{$tdir}/journal.1.log", (string) file_get_contents("{$tdir}/journal.2.log"));
+file_put_contents("{$tdir}/journal.2.log", $one);
+$r = $tlog->verifyAll();
+!$r['ok'] && $r['reason'] === 'segment-mismatch' && $r['brokenAt'] === 6
+    ? ok('two archives swapped: the file opening on journal.2.log finds another one there — segment-mismatch at seq 6')
+    : ko('swapped archives went unseen', json_encode($r));
+
+[$tdir, $tpath, $tlog] = rotatedLog($secret);
+$cur = file($tpath, FILE_IGNORE_NEW_LINES);
+$cur[1] = str_replace('"a5"', '"A5"', $cur[1]);
+file_put_contents($tpath, implode("\n", $cur) . "\n");
+$r = $tlog->verifyUnanchored();
+!$r['ok'] && $r['reason'] === 'chain' && $r['brokenAt'] === 7 && $r['total'] === 7
+    ? ok('brokenAt is a seq of the whole log: 7, not the line 1 of the current file — and total counts up to it')
+    : ko('brokenAt is not in the seq of the whole log', json_encode($r));
+
+section('Rotation — the mode, the lock, and a log that does not rotate');
+
+$mdir = rotationDir();
+$mlogr = new AuditLog("{$mdir}/journal.log", $secret, rotateAfter: 2, mode: 0o640);
+foreach (['m0', 'm1', 'm2'] as $m) {
+    $mlogr->append(['action' => $m]);
+}
+clearstatcache();
+(fileperms("{$mdir}/journal.log") & 0o777) === 0o640 && (fileperms("{$mdir}/journal.1.log") & 0o777) === 0o640
+    ? ok('with mode 0640, every file the log creates takes it, its first one included')
+    : ko('a file of the log did not take the mode given', sprintf('%o %o', fileperms("{$mdir}/journal.log") & 0o777, fileperms("{$mdir}/journal.1.log") & 0o777));
+
+$ndir = rotationDir();
+$nlog = new AuditLog("{$ndir}/journal.log", $secret, rotateAfter: 2);
+$nlog->append(['action' => 'n0']);
+chmod("{$ndir}/journal.log", 0o600);
+$lockInode = fileinode("{$ndir}/journal.log.lock");
+$nlog->append(['action' => 'n1']);
+$nlog->append(['action' => 'n2']);
+clearstatcache();
+(fileperms("{$ndir}/journal.log") & 0o777) === 0o600
+    ? ok('without mode, a new file takes the mode of the file it follows')
+    : ko('a new file did not take the mode of the one it follows', sprintf('%o', fileperms("{$ndir}/journal.log") & 0o777));
+is_file("{$ndir}/journal.1.log") && fileinode("{$ndir}/journal.log.lock") === $lockInode
+    ? ok('the lock file stays the same file across a rotation: a writer waiting through it locks what the next one locks')
+    : ko('the lock file changed across a rotation');
+
+$pdir = rotationDir();
+$plog = new AuditLog("{$pdir}/journal.log", $secret);
+for ($i = 0; $i < 12; $i++) {
+    $plog->append(['action' => "p{$i}"]);
+}
+namesIn($pdir) === ['journal.log'] && $plog->verifyAll()['ok'] && $plog->verifyAll()['count'] === 12
+    ? ok('without rotateAfter, nothing rotates and no lock file appears: a log of before 0.10.0 keeps its behaviour')
+    : ko('a log without rotateAfter rotated, or left a lock file', json_encode(namesIn($pdir)));
+
+$refused = 0;
+foreach ([static fn () => new AuditLog($path, $secret, rotateAfter: 1), static fn () => new AuditLog($path, $secret, mode: 0o400), static fn () => new AuditLog($path, $secret, mode: 0o1777)] as $make) {
+    try {
+        $make();
+    } catch (InvalidArgumentException) {
+        $refused++;
+    }
+}
+$refused === 3
+    ? ok('rotateAfter under 2, a mode that takes the owner\'s write, or one past 0777, are refused')
+    : ko('a rotation or a mode that cannot work was taken', "{$refused}/3 refused");
+
+$cdir   = rotationDir();
+$cpath  = "{$cdir}/journal.log";
+$cwrite = 4;
+$ceach  = 100;
+$child  = sprintf(
+    'require %s; $l = new Pierroons\SelfDataGuard\Escrow\AuditLog(%s, %s, rotateAfter: 25);'
+    . ' for ($i = 0; $i < %d; $i++) { $l->append(["writer" => getmypid(), "n" => $i]); }',
+    var_export(realpath(__DIR__ . '/../src/autoload.php'), true),
+    var_export($cpath, true),
+    var_export($secret, true),
+    $ceach
+);
+$procs = [];
+for ($w = 0; $w < $cwrite; $w++) {
+    $procs[] = proc_open([PHP_BINARY, '-r', $child], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+}
+$childFailures = 0;
+foreach ($procs as $proc) {
+    $childFailures += proc_close($proc) === 0 ? 0 : 1;
+}
+$r = (new AuditLog($cpath, $secret))->verifyAll();
+try {
+    $owned = array_filter((new AuditLog($cpath, $secret))->readAll(), static fn (array $e): bool => isset($e['event']['writer']));
+    $pairs = array_unique(array_map(static fn (array $e): string => $e['event']['writer'] . '/' . $e['event']['n'], $owned));
+} catch (RuntimeException) {
+    $pairs = [];
+}
+$childFailures === 0 && $r['ok'] && count($pairs) === $cwrite * $ceach && $r['segments'] > 10
+    ? ok(sprintf('%d writers × %d appends, rotateAfter 25: one unbroken chain over %d files, every act there once', $cwrite, $ceach, $r['segments']))
+    : ko('concurrent appends across rotations broke the chain or lost an act', json_encode($r + ['acts' => count($pairs), 'child_failures' => $childFailures]));
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  AuditLog Sanity — {$passes} passed, {$failures} failed\n";

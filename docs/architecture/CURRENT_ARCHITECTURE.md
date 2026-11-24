@@ -108,7 +108,7 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 | SelfDataGuard | enveloppes et champs | XChaCha20-Poly1305 ; AAD enveloppes = `userId` ✔ ; AAD champs = `userId\|nom` ✔ ; format `SDG2.` + base64(nonce‖chiffré‖tag) | — | `self-security/selfdataguard/src/Vault/UserVault.php:360` ; `self-security/selfdataguard/src/Fields/FieldCrypter.php:105-108` |
 | SelfDataGuard | séquestre | `wrap_user` : XChaCha20 sous la clé maîtresse, AAD `userId\|escrow` ✔ ; `wrap_admin` : `crypto_box_seal(étiquette ‖ longueur ‖ userId ‖ clé)` vers la clé publique admin, lié à son compte depuis la 0.6.0 ✔ | — | `self-security/selfdataguard/src/Escrow/EscrowVault.php:50, 129-160, 196-207` |
 | SelfDataGuard | index aveugle | HMAC-SHA256 à deux étages sous la `blindKey` | par nom de champ | `self-security/selfdataguard/src/Fields/BlindIndex.php:54-73` |
-| SelfDataGuard | journal d'audit du séquestre | chaîne HMAC-SHA256 (symétrique) ; ancre `seq:hmac` facultative depuis la 0.6.0 | — | `self-security/selfdataguard/src/Escrow/AuditLog.php:112` |
+| SelfDataGuard | journal d'audit du séquestre | chaîne HMAC-SHA256 (symétrique) ; ancre `seq:hmac` facultative depuis la 0.6.0 | — | `self-security/selfdataguard/src/Escrow/AuditLog.php:368` |
 | SelfRecover-LUKS | clé de slot | Argon2id t=3, m=64 Mio, **p=4**, 32 o, sortie hex ✔ | sel = `sha256("<sel>:<label>")[:16]`, label `disk` ✔ | `self-security/selfrecover-luks/selfrecover_derive.c:95, 122-128` |
 | SelfRecover-LUKS | volumes secondaires | fichier-clé de 4096 o d'urandom | — | `self-security/selfrecover-luks/install.sh:475-481` |
 | SelfJustice, SelfAct, MCP | — | aucune primitive de sécurité (SHA-256 n'y sert que d'identifiant) ; TLS client avec vérification par défaut (curl, urllib, httpx) | — | `self-right/selfjustice/api/api.php:864-869` |
@@ -324,7 +324,7 @@ d'instance corrigées.
    s'ouvre encore.
 9. 🟢 **Le journal d'audit du séquestre n'était pas ancré.** Corrigé en 0.6.0 : `verify-log` affiche
    la tête `seq:hmac`, et `--ancre` refuse ensuite un journal tronqué, réécrit ou supprimé
-   (`self-security/selfdataguard/src/Escrow/AuditLog.php:112`). L'ancrage reste un geste de
+   (`self-security/selfdataguard/src/Escrow/AuditLog.php:368`). L'ancrage reste un geste de
    l'opérateur, et le HMAC reste symétrique : le détenteur du secret forge au-delà de la dernière
    ancre.
 10. **Les secrets d'exploitation de Self-Right se chargent selon plusieurs conventions.**

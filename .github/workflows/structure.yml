@@ -1112,7 +1112,7 @@ jobs:
       - name: SelfDataGuard — sanity
         run: |
           declare -A total=(
-            [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=65 [sanity_conformance]=123 [sanity_escrow]=119
+            [sanity_archive]=121 [sanity_audit]=64 [sanity_ceremony]=69 [sanity_conformance]=123 [sanity_escrow]=119
             [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=263 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
             [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=44
           )
@@ -1264,11 +1264,11 @@ jobs:
             $D/tests/sanity_facade.php 'a planted "escrow" row was decrypted'
           canari $D/src/Escrow/AdminKey.php 'if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {' 'if (false) {' \
             $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
-          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null && ($found = self::anchorFound($entries, $anchorAt)) !== null) {' 'if (false) {' \
+          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null && ($lost = self::anchorLost($entries, $anchorAt)) !== null) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'a truncated log passed its anchor'
-          canari $D/src/Escrow/AuditLog.php "if (\$anchorAt !== null && (\$found = self::anchorFound(\$state['chain'], \$anchorAt)) !== null) {" 'if (false) {' \
+          canari $D/src/Escrow/AuditLog.php '                default                     => self::anchorLost(self::entriesOf($walk), $anchorAt),' '                default                     => null,' \
             $D/tests/sanity_audit.php 'an entry was appended to a log that no longer holds the anchor it was given'
-          canari $D/src/Escrow/AuditLog.php "\$out = \$cutOff ? \"\\n\" : '';" "\$out = '';" \
+          canari $D/src/Escrow/AuditLog.php "\$out   = \$cutOff ? \"\\n\" : '';" "\$out   = '';" \
             $D/tests/sanity_audit.php 'the cut tail was not quarantined on its own line'
           canari $D/src/Escrow/AuditLog.php '            if (!$shaped) {' \
             '            if (!$shaped || !hash_equals($this->hmac(["seq" => $rec["seq"], "ts" => $rec["ts"], "event" => $rec["event"], "prev" => $rec["prev"]]), $rec["hmac"])) {' \
@@ -2647,6 +2647,67 @@ jobs:
                       throw new RuntimeException('This façade was given no keeper: nothing off this machine would verify the consent');" "        if (false) {
                       throw new RuntimeException('This façade was given no keeper: nothing off this machine would verify the consent');" \
             $K '❌ a façade without keeper'
+
+      # SelfDataGuard 0.10.0 : le journal d'audit tourne quand on le lui demande. Le fichier
+      # courant garde son chemin, les archives se numérotent une fois (journal.1.log), un
+      # fichier neuf s'ouvre par une entrée chaînée sur la dernière de l'archive, le verrou
+      # vit dans un fichier à part, une rotation qui échoue fait échouer l'écriture, et une
+      # rotation coupée se finit à la suivante. verifyAll() lit tout.
+      - name: Canaris — le journal d'audit tourne sans perdre sa chaîne
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FL=$D/src/Escrow/AuditLog.php
+          B=$D/bin/escrow-ceremony.php
+          A=$D/tests/sanity_audit.php
+          C=$D/tests/sanity_ceremony.php
+          canari $FL '        if ($this->rotateAfter !== null && $count >= $this->rotateAfter) {' '        if (false) {' \
+            $A '❌ the files of a rotating log are not the ones announced'
+          canari $FL "        \$lock = @fopen(\$rotating ? \$this->lockPath() : \$this->path, \$rotating ? 'c' : 'a');" "        \$lock = @fopen(\$this->path, 'a');" \
+            $A '❌ concurrent appends across rotations broke the chain or lost an act'
+          canari $FL "            if (\$nextOpening !== null && (\$seg['pending'] !== [] || !self::ends(\$seg, \$nextOpening))) {" '            if (false) {' \
+            $A '❌ swapped archives went unseen'
+          canari $FL '                    if (!in_array($archive, $walked, true)) {' '                    if (false) {' \
+            $A '❌ a stray archive went unseen'
+          canari $FL '            if (!is_file($previous)) {' '            if (false) {' \
+            $A '❌ a deleted archive was not reported missing'
+          canari $FL '        $last  = $count === 0 ? $this->lastArchive() : null;' '        $last  = null;' \
+            $A '❌ a rotation cut short was not finished'
+          canari $FL '            $last = $this->lastArchive(false);' '            $last = null;' \
+            $A '❌ a rotation cut short read as something else'
+          canari $FL '                $this->write($out, false, $perms);' '' \
+            $A '❌ the quarantine did not stay in the file it covers'
+          canari $FL "self::opening(\$last, \$current['pending'])" 'self::opening($last, [])' \
+            $A '❌ a cut first write of a new file was not covered'
+          canari $FL "                \$kind === 'segment' && \$pending !== [] => self::coversLines(\$rec['event'], \$pending)," "                \$kind === 'segment' && \$pending !== [] => true," \
+            $A '❌ a change to the line an opening entry covers went unseen'
+          canari $FL '            $perms = $lines === [] && !$cutOff ? $this->mode : null;' '            $perms = null;' \
+            $A '❌ a file of the log did not take the mode given'
+          canari $FL '            $perms   = $this->mode ?? self::permsOf($this->path);' '            $perms   = $this->mode;' \
+            $A '❌ a new file did not take the mode of the one it follows'
+          canari $FL "'brokenAt' => \$chain !== [] ? \$next : (is_int(" "'brokenAt' => \$chain !== [] ? count(\$chain) : (is_int(" \
+            $A '❌ brokenAt is not in the seq of the whole log'
+          canari $FL "|| (\$downTo !== null && (int) \$first['seq'] <= \$downTo)) {" '|| $downTo !== null) {' \
+            $A '❌ an anchor in an archive was not found'
+          canari $FL '        if ($rotateAfter !== null && $rotateAfter < self::MIN_ROTATE_AFTER) {' '        if (false) {' \
+            $A '❌ a rotation or a mode that cannot work was taken'
+          canari $B '        $r = $ancre === null ? $auditLog->verifyAll() : $auditLog->verify($ancre);' '        $r = $ancre === null ? $auditLog->verifyUnanchored() : $auditLog->verify($ancre);' \
+            $C '❌ verify-log did not verify the whole rotated log'
+          canari $B "        entierEnv('DATAGUARD_AUDIT_ROTATE_AFTER', 10)," '        null,' \
+            $C '❌ DATAGUARD_AUDIT_ROTATE_AFTER=1 was taken'
 
   selfrecover-1:
     needs: modules
