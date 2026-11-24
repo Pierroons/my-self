@@ -12,12 +12,14 @@ use Throwable;
  * The EscrowKeeper contract, played against an implementation.
  *
  * A keeper that hands back the box without recording it, before the delay
- * ends, once its holder objected, under the announcement of another escrow,
- * or to a box that carries another objection key than the escrow is named
- * after, or that forgets at a retirement what it released, satisfies every
- * signature and leaves the holder blind; one that takes a retirement meant for
- * another keeper lets a former keeper retire the escrow from it. These cases are what tells them apart. They play one caller at a time: that each call is atomic against the
- * others is the contract's (EscrowKeeper), not played here.
+ * ends, once its holder objected, under the announcement of another escrow or
+ * of another box, or to a box that carries another objection key than the
+ * escrow is named after, that does not say which box it released, or that
+ * forgets at a retirement what it released, satisfies every signature and
+ * leaves the holder blind; one that takes a retirement meant for another
+ * keeper lets a former keeper retire the escrow from it. These cases are what
+ * tells them apart. They play one caller at a time: that each call is atomic
+ * against the others is the contract's (EscrowKeeper), not played here.
  *
  * It takes a factory, `$make(int $delay, callable $clock): EscrowKeeper`: each
  * call returns a keeper on a store of its own, which the suite fills and
@@ -81,7 +83,7 @@ final class KeeperConformance
             'public-keys'                         => ['publicKeys', 0],
             'announce-reads-the-box'              => ['announceReadsTheBox', 0],
             'announce-is-idempotent'              => ['announceIdempotent', self::DELAY],
-            'announcement-holds-the-case'         => ['announcementHoldsTheCase', self::DELAY],
+            'announcement-holds-the-box'          => ['announcementHoldsTheBox', self::DELAY],
             'announce-checks-the-objection-key'   => ['announceChecksTheObjectionKey', 0],
             'keyless-box-refused-once-keyed'      => ['keylessBoxRefusedOnceKeyed', 0],
             'release-hands-back-the-inner-box'    => ['releaseHandsBack', 0],
@@ -94,6 +96,7 @@ final class KeeperConformance
             'release-refuses-another-escrow'      => ['releaseRefusesAnotherEscrow', 0],
             'announcement-lapses'                 => ['announcementLapses', self::DELAY],
             'attestation-fresh-and-scoped'        => ['attestationFreshAndScoped', 0],
+            'attestation-names-the-box'           => ['attestationNamesTheBox', 0],
             'objection-under-the-escrow-key'      => ['objectionUnderTheEscrowKey', self::DELAY],
             'objection-needs-an-announcement'     => ['objectionNeedsAnAnnouncement', self::DELAY],
             'objection-survives-re-announce'      => ['objectionSurvivesReAnnounce', self::DELAY],
@@ -149,7 +152,7 @@ final class KeeperConformance
         $this->assert($first === $second, "a second announcement of the same read with the same box moved its deadline ({$first} → {$second})");
     }
 
-    private function announcementHoldsTheCase(): void
+    private function announcementHoldsTheBox(): void
     {
         $box   = $this->box();
         $first = $this->announce($box, 'K-held');
@@ -157,11 +160,20 @@ final class KeeperConformance
         $after  = $this->box($box);
         $second = $this->announce($after, 'K-held');
         $this->assert(
-            $second === $first,
-            "another box of the escrow moved the deadline of the case ({$first} → {$second}): whoever holds one more box would put the read off for ever"
+            $second >= $this->now + self::DELAY,
+            "another box of the escrow took the time of the box announced first ({$first} → {$second}): a box kept from a copy would be handed back with no delay of its own"
+        );
+        $again = $this->announce($box, 'K-held');
+        $this->assert(
+            $again === $first,
+            "another box of the escrow moved the time of the box announced first ({$first} → {$again}): whoever holds one more box would put the read off for ever"
         );
         $this->now = $first;
-        $this->keeper->release($after['escrowId'], $after['outer'], 'K-held', ++$this->seq, 'h');
+        $this->expectRefused(
+            fn () => $this->keeper->release($after['escrowId'], $after['outer'], 'K-held', ++$this->seq, 'h'),
+            'the release, at the time of the box announced first, of another box of the escrow announced since'
+        );
+        $this->keeper->release($box['escrowId'], $box['outer'], 'K-held', ++$this->seq, 'h');
     }
 
     private function announceChecksTheObjectionKey(): void
@@ -269,6 +281,7 @@ final class KeeperConformance
         $box   = $this->box();
         $other = $this->box();
         $this->releaseOf($box, 'K-cross');
+        $this->announce($other, 'K-cross');
         $this->expectRefused(
             fn () => $this->keeper->release($box['escrowId'], $other['outer'], 'K-cross', ++$this->seq, 'h'),
             'the release, under an announcement of one escrow, of a box of another escrow'
@@ -302,6 +315,25 @@ final class KeeperConformance
         );
     }
 
+    private function attestationNamesTheBox(): void
+    {
+        $box   = $this->box();
+        $after = $this->box($box);
+        $this->releaseOf($box, 'K-boxes');
+        $this->releaseOf($after, 'K-boxes');
+        $prints = [KeeperSeal::boxPrint($box['outer']), KeeperSeal::boxPrint($after['outer'])];
+        sort($prints);
+        $seen     = $this->attested($box['escrowId']);
+        $released = array_column($seen['releases'], 'box');
+        $held     = array_column($seen['pending'], 'box');
+        sort($released);
+        sort($held);
+        $this->assert(
+            $released === $prints && $held === $prints,
+            'the attestation does not name the box of each release and of each announcement: two boxes read under one case look alike to the holder'
+        );
+    }
+
     private function objectionUnderTheEscrowKey(): void
     {
         $box = $this->box();
@@ -317,7 +349,7 @@ final class KeeperConformance
         $this->keeper->object($box['escrowId'], 'K-objected', $this->objection($box, 'K-objected'));
         $this->assert(($this->pendingOf($box['escrowId'], 'K-objected')['objected'] ?? false) === true, 'the attestation does not show the objection');
         $after = $this->box($box);
-        $this->now = $due;
+        $this->now = max($due, $this->announce($after, 'K-objected'));
         $this->expectRefused(
             fn () => $this->keeper->release($after['escrowId'], $after['outer'], 'K-objected', ++$this->seq, 'h'),
             'the release, through another box of the escrow, of a read its holder objected to'

@@ -18,8 +18,8 @@ use RuntimeException;
  * field accepts it; escrowReads() and objectToEscrowRead() do.
  *
  * It keeps what the escrow row said when it was opened — the keeper the row
- * pins under the master key, or why it pins none —, since the master key is
- * no longer there to open the row again.
+ * pins under the master key, or why it pins none, and the box it held —,
+ * since the master key is no longer there to open the row again.
  *
  * Built by the façade alone: its constructor is private.
  *
@@ -33,13 +33,15 @@ final class ObjectionKey
     /**
      * @param ?array{sign: string, box: string} $pinned the keeper the escrow row pinned when it was opened
      * @param ?string $row why the row pinned none: absent, not-keeper-sealed, not-pinned, escrow-replaced, unreadable
+     * @param ?string $box the KeeperSeal::boxPrint() of the box the row held, keeper-sealed
      */
     private function __construct(
         public readonly string $userId,
         public readonly ?string $archiveId,
         #[\SensitiveParameter] string $seed,
         private readonly ?array $pinned,
-        private readonly ?string $row
+        private readonly ?string $row,
+        private readonly ?string $box
     ) {
         $this->seed = $seed;
     }

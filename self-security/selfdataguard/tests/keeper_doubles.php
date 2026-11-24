@@ -25,7 +25,7 @@ final class OpensAnyBoxKeeper extends BenchKeeper
 {
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
-        $this->pending[bin2hex($escrowId) . '|' . $caseRef] ??= ['case' => $caseRef, 'due' => $this->time(), 'objected' => false];
+        $this->pending[$this->keyOf($escrowId, $caseRef, $outerBox)] ??= ['case' => $caseRef, 'due' => $this->time(), 'box' => KeeperSeal::boxPrint($outerBox)];
         return $this->time();
     }
 }
@@ -36,25 +36,48 @@ final class MovingDeadlineKeeper extends BenchKeeper
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
         $due = parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac);
-        $this->pending[bin2hex($escrowId) . '|' . $caseRef]['due'] = $due + 1;
+        $this->pending[$this->keyOf($escrowId, $caseRef, $outerBox)]['due'] = $due + 1;
         return $due + 1;
     }
 }
 
-/** Starts the delay again when another box of the escrow is announced: whoever holds one more box puts the read off for ever. */
+/** Drops the announcement of a case when another box of the escrow is announced for it: whoever holds one more box puts the read off for ever. */
 final class RestartingKeeper extends BenchKeeper
 {
-    /** @var array<string, string> the hash of the box each case was announced with */
-    private array $boxes = [];
-
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
-        $key = bin2hex($escrowId) . '|' . $caseRef;
-        if (isset($this->pending[$key], $this->boxes[$key]) && !hash_equals($this->boxes[$key], hash('sha256', $outerBox))) {
-            unset($this->pending[$key]);
+        $print = KeeperSeal::boxPrint($outerBox);
+        foreach ($this->keysOfCase(bin2hex($escrowId), $caseRef) as $key) {
+            if ($this->pending[$key]['box'] !== $print) {
+                unset($this->pending[$key]);
+            }
         }
-        $this->boxes[$key] = hash('sha256', $outerBox);
         return parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac);
+    }
+}
+
+/** Holds the case, not the box — the contract before 0.10.0: a box kept from a copy is handed back under the time of another, with no delay of its own. */
+final class CaseHoldingKeeper extends BenchKeeper
+{
+    protected function keyOf(string $escrowId, string $caseRef, string $outerBox): string
+    {
+        return bin2hex($escrowId) . '|' . $caseRef . '|';
+    }
+}
+
+/** Records no box in what it signs: two boxes read under one case look alike to the holder. */
+final class BoxlessAttestationKeeper extends BenchKeeper
+{
+    public function attest(string $escrowId, string $nonce): string
+    {
+        [$pending, $releases] = [$this->pending, $this->releases];
+        $this->pending  = array_map(static fn (array $p): array => ['box' => ''] + $p, $pending);
+        $this->releases = array_map(static fn (array $list): array => array_map(static fn (array $r): array => ['box' => ''] + $r, $list), $releases);
+        try {
+            return parent::attest($escrowId, $nonce);
+        } finally {
+            [$this->pending, $this->releases] = [$pending, $releases];
+        }
     }
 }
 
@@ -101,7 +124,7 @@ final class UnannouncedReleaseKeeper extends BenchKeeper
 {
     public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string
     {
-        $this->pending[bin2hex($escrowId) . '|' . $caseRef] ??= ['case' => $caseRef, 'due' => $this->time(), 'objected' => false];
+        $this->pending[$this->keyOf($escrowId, $caseRef, $outerBox)] ??= ['case' => $caseRef, 'due' => $this->time(), 'box' => KeeperSeal::boxPrint($outerBox)];
         return parent::release($escrowId, $outerBox, $caseRef, $seq, $hmac);
     }
 }
@@ -126,7 +149,7 @@ final class EarlyReleaseKeeper extends BenchKeeper
 {
     public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string
     {
-        $key = bin2hex($escrowId) . '|' . $caseRef;
+        $key = $this->keyOf($escrowId, $caseRef, $outerBox);
         if (isset($this->pending[$key])) {
             $this->pending[$key]['due'] = min($this->pending[$key]['due'], $this->time());
         }
@@ -149,7 +172,7 @@ final class ConsumingReleaseKeeper extends BenchKeeper
     public function release(string $escrowId, string $outerBox, string $caseRef, int $seq, string $hmac): string
     {
         $inner = parent::release($escrowId, $outerBox, $caseRef, $seq, $hmac);
-        unset($this->pending[bin2hex($escrowId) . '|' . $caseRef]);
+        unset($this->pending[$this->keyOf($escrowId, $caseRef, $outerBox)]);
         return $inner;
     }
 }
@@ -180,9 +203,8 @@ final class ObjectionBlindKeeper extends BenchKeeper
 {
     public function object(string $escrowId, string $caseRef, string $token): void
     {
-        $key = bin2hex($escrowId) . '|' . $caseRef;
-        if (isset($this->pending[$key])) {
-            $this->pending[$key]['objected'] = true;
+        if ($this->caseHeld($escrowId, $caseRef)) {
+            $this->objections[bin2hex($escrowId) . '|' . $caseRef] = true;
         }
     }
 }
@@ -190,10 +212,9 @@ final class ObjectionBlindKeeper extends BenchKeeper
 /** Takes an objection to a case nothing announced: the holder is told "objected" for a read that goes on elsewhere. */
 final class ObjectionWithoutAnnouncementKeeper extends BenchKeeper
 {
-    public function object(string $escrowId, string $caseRef, string $token): void
+    protected function caseHeld(string $escrowId, string $caseRef): bool
     {
-        $this->pending[bin2hex($escrowId) . '|' . $caseRef] ??= ['case' => $caseRef, 'due' => $this->time(), 'objected' => false];
-        parent::object($escrowId, $caseRef, $token);
+        return true;
     }
 }
 
@@ -202,10 +223,7 @@ final class ForgetsObjectionKeeper extends BenchKeeper
 {
     public function announce(string $escrowId, string $outerBox, string $userId, string $caseRef, int $seq, string $hmac): int
     {
-        $key = bin2hex($escrowId) . '|' . $caseRef;
-        if (isset($this->pending[$key])) {
-            $this->pending[$key]['objected'] = false;
-        }
+        unset($this->objections[bin2hex($escrowId) . '|' . $caseRef]);
         return parent::announce($escrowId, $outerBox, $userId, $caseRef, $seq, $hmac);
     }
 }
@@ -220,9 +238,14 @@ final class ForgetsRetirementKeeper extends BenchKeeper
     }
 }
 
-/** Hands back any box it opens once a read is announced: a box of another escrow reads under this one's announcement. */
+/** Holds an announcement by case and box, whatever the escrow, and hands back any box it opens: a box of another escrow reads under this one's announcement. */
 final class AnyEscrowReleaseKeeper extends BenchKeeper
 {
+    protected function keyOf(string $escrowId, string $caseRef, string $outerBox): string
+    {
+        return $caseRef . '|' . KeeperSeal::boxPrint($outerBox);
+    }
+
     protected function releasedBox(string $escrowId, string $outerBox): array
     {
         return $this->openForBench($outerBox);

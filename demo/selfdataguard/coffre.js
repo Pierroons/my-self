@@ -101,8 +101,10 @@ const MOTIFS = {
 };
 
 function listeDesRemises(reads) {
-  const remises = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}`);
-  const annoncees = reads.pending.map((r) => `${r.case} ${r.objected ? 'refusée par toi' : 'annoncée pour le ' + new Date(r.due * 1000).toLocaleString()}`);
+  // Une boîte autre que celle de la ligne : un dépôt d'avant, une archive, ou la copie d'une ancienne base.
+  const autre = (r) => (r.box && reads.box && r.box !== reads.box ? ' (une autre boîte que ton dépôt actuel)' : '');
+  const remises = reads.reads.map((r) => `${r.case} le ${new Date(r.at * 1000).toLocaleString()}${autre(r)}`);
+  const annoncees = reads.pending.map((r) => `${r.case} ${r.objected ? 'refusée par toi' : 'annoncée pour le ' + new Date(r.due * 1000).toLocaleString()}${autre(r)}`);
   return [...remises, ...annoncees].join(' · ');
 }
 

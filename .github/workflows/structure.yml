@@ -1113,7 +1113,7 @@ jobs:
         run: |
           declare -A total=(
             [sanity_archive]=121 [sanity_audit]=35 [sanity_ceremony]=65 [sanity_conformance]=123 [sanity_escrow]=119
-            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=242 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
+            [sanity_facade]=199 [sanity_fields]=26 [sanity_keeper]=248 [sanity_keys]=30 [sanity_migration]=46 [sanity_primitives]=56
             [sanity_storage]=77 [sanity_vault]=64 [sanity_vecteurs]=9 [sanity_witness]=19 [sanity_pepper]=43 [sanity_upgrade]=29 [sanity_throttle]=44
           )
           rc=0
@@ -1633,7 +1633,7 @@ jobs:
           canari $KC "            'public-keys'                         => ['publicKeys', 0]," '' $K 'BadKeysKeeper passed a case it breaks'
           canari $KC "            'announce-reads-the-box'              => ['announceReadsTheBox', 0]," '' $K 'OpensAnyBoxKeeper passed a case it breaks'
           canari $KC "            'announce-is-idempotent'              => ['announceIdempotent', self::DELAY]," '' $K 'MovingDeadlineKeeper passed a case it breaks'
-          canari $KC "            'announcement-holds-the-case'         => ['announcementHoldsTheCase', self::DELAY]," '' $K 'RestartingKeeper passed a case it breaks'
+          canari $KC "            'announcement-holds-the-box'          => ['announcementHoldsTheBox', self::DELAY]," '' $K 'RestartingKeeper passed a case it breaks'
           canari $KC "            'announce-checks-the-objection-key'   => ['announceChecksTheObjectionKey', 0]," '' $K 'ForeignKeyKeeper passed a case it breaks'
           canari $KC "            'keyless-box-refused-once-keyed'      => ['keylessBoxRefusedOnceKeyed', 0]," '' $K 'KeylessAfterKeyedKeeper passed a case it breaks'
           canari $KC "            'release-hands-back-the-inner-box'    => ['releaseHandsBack', 0]," '' $K 'WrongInnerKeeper passed a case it breaks'
@@ -1645,6 +1645,7 @@ jobs:
           canari $KC "            'release-repeatable-within-the-window' => ['releaseRepeatable', 0]," '' $K 'ConsumingReleaseKeeper passed a case it breaks'
           canari $KC "            'announcement-lapses'                 => ['announcementLapses', self::DELAY]," '' $K 'NeverLapsesKeeper passed a case it breaks'
           canari $KC "            'attestation-fresh-and-scoped'        => ['attestationFreshAndScoped', 0]," '' $K 'StaleAttestationKeeper passed a case it breaks'
+          canari $KC "            'attestation-names-the-box'           => ['attestationNamesTheBox', 0]," '' $K 'BoxlessAttestationKeeper passed a case it breaks'
           canari $KC "            'objection-under-the-escrow-key'      => ['objectionUnderTheEscrowKey', self::DELAY]," '' $K 'ObjectionBlindKeeper passed a case it breaks'
           canari $KC "            'objection-needs-an-announcement'     => ['objectionNeedsAnAnnouncement', self::DELAY]," '' $K 'ObjectionWithoutAnnouncementKeeper passed a case it breaks'
           canari $KC "            'objection-survives-re-announce'      => ['objectionSurvivesReAnnounce', self::DELAY]," '' $K 'ForgetsObjectionKeeper passed a case it breaks'
@@ -1840,7 +1841,7 @@ jobs:
           canari $SDG "        try {
                       \$unlocked = \$open(\$record);
                   } catch (Throwable) {
-                      return [null, 'unreadable'];
+                      return [null, 'unreadable', \$box];
                   }" "        \$unlocked = \$open(\$record);" $K 'wrap_user rewritten (random base64): escrowReads() threw'
           canari $SDG "    {
                   try {
@@ -2322,7 +2323,7 @@ jobs:
           OUVRE='            return [$this->unlockUnderAny($record, $lock, $secret, $profiles), $escrow];'
           canari $FA "$OUVRE" "            if (\$archiveId === null) { \$this->repairProfile(\$userId); } $OUVRE" \
             $K 'the seal vouches for — the database was written'
-          canari $FA '        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row]);' "        return [null, 'not-pinned'];" \
+          canari $FA '        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row, $key->box]);' "        return [null, 'not-pinned', null];" \
             $K 'the view is not established on a pinned keeper'
           canari $FK '        return KeeperSeal::escrowIdOfSeed($this->seed());' "        return KeeperSeal::escrowIdOfSeed(hash('sha256', \$this->seed(), true));" \
             $K '❌ the objection key computes another escrowId'
@@ -2549,6 +2550,46 @@ jobs:
             $K '❌ forgetFormerKeeper() forgot the keeper the database took meanwhile'
           canari $B '    exit($laisses === 0 ? 0 : 5);' '    exit(0);' \
             $C '❌ reseal-admin did not report what it left'
+
+      # SelfDataGuard 0.10.0 : une annonce du gardien tient son dossier et sa boîte. Une
+      # autre boîte du séquestre — un dépôt fait depuis, la boîte d'une archive, celle
+      # d'une copie de la base — attend son propre délai, et la vue du titulaire nomme la
+      # boîte de chaque remise et de chaque annonce, et celle que tient la ligne.
+      - name: Canaris — l'annonce du gardien tient sa boîte, et la vue nomme chaque boîte
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php -d memory_limit=256M "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          FA=$D/src/SelfDataGuard.php
+          KS=$D/src/Escrow/KeeperSeal.php
+          BK=$D/tests/keeper_fixture.php
+          K=$D/tests/sanity_keeper.php
+          PAR_BOITE="        return bin2hex(\$escrowId) . '|' . \$caseRef . '|' . KeeperSeal::boxPrint(\$outerBox);"
+          PAR_DOSSIER="        return bin2hex(\$escrowId) . '|' . \$caseRef . '|';"
+          canari $BK "$PAR_BOITE" "$PAR_DOSSIER" \
+            $K '❌ a deposit made during an announcement was read at the time of the box announced before it'
+          canari $BK "$PAR_BOITE" "$PAR_DOSSIER" \
+            $K '❌ a box kept from a copy was handed back under a case already due for another box'
+          canari $BK "$PAR_BOITE" "$PAR_DOSSIER" \
+            $K '❌ the read of an archive went through under a case already due for another box of its escrow'
+          canari $FA '        $box = $record instanceof EscrowRecord && EscrowVault::isKeeperSealed($record)' '        $box = false' \
+            $K '❌ the view does not tell the two boxes of one case apart'
+          canari $KS "'box' => (string) (\$r['box'] ?? '')];" "'box' => ''];" \
+            $K '❌ the bench keeper fails the suite'
+          canari $KS "'box' => (string) (\$p['box'] ?? '')];" "'box' => ''];" \
+            $K '❌ the view does not tell the two boxes of one case apart'
 
   selfrecover-1:
     needs: modules

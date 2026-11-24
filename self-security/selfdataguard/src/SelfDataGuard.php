@@ -1512,9 +1512,9 @@ final class SelfDataGuard
             $open     = $archiveId === null
                 ? fn (EscrowRecord $r): UnlockedEscrow => $this->escrow->unlockAsUser($r, $session)
                 : static fn (EscrowRecord $r): UnlockedEscrow => $session->openEscrow($r);
-            [$pinned, $row] = $this->rowOf($escrow, $open, $escrowId);
+            [$pinned, $row, $box] = $this->rowOf($escrow, $open, $escrowId);
             $seed = self::inScope(UnlockedVault::class, static fn (): string => $session->objectionSeed());
-            return self::inScope(ObjectionKey::class, static fn (): ObjectionKey => new ObjectionKey($userId, $archiveId, $seed, $pinned, $row));
+            return self::inScope(ObjectionKey::class, static fn (): ObjectionKey => new ObjectionKey($userId, $archiveId, $seed, $pinned, $row, $box));
         } finally {
             $session->lock();
         }
@@ -1616,10 +1616,17 @@ final class SelfDataGuard
      *     from a backup or rewritten;
      *   - `no-keeper`: the façade was given none, and the row pins one;
      *   - `reads`, `pending`: what every keeper that answered attests, each
-     *     entry naming its keeper by fingerprint — under `established`, and
-     *     under every reason above that asked the keepers: a keeper that cannot
-     *     be asked does not hide what the others attest. `pending` leaves out a
-     *     keeper that retired the escrow;
+     *     entry naming its keeper by fingerprint, and its box by
+     *     KeeperSeal::boxPrint() — '' from a keeper that names none —, under
+     *     `established`, and under every reason above that asked the keepers:
+     *     a keeper that cannot be asked does not hide what the others attest.
+     *     `pending` leaves out a keeper that retired the escrow. A keeper
+     *     announces each box on its own: a read of the same case lists once
+     *     per box;
+     *   - `box`: the KeeperSeal::boxPrint() of the box the row holds, null
+     *     when it holds none sealed to a keeper — an entry of another box was
+     *     read from a deposit made before, an archive's row, or a copy of the
+     *     database;
      *   - `unanswered`: every keeper that could not be asked, or whose
      *     attestation does not verify, `{keeper, reason}` with its own reason.
      *     The top-level `reason` is `retired` or `escrow-replaced` when one
@@ -1649,9 +1656,9 @@ final class SelfDataGuard
      * An ObjectionKey is taken in place of a session, of the live vault or of
      * an archive: the row is then the one its opening read.
      *
-     * @return array{established: bool, reason: ?string, keeper: ?string, pinned: bool,
-     *               reads: list<array{case: string, seq: int, at: int, keeper: string}>,
-     *               pending: list<array{case: string, due: int, objected: bool, keeper: string}>,
+     * @return array{established: bool, reason: ?string, keeper: ?string, pinned: bool, box: ?string,
+     *               reads: list<array{case: string, seq: int, at: int, box: string, keeper: string}>,
+     *               pending: list<array{case: string, due: int, objected: bool, box: string, keeper: string}>,
      *               unanswered: list<array{keeper: string, reason: string}>, reseal: bool}
      */
     public function escrowReads(UnlockedVault|ObjectionKey $session): array
@@ -2256,8 +2263,8 @@ final class SelfDataGuard
      * What $keeper signs for escrow $escrowId, verified under $keys.
      *
      * @param array{sign: string, box: string} $keys
-     * @return array{releases: list<array{case: string, seq: int, at: int}>,
-     *               pending: list<array{case: string, due: int, objected: bool}>, retired: bool}
+     * @return array{releases: list<array{case: string, seq: int, at: int, box: string}>,
+     *               pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool}
      * @throws EscrowKeeperException keeper-unreachable, or the reason of KeeperAttestationException
      */
     private function attestAt(EscrowKeeper $keeper, array $keys, string $escrowId): array
@@ -2279,26 +2286,30 @@ final class SelfDataGuard
      * The keys $record pins to escrow $escrowId, and the state of the row when
      * it pins none: absent, not-keeper-sealed, not-pinned, escrow-replaced, or
      * unreadable — a row that does not open, or $record false: one that does
-     * not parse, or one absent while its fields stayed (escrowReads()).
+     * not parse, or one absent while its fields stayed (escrowReads()) —,
+     * and the KeeperSeal::boxPrint() of the box a keeper-sealed row holds.
      *
      * @param callable(EscrowRecord): UnlockedEscrow $open
-     * @return array{0: ?array{sign: string, box: string}, 1: ?string}
+     * @return array{0: ?array{sign: string, box: string}, 1: ?string, 2: ?string}
      */
     private function rowOf(EscrowRecord|false|null $record, callable $open, string $escrowId): array
     {
+        $box = $record instanceof EscrowRecord && EscrowVault::isKeeperSealed($record)
+            ? KeeperSeal::boxPrint(KeeperSeal::outerOf($record->wrapAdmin))
+            : null;
         if ($record === null) {
-            return [null, 'absent'];
+            return [null, 'absent', $box];
         }
         if ($record === false) {
-            return [null, 'unreadable'];
+            return [null, 'unreadable', $box];
         }
         if (!EscrowVault::isKeeperSealed($record)) {
-            return [null, 'not-keeper-sealed'];
+            return [null, 'not-keeper-sealed', $box];
         }
         try {
             $unlocked = $open($record);
         } catch (Throwable) {
-            return [null, 'unreadable'];
+            return [null, 'unreadable', $box];
         }
         try {
             $rowId = (string) $unlocked->escrowId;
@@ -2307,9 +2318,9 @@ final class SelfDataGuard
             $unlocked->lock();
         }
         if ($keys === null) {
-            return [null, 'not-pinned'];
+            return [null, 'not-pinned', $box];
         }
-        return hash_equals($rowId, $escrowId) ? [$keys, null] : [null, 'escrow-replaced'];
+        return hash_equals($rowId, $escrowId) ? [$keys, null, $box] : [null, 'escrow-replaced', $box];
     }
 
     /**
@@ -2366,12 +2377,12 @@ final class SelfDataGuard
      * announced. A keeper that cannot be asked does not hide what the others
      * attest: the view is then not established, names it, and lists the rest.
      *
-     * @param array{0: ?array{sign: string, box: string}, 1: ?string} $rowState what rowOf() said of the row
+     * @param array{0: ?array{sign: string, box: string}, 1: ?string, 2: ?string} $rowState what rowOf() said of the row
      * @return array<string, mixed> see escrowReads()
      */
     private function readsOf(array $rowState, bool $archive, string $escrowId): array
     {
-        $out = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'reads' => [], 'pending' => [], 'unanswered' => [], 'reseal' => false];
+        $out = ['established' => false, 'reason' => null, 'keeper' => null, 'pinned' => false, 'box' => $rowState[2], 'reads' => [], 'pending' => [], 'unanswered' => [], 'reseal' => false];
         [$pinned, $row] = $rowState;
         if ($pinned !== null) {
             $out = ['pinned' => true, 'keeper' => KeeperSeal::fingerprint($pinned)] + $out;
@@ -2857,11 +2868,11 @@ final class SelfDataGuard
     /**
      * What the escrow row said when $key was opened (rowOf()).
      *
-     * @return array{0: ?array{sign: string, box: string}, 1: ?string}
+     * @return array{0: ?array{sign: string, box: string}, 1: ?string, 2: ?string}
      */
     private static function rowAtOpening(ObjectionKey $key): array
     {
-        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row]);
+        return self::inScope(ObjectionKey::class, static fn (): array => [$key->pinned, $key->row, $key->box]);
     }
 
     /**

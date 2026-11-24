@@ -26,7 +26,8 @@ use RuntimeException;
  *
  * An attestation is base64(json) . "." . base64(Ed25519 signature over the tag
  * and the json): what the keeper released for one escrow, and what it holds
- * announced, and whether the escrow was retired from it, for one nonce.
+ * announced, each naming its box by boxPrint(), and whether the escrow was
+ * retired from it, for one nonce.
  *
  * The objection key belongs to the escrow, not to a box: its secret seed is
  * derived from the holder's master key, and the escrowId of an escrow a holder
@@ -34,6 +35,9 @@ use RuntimeException;
  * a box that carries another key than its escrowId names. An objection, and a
  * retirement, is a token — the public key, then an Ed25519 signature under it —
  * that the keeper checks against the escrowId alone, whatever box it holds.
+ * An announcement, though, holds one box: another box of the escrow — sealed
+ * by a deposit since, kept by an archive, or put back from a copy — is
+ * announced on its own, and waits a delay of its own.
  */
 final class KeeperSeal
 {
@@ -45,6 +49,7 @@ final class KeeperSeal
     private const PRINT_TAG  = "selfdataguard/keeper/v1\0";
     private const ID_TAG     = "selfdataguard/escrow-id/v1\0";
     private const RETIRE_TAG = "selfdataguard/keeper-retirement/v1\0";
+    private const BOX_TAG    = "selfdataguard/keeper-box/v1\0";
     private const TOKEN_LEN  = SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES + SODIUM_CRYPTO_SIGN_BYTES;
     private const FORM       = '/\Ak1:([0-9a-f]{32}):/';
     private const PREFIX_LEN = 3 + 2 * self::ESCROW_ID_LEN + 1;
@@ -178,6 +183,16 @@ final class KeeperSeal
         return preg_match(self::FORM, $wrapAdmin, $m) === 1 ? (string) hex2bin($m[1]) : null;
     }
 
+    /**
+     * What names one outer box, in hex: the keeper holds an announcement to
+     * it and names it in the attestation, and the holder's view compares it
+     * with the box the row holds. Each deposit seals a box of its own.
+     */
+    public static function boxPrint(string $outer): string
+    {
+        return substr(hash('sha256', self::BOX_TAG . $outer), 0, 32);
+    }
+
     /** The outer box of a keeper-sealed wrap_admin. */
     public static function outerOf(string $wrapAdmin): string
     {
@@ -221,8 +236,9 @@ final class KeeperSeal
     /**
      * The keeper's side: what it did for $escrowId, signed.
      *
-     * @param list<array{case: string, seq: int, at: int}>          $releases
-     * @param list<array{case: string, due: int, objected: bool}>   $pending
+     * @param list<array{case: string, seq: int, at: int, box: string}>          $releases
+     * @param list<array{case: string, due: int, objected: bool, box: string}>   $pending
+     *        box: the boxPrint() of the box released, or announced
      */
     public static function attestation(
         string $escrowId,
@@ -246,9 +262,10 @@ final class KeeperSeal
     /**
      * The holder's side: the attestation, verified under the keeper's sign key
      * and for this escrow and nonce. Throws KeeperAttestationException, naming
-     * why, when it does not hold.
+     * why, when it does not hold. An entry without `box` — a keeper that
+     * names none, or a release it recorded before 0.10.0 — reads ''.
      *
-     * @return array{releases: list<array{case: string, seq: int, at: int}>, pending: list<array{case: string, due: int, objected: bool}>, retired: bool}
+     * @return array{releases: list<array{case: string, seq: int, at: int, box: string}>, pending: list<array{case: string, due: int, objected: bool, box: string}>, retired: bool}
      */
     public static function verifyAttestation(string $attestation, string $signPublic, string $escrowId, string $nonce): array
     {
@@ -274,11 +291,11 @@ final class KeeperSeal
         }
         $releases = [];
         foreach ($body['releases'] as $r) {
-            $releases[] = ['case' => (string) ($r['case'] ?? ''), 'seq' => (int) ($r['seq'] ?? 0), 'at' => (int) ($r['at'] ?? 0)];
+            $releases[] = ['case' => (string) ($r['case'] ?? ''), 'seq' => (int) ($r['seq'] ?? 0), 'at' => (int) ($r['at'] ?? 0), 'box' => (string) ($r['box'] ?? '')];
         }
         $pending = [];
         foreach ($body['pending'] as $p) {
-            $pending[] = ['case' => (string) ($p['case'] ?? ''), 'due' => (int) ($p['due'] ?? 0), 'objected' => (bool) ($p['objected'] ?? false)];
+            $pending[] = ['case' => (string) ($p['case'] ?? ''), 'due' => (int) ($p['due'] ?? 0), 'objected' => (bool) ($p['objected'] ?? false), 'box' => (string) ($p['box'] ?? '')];
         }
         return ['releases' => $releases, 'pending' => $pending, 'retired' => ($body['retired'] ?? false) === true];
     }

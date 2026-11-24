@@ -1424,7 +1424,7 @@ try {
         ? ok('under a keeper, the holder sees the read announced on that escrow, the row named rewritten')
         : ko('the read announced on the archive\'s escrow is hidden from the holder', json_encode($view));
     $kDg->objectToArchiveEscrowRead($carolOpened, 'case-carol');
-    array_values(array_filter($kKeeper->pending, static fn (array $p): bool => $p['case'] === 'case-carol'))[0]['objected'] ?? false
+    $kKeeper->objectedTo(bin2hex($carolOpened->escrowId()), 'case-carol')
         ? ok('objectToArchiveEscrowRead() goes to the keeper, which records the objection')
         : ko('the objection did not reach the keeper');
 } catch (Throwable $e) {
