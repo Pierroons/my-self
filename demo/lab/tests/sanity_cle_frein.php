@@ -84,6 +84,32 @@ v('⭐ et deux adresses de ce même /64 rendent la même clé',
     cle('2001:db8::1') . ' vs ' . cle('2001:db8:0:0:ffff::2'));
 v('le lien-local est réduit lui aussi', cle('fe80::1') === 'fe80::', (string) cle('fe80::1'));
 
+echo "\n▸ Une IPv4 présentée en IPv6 revient à son IPv4 — sinon tous les clients IPv4 n'ont qu'une clé\n";
+
+// 🔴 Le défaut que ces vecteurs plantent, relevé par la conv Recover le 19/11/2026
+// (REC-1911-0703). `inet_pton('::ffff:1.2.3.4')` rend SEIZE octets dont les douze
+// premiers sont le préfixe : garder les huit premiers ne gardait que des zéros, donc
+// rendait `::` pour TOUTE adresse IPv4 ainsi présentée. Un seul visiteur bruyant
+// épuisait alors la file de tous les autres. Le lab ne reçoit cette forme que si nginx
+// écoute en double pile, ce que personne n'a mesuré sur l'instance — le banc ne dépend
+// pas de cette question, et c'est pour cela qu'il la pose ici.
+v('⭐ une IPv4 présentée en IPv6 rend la clé de son /24, pas « :: »',
+    cle('::ffff:203.0.113.45') === '203.0.113.0', (string) cle('::ffff:203.0.113.45'));
+v('⭐ deux IPv4 mappées de /24 DIFFÉRENTS ne partagent pas la même clé',
+    cle('::ffff:203.0.113.1') !== cle('::ffff:198.51.100.1'),
+    cle('::ffff:203.0.113.1') . ' vs ' . cle('::ffff:198.51.100.1'));
+v('la forme mappée et l\'IPv4 nue du même client rendent LA MÊME clé',
+    cle('::ffff:203.0.113.45') === cle('203.0.113.45'),
+    cle('::ffff:203.0.113.45') . ' vs ' . cle('203.0.113.45'));
+v('deux adresses mappées d\'un même /24 rendent la même clé',
+    cle('::ffff:203.0.113.1') === cle('::ffff:203.0.113.254'));
+v('une adresse NAT64 revient aussi à son /24',
+    cle('64:ff9b::203.0.113.45') === '203.0.113.0', (string) cle('64:ff9b::203.0.113.45'));
+v('⭐ et deux NAT64 de /24 différents ne se confondent pas',
+    cle('64:ff9b::203.0.113.1') !== cle('64:ff9b::198.51.100.1'));
+v('une IPv6 qui COMMENCE par des zéros sans être mappée garde son /64',
+    cle('0:0:0:1::5') === '0:0:0:1::', (string) cle('0:0:0:1::5'));
+
 echo "\n▸ Ce qui n'est pas une adresse ne devient pas une origine commune\n";
 
 v('une valeur non reconnue compte pour elle seule, pas pour une constante',

@@ -386,6 +386,14 @@
         [
           "web/my-self.fr/index.html",
           "<span class=\"name\">SelfAct<"
+        ],
+        [
+          "self-right/selfact/TERMS.md",
+          "bêta v"
+        ],
+        [
+          "self-right/selfact/docs/whitepaper.md",
+          "version: \""
         ]
       ]
     },

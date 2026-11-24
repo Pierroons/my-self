@@ -56,12 +56,41 @@ NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/etc/selfjustice/ntfy.token}"
 alerter() {
     local titre="$1" message="$2"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : $titre — $message" >> "$LOG_FILE"
-    [ -n "$NTFY_URL" ] && [ -r "$NTFY_TOKEN_FILE" ] || return 0
-    curl -fsS -m 10 --retry 2 \
+    [ -n "$NTFY_URL" ] || return 0
+    # ⚠️ Un jeton illisible rendait cette alerte MUETTE : le `|| return 0` d'avant
+    # ne distinguait pas « pas de canal configuré » de « canal configuré mais
+    # jeton introuvable ». Le second est une panne, et elle s'est produite — la
+    # moisson Judilibre n'a jamais pu alerter tant que son jeton était cherché à
+    # un emplacement invisible au service. Un renoncement se journalise.
+    if [ ! -r "$NTFY_TOKEN_FILE" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE NON ENVOYÉE (jeton illisible : $NTFY_TOKEN_FILE) — $titre" >> "$LOG_FILE"
+        return 0
+    fi
+    # 🔑 Le code de retour du `curl` se LIT. La forme d'avant
+    # — `> /dev/null 2>&1 || true` — avalait tout : silencieuse, sortie jetée,
+    # code ignoré. Un canal injoignable, un jeton révoqué ou un refus de l'hôte
+    # ne laissaient donc aucune trace, et le script continuait comme si l'alerte
+    # était partie. Mesuré le 23/11/2026 : l'alerte « date du contenu LEGI
+    # illisible » du 15/11 a bien été journalisée ici, et elle n'a été vue que
+    # huit jours plus tard, par un autre canal. Un canal qui ne remet pas doit le
+    # dire là où on le lira.
+    # ⚠️ La sortie est tronquée : un corps de réponse HTML complet remplirait le
+    # journal que cette ligne existe pour rendre lisible.
+    local sortie
+    local rc
+    sortie=$(curl -fsS -m 10 --retry 2 \
         -H "Authorization: Bearer $(cat "$NTFY_TOKEN_FILE")" \
         -H "Title: $titre" \
         -H "Priority: high" -H "Tags: warning,scales" \
-        -d "$message" "$NTFY_URL" > /dev/null 2>&1 || true
+        -d "$message" "$NTFY_URL" 2>&1)
+    rc=$?
+    sortie=${sortie:0:200}
+    if [ "$rc" -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE NON REMISE (curl rc=$rc : ${sortie:-sans message}) — $titre" >> "$LOG_FILE"
+    fi
+    # 🔑 `alerter` ne fait jamais échouer son appelant : une alerte non
+    # remise est un défaut du canal, pas de la moisson.
+    return 0
 }
 
 # 🔑 Le piège est gardé dans une variable parce qu'il faut savoir le remettre.

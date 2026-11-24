@@ -193,7 +193,11 @@ printf '\n▸ 3. Unité de la mémoire : Mio / MiB, jamais Mo / MB\n\n'
 # `git grep` lit l'index : ni la récursion d'ugrep (qui honore `.gitignore` et
 # sauterait les arbres assemblés), ni `xargs` (qui ne sait pas lancer un
 # builtin, et rend alors un zéro silencieux — mesuré le 10/10/2026).
-mauvaises=$(git grep -nE '(64|%[0-9$]*d)(&nbsp;| )(Mo|MB)\b' \
+# ⚠️ `\b` DEVANT le 64, sinon le motif attrape le « 664 » de « 5 664 Mo » — une
+# mémoire de machine, qui n'a rien à voir avec un profil de hachage. Entre deux
+# chiffres il n'y a pas de frontière de mot, donc `\b64` ne voit que le 64 qui
+# commence un nombre.
+mauvaises=$(git grep -nE '(\b64|%[0-9$]*d)(&nbsp;| )(Mo|MB)\b' \
             -- '*.php' '*.md' '*.js' '*.sql' '*.conf' '*.txt' '*.yml' '*.html' 2>/dev/null \
             | grep -vE '^(CHANGELOG\.md|scripts/check-source-profil\.sh):' || true)
 if [ -z "$mauvaises" ]; then

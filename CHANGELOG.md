@@ -10,6 +10,171 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Une date de contenu révisée à la main ne s'accuse plus d'une fausse synchronisation — 24 novembre 2026
+
+Le contrôle de fraîcheur porte une règle dite du trompe-l'œil : une date qui avance sur une base dont le
+volume ne bouge pas signale du mouvement affiché sans travail derrière. Elle ne regardait que la date du
+contenu. Or cette date peut aussi avancer parce qu'on **corrige** un marqueur qui vieillissait la base, sans
+qu'aucune synchronisation ait tourné — et la règle criait alors « synchronisation en trompe-l'œil » là où il
+n'y avait aucune synchronisation à accuser.
+
+La règle exige désormais que la date de synchronisation ait bougé elle aussi. Quand elle est figée, le
+mouvement du marqueur se dit au rapport — « date du contenu révisée hors passage » — sans déclencher
+d'alerte. Un vrai trompe-l'œil fait toujours avancer cette date, puisque c'est le passage lui-même qui
+l'écrit : la garde ne masque donc rien.
+
+⚠️ **Un état mémorisé avant cette clé n'en porte pas.** La garde exige deux valeurs présentes et égales ; à
+défaut, l'alerte tient, le temps d'un passage. Un garde-fou se trompe du côté du bruit, jamais du côté du
+silence.
+
+**Éprouvé** : deux contrôles ajoutés au garde-fou de la sentinelle, qui peut maintenant servir une date de
+synchronisation dans son faux `/status` ; trois mutants vus rouges chacun sur sa raison — la garde qui se
+tait dès que la date existe (un vrai trompe-l'œil passe), la garde retirée (le cas neuf n'est plus vu), et
+la garde qui ne vérifie pas que les deux valeurs sont présentes. Ce dernier est le plus instructif :
+comparer deux valeurs absentes revient à les déclarer égales, ce qui aurait rendu la règle muette sur tout
+état d'avant — **quatre détections tombent d'un coup**, dont le trompe-l'œil historique et un index figé
+derrière le mouvement d'une source voisine.
+
+### Un refus de l'amont nomme la source qu'il concerne, et le journal de la synchronisation reprend son ordre — 24 novembre 2026
+
+La construction de la base de conventionnalité télécharge six sources. Ses messages de réussite portent le
+nom de la source — `[CEDH]`, `[TUE]`, `[RGPD]`… —, ses messages d'échec n'en portaient aucun : ils venaient
+d'une table de codes HTTP commune à toutes. Un « HTTP 403 — accès refusé par le serveur » au journal ne
+disait donc pas **quelle** source avait été refusée.
+
+Les dix messages de diagnostic du chemin de téléchargement nomment désormais leur source : les six de
+`fetch_url`,
+la redirection refusée de `telecharger`, l'erreur de parsing de `parse_articles`, et les deux du
+découpage du Journal officiel — `tranche_jo` ne recevait pas la source, elle la reçoit. Le cas où elle est inconnue reste
+sans préfixe plutôt que d'écrire des crochets vides.
+
+**Le journal recevait aussi ses lignes dans le désordre, et c'est la moitié du défaut.** Le script est lancé
+avec ses deux flux vers un même fichier (`>> "$LOG_FILE" 2>&1`). La sortie standard vers un fichier est
+bufferisée par blocs, la sortie d'erreur non : le refus arrivait donc **avant** la ligne qui nomme la source
+en cours, et avant les lignes que le script appelant écrit lui-même. Mesuré sur le motif réel : un refus en
+première ligne pour une source téléchargée en cinquième. La sortie standard est désormais rendue
+ligne à ligne, et les deux flux s'entrelacent dans l'ordre où ils sont écrits.
+
+🔑 **Un message d'erreur qui ne nomme pas son objet coûte deux fois** : il n'aide pas sur le moment, et il
+empêche l'enquête plus tard. Celui-ci a rendu inexploitable le journal du 15 novembre, où l'on cherchait à
+savoir si le repli de la Convention européenne des droits de l'homme sur une copie locale venait d'un refus
+de sa source — question à laquelle le journal ne pouvait pas répondre, alors qu'il contenait la réponse.
+
+⚠️ **Ce que ce changement ne fait pas** : il ne rend pas la source joignable. Le domaine du Conseil de
+l'Europe est derrière un défi anti-robot depuis le 20 août 2026, et la Convention est servie depuis une
+copie déposée à la main — ce que l'état des bases annonce désormais, avec sa date de dépôt.
+
+**Éprouvé** : six contrôles ajoutés au garde-fou du découpage du Journal officiel, avec un serveur local qui
+refuse ; cinq mutants vus rouges chacun sur sa raison — le préfixe neutralisé dans chacune des trois
+fonctions, le préfixe appliqué sans son cas sans source (crochets vides), et la garde qui protège un banc
+remplaçant la sortie standard, sans laquelle le banc de la mise à jour LEGI tombe.
+
+### Une alerte qui n'a pas pu être remise le dit — ce que la correction de la veille laissait passer — 23 novembre 2026
+
+Les quatre scripts de mise à jour terminaient leur notification par `curl -fsS … > /dev/null 2>&1 || true` :
+silencieuse, sortie jetée, code de retour avalé. Un canal injoignable, un jeton révoqué ou un refus de
+l'hôte ne laissaient donc **aucune trace**, et le script continuait comme si l'alerte était partie. Le code
+de retour est désormais lu, et un échec s'écrit « ALERTE NON REMISE » avec son code et le début du message
+de l'outil, dans le journal du script.
+
+**Ce qui a rendu ce défaut visible.** Une alerte « date du contenu LEGI illisible » a été journalisée le
+15 novembre et n'a été vue que **huit jours plus tard**, par un autre canal. Le signalement avait
+fonctionné ; c'est sa remise qui n'était pas mesurée. ⚠️ Savoir si cet envoi-là est arrivé n'est plus
+possible : les journaux du serveur frontal ne remontent pas si loin.
+
+**L'entrée de la veille ne couvrait que la moitié du défaut** : elle journalisait le renoncement quand le
+*jeton* est illisible, et laissait le `|| true` du *curl*. Le cas corrigé était celui qu'on lisait dans le
+code, pas celui qui se produit en service. Éprouvé dans les deux sens, avec témoin : sur un hôte
+injoignable, canal configuré et jeton lisible, les quatre versions corrigées écrivent la non-remise et les
+versions d'avant restent muettes.
+
+`alerter()` continue de rendre 0 en toute circonstance : une alerte non remise est un défaut du canal, pas
+de la moisson, et elle ne doit pas faire échouer une mise à jour qui a réussi.
+
+### La clé Judilibre se cherche au même endroit des deux côtés, et une alerte qui ne part pas le dit — 21 novembre 2026
+
+**Un seul secret était cherché à deux chemins par défaut différents.** `JUDILIBRE_KEY_FILE` valait
+`/etc/selfjustice/judilibre.key` dans `update_judilibre.sh` et `~/.config/judilibre/keyid` dans
+`build_judilibre_index.py` : sous un nom de variable unique, deux outils du même module ne lisaient donc pas
+le même fichier sur une même machine. La rotation du 20 novembre a mesuré la conséquence — deux valeurs
+distinctes pour un secret unique, celle du poste morte depuis le 4 août sans que rien ne le signale, parce
+que rien ne reliait les deux emplacements. Les deux fichiers portent désormais la **même cascade dans le même
+ordre** : la variable si elle est posée, sinon le premier des deux chemins qui soit lisible, sinon le chemin
+du service — celui qu'un opérateur doit poser, et sur lequel l'échec se lira. Éprouvé dans les deux sens :
+les deux implémentations rendent le même chemin, et la version d'avant reproduit la divergence.
+
+**Une alerte qui ne peut pas partir le dit, au lieu de se taire.** Les quatre scripts de mise à jour
+— `update_jade.sh`, `update_judilibre.sh`, `update_legi.sh`, `update_catalog.sh` — abandonnaient leur
+notification par un `[ -n "$NTFY_URL" ] && [ -r "$NTFY_TOKEN_FILE" ] || return 0`, qui ne distinguait pas
+« aucun canal configuré » de « canal configuré, jeton introuvable ». Le second est une panne, et elle s'est
+produite : aucune alerte de la moisson Judilibre n'avait jamais pu partir tant que son jeton était cherché à
+un emplacement invisible au service, et le silence des alertes ne prouvait rien. Un jeton illisible est
+désormais journalisé comme tel. Le témoin de cette correction est mesuré : sur le même cas, la version
+d'avant laisse son journal vide.
+
+**Les déployeurs de SelfJustice et de SelfAct acceptent `--plan`.** Il contrôle tout — source, destination,
+substitution du gabarit de domaine et ses deux gardes — en écrivant le fichier substitué dans un temporaire
+qu'il jette ensuite : ce qui est annoncé est donc mesuré, pas prédit. Mesuré : zéro fichier écrit dans la
+destination, puis la pose normale inchangée. ⚠️ Le drapeau est un **opt-in**, là où `deploy/my-self/deploy.sh`
+fait du plan son défaut et demande `--appliquer` ; inverser le défaut de ces deux scripts ferait cesser de
+déployer tout appelant déjà en place, sans qu'il le dise. L'écart est assumé, et sa raison est dans les deux
+en-têtes.
+
+### Le README du paquet `selfright-mcp` cesse d'annoncer qu'il n'est pas publié — 21 novembre 2026
+
+`pypi.yml` refuse de publier tant que le README du paquet porte la phrase « pas encore publié sur
+PyPI » : ce fichier **est** la page PyPI de la version publiée, et la réserve devait donc tomber dans
+le commit tagué, pas après lui. Elle tombe ici.
+
+La section « Installation » donne `pip install selfright-mcp` en premier et garde l'installation depuis
+les sources pour qui suit `dev` ou veut contribuer. Mesuré après réécriture : le garde de `pypi.yml` ne
+trouve plus la phrase, `twine check --strict` rend PASSED sur la roue et sur l'archive, et la
+description longue embarquée dans la roue porte la commande d'installation sans la réserve.
+
+Aucune autre surface du dépôt n'annonce le paquet comme non publié : la seule occurrence restante est
+l'entrée du 12 octobre de ce journal, qui raconte la pose de cette réserve.
+
+### Une release publiée hors de la branche servie est désormais vue — 21 novembre 2026
+
+`check-versions.sh --publications` ne gardait qu'un sens : une version annoncée a-t-elle sa release.
+Une release **en avance** sur l'arbre servi lui était invisible, et c'est une contradiction publique.
+Mesuré ce jour : `selfdataguard-v0.9.1`, publiée la veille, n'avait pas son commit dans `main`, pendant
+que le `modules.json` de `main` annonçait 0.9.0 — un visiteur lisait deux versions du même module selon
+la page ouverte, et le contrôle restait vert. Les quatre autres releases du moment étaient dans `main`.
+
+- Le volet `--publications` vérifie maintenant, pour chaque release qui existe, que son commit est un
+  ancêtre de la branche servie — `main` par défaut, `VERSIONS_BRANCHE_SERVIE` pour l'ajuster. Le point
+  de comparaison ne peut pas être la branche courante : sur `dev`, toute release y est par construction.
+- Le délai commun s'applique : l'écart est **jaune** le temps que la promotion ait lieu, rouge au-delà
+  de sept jours. Un écart frais est normal ; c'est son installation qui ne l'est pas.
+- Le commit du tag est résolu en local, et par l'API quand le dépôt a été cloné sans ses tags.
+- Si la branche servie est introuvable, chaque release est déclarée **non établie** au lieu d'être
+  comptée conforme : un contrôle qui ne peut pas mesurer le dit plutôt que de rendre vert.
+
+### Les CGU et le whitepaper de SelfAct entrent sous contrôle, et le tableau d'architecture revient sur sa source — 21 novembre 2026
+
+`check-versions.sh` rendait vert sur 75 porteurs pendant que SelfAct en annonçait deux autres en 0.1.3 :
+`TERMS.md`, qui sont les conditions d'utilisation publiées, et la clé `version` du whitepaper, qui gouverne
+les métadonnées du `.docx` servi à côté. Le contrôle ne les voyait pas, faute d'être déclarés — un porteur
+absent du manifeste et un porteur juste rendent la même couleur.
+
+- Les deux portent désormais `0.1.4` **avec le mot de statut**, qu'une ligne déclarée de SelfAct doit
+  contenir puisque le module déclare un `statut` : corriger le seul numéro aurait fait rougir le contrôle.
+- Le `.docx` du whitepaper est **régénéré** par `scripts/whitepaper-docx.sh` ; sa propriété `version` suit
+  le YAML du `.md` et ne se corrige pas à la main. Le binaire reste hors de portée de `check-versions.sh`,
+  qui lit des lignes de texte : c'est pourquoi le `.md` est déclaré et lui non.
+- Les deux ancres neuves sont **éprouvées**. Une version fausse, puis le mot de statut retiré, font rougir
+  le contrôle sur chacune, et le message nomme le fichier ; l'arbre est rendu à l'identique par empreinte
+  après chacun des quatre cas. Un porteur déclaré qu'on n'a pas vu faire rougir n'est pas un porteur lu.
+- `docs/architecture/CURRENT_ARCHITECTURE.md` affirme « Source des versions : `modules.json` » et en
+  divergeait pour les **sept** modules. Ses lignes sont réécrites depuis le manifeste et non à la main :
+  SelfDataGuard est passé de 0.9.0 à 0.9.1 pendant la préparation du lot, ce qui a périmé une liste relevée
+  deux heures plus tôt. Le fichier n'est pas déclaré porteur — le mettre sous contrôle produit onze
+  signalements, dont quatre portent sur des phrases historiques (« depuis la 0.6.0 ») : une heuristique sur
+  la prose mesure le style, pas une propriété.
+
+`check-versions.sh` : 77 porteurs de 7 modules, 29 disent le statut.
+
 ### SelfRecover-LUKS 0.6.3 — la clé d'amorçage se pose avec une espace, et rien ne la remplace sans l'avoir relue — 11 novembre 2026
 
 Correctif. `INSTALL.md` (§8b) et `install.sh` (réponse par défaut à « Fermer le shell d'amorçage ? ») posaient une

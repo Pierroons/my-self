@@ -196,6 +196,32 @@ function client_ip(): ?string
     if ($paquet === false) {
         return $brute;
     }
+
+    // 🔴 Une IPv4 présentée en IPv6 revient à son IPv4 AVANT le masque.
+    //
+    // `inet_pton('::ffff:203.0.113.45')` rend seize octets dont les douze
+    // premiers sont le préfixe. Garder les huit premiers, comme pour une IPv6
+    // ordinaire, ne garde donc que des zéros : la fonction rendait `::` pour
+    // TOUTE adresse IPv4 ainsi présentée, et tous ces clients partageaient une
+    // seule clé de frein — un visiteur bruyant épuisait la file de tous les
+    // autres. Relevé par la conv Recover le 19/11/2026 (REC-1911-0703), sur un
+    // défaut que j'avais introduit ici le 11/11 en passant au comptage par
+    // préfixe. Les vecteurs sont au banc `tests/sanity_cle_frein.php`, qui
+    // rendait 5 échecs sur 21 avant ces lignes.
+    //
+    // Deux préfixes, et pas un seul : `::ffff:0:0/96` est la forme qu'un noyau
+    // en double pile présente, `64:ff9b::/96` celle d'une passerelle NAT64 —
+    // elle paraît exotique, mais un visiteur sur un réseau mobile IPv6 seul
+    // arrive par là.
+    if (strlen($paquet) === 16) {
+        $prefixe = substr($paquet, 0, 12);
+        $v4mappee = str_repeat("\x00", 10) . "\xff\xff";
+        $nat64    = "\x00\x64\xff\x9b" . str_repeat("\x00", 8);
+        if ($prefixe === $v4mappee || $prefixe === $nat64) {
+            $paquet = substr($paquet, 12);
+        }
+    }
+
     $garde = strlen($paquet) === 4 ? 3 : 8;
     $rendu = inet_ntop(substr($paquet, 0, $garde) . str_repeat("\0", strlen($paquet) - $garde));
 

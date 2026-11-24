@@ -106,7 +106,32 @@ jobs:
           # header, et se lie au runtime par `-l:libargon2.so.1`. Le `-dev` ne fournirait
           # que `argon2.h`, qui n'est pas inclus, et le lien `libargon2.so`, que la
           # machine cible n'a pas. L'installer rendrait l'épreuve plus facile que le réel.
-          sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-1
+          # 🔑 **Réessayé, et un échec qui NOMME son côté.** Le 11/11/2026,
+          # `azure.archive.ubuntu.com` était injoignable : cette étape a rougi, donc
+          # `transverse`, donc `structure`, donc le contrôle exigé sur `main` — sans que le
+          # code soit en cause, et c'est l'inverse de ce qu'un contrôle établit.
+          # Décision de Pierroons du 23/11/2026, sur trois mesures : **pas d'image de CI**.
+          # Elle figerait des paquets que `trivy` ne regarde pas — il scanne les dépendances
+          # du dépôt, pas l'environnement du job —, et ce dépôt a déjà payé une image dont
+          # plus rien ne reconstruisait (CHANGELOG du 28/09 : quatre tags passés sans rebuild,
+          # `latest` servant un mois une image antérieure à trois correctifs). Et la panne est
+          # un incident, pas une fréquence : 55 succès sur les 60 derniers runs de `structure`,
+          # les deux échecs du miroir tenant à une seule journée.
+          # ⚠️ **Non concluant n'est PAS vert** : l'étape échoue quand même. Elle dit seulement
+          # de quel côté chercher — la dépendance externe, pas le banc. Un vert ici voudrait
+          # dire « mesuré », et rien ne l'aurait été.
+          paquets="cryptsetup-bin python3-argon2 libargon2-1"
+          pose=0
+          for essai in 1 2 3; do
+            if sudo apt-get install -y -qq $paquets; then pose=1; break; fi
+            echo "::warning::outils LUKS non installés (essai $essai sur 3) — nouvelle tentative"
+            sleep $((essai * 15))
+          done
+          [ "$pose" = 1 ] || {
+            echo "::error::NON CONCLUANT — $paquets introuvables après 3 essais."
+            echo "::error::Chercher du côté de la dépendance externe (miroir apt), pas des bancs : rien n'a été mesuré ici."
+            exit 1
+          }
           # Le runtime nommé, parce que son absence se lit mieux ici qu'en erreur de linker :
           # sans lui, le keyscript ne pourrait pas dériver à l'amorçage.
           ls /usr/lib/*/libargon2.so.1 >/dev/null 2>&1 \
@@ -397,7 +422,20 @@ jobs:
           # C'est l'installation qui porte la propriété qu'on veut, pas la
           # fraîcheur de tous les index — elle reste donc bloquante.
           sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
-          sudo apt-get install -y -qq nginx-light
+          # Même réessai et même échec non concluant que pour les outils LUKS, et pour la même
+          # raison : ce job porte DEUX installations, donc deux prises sur un miroir tiers.
+          # N'en traiter qu'une laisserait l'autre éteindre le contrôle exigé sur `main`.
+          pose=0
+          for essai in 1 2 3; do
+            if sudo apt-get install -y -qq nginx-light; then pose=1; break; fi
+            echo "::warning::nginx-light non installé (essai $essai sur 3) — nouvelle tentative"
+            sleep $((essai * 15))
+          done
+          [ "$pose" = 1 ] || {
+            echo "::error::NON CONCLUANT — nginx-light introuvable après 3 essais."
+            echo "::error::Chercher du côté de la dépendance externe (miroir apt), pas des gabarits : rien n'a été mesuré ici."
+            exit 1
+          }
 
       - name: Garde-fou — les gabarits de vhost sont syntaxiquement valides
         run: bash scripts/check-vhost.sh
@@ -4226,8 +4264,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_cle_frein.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la clé de frein a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 14/14 ' \
-            || { echo "::error::le banc de la clé de frein n'a pas joué ses 14 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 21/21 ' \
+            || { echo "::error::le banc de la clé de frein n'a pas joué ses 21 cas"; exit 1; }
 
       - name: Canari — le banc rougit si l'origine redevient une adresse entière
         run: |

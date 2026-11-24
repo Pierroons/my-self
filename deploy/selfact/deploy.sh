@@ -24,13 +24,27 @@
 
 set -euo pipefail
 
+# ⚠️ `--plan` est un OPT-IN, là où `deploy/my-self/deploy.sh` fait du plan son
+# défaut et demande `--appliquer`. L'écart est assumé : inverser le défaut ici
+# ferait cesser de déployer tout appelant déjà en place, sans qu'il le dise.
+PLAN=0
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --plan) PLAN=1 ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 DOMAINE="${1:-}"
 DEST_SITE="${2:-}"
 DEST_API="${3:-}"
 
 if [ -z "$DOMAINE" ] || [ -z "$DEST_SITE" ] || [ -z "$DEST_API" ]; then
-    echo "usage: $0 <domaine> <racine-des-pages> <racine-de-l-api>" >&2
+    echo "usage: $0 <domaine> <racine-des-pages> <racine-de-l-api> [--plan]" >&2
     echo "exemple: $0 justice.example.org /var/www/selfjustice /var/www/selfact-api" >&2
+    echo "  --plan : tout contrôler, substitution comprise, sans rien écrire" >&2
     exit 1
 fi
 
@@ -90,6 +104,16 @@ poser() {
     # ⚠️ Sur le TEMPORAIRE, avant la bascule : posé sur la destination, le `mv`
     # qui suit l'écrase aussitôt.
     chmod --reference="$src" "$tmp" 2>/dev/null || chmod 644 "$tmp"
+    # 🔑 En mode plan, la substitution et ses deux gardes ont déjà joué sur le
+    # temporaire : ce qui est annoncé est mesuré, pas prédit. Seule la bascule
+    # est retenue.
+    if [ "$PLAN" -eq 1 ]; then
+        rm -f "$tmp"
+        traites=$((traites + 1))
+        substituees=$((substituees + attendues))
+        echo "  [plan] $(basename "$dest")$([ "$attendues" -gt 0 ] && echo " — $attendues substitution(s)"), non posé"
+        return 0
+    fi
     mv "$tmp" "$dest"
     traites=$((traites + 1))
     substituees=$((substituees + attendues))
@@ -113,8 +137,12 @@ echo "▸ Données curées à la main"
 mkdir -p "$DEST_API/data"
 for nom in situations.json gabarits.json; do
     [ -f "$SRC/api/data/$nom" ] || continue
-    cp -a "$SRC/api/data/$nom" "$DEST_API/data/$nom"
-    echo "  ✓ data/$nom"
+    if [ "$PLAN" -eq 1 ]; then
+        echo "  [plan] data/$nom, non posé"
+    else
+        cp -a "$SRC/api/data/$nom" "$DEST_API/data/$nom"
+        echo "  ✓ data/$nom"
+    fi
 done
 [ -f "$DEST_API/data/catalog.json" ] && \
     echo "  ⚠️  data/catalog.json présent à la destination : il n'appartient pas à l'arbre du code depuis le 21/08/2026 et n'est plus lu — voir api/chemins.php" >&2
@@ -136,6 +164,11 @@ if [ "$substituees" -eq 0 ] && [ "$DOMAINE" != "$PLACEHOLDER" ]; then
 fi
 
 echo
+if [ "$PLAN" -eq 1 ]; then
+    echo "Plan seulement — $traites fichier(s) seraient posés, $substituees substitution(s)."
+    echo "  Pour l'appliquer, relancer sans --plan."
+    exit 0
+fi
 echo "OK — $traites fichier(s), $substituees substitution(s)."
 echo "  Reste à la charge de l'opérateur : le répertoire d'état (/var/lib/selfact),"
 echo "  les règles nginx, et le cron de update_catalog.sh (1er et 15)."

@@ -120,15 +120,21 @@ nok() { echo "  ✗ $1" >&2; echecs=$((echecs + 1)); }
 #
 # jouer <date LEGI> <volume LEGI> <date catalogue> <volume catalogue> <état JSON>
 # JADE_INCR, s'il est posé, ajoute le dernier incrément JADE au bloc jurisprudence.
+# LEGI_SYNC, s'il est posé, ajoute last_sync au bloc LEGI : c'est lui qui
+# distingue une synchronisation qui a tourné d'un marqueur révisé à la main.
 jouer() {
-    JADE_INCR="${JADE_INCR:-}" python3 - "$1" "$2" "$ATTENDU" <<'PY' > "$BAC/status.json"
+    JADE_INCR="${JADE_INCR:-}" LEGI_SYNC="${LEGI_SYNC:-}" \
+    python3 - "$1" "$2" "$ATTENDU" <<'PY' > "$BAC/status.json"
 import json, os, sys
 d, v, sain = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 juris = {"decisions": 1191177, "last_update": sain}
 if os.environ["JADE_INCR"]:
     juris["jade"] = {"dernier_increment": os.environ["JADE_INCR"]}
+legi = {"articles": v, "last_update": d}
+if os.environ["LEGI_SYNC"]:
+    legi["last_sync"] = os.environ["LEGI_SYNC"]
 print(json.dumps({
-    "legi": {"articles": v, "last_update": d},
+    "legi": legi,
     "eu": {"articles": 793, "last_update": sain},
     "jurisprudence": juris,
 }))
@@ -151,15 +157,18 @@ PY
     bash "$SONDE" --verbeux 2>&1
 }
 
-etat() { # etat <date> <volume LEGI> <vu_le> [date catalogue] [volume catalogue]
+etat() { # etat <date> <volume LEGI> <vu_le> [date catalogue] [volume catalogue] [sync LEGI]
     # Chaque source garde son propre volume : partager le compteur ferait passer
     # 525 441 articles pour 1 890 modèles et déclencherait une fausse baisse.
-    python3 - "$1" "$2" "$3" "${4:-$1}" "${5:-1890}" "$ATTENDU" <<'PY'
+    python3 - "$1" "$2" "$3" "${4:-$1}" "${5:-1890}" "$ATTENDU" "${6:-}" <<'PY'
 import json, sys
 d, v, vu = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 dc, vc, sain = sys.argv[4], int(sys.argv[5]), sys.argv[6]
+legi = {"date": d, "volume": v, "vu_le": vu}
+if len(sys.argv) > 7 and sys.argv[7]:
+    legi["sync"] = sys.argv[7]
 print(json.dumps({
-    "LEGI": {"date": d, "volume": v, "vu_le": vu},
+    "LEGI": legi,
     "catalogue SelfAct": {"date": dc, "volume": vc, "vu_le": vu},
     "conventionnalité": {"date": sain, "volume": 793, "vu_le": sain},
     "jurisprudence": {"date": sain, "volume": 1191177, "vu_le": sain},
@@ -245,6 +254,27 @@ if grep -q "trompe-l" <<<"$sortie"; then
     ok "date avancée, volume figé → trompe-l'œil signalé"
 else
     nok "le trompe-l'œil n'est plus détecté : ${sortie//$'\n'/ }"
+fi
+
+# Une date de contenu corrigée à la main : le marqueur avance, aucune
+# synchronisation n'a tourné. Ce qui est arrivé le 24/11/2026.
+sortie=$(LEGI_SYNC="$ATTENDU" jouer "$APRES" 525441 "$ATTENDU" 1890 \
+         "$(etat "$ATTENDU" 525441 "$ATTENDU" "$ATTENDU" 1890 "$ATTENDU")")
+if grep -q "trompe-l" <<<"$sortie"; then
+    nok "un marqueur révisé hors passage s'accuse d'une fausse synchronisation : ${sortie//$'\n'/ }"
+elif grep -q "révisée hors passage" <<<"$sortie"; then
+    ok "date révisée, synchronisation inchangée → dit sans accuser de trompe-l'œil"
+else
+    nok "une date révisée hors passage ne se dit pas du tout : ${sortie//$'\n'/ }"
+fi
+
+# La même date avancée, mais la synchronisation a bougé : le trompe-l'œil tient.
+sortie=$(LEGI_SYNC="$APRES" jouer "$APRES" 525441 "$ATTENDU" 1890 \
+         "$(etat "$ATTENDU" 525441 "$ATTENDU" "$ATTENDU" 1890 "$ATTENDU")")
+if grep -q "trompe-l" <<<"$sortie"; then
+    ok "synchronisation avancée, volume figé → trompe-l'œil signalé quand même"
+else
+    nok "la garde de synchronisation étouffe un vrai trompe-l'œil : ${sortie//$'\n'/ }"
 fi
 
 # Volume en baisse à date égale.
