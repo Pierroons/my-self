@@ -29,7 +29,8 @@ function formData(form) {
 }
 
 // Session en mémoire uniquement (jamais localStorage) — le secret vit le temps
-// de la page, comme une session connectée. Verrouiller = tout effacer.
+// de la page, comme une session connectée. Verrouiller = tout effacer. Pour le
+// mot mémorisé, c'est son empreinte qui est gardée, jamais le mot.
 let session = null; // { userId, secret, mode }
 
 // -- Adapter le libellé du secret selon la méthode ---------------------------
@@ -140,10 +141,17 @@ function renderCoffre(data) {
 $('#open-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = formData(ev.target);
-  const res = await call('coffre_open.php', { userId: f.userId, secret: f.secret, mode: f.mode });
+  let secret;
+  try {
+    secret = await demoSecret(f.mode, f.secret, f.userId);
+  } catch (e) {
+    show('#open-result', { ok: false, data: { error: e.message } });
+    return;
+  }
+  const res = await call('coffre_open.php', { userId: f.userId, secret, mode: f.mode });
   show('#open-result', res);
   if (res.ok) {
-    session = { userId: f.userId, secret: f.secret, mode: f.mode };
+    session = { userId: f.userId, secret, mode: f.mode };
     $('#open-result').textContent = '✅ coffre ouvert';
     renderCoffre(res.data);
   } else {

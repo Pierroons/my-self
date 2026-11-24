@@ -5,7 +5,7 @@ A standalone clickable demo of SelfDataGuard's per-user envelope encryption, wit
 ## Prerequisites
 
 - **PHP 8.1+** with the `sodium`, `pdo`, `pdo_sqlite`, `json`, `mbstring` extensions
-- A modern browser (Firefox, Chromium, Safari…)
+- A modern browser (Firefox, Chromium, Safari…), on HTTPS or on `127.0.0.1` as `run.sh` serves it: the page hashes the memorized word with WebCrypto, which browsers give only to a secure context
 - Any CPU: encryption is XChaCha20-Poly1305, computed in software by libsodium
 - The `openssl` extension, only to read blobs written before 0.4.0 (AES-256-GCM) on a CPU where libsodium does not serve AES
 
@@ -99,7 +99,7 @@ The demo uses PHP's built-in web server, no Apache/nginx required, no `composer 
 
 ## What you can try (left column)
 
-1. **Register** a user with a password (≥12 chars) and an optional memorized recovery secret. Add some personal fields (email, phone, address, IBAN). The `email` and `phone` fields are automatically indexed for lookups.
+1. **Register** a user with a password (≥12 chars) and an optional memorized recovery word. The word does not leave the page: it sends the word's digest, computed by SelfRecover's `sr-derive.js` (linked, not copied) — HMAC-SHA256 keyed by the word, over the host name, the format version and the account's salt. The library seals the memorized lock on that digest, and refuses the word itself. Add some personal fields (email, phone, address, IBAN). The `email` and `phone` fields are automatically indexed for lookups.
 
 2. **Login & decrypt** — pick "with password" or "with memorized secret". The form's secret label adapts to your choice. On success you'll see the four personal fields decrypted in clear text in the response box.
 
@@ -133,9 +133,12 @@ rm -rf storage/sessions storage/blindkey.bin   # from demo/selfdataguard/
 
 Reload the page: your next registration starts a clean database, under a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/selfdataguard/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
 
+The pepper of a local run lives in the system temporary directory (`selfdataguard-demo-pepper-…`): the library refuses a pepper file under the root the server serves. It outlives a reset, which does no harm — no database outlives it. The public instance names its three paths in its vhost (`deploy/selfdataguard/README.md`).
+
 ## What this demo doesn't do (production gaps)
 
 - **No session management**: each request reaches the server with the full credentials (the demo cookie only picks the visitor's database). A real app would use a short-lived session token + memory-only master key. The demo is intentionally simple to make the cryptography obvious.
+- **The memorized word's salt is derived from the identifier** (`mot.js`). SelfRecover draws it at registration and keeps it with the account; the demo has no SelfRecover account to keep it. The salt still differs from one account to the next, but it is known before the account exists.
 - **No password policy enforcement** beyond ≥12 chars. Production deployments must add HaveIBeenPwned checks, common-password blocklists, and zxcvbn entropy on the memorized secret (whitepaper §7).
 - **No rate limiting in the code**: the demo accepts unlimited authentication attempts. The public instance throttles its PHP in nginx (20 requests a minute per address); `run.sh` does not. Production needs Argon2id-based rate limits per user, anti-bruteforce on memorized secrets, IP throttling.
 - **No TLS**: the demo runs on plain HTTP localhost. Production REQUIRES HTTPS with HSTS strict.

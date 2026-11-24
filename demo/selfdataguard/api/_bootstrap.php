@@ -29,6 +29,12 @@ use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
+/** Une valeur de configuration : l'environnement, puis ce que nginx passe à PHP (fastcgi_param). */
+function demo_conf(string $nom): string
+{
+    return (string) (getenv($nom) ?: ($_SERVER[$nom] ?? ''));
+}
+
 // Une base par visiteur, désignée par un cookie : personne ne voit, ne cherche ni
 // n'ouvre les coffres d'un autre. Les bases vivent dans `sessions/`, à côté de
 // DATAGUARD_DB_PATH. Une base naît d'une inscription valide seulement
@@ -46,12 +52,23 @@ const DEMO_ADMIN_PASSPHRASE   = 'demo-admin-recovery-passphrase-2026';
 // retirerait l'attribut sans que personne le voie. DATAGUARD_DEMO_HTTP=1 ne sert
 // qu'aux essais locaux en clair. En HTTPS, le préfixe __Host- interdit à un
 // sous-domaine voisin d'imposer son cookie à la démo.
-$enClair   = (getenv('DATAGUARD_DEMO_HTTP') ?: ($_SERVER['DATAGUARD_DEMO_HTTP'] ?? '')) === '1';
+$enClair   = demo_conf('DATAGUARD_DEMO_HTTP') === '1';
 $nomCookie = $enClair ? 'sdg_demo' : '__Host-sdg_demo';
 
-$repertoireInstance = dirname(getenv('DATAGUARD_DB_PATH')
-    ?: ($_SERVER['DATAGUARD_DB_PATH'] ?? '')
-    ?: (__DIR__ . '/../storage/demo.sqlite'));
+// Une instance désigne sa base par DATAGUARD_DB_PATH, et nomme alors aussi sa clé d'index
+// et son poivre : par les replis, la clé s'écrirait dans l'arbre servi, et le poivre dans
+// un dossier temporaire que le service peut vider à son redémarrage. Les replis ne
+// servent qu'aux essais locaux (run.sh), qui ne nomment rien.
+if (demo_conf('DATAGUARD_DB_PATH') !== '') {
+    foreach (['DATAGUARD_BLINDKEY_PATH', 'DATAGUARD_PEPPER_PATH'] as $nom) {
+        if (demo_conf($nom) === '') {
+            http_response_code(500);
+            echo json_encode(['error' => "DATAGUARD_DB_PATH is set and {$nom} is not: an instance names where its blind-index key and its pepper live"]);
+            exit;
+        }
+    }
+}
+$repertoireInstance = dirname(demo_conf('DATAGUARD_DB_PATH') ?: (__DIR__ . '/../storage/demo.sqlite'));
 $repertoireBases = $repertoireInstance . '/sessions';
 if (!is_dir($repertoireBases) && !@mkdir($repertoireBases, 0700, true) && !is_dir($repertoireBases)) {
     http_response_code(500);
@@ -89,12 +106,9 @@ if ($baseExiste) {
 // par tous les endpoints (inspect_db, etc.).
 define('DEMO_DB_PATH', $baseVisiteur);
 
-// blindKey (index aveugle) : chemin surchargeable HORS webroot via l'env
-// DATAGUARD_BLINDKEY_PATH ; fallback local pour la démo/dev. En prod, la clé
-// vit hors de l'arborescence servie par le serveur web (défense en profondeur).
-$blindKeyPath = getenv('DATAGUARD_BLINDKEY_PATH')
-    ?: ($_SERVER['DATAGUARD_BLINDKEY_PATH'] ?? '')
-    ?: (__DIR__ . '/../storage/blindkey.bin');
+// blindKey (index aveugle) : DATAGUARD_BLINDKEY_PATH la désigne, hors de
+// l'arborescence servie par le serveur web ; le repli dans storage/ sert aux essais locaux.
+$blindKeyPath = demo_conf('DATAGUARD_BLINDKEY_PATH') ?: (__DIR__ . '/../storage/blindkey.bin');
 
 // Une clé neuve rendrait chaque coffre scellé sous l'ancienne « falsifié » : elle
 // ne naît que tant qu'aucune base n'existe.
@@ -119,8 +133,7 @@ if ($blindKey === false || strlen($blindKey) < 32) {
 // DATAGUARD_PEPPER_PATH le désigne ; le repli, pour les essais locaux, vit dans le
 // dossier temporaire du système, un fichier par instance. Comme la clé d'index, il
 // ne naît que tant qu'aucune base n'existe : un poivre neuf fermerait les autres.
-$pepperPath = getenv('DATAGUARD_PEPPER_PATH')
-    ?: ($_SERVER['DATAGUARD_PEPPER_PATH'] ?? '')
+$pepperPath = demo_conf('DATAGUARD_PEPPER_PATH')
     ?: (sys_get_temp_dir() . '/selfdataguard-demo-pepper-' . substr(hash('sha256', $repertoireInstance), 0, 12));
 if (!is_file($pepperPath)) {
     if ((glob($repertoireBases . '/*.sqlite') ?: []) !== []) {

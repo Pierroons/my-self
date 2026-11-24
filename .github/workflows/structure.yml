@@ -987,8 +987,13 @@ jobs:
             "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
           canari "=== '1';" "!== '0';" 'attributs du cookie'
           canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
-          canari "if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" 'if (false) {' \
-            'une clé neuve a remplacé celle des coffres existants'
+          canari "if (!is_file(\$blindKeyPath)) {
+              if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" "if (!is_file(\$blindKeyPath)) {
+              if (false) {" 'une clé neuve a remplacé celle des coffres existants'
+          canari "if (!is_file(\$pepperPath)) {
+              if ((glob(\$repertoireBases . '/*.sqlite') ?: []) !== []) {" "if (!is_file(\$pepperPath)) {
+              if (false) {" 'un poivre neuf a remplacé celui des coffres existants'
+          canari "        if (demo_conf(\$nom) === '') {" '        if (false) {' 'a pris le repli des essais locaux'
           F=demo/selfdataguard/api/login.php
           canari '    fail_vault($e);' "    fail('Authentication failed', 401);" 'un coffre falsifié est rendu comme autre chose'
           F=demo/selfdataguard/api/register.php
@@ -999,6 +1004,59 @@ jobs:
           F=self-security/selfdataguard/src/SelfDataGuard.php
           canari "        if (\$record === null && \$this->storage->loadEscrowFields(\$userId) !== []) {" "        if (false) {" \
             'une ligne de séquestre supprimée se lit comme un séquestre jamais déposé'
+
+      # La page de la démo envoie l'empreinte du mot mémorisé, dérivée par le composant de
+      # SelfRecover (`sr-derive.js`, un lien), et jamais le mot. Le banc charge les vrais
+      # scripts des deux pages, soumet leurs formulaires et lit ce qui part ; PHP recalcule
+      # l'empreinte, et la bibliothèque dit si elle la prend.
+
+      - name: Garde-fou — le mot mémorisé ne quitte pas la page de la démo SelfDataGuard
+        run: |
+          # @plante
+          sortie=$(node demo/selfdataguard/tests/sanity_mot.js) || { echo "$sortie"; exit 1; }
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 22/22 ' \
+            || { echo "::error::le banc du mot n'a pas joué ses 22 cas"; exit 1; }
+          canari() {  # canari <fichier> <avant> <après> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/mot.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(node demo/selfdataguard/tests/sanity_mot.js 2>&1); then
+              cp /tmp/mot.intact "$F"; echo "::error::le banc reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/mot.intact "$F"
+            echo "$sortie" | grep -qF "❌ $4" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $4 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ le banc rougit sur « $4 »"
+          }
+          D=demo/selfdataguard
+          canari $D/mot.js "  return mode === 'memorized' ? demoEmpreinte(secret, userId) : secret;" '  return secret;' \
+            "la connexion par le mot envoie l'empreinte"
+          canari $D/mot.js "  if (typeof srDerive !== 'function') {" '  if (false) {' 'et la page le dit, sans parler de réseau'
+          canari $D/mot.js '  const m = mot.trim();' '  const m = mot;' "les blancs du bord ne changent pas l'empreinte"
+          canari $D/mot.js "'selfdataguard-demo/sel|' + userId" "'selfdataguard-demo/sel|'" \
+            'le même mot sous un autre identifiant donne une autre empreinte'
+          canari $D/app.js '    memorized,' '    memorized: f.memorized || null,' "l'inscription envoie l'empreinte à la place du mot"
+          canari $D/app.js '    secret,' '    secret: f.secret,' "la connexion par le mot envoie l'empreinte"
+          canari $D/coffre.js '{ userId: f.userId, secret, mode: f.mode });' '{ userId: f.userId, secret: f.secret, mode: f.mode });' \
+            "l'ouverture par le mot envoie l'empreinte"
+          canari $D/coffre.js 'session = { userId: f.userId, secret, mode: f.mode };' 'session = { userId: f.userId, secret: f.secret, mode: f.mode };' \
+            "le dépôt et la relecture qui suivent l'ouverture renvoient l'empreinte, jamais le mot"
+          canari $D/index.html ' type="password" autocomplete="off" placeholder="couchant' ' placeholder="couchant' \
+            "le champ du mot, à l'inscription, est masqué à l'écran"
+          canari $D/index.html '<script src="mot.js"></script>' '' 'index.html charge sr-derive.js, puis mot.js, puis app.js'
+          canari $D/coffre.html '<script src="sr-derive.js"></script>' '' 'coffre.html charge sr-derive.js, puis mot.js, puis coffre.js'
+          # Le lien remplacé par une copie : rien ne casse le jour même, la copie divergera ensuite.
+          # Hors de canari(), qui écrirait à travers le lien dans le fichier de SelfRecover.
+          rm $D/sr-derive.js && cp bi-self/selfrecover/client/sr-derive.js $D/sr-derive.js
+          if sortie=$(node $D/tests/sanity_mot.js 2>&1); then
+            rm $D/sr-derive.js && git checkout -- $D/sr-derive.js; echo "::error::le banc reste VERT sur une copie"; exit 1
+          fi
+          rm $D/sr-derive.js && git checkout -- $D/sr-derive.js
+          [ -L $D/sr-derive.js ] || { echo "::error::le lien n'est pas rétabli"; exit 1; }
+          echo "$sortie" | grep -qF '❌ sr-derive.js de la démo est le fichier de SelfRecover, par un lien' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le lien"; exit 1; }
+          echo "✓ le banc rougit sur une copie de sr-derive.js"
 
       # Le banc des sessions lance deux serveurs `php -S`, qui survivent à leur parent. Ce canari
       # fait tomber le banc juste après le premier démarrage et compte les serveurs de la démo

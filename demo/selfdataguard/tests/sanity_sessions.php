@@ -61,7 +61,7 @@ function demarrer(array $env): array
         null,
         $env + ['DATAGUARD_DB_PATH' => $etat . '/demo.sqlite', 'DATAGUARD_BLINDKEY_PATH' => $etat . '/blindkey.bin',
                 'DATAGUARD_PEPPER_PATH' => $etat . '/pepper',
-                'PATH' => getenv('PATH') ?: '/usr/bin:/bin']
+                'PATH' => getenv('PATH') ?: '/usr/bin:/bin', 'TMPDIR' => sys_get_temp_dir()]
     );
     $serveurs[] = $proc;
     for ($i = 0; $i < 50; $i++) {
@@ -239,6 +239,23 @@ rename($cle . '.vraie', $cle);
 $autreCle['code'] === 500 && str_contains((string) ($autreCle['json']['error'] ?? ''), 'not the one')
     ? ok('une autre clé d\'index sous une base existante : un 500 qui le dit, et non chaque coffre « falsifié »')
     : ko('une autre clé d\'index n\'est pas nommée comme telle', $autreCle['code'] . ' ' . json_encode($autreCle['json']));
+$poivre = $etat . '/pepper';
+rename($poivre, $poivre . '.ailleurs');
+$sansPoivre = appel($port, $NOM, 'inspect_db.php', null, $cookieA);
+$neuf       = is_file($poivre);
+$neuf && unlink($poivre);
+rename($poivre . '.ailleurs', $poivre);
+$sansPoivre['code'] === 500 && !$neuf
+    ? ok('le poivre disparu quand des bases existent : 500, et aucun poivre neuf n\'est écrit à sa place')
+    : ko('un poivre neuf a remplacé celui des coffres existants', $sansPoivre['code'] . ' neuf=' . var_export($neuf, true));
+copy($poivre, $poivre . '.vrai');
+file_put_contents($poivre, 'myself-pepper/v1:' . bin2hex(random_bytes(32)) . "\n");
+$autrePoivre = appel($port, $NOM, 'inspect_db.php', null, $cookieA);
+rename($poivre . '.vrai', $poivre);
+chmod($poivre, 0600);
+$autrePoivre['code'] === 500 && str_contains((string) ($autrePoivre['json']['error'] ?? ''), 'not the one')
+    ? ok('un autre poivre sous une base existante : un 500 qui le dit, et non chaque serrure fermée')
+    : ko('un autre poivre n\'est pas nommé comme tel', $autrePoivre['code'] . ' ' . json_encode($autrePoivre['json']));
 
 echo "\n→ Cookies inattendus\n";
 $inconnu = appel($port, $NOM, 'inspect_db.php', null, str_repeat('ab', 16));
@@ -323,6 +340,24 @@ array_slice($codes, 0, 5) === [200, 200, 200, 200, 200] && $codes[5] === 429 && 
 
 proc_terminate($serveur);
 proc_close($serveur);
+
+// ── Une instance qui nomme sa base nomme aussi sa clé d'index et son poivre ──
+echo "\n→ Une instance nomme sa clé d'index et son poivre\n";
+$repliPoivre = sys_get_temp_dir() . '/selfdataguard-demo-pepper-' . substr(hash('sha256', $etat), 0, 12);
+$repliCle    = $demo . '/storage/blindkey.bin';
+$cleAvant    = is_file($repliCle);
+foreach ([['DATAGUARD_PEPPER_PATH', $repliPoivre, 'son poivre'], ['DATAGUARD_BLINDKEY_PATH', $repliCle, 'sa clé d\'index']] as [$nom, $repli, $quoi]) {
+    $existait = is_file($repli);
+    [$serveur, $port] = demarrer([$nom => '']);
+    $x = appel($port, $NOM, 'inspect_db.php', null, null);
+    proc_terminate($serveur);
+    proc_close($serveur);
+    $ecrit = !$existait && is_file($repli);
+    $ecrit && unlink($repli);
+    $x['code'] === 500 && str_contains((string) ($x['json']['error'] ?? ''), $nom) && !$ecrit
+        ? ok("DATAGUARD_DB_PATH sans {$nom} : 500 qui nomme la variable, et rien n'est écrit au repli des essais locaux")
+        : ko("une instance sans {$nom} a pris le repli des essais locaux pour {$quoi}", $x['code'] . ' écrit=' . var_export($ecrit, true) . ' ' . json_encode($x['json']));
+}
 
 // ── Comme avec run.sh, en clair ─────────────────────────────────────────────
 echo "\n→ Essais locaux en clair (DATAGUARD_DEMO_HTTP=1)\n";

@@ -37,10 +37,18 @@ $('#register-form').addEventListener('submit', async (ev) => {
   ['email', 'phone', 'address', 'iban'].forEach((k) => {
     if (f[k]) fields[k] = f[k];
   });
+  // Le mot ne part pas : son empreinte (mot.js), ou rien s'il n'y en a pas.
+  let memorized = null;
+  try {
+    if (f.memorized && f.memorized.trim() !== '') memorized = await demoEmpreinte(f.memorized, f.userId);
+  } catch (e) {
+    show('#register-result', { ok: false, data: { error: e.message } });
+    return;
+  }
   const res = await call('register.php', {
     userId: f.userId,
     password: f.password,
-    memorized: f.memorized || null,
+    memorized,
     fields,
     indexed: ['email', 'phone'],
   });
@@ -71,9 +79,16 @@ syncLoginLabel();
 $('#login-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = formData(ev.target);
+  let secret;
+  try {
+    secret = await demoSecret(f.mode, f.secret, f.userId);
+  } catch (e) {
+    show('#login-result', { ok: false, data: { error: e.message } });
+    return;
+  }
   const res = await call('login.php', {
     userId: f.userId,
-    secret: f.secret,
+    secret,
     mode: f.mode,
   });
   show('#login-result', res);

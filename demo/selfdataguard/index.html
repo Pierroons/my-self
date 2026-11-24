@@ -47,7 +47,8 @@
   <p class="hint">
     Deux identifiants distincts. Le <strong>mot de passe</strong> sert à se connecter au quotidien.
     Le <strong>mot mémorisé</strong> est un secours pour récupérer son compte en cas d'oubli du mot de passe
-    (optionnel, mais sans lui, oublier son mot de passe = données perdues).
+    (optionnel, mais sans lui, oublier son mot de passe = données perdues). Il ne quitte pas cette page :
+    elle envoie son empreinte, calculée comme le fait SelfRecover.
   </p>
   <form id="register-form">
     <label>Identifiant <input name="userId" placeholder="alice" required></label>
@@ -57,7 +58,7 @@
     </label>
     <label>
       Mot mémorisé — récupération en secours (optionnel)
-      <input name="memorized" placeholder="couchant-fleuve-marbre">
+      <input name="memorized" type="password" autocomplete="off" placeholder="couchant-fleuve-marbre">
     </label>
     <fieldset>
       <legend>Données personnelles (seront chiffrées)</legend>
@@ -155,6 +156,8 @@
   </p>
 </footer>
 
+<script src="sr-derive.js"></script>
+<script src="mot.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
