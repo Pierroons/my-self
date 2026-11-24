@@ -10,6 +10,52 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Les sites PHP ne partagent plus une seule identité : quatre groupes d'ouvriers, quatre utilisateurs — 24 novembre 2026
+
+Jusqu'ici, un unique groupe d'ouvriers PHP servait les **huit** vhosts de la machine, tous sous
+`www-data`. Une exécution de code dans n'importe lequel d'entre eux donnait donc accès à l'état et aux
+secrets de tous les autres. Les gabarits déclarent désormais **cinq groupes sous quatre identités** :
+`bi-self` et sa route de flux sous `php-biself`, SelfDataGuard sous `php-dataguard`, SelfJustice sous
+`php-justice`, et un groupe résiduel qui garde `www-data` pour les vhosts sans état propre. Chaque
+groupe a sa socket, en `0660` et fermée à tout ce qui n'est pas le frontal.
+
+**C'est une condition de déploiement, pas un durcissement opportuniste.** SelfDataGuard 0.10.0 range
+le poivre **hors** de la base, dans un fichier que PHP lit : sous une identité partagée, ce poivre ne
+protégerait plus que d'une fuite de la base seule — et d'aucun voisin. Il perdrait ce pour quoi il
+existe.
+
+**La clé d'API du portail de jurisprudence quitte le groupe partagé.** Un groupe d'ouvriers partage
+ses ouvriers, mais aussi ses variables d'environnement : elle était lisible par `getenv()` depuis les
+huit vhosts alors qu'elle ne sert qu'à six routes. Elle part avec elles, et le groupe résiduel n'en
+porte plus aucune — un contrôle le vérifie.
+
+**🔑 Un gain qui n'était pas celui qu'on cherchait, et que seule la mesure a montré.** Ce qui
+dimensionne un groupe d'ouvriers n'est pas leur poids au repos mais leur **pic** : une dérivation
+Argon2id fait allouer son `memlimit` par libsodium, **hors** du `memory_limit` de PHP. Tant qu'un seul
+groupe servait tout, **chacun** de ses ouvriers pouvait atteindre le plafond de relecture d'enveloppe,
+puisque n'importe lequel pouvait servir SelfDataGuard — 12 × 285 Mio, soit **88 % du budget mémoire
+retenu**. Après le découpage, seuls les trois ouvriers de `dataguard` peuvent y monter, et le pire cas
+de la machine tombe à **1 703 Mio sur 3 885**, pour **dix-neuf** ouvriers au lieu de douze. Le
+cloisonnement a donc acheté de la capacité en même temps que de l'isolement.
+
+**Deux contrôles neufs ou refondus**, parce qu'aucun ne mesurait cette propriété :
+`cloisonnement-pools.sh` établit que les gabarits déclarent bien des identités et des sockets
+distinctes, qu'aucun groupe autre que le résiduel ne tourne sous `www-data`, que celui-ci ne porte
+aucun secret, et — c'est le volet qui attrape la faute la plus chère — qu'aucun vhost ne réclame une
+socket qu'aucun gabarit ne déclare, ce que `nginx -t` accepte sans broncher avant de rendre 502.
+`pic-ouvrier-php.sh` et `ecart-pool-php.sh`, tous deux codés en dur sur le groupe unique, lisent
+maintenant les cinq : restés sur un seul, ils auraient continué de rendre vert sur un cinquième de ce
+qu'on leur prêtait. Chaque gabarit déclare son profil de pic par une ligne `; @pic: …`, sur le modèle
+du `# @plante` des canaris — une sonde qui devine rend un vert dont personne ne connaît la portée.
+
+⚠️ **Rien n'est posé** : `deploy/` est exclu de ce que `deploy.sh` déploie, et l'ordre de pose n'est
+pas indifférent — les groupes avant les vhosts, le résiduel en dernier, et l'état change de
+propriétaire dans le même geste que son groupe. La procédure, les trois utilisateurs à créer et les
+mesures qui prouvent sont dans `deploy/my-self/README.md`. 🔑 **Et une règle y décide de tout** :
+aucun de ces utilisateurs n'entre dans le groupe `www-data` — 74 répertoires de l'arbre servi sont
+inscriptibles par lui, et un membre y déposerait un fichier PHP que tous les groupes exécuteraient.
+Le réflexe qui « donne les droits » défait exactement ce que le découpage construit.
+
 ### Une date de contenu révisée à la main ne s'accuse plus d'une fausse synchronisation — 24 novembre 2026
 
 Le contrôle de fraîcheur porte une règle dite du trompe-l'œil : une date qui avance sur une base dont le
