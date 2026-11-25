@@ -16,6 +16,23 @@ substituent à la pose. `scripts/check-vhost.sh` les substitue pour valider le
 gabarit, et il sait tourner par SSH sur un hôte qui a nginx
 (`VHOST_TEST_HOST=<alias>`).
 
+## 🔴 Ce vhost bascule AUSSI les groupes d'ouvriers — les deux lots sont couplés
+
+Ses cinq `fastcgi_pass` visent `-biself.sock` et `-flux.sock`, pas la socket partagée. **Poser ce
+vhost fait donc deux choses** : il met les freins en place, et il bascule les cinq routes de bi-self
+sous l'identité `php-biself` du découpage des groupes d'ouvriers (`deploy/my-self/README.md`).
+
+⛔ **Donc il ne se pose pas avant que l'état de bi-self suive.** Mesuré le 25/11/2026 : les sessions
+de la démo vivent dans `/var/lib/selfjustice/demo-sessions` par le `BASE_DIR_DEFAUT` de
+`lib/session_manager.php`, en `775 www-data` — `php-biself` pourrait les lire sans pouvoir les
+écrire. Et quatre fichiers de la démo portent ce chemin **en dur**, donc la seule variable
+d'environnement ne suffirait pas : le quota par adresse, le bannissement et le plafond de sessions
+simultanées tomberaient sans une ligne de journal.
+
+Le correctif est au lot de la conv Recover (`PP-2511-0645`). **Jusqu'à son envoi, bi-self reste sur
+le groupe résiduel et ce vhost ne se pose pas** — ce qui ne dégrade rien : l'état d'aujourd'hui est
+celui d'avant.
+
 ## L'ordre, et pourquoi il n'est pas indifférent
 
 1. **Lire ce que le groupe `www` de la machine règle en plus** :
@@ -53,12 +70,40 @@ gabarit, et il sait tourner par SSH sur un hôte qui a nginx
    groupes dans `php-fpm8.4 -tt` : mêmes `env`, mêmes `php_admin_value`, même
    `clear_env`.
 
-3. **Poser le vhost.** ⚠️ **Par un `restart`, pas un `reload`** : les zones
-   `biself` et `biself_recover` ont changé de clé (`$binary_remote_addr` →
-   `$cle_frein`), et nginx garde en mémoire une zone dont la clé change **sans
-   rien dire**. Un rechargement laisserait donc les anciens compteurs en place
-   et le changement ne s'appliquerait jamais. Compter une seconde de coupure, et
-   des compteurs de freins qui repartent de zéro.
+3. **Poser le vhost par `deploy/my-self/deploy-vhost.sh`**, qui décide du geste
+   par la mesure au lieu de le prescrire :
+
+   ```
+   MYSELF_SSH=<alias> bash deploy/my-self/deploy-vhost.sh \
+       deploy/bi-self/nginx-bi-self.conf bi-self.my-self.fr.conf
+   ```
+
+   🔴 **Correction du 25/11/2026 : cette étape prescrivait un `restart`, et sa
+   raison était fausse.** Elle affirmait que les zones `biself` et
+   `biself_recover` « ont changé de clé (`$binary_remote_addr` → `$cle_frein`) ».
+   La clé a bien changé — **mais entre deux versions du GABARIT**, pas entre le
+   gabarit et l'instance. Mesuré le 25/11/2026 sur l'instance servie : le vhost ne
+   porte **aucun** frein (ni `limit_req`, ni `limit_conn`, ni `map`), et les
+   seules zones déclarées sur la machine sont `dataguard` et quatre
+   `selfjustice*`, dans `conf.d/`. Les trois zones de ce gabarit sont donc
+   **neuves** : nginx n'en a rien en mémoire, et un **rechargement suffit**, sans
+   coupure. L'erreur venait de lire l'historique du fichier en croyant lire la
+   machine.
+
+   🔑 **Le mécanisme, lui, reste vrai — et c'est pourquoi la décision appartient à
+   la mesure.** Une zone dont la clé change ne s'applique pas à chaud : le master
+   refuse la configuration entière, `nginx -t` ne le voit pas (il teste dans un
+   processus neuf, sans cet état) et `reload` rend 0 sans attendre son verdict. Le
+   script compare les deux configurations et annoncera `restart` le jour où ce
+   sera vrai. L'incident qui l'a enseigné est raconté dans
+   `deploy/ctf-s2/lib-zones.sh`.
+
+   ⚠️ **Ne pas poser ce vhost à la main par `sed -i`.** `sites-enabled/` ne porte
+   que des **liens** vers `sites-available/`, et `sed -i` remplace le lien par un
+   fichier réel : la source canonique cesse d'être servie, et qui « répare » le
+   lien revient en arrière sans le savoir. Payé le 25/11/2026 sur le vhost de
+   dataguard. Le script écrit dans le fichier réel, qu'il obtient par
+   `readlink -f`.
 
 4. **Mesurer, et c'est la seule étape qui prouve quelque chose** :
    - un flux `/demo/api/events` s'ouvre et reçoit ses événements — c'est ce qui
