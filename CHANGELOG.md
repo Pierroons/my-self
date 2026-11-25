@@ -10,6 +10,28 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La démo bi-self range tout son état dans son dossier de sessions — 25 novembre 2026
+
+`SELFRECOVER_SESSIONS_DIR` déplaçait les sessions de la démo, mais pas le reste : le frein, le masquage
+des journaux et la purge écrivaient en dur le dossier de l'installation d'origine, qui est l'état de
+SelfJustice. Sous l'identité propre que le découpage des groupes d'ouvriers donne à bi-self, la variable
+seule aurait laissé le frein écrire dans un dossier qui lui est fermé, et ses écritures échouent sans
+bruit : plus de quota par adresse, plus de bannissement, et un plafond de dix sessions simultanées qui
+compte un dossier vide.
+
+- Les compteurs, la liste des bannis et le compte des sessions actives dérivent de
+  `DemoSession::baseDir()`, seule source de ce chemin. Le jeton de contournement et le journal d'abus
+  que lit CrowdSec ont leur variable, `SELFRECOVER_BYPASS_TOKEN` et `SELFRECOVER_ABUSE_LOG`.
+- Le masquage des journaux reconnaît le dossier des sessions là où il est, et masque une valeur longue
+  avant de la couper : coupée d'abord, elle gardait ses 200 premiers caractères en clair.
+- La purge prend le même dossier par la même variable, et refuse un chemin qui n'est pas absolu ou qui
+  ne finit pas par `/demo-sessions` : elle efface tout sous-dossier sans `meta.json`.
+- Les défauts restent ceux de l'installation existante : rien ne change pour elle tant que les
+  variables ne sont pas posées. Le README de la démo (§4.2) les nomme.
+
+Un banc, `demo/bi-self-duo/tests/sanity_etat.php`, pose les quatre variables sur un dossier temporaire
+et vérifie chaque écriture : 25 cas, dont 18 rougissent sur le code d'avant.
+
 ### Les sites PHP ne partagent plus une seule identité : quatre groupes d'ouvriers, quatre utilisateurs — 24 novembre 2026
 
 Jusqu'ici, un unique groupe d'ouvriers PHP servait les **huit** vhosts de la machine, tous sous

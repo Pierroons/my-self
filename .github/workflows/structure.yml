@@ -542,6 +542,44 @@ jobs:
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 
+      # Le frein, le masquage des journaux et la purge de la démo bi-self écrivaient
+      # le dossier de l'installation d'origine en dur : sous une autre identité PHP,
+      # SELFRECOVER_SESSIONS_DIR déplaçait les sessions, pas le reste, et le plafond
+      # de sessions comptait un dossier vide.
+      - name: Garde-fou — l'état de la démo bi-self suit son dossier de sessions
+        run: |
+          sortie=$(php demo/bi-self-duo/tests/sanity_etat.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de l'état de bi-self-duo a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 25/25 ' \
+            || { echo "::error::le banc de l'état de bi-self-duo n'a pas joué ses 25 cas"; exit 1; }
+
+      # Le canari de la purge n'ôte pas sa garde (un « / » accepté effacerait hors du
+      # banc) : il accepte un chemin relatif, absent du runner, et la purge sort en 0.
+      - name: Canaris — l'état de la démo bi-self rougit quand un chemin revient en dur
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=demo/bi-self-duo
+          canari $D/lib/rate_limit.php "        \$dir = DemoSession::baseDir();" "        \$dir = DemoSession::BASE_DIR_DEFAUT;" \
+            $D/tests/sanity_etat.php '❌ deux sessions vivantes, une échue : 2'
+          canari $D/lib/redactor.php "        \$msg = self::maskSessionsDir(\$msg);" "" \
+            $D/tests/sanity_etat.php '❌ un chemin de session devient {session_dir}'
+          canari $D/tools/cleanup_demo_sessions.sh "    /*/demo-sessions) ;;" "    /*/demo-sessions|demo-sessions) ;;" \
+            $D/tests/sanity_etat.php '❌ la purge refuse un chemin relatif, en 2'
+
       - name: Garde-fou — ce que le déploiement de l'arbre emporte
         run: bash deploy/my-self/tests/test_deploy.sh
 

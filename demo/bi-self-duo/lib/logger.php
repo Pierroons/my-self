@@ -2,7 +2,7 @@
 /**
  * Bi-Self Demo — Logger.
  *
- * Écrit des événements JSONL dans /var/lib/selfjustice/demo-sessions/{id}/log.jsonl.
+ * Écrit des événements JSONL dans le dossier de la session ({DemoSession::baseDir()}/{id}/log.jsonl).
  * Le fichier est ensuite tailé par l'endpoint SSE events.php.
  *
  * Niveaux : info, crypto, success, warning, error

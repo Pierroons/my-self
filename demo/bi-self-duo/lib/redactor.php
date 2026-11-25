@@ -45,6 +45,7 @@ final class Redactor {
     ];
 
     public static function redactLog(string $msg): string {
+        $msg = self::maskSessionsDir($msg);
         foreach (self::PATH_MAP as $re => $repl) {
             $msg = preg_replace($re, $repl, $msg) ?? $msg;
         }
@@ -52,6 +53,21 @@ final class Redactor {
             $msg = preg_replace($re, $repl, $msg) ?? $msg;
         }
         return $msg;
+    }
+
+    /**
+     * Le dossier des sessions là où il est (`DemoSession::baseDir()`, que
+     * `SELFRECOVER_SESSIONS_DIR` déplace) : PATH_MAP ne connaît que son chemin par
+     * défaut. Avant PATH_MAP, dont les motifs larges consommeraient le début du
+     * chemin.
+     */
+    private static function maskSessionsDir(string $msg): string {
+        if (!class_exists(DemoSession::class, false)) {
+            return $msg;
+        }
+        $base = preg_quote(DemoSession::baseDir(), '#');
+        $msg  = preg_replace('#' . $base . '/[a-f0-9-]+/#i', '{session_dir}/', $msg) ?? $msg;
+        return preg_replace('#' . $base . '/#i', '{state_dir}/', $msg) ?? $msg;
     }
 
     public static function redactSource(string $code): string {
@@ -85,10 +101,11 @@ final class Redactor {
                 // Tronque les chaînes hex longues (hash, HMAC) après 16 chars
                 if (preg_match('/^[a-f0-9]{32,}$/i', $v)) {
                     $out[$k] = substr($v, 0, 16) . '…truncated';
-                } elseif (strlen($v) > 200) {
-                    $out[$k] = substr($v, 0, 200) . '…';
                 } else {
-                    $out[$k] = self::redactLog($v);
+                    // Masquer d'abord : une chaîne coupée avant d'être masquée garde ses
+                    // 200 premiers caractères en clair, chemins compris.
+                    $v = self::redactLog($v);
+                    $out[$k] = strlen($v) > 200 ? substr($v, 0, 200) . '…' : $v;
                 }
             } elseif (is_array($v)) {
                 $out[$k] = self::redactCtx($v);

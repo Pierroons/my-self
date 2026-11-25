@@ -147,6 +147,30 @@ les étapes. Copier `lib/`, `api/` et `schemas/` à plat casserait le lien de
 
 ### 4.2 Créer l'état runtime
 
+L'état de la démo vit dans un seul dossier, que le groupe d'ouvriers PHP désigne par
+`SELFRECOVER_SESSIONS_DIR` : les sessions, `.counters/` et `.banned_ips`. Deux fichiers
+vivent à part, chacun nommé par sa variable, et la purge a son journal :
+
+| variable | ce qu'elle nomme | défaut |
+|---|---|---|
+| `SELFRECOVER_SESSIONS_DIR` | le dossier des sessions | `/var/lib/selfjustice/demo-sessions` |
+| `SELFRECOVER_BYPASS_TOKEN` | le jeton de contournement (§4.3) | `/var/lib/selfjustice/admin/bypass_token.txt` |
+| `SELFRECOVER_ABUSE_LOG` | le journal d'abus que lit CrowdSec | `/var/log/selfjustice-demo-abuse.log` |
+| `SELFRECOVER_CLEANUP_LOG` | le journal de `tools/cleanup_demo_sessions.sh` | `/var/log/selfjustice-demo-cleanup.log` |
+
+Les défauts sont ceux de l'installation d'origine, qui range la démo dans l'état de
+SelfJustice. Si tu donnes à la démo sa propre identité PHP (`deploy/my-self/README.md`),
+donne-lui aussi son dossier, et passe la même `SELFRECOVER_SESSIONS_DIR` à la purge :
+elle refuse un chemin qui n'est pas absolu ou qui ne finit pas par `/demo-sessions`.
+
+```bash
+ssh <hôte> '
+  sudo install -d -o <utilisateur du groupe> -g <utilisateur du groupe> -m 700 /var/lib/selfrecover/demo-sessions
+'
+```
+
+L'installation d'origine, sous `www-data` :
+
 ```bash
 ssh <hôte> '
   sudo mkdir -p /var/lib/selfjustice/demo-sessions/.counters
@@ -157,6 +181,9 @@ ssh <hôte> '
 ```
 
 ### 4.3 Générer le bypass token
+
+Le jeton va au chemin que nomme `SELFRECOVER_BYPASS_TOKEN` ; l'exemple écrit le défaut, et
+le fichier doit être lisible par l'utilisateur du groupe d'ouvriers PHP, et par lui seul.
 
 ```bash
 BYPASS_TOKEN=$(openssl rand -hex 16)
@@ -321,10 +348,10 @@ puisque PHP relit le fichier à chaque check.
 
 ## 8. Observabilité
 
-- **Logs applicatifs** de chaque session : `/var/lib/selfjustice/demo-sessions/<uuid>/log.jsonl`
+- **Logs applicatifs** de chaque session : `<SELFRECOVER_SESSIONS_DIR>/<uuid>/log.jsonl`
 - **Log nginx** : `/var/log/nginx/biself-access.log` et `biself-error.log`
-- **Log cleanup** : `/var/log/selfjustice-demo-cleanup.log`
-- **Log abuse detected** : `/var/log/selfjustice-demo-abuse.log`
+- **Log cleanup** : `SELFRECOVER_CLEANUP_LOG`, par défaut `/var/log/selfjustice-demo-cleanup.log`
+- **Log abuse detected** : `SELFRECOVER_ABUSE_LOG`, par défaut `/var/log/selfjustice-demo-abuse.log`
 
 Un dashboard admin est prévu pour agréger ça (voir roadmap SPEC.md).
 

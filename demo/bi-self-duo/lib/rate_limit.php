@@ -20,20 +20,39 @@
  * il y en avait un, il valait vingt fois moins que le vrai, et un banc de test
  * s'en servait pour justifier de ne rien éprouver.
  *
- * Stockage : fichiers texte dans /var/lib/selfjustice/demo-sessions/.counters/
+ * Stockage : sous le dossier des sessions (`DemoSession::baseDir()`), qui est la
+ * seule source de ce chemin — `.counters/`, `.banned_ips`, et les sessions que
+ * `countActiveSessions()` compte. Un chemin écrit ici en dur survivrait à un
+ * `SELFRECOVER_SESSIONS_DIR` : les écritures préfixées de `@` y échoueraient sans
+ * bruit, et le plafond de sessions compterait un dossier vide.
+ *
+ * Le jeton de contournement et le journal que lit CrowdSec vivent hors de ce
+ * dossier : `SELFRECOVER_BYPASS_TOKEN` et `SELFRECOVER_ABUSE_LOG` les nomment, et
+ * leur défaut est le chemin de l'installation existante.
  */
 
 declare(strict_types=1);
 
 final class RateLimit {
-    private const COUNTERS_DIR    = '/var/lib/selfjustice/demo-sessions/.counters';
-    private const BAN_LIST        = '/var/lib/selfjustice/demo-sessions/.banned_ips';
-    private const CROWDSEC_ALERT  = '/var/log/selfjustice-demo-abuse.log';
-    private const BYPASS_TOKEN    = '/var/lib/selfjustice/admin/bypass_token.txt';
+    private const ABUSE_LOG_DEFAUT    = '/var/log/selfjustice-demo-abuse.log';
+    private const BYPASS_TOKEN_DEFAUT = '/var/lib/selfjustice/admin/bypass_token.txt';
     private const MAX_CONCURRENT  = 10;
     private const MAX_PER_IP_HOUR = 3;   // au-delà : warning
     private const BAN_SEUIL_HEURE = 6;   // sessions déjà ouvertes → ban à la suivante
     private const BAN_DURATION_S  = 30 * 86400; // 30 jours
+
+    private static function countersDir(): string {
+        return DemoSession::baseDir() . '/.counters';
+    }
+
+    private static function banList(): string {
+        return DemoSession::baseDir() . '/.banned_ips';
+    }
+
+    private static function fromEnv(string $name, string $default): string {
+        $v = getenv($name);
+        return is_string($v) && $v !== '' ? $v : $default;
+    }
 
     public static function clientIp(): string {
         return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
@@ -53,14 +72,15 @@ final class RateLimit {
     public static function hasBypassCookie(): bool {
         $provided = $_COOKIE['sj_bypass'] ?? '';
         if ($provided === '' || strlen($provided) < 16) return false;
-        $stored = @file_get_contents(self::BYPASS_TOKEN);
+        $stored = @file_get_contents(self::fromEnv('SELFRECOVER_BYPASS_TOKEN', self::BYPASS_TOKEN_DEFAUT));
         if ($stored === false) return false;
         return hash_equals(trim($stored), $provided);
     }
 
     public static function isBanned(string $ip): bool {
-        if (!is_readable(self::BAN_LIST)) return false;
-        $lines = @file(self::BAN_LIST, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        $banList = self::banList();
+        if (!is_readable($banList)) return false;
+        $lines = @file($banList, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
         $now = time();
         foreach ($lines as $line) {
             $parts = explode(' ', $line, 2);
@@ -90,7 +110,7 @@ final class RateLimit {
         }
 
         // Sessions concurrentes globales
-        @mkdir(self::COUNTERS_DIR, 0775, true);
+        @mkdir(self::countersDir(), 0775, true);
         $concurrent = self::countActiveSessions();
         if ($concurrent >= self::MAX_CONCURRENT) {
             return ['ok' => false, 'reason' => 'capacity_full', 'warning_level' => 0, 'bypass' => false];
@@ -111,7 +131,7 @@ final class RateLimit {
     }
 
     public static function countActiveSessions(): int {
-        $dir = dirname(self::COUNTERS_DIR);
+        $dir = DemoSession::baseDir();
         if (!is_dir($dir)) return 0;
         $entries = @scandir($dir) ?: [];
         $now = time();
@@ -128,7 +148,7 @@ final class RateLimit {
     }
 
     public static function countSessionsForIpLastHour(string $ip): int {
-        $file = self::COUNTERS_DIR . '/ip-' . self::hashIp($ip) . '.log';
+        $file = self::countersDir() . '/ip-' . self::hashIp($ip) . '.log';
         if (!is_readable($file)) return 0;
         $lines = @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
         $cutoff = time() - 3600;
@@ -140,15 +160,15 @@ final class RateLimit {
     }
 
     public static function recordSessionStart(string $ip): void {
-        @mkdir(self::COUNTERS_DIR, 0775, true);
-        $file = self::COUNTERS_DIR . '/ip-' . self::hashIp($ip) . '.log';
+        @mkdir(self::countersDir(), 0775, true);
+        $file = self::countersDir() . '/ip-' . self::hashIp($ip) . '.log';
         @file_put_contents($file, time() . "\n", FILE_APPEND | LOCK_EX);
     }
 
     private static function banIp(string $ip): void {
         $until = time() + self::BAN_DURATION_S;
-        @file_put_contents(self::BAN_LIST, "$ip $until\n", FILE_APPEND | LOCK_EX);
-        @file_put_contents(self::CROWDSEC_ALERT,
+        @file_put_contents(self::banList(), "$ip $until\n", FILE_APPEND | LOCK_EX);
+        @file_put_contents(self::fromEnv('SELFRECOVER_ABUSE_LOG', self::ABUSE_LOG_DEFAUT),
             date('c') . " abuse_detected ip=$ip action=banned until=" . date('c', $until) . "\n",
             FILE_APPEND | LOCK_EX);
     }
