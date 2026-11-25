@@ -24,6 +24,53 @@ change de propriétaire laisse le site sans accès à ses données ; un proprié
 changé sans que le groupe soit posé fait la même chose dans l'autre sens. Les
 deux gestes vont ensemble, site par site.
 
+## 📌 Où en est la pose — 25 novembre 2026, 06:34
+
+Le découpage est posé **sur un site des trois**, et ce n'est pas un abandon : les deux autres
+dépendent d'un répertoire qui n'appartient pas à ce lot.
+
+| site | état | ce qui l'établit |
+|---|---|---|
+| **SelfDataGuard** | ✅ **posé et cloisonné** | `blindkey.bin` lisible par `php-dataguard` · `www-data` ne lit plus `demo.sqlite` · purge éprouvée par un fichier témoin de 40 min, effacé · `api/inspect_db.php` rend 200 avec sa base |
+| **bi-self** | ⏸ ses deux groupes sont posés mais **inertes** — aucun vhost ne les nomme | ses sessions vivent chez SelfJustice, voir ci-dessous |
+| **SelfJustice** | ⏸ **bloqué** | son état est écrit par `www-data` en permanence |
+| `www.conf` | ⏸ **non posé** | il retire la clé d'API que SelfJustice emploie encore |
+
+🔑 **Ce qui est acquis, et c'était la raison du chantier** : une exécution de code dans l'un des sept
+autres sites PHP n'atteint plus l'état de SelfDataGuard — ni sa base, ni sa clé d'index, ni ses
+sessions. C'est la condition de déploiement du poivre de la 0.10.0.
+
+### 🔴 Pourquoi bi-self et SelfJustice sont bloqués, et par la même racine
+
+`/var/lib/selfjustice` est en `755 www-data` et **l'application y écrit en continu** — mesuré le
+25/11/2026 : `counter.txt` à 06:00, `admin/` à 06:08, `db/` à 02:41, et `feedback/` en **`750`**,
+donc illisible par tout autre compte. Un groupe d'ouvriers sous sa propre identité ne peut donc ni
+écrire cet état, ni même le lire en entier.
+
+Et bi-self en dépend aussi, ce que rien dans ce lot n'avait vu :
+`lib/session_manager.php` déclare `BASE_DIR_DEFAUT = '/var/lib/selfjustice/demo-sessions'`, et
+`SELFRECOVER_SESSIONS_DIR` **n'est pas déclarée** par le groupe en service — le défaut s'applique
+donc. Les sessions de la démo bi-self, sa liste `.banned_ips` et ses `.counters/` vivent dans l'état
+de SelfJustice, en `775 www-data`.
+
+**Les deux sorties possibles**, et aucune n'appartient à ce lot seul :
+
+1. **Donner à bi-self son propre répertoire de sessions** — `SELFRECOVER_SESSIONS_DIR` vers
+   `/var/lib/selfrecover/demo-sessions`, possédé par `php-biself`. C'est le geste propre : après lui,
+   bi-self ne touche plus du tout à `/var/lib/selfjustice`. Prix : copier `.banned_ips` et
+   `.counters/`, et les sessions en cours tombent (TTL 30 min). **Décision du module, conv Recover.**
+2. **Reprendre le propriétaire de `/var/lib/selfjustice`** vers `php-justice`. Les trois minuteries de
+   synchronisation n'en souffriraient pas — elles tournent en `root` avec
+   `ReadWritePaths=/var/lib/selfjustice`, et root ignore le propriétaire. **Décision de la conv MCP**,
+   à qui le constat est déposé (`PP-2511-0612`).
+
+⛔ **Ce qu'il ne faut PAS faire** : ajouter `php-biself` ou `php-justice` au groupe propriétaire. Un
+groupe partagé est exactement ce que ce découpage supprime, et 74 répertoires de l'arbre servi sont
+inscriptibles par `www-data`.
+
+ⓘ **Les deux groupes de bi-self restent posés et vides** : 4 ouvriers au repos, environ 116 Mio sur
+5 485 disponibles (mesuré le 25/11). Les retirer puis les reposer coûterait plus que de les laisser.
+
 ## 🔴 La règle qui décide de tout : aucun de ces utilisateurs n'entre dans `www-data`
 
 Mesuré sur la machine le 24/11/2026 : **74 répertoires de l'arbre servi sont
@@ -78,6 +125,29 @@ lecture du code — il ferme l'accès à l'**état**.
    `nginx -t` ne vérifie pas qu'une socket existe : un vhost posé d'abord rendrait
    502, et la panne ressemblerait à un défaut d'application.
 
+   🔴 **Un groupe neuf n'hérite d'AUCUNE variable d'environnement, et c'est le
+   code servi qui dit lesquelles il lui faut — pas le groupe `www`.** `clear_env`
+   vaut `yes` par défaut : l'environnement est vidé avant que les `env[...]` du
+   groupe soient posés. La liste se mesure donc **sur le code**, pas sur la
+   configuration :
+
+   ```
+   grep -rnoE "getenv\(.[A-Z_]+.\)|\$_ENV\[.[A-Z_]+.\]" <racine servie du site>
+   ```
+
+   ⚠️ Puis, pour chaque nom rendu, lire **le défaut que le code applique quand la
+   variable manque** : une variable absente ne fait pas échouer PHP, elle le fait
+   basculer sur une valeur en dur, souvent un chemin. C'est ce défaut-là qui
+   décide si le groupe neuf peut travailler. Mesuré le 25/11/2026 sur bi-self :
+   trois `getenv` dans `lib/session_manager.php`, dont **une seule compte** —
+   les deux autres (`SELFRECOVER_COOKIE_DOMAIN`, `SELFRECOVER_COOKIE_INSECURE`)
+   ont des défauts justes en production.
+
+   ⓘ Pour relever les noms déclarés par le groupe en service **sans lire le
+   fichier en entier** — son en-tête dit pourquoi : `sudo grep -oE
+   '^env\[[A-Z_]+\]' /etc/php/8.4/fpm/pool.d/www.conf` rend les noms seuls,
+   jamais les valeurs.
+
 3. **Donner à chaque état son propriétaire.** C'est le geste qui ferme réellement
    l'accès ; les précédents ne font que préparer.
 
@@ -108,8 +178,13 @@ lecture du code — il ferme l'accès à l'**état**.
    écrivant un secret dans l'arbre servi. Lui donner `php-dataguard` rendrait ce
    repli possible, donc silencieux.
 
-4. **Faire suivre les deux minuteries de purge**, sans quoi elles perdent l'accès
-   à ce qu'elles purgent :
+4. **Faire suivre les deux minuteries de purge — dans le MÊME geste que
+   l'étape 3, et non après.** 🔴 Corrigé le 25/11/2026 : numérotées à la suite,
+   ces deux étapes laissent une fenêtre où le répertoire a changé de
+   propriétaire et où la purge tourne encore sous l'ancien compte. Elle tire
+   toutes les cinq minutes et son échec est **muet** — la fenêtre n'a pas besoin
+   d'être longue pour être traversée. Les deux gestes tiennent dans une seule
+   commande.
 
    ```
    sudo systemctl daemon-reload
@@ -125,15 +200,44 @@ lecture du code — il ferme l'accès à l'**état**.
    l'état attendu : son module n'est pas posé sous `/opt/selfrecover/`. Son
    gabarit est à jour pour le jour où il le sera.
 
-5. **Poser les trois vhosts** (`bi-self`, `dataguard`, `justice`), puis :
+5. 🔴 **NE PAS poser les trois gabarits de vhost. Réécrire les seules lignes
+   `fastcgi_pass` des vhosts servis.** Mesuré le 25/11/2026 avant la pose, et
+   c'est ce qui a arrêté la moitié de la manœuvre : les gabarits ne sont pas des
+   remplaçants des fichiers en service, pour trois raisons indépendantes.
+
+   - Ils portent des **valeurs à substituer** — `dataguard.example.org`,
+     `justice.example.org`, `your-instance.example`. Posés tels quels, le
+     `server_name` et les chemins de certificat de la production tombent. Aucun
+     déployeur ne les substitue : `deploy/my-self/deploy.sh` ne fait que **lire**
+     `sites-enabled` (fonction `references_serveur`), il n'y écrit jamais.
+   - Ils **déclarent des zones `limit_req_zone`** que l'instance déclare déjà
+     dans `conf.d/`, et **nginx refuse une zone déclarée deux fois**. Leurs
+     propres commentaires le disent : « une instance qui les déclare déjà
+     ailleurs retire ces lignes ».
+   - Celui de `bi-self` fait **14 781 octets contre 3 798 servis**, soit 281
+     lignes d'écart : il porte le lot des freins, dont un `map $cle_frein` qui
+     **change la clé de zones existantes** — ce qui exige un `restart` de nginx,
+     pas un `reload`. Le poser ici déploierait un lot que personne n'a demandé.
+
+   Or le découpage n'a besoin que de **11 lignes** sur les 18 servies. Pour un
+   fichier qui n'a qu'une occurrence, la substitution globale suffit ; pour
+   `bi-self`, la route du flux se distingue **par son bloc**, jamais par son
+   numéro de ligne :
 
    ```
+   sudo sed -i "s|unix:/run/php/php8.4-fpm.sock|unix:/run/php/php8.4-fpm-<pool>.sock|" <vhost>
+   sudo sed -i "/location = \/demo\/api\/events/,/^    }/ s|-biself.sock|-flux.sock|" <vhost de bi-self>
    sudo nginx -t && sudo systemctl reload nginx
    ```
 
-   ⚠️ **Un `reload` suffit ici** — aucune clé de zone `limit_req` ne change. Si
-   un jour l'une d'elles change, il faut un `restart` : un `reload` garderait
-   l'ancienne clé sans le dire.
+   🔴 **La sauvegarde du vhost ne reste PAS dans `sites-enabled/`.** nginx y
+   inclut `*` **sans regarder l'extension** — une copie `.avant-…` y serait
+   chargée en double, et le `server_name` dupliqué ferait échouer le
+   rechargement. Elle va dans un dossier à part.
+
+   ⚠️ **Un `reload` suffit pour ce changement-ci** — aucune clé de zone ne bouge.
+   Il ne suffirait pas pour le lot des freins, qui est l'objet du point
+   précédent.
 
 6. **Poser le groupe résiduel en DERNIER**, et seulement maintenant :
 
