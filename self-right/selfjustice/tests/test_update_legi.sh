@@ -46,7 +46,13 @@ cat > "$LEGI/legi.py/venv/bin/python" <<SH
 #!/bin/sh
 PYTHONPATH="$BAC/py" exec python3 -B "\$@"
 SH
-printf '#!/bin/sh\nexit 0\n' > "$BAC/stubs/chown"
+# Le stub ENREGISTRE : un chown dont on jette les arguments ne peut pas dire
+# à quel compte la base servie a été donnée, et c'est justement ce qui se vérifie.
+cat > "$BAC/stubs/chown" <<SH
+#!/bin/sh
+echo "\$*" >> "$BAC/chown.vu"
+exit 0
+SH
 printf '#!/bin/sh\nexit 0\n' > "$LEGI/bin/update_stats.sh"
 chmod +x "$LEGI/legi.py/venv/bin/python" "$BAC/stubs/chown" "$LEGI/bin/update_stats.sh"
 
@@ -211,6 +217,35 @@ date_illisible() {
 }
 date_illisible "" "absent de db_meta"
 date_illisible "inconnu" "« inconnu »"
+
+echo
+echo "▸ Le propriétaire d'une base servie est HÉRITÉ, et seule son absence le fait choisir"
+# 🔑 Le découpage des groupes d'ouvriers PHP donne les bases à un compte dédié.
+# Un propriétaire en dur ici les reprendrait au passage suivant — et une base en
+# mode WAL dont le lecteur ne peut plus écrire ses `-wal` ne s'ouvre pas du tout.
+# Un seul passage éprouve les deux chemins : la base UE existe (préparée, donc à
+# l'utilisateur du banc), la base LEGI non (retirée juste avant).
+preparer
+rm -f "$BAC/db/legi_selfjustice.sqlite"
+: > "$BAC/chown.vu"
+jouer "20260901-120000" 0 > /dev/null 2>&1
+moi="$(id -un):$(id -gn)"
+vu="$(tr '\n' ' ' < "$BAC/chown.vu")"
+if grep -q "^$moi .*conventionnalite" "$BAC/chown.vu"; then
+    ok "la base UE en place garde son propriétaire ($moi)"
+else
+    nok "la base UE ne l'hérite pas — chown vu : $vu"
+fi
+if grep -q "conventionnalite" "$BAC/chown.vu" && ! grep -q "^www-data:www-data .*conventionnalite" "$BAC/chown.vu"; then
+    ok "elle n'est PAS reprise à « www-data » en dur"
+else
+    nok "la base UE est reprise à www-data — chown vu : $vu"
+fi
+if grep -q "^www-data:www-data .*legi_selfjustice" "$BAC/chown.vu"; then
+    ok "sans base LEGI en place, le repli nomme « www-data:www-data »"
+else
+    nok "le repli ne nomme personne — chown vu : $vu"
+fi
 
 echo
 echo "▸ Étape 9 — la base européenne se construit sur une copie"

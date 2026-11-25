@@ -112,6 +112,20 @@ trap "$PIEGE_ERR" ERR
 
 journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
+# 🔑 **Le propriétaire d'une base servie n'est pas une constante** : c'est le
+# compte du groupe d'ouvriers PHP qui la lit, et ce découpage se décide hors de
+# ce script. Une valeur en dur ici le défait au premier passage — et comme une
+# base SQLite en mode WAL exige de son lecteur qu'il puisse écrire ses `-wal` et
+# `-shm`, lui reprendre le fichier ne le ralentit pas : il lui coupe l'accès.
+# On hérite donc de la base en place, et on ne décide que lorsqu'il n'y en a
+# aucune — première installation.
+proprietaire_servi() { # proprietaire_servi <base en place>
+    local p=""
+    [ -e "$1" ] && p="$(stat -c '%U:%G' "$1" 2>/dev/null)"
+    [ -n "$p" ] || p="${SELFJUSTICE_DB_OWNER:-www-data:www-data}"
+    printf '%s' "$p"
+}
+
 # --- Une seule instance à la fois -------------------------------------------
 #
 # 🔑 **Deux exécutions simultanées se détruisent mutuellement.** Constaté le
@@ -218,7 +232,7 @@ if [ "$NB_ARTICLES" -lt 100000 ]; then
 fi
 
 # 6. Bascule
-chown www-data:www-data "$API_DB.nouveau"
+chown "$(proprietaire_servi "$API_DB")" "$API_DB.nouveau"
 chmod 644 "$API_DB.nouveau"
 mv "$API_DB.nouveau" "$API_DB"
 journal "Base servie remplacée : $NB_ARTICLES articles"
@@ -305,7 +319,7 @@ fi
 trap "$PIEGE_ERR" ERR
 set -e
 if [ "$EU_CODE" = "0" ] || [ "$EU_CODE" = "2" ]; then
-    chown www-data:www-data "$EU_NOUVELLE"
+    chown "$(proprietaire_servi "$EU_DB")" "$EU_NOUVELLE"
     chmod 644 "$EU_NOUVELLE"
     mv "$EU_NOUVELLE" "$EU_DB"
 else

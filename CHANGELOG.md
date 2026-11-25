@@ -10,6 +10,32 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le propriétaire d'une base servie est hérité, il n'est plus décidé par le script qui la remplace — 25 novembre 2026
+
+`update_legi.sh` remplace deux bases à chaque passage, et leur posait `www-data:www-data` **en dur**.
+Tant qu'un seul groupe d'ouvriers PHP servait tout le serveur, c'était juste. Dès qu'un module reçoit son
+propre compte, ça ne l'est plus : le passage suivant reprend la base au compte qui la lit.
+
+⚠️ **Et ce n'est pas une gêne de confort.** La base de jurisprudence est en mode WAL, et SQLite exige de
+son lecteur qu'il puisse écrire les fichiers `-wal` et `-shm` qui l'accompagnent. Reprendre le fichier à
+son lecteur ne le ralentit pas : ça lui ferme la base. La panne serait arrivée au passage suivant, des
+jours après le changement de compte, sans que rien ne relie l'une à l'autre.
+
+Le propriétaire est donc **hérité de la base en place**, et choisi seulement quand il n'y en a aucune —
+première installation, où le repli reste l'utilisateur historique et peut se surcharger par
+l'environnement.
+
+**Éprouvé** : trois contrôles ajoutés au garde-fou du pilote, dont le stub de `chown` **enregistre
+désormais ses arguments** au lieu de les jeter — un `chown` dont on ne lit pas les arguments ne peut pas
+dire à quel compte la base a été donnée. Un seul passage éprouve les deux chemins : la base européenne
+existe et garde son propriétaire, la base LEGI est retirée et tombe sur le repli. Deux mutants vus rouges :
+le propriétaire en dur rétabli (les deux contrôles d'héritage tombent), et le repli supprimé (le passage
+entier échoue, donc le défaut est bruyant et non silencieux).
+
+🔑 **Le banc a trouvé un défaut dans le correctif lui-même** : le repli rendait d'abord `www-data` sans son
+groupe, et `chown` aurait laissé le groupe du créateur — root — sur une base neuve. Une valeur de repli se
+lit dans la même forme que ce qu'elle remplace.
+
 ### Les sites PHP ne partagent plus une seule identité : quatre groupes d'ouvriers, quatre utilisateurs — 24 novembre 2026
 
 Jusqu'ici, un unique groupe d'ouvriers PHP servait les **huit** vhosts de la machine, tous sous
