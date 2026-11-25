@@ -22,7 +22,10 @@ use InvalidArgumentException;
 
 final class Config
 {
-    /** Le plus long palier de ban automatique qu'une démonstration accepte. */
+    /**
+     * Le plus long palier de ban automatique qu'une démonstration accepte, et la
+     * plus longue remontée qui y rend un vote retiré par la machine.
+     */
     public const PALIER_DEMONSTRATION_MAX = 3600;
 
     /** Ce que `prod()` change aux valeurs du constructeur. */
@@ -39,6 +42,7 @@ final class Config
     /** En service, ces réglages ne descendent pas sous `prod()`. */
     private const PLANCHERS_SERVICE = [
         'ageMinPourVoterSecondes', 'ageEtabliSecondes', 'fenetreSalveSecondes', 'arrondiFinBanSecondes', 'fenetreFarmingJours',
+        'fenetreMeuteJours',
     ];
 
     /** En service, ces réglages ne montent pas au-dessus de `prod()`. */
@@ -83,7 +87,10 @@ final class Config
      *                                        est refusé.
      * @param int      $intervalleConvalescenceSecondes Convalescence : +1 point par
      *                                        intervalle. La réputation remonte avec le
-     *                                        temps, pas avec le mérite.
+     *                                        temps, pas avec le mérite. En démonstration,
+     *                                        `perteDroitDeVoteSous` intervalles tiennent
+     *                                        en `PALIER_DEMONSTRATION_MAX` : un vote retiré
+     *                                        y revient en une heure de calme au plus.
      * @param float    $plancherFraction      Part de la peine EN COURS avant laquelle un
      *                                        arbitre ne lève un ban qu'avec un motif écrit.
      * @param int      $balayageFiletMax      Sans planificateur, le premier vote négatif d'une
@@ -150,7 +157,7 @@ final class Config
         public readonly int $ageMinPourVoterSecondes = 120,
         public readonly array $dureesBan = [120, 600, 1800],
         public readonly ?int $dureeBanAdminSecondes = null,
-        public readonly int $intervalleConvalescenceSecondes = 86400,
+        public readonly int $intervalleConvalescenceSecondes = 720,
         public readonly float $plancherFraction = 1 / 3,
         public readonly int $bansArbitreSignal = 2,
         public readonly int $balayageFiletMax = 50,
@@ -203,6 +210,15 @@ final class Config
         if ($this->ageEtabliSecondes < 0 || $this->ageEtabliSecondes > Moderate::DUREE_MAX) {
             throw new InvalidArgumentException('ageEtabliSecondes est une durée : 0 l\'éteint, et elle tient en un siècle au plus (Moderate::DUREE_MAX).');
         }
+        if ($this->fenetreMeuteJours < 1) {
+            throw new InvalidArgumentException('fenetreMeuteJours est une fenêtre en jours : 1 ou plus. Sans elle, le quorum ne lit plus aucun lien, sans que rien le dise.');
+        }
+        if ($this->balayagePeriodeSecondes < 1) {
+            throw new InvalidArgumentException('balayagePeriodeSecondes est une durée : strictement positive.');
+        }
+        if ($this->intervalleConvalescenceSecondes < 1) {
+            throw new InvalidArgumentException('intervalleConvalescenceSecondes est une durée : strictement positive. À 0, aucune lecture d\'un compte en convalescence ne se calcule.');
+        }
         if ($this->quorumTravailMax < 1) {
             throw new InvalidArgumentException('quorumTravailMax compte des sommets lus : 1 ou plus.');
         }
@@ -213,6 +229,14 @@ final class Config
             throw new InvalidArgumentException(sprintf(
                 'En démonstration, un palier de dureesBan dure au plus une heure (%d s demandés) : la démonstration ne prononce pas de vrais bans.',
                 max($this->dureesBan)
+            ));
+        }
+        if ($this->usage === Usage::DEMONSTRATION && $this->perteDroitDeVoteSous * $this->intervalleConvalescenceSecondes > self::PALIER_DEMONSTRATION_MAX) {
+            throw new InvalidArgumentException(sprintf(
+                'En démonstration, un vote retiré revient en une heure de calme au plus : %d intervalles de convalescence (perteDroitDeVoteSous) de %d s demandent %d s.',
+                $this->perteDroitDeVoteSous,
+                $this->intervalleConvalescenceSecondes,
+                $this->perteDroitDeVoteSous * $this->intervalleConvalescenceSecondes
             ));
         }
         if ($this->usage === Usage::SERVICE) {

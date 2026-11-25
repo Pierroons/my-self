@@ -215,8 +215,8 @@ CREATE TABLE IF NOT EXISTS mod_signaux (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
     account_id  INTEGER NOT NULL,
     cause       TEXT NOT NULL,     -- état : 'reputation_zero' | 'ban_auto' | 'journal_en_panne' |
-                                   -- 'ban_en_attente' | 'droit_de_vote_perdu' | 'ban_sans_fin' |
-                                   -- 'chute_sans_quorum' ; comportement :
+                                   -- 'ban_en_attente' | 'droit_de_vote_perdu' | 'perte_du_vote_due' |
+                                   -- 'ban_sans_fin' | 'chute_sans_quorum' ; comportement :
                                    -- 'salve_rapide' | 'votant_etendu' | 'comptes_recents' | 'bans_arbitre' ;
                                    -- avant la 0.9.0 : 'levee_en_attente' (état), 'meute_recidive' et
                                    -- 'votants_tronques' (comportements) ;

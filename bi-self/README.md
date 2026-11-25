@@ -29,7 +29,7 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 **SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can get your account back without email, but there's no fabric for collective life.
 
-**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h in service (`Config::prod()`), 2 min in demonstration (`Config::demo()`) — or a first post; where the engine reads private messages, accounts linked to each other that vote against the same target weigh no more than one; and a burst of unlinked votes goes to human review.
+**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h in service (`Config::prod()`), 2 min in demonstration (`Config::demo()`) — or a first post; where the engine reads private messages, accounts linked to each other that vote against the same target make only one voice in the quorum that decides a sanction — their votes still count like any other; and a burst of unlinked votes goes to human review.
 
 **Together**:
 
@@ -42,7 +42,7 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 ## Cross-module workflows
 
 - **New member joins** → creates an account with a recovery word (SelfRecover). Zero email. During that delay, SelfModerate lets the account vote only if it has posted (anti-Sybil warm-up).
-- **Toxic behavior reported** → members vote (SelfModerate), under the anti-Sybil brakes described above. A reputation that reaches zero bans automatically if the host has plugged in a journal; otherwise it raises a flag, and no arbiter can act until a journal is plugged in.
+- **Toxic behavior reported** → members vote (SelfModerate), under the anti-Sybil brakes described above. In demonstration, a reputation that reaches zero bans automatically if the host has plugged in a journal; in service, it is flagged to an arbiter, who decides. With no journal plugged in, nothing bans, and no arbiter can act.
 - **Lost password** → the member recovers their account at level 1 or 2 (SelfRecover), with no email and no one to ask. Level 3 goes to a human admin, who reads the case.
 
 ---

@@ -908,8 +908,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 82/82 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 82 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 86/86 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 86 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
@@ -3734,8 +3734,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 280/280 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 280 contrôles"; exit 1; }
+          grep -qx '✅ 288/288 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 288 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3746,9 +3746,9 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 280/280 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 288/288 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 280 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 288 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3792,10 +3792,13 @@ jobs:
                      "                return ['ok' => false, 'message' => $qui];\n            }\n")
               fin = s.index(qui, debut) + len(qui)
               fin = s.index('\n', fin) + 1
-              avant = s[debut:fin]
-              apres = ("        $qui = self::arbitre($pdo, $arbitreId, $accountId);\n        if (is_string($qui)) {\n"
+              # Depuis la signature : plusieurs gestes partagent la suite mot pour mot.
+              corps = s[debut:fin]
+              avant = s[i:fin]
+              apres = (s[i:debut]
+                       + "        $qui = self::arbitre($pdo, $arbitreId, $accountId);\n        if (is_string($qui)) {\n"
                        "            return ['ok' => false, 'message' => $qui];\n        }\n"
-                       + avant.replace(qui, '').replace('$arbitreId, $motif', '$qui, $motif'))
+                       + corps.replace(qui, '').replace('$arbitreId, $motif', '$qui, $motif'))
               return (M, avant, apres, '✗ ⭐ ' + geste + ' : un arbitre banni pendant son geste le voit passer')
           ARB = "✗ ⭐ un geste passe sans arbitre identifiable, sur le compte de son arbitre, ou signé d'un arbitre sous peine"
           HIST = "✗ ⭐ l'historique et les bans divergent sans réparation"
@@ -3903,9 +3906,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 280/280 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 288/288 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 280 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 288 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, la salve, les raisons qu'une page publique tait et la fin réelle
           # d'un ban dans le moteur ; la route de vote, la page
           # publique, les votes reçus, les fins de ban et le blocage dans le lab. Chaque
@@ -4035,9 +4038,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 280/280 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 288/288 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 280 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 288 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La part elle-même, son solde net, les votes tombés qu'elle ne compte pas,
           # l'âge au moment du vote, sa fenêtre en jours, le signal qu'elle laisse voir et
           # la salve qu'elle ne relance pas ; ce qu'elle compte (l'effet des votes, et un
@@ -5375,6 +5378,129 @@ jobs:
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
+
+      - name: Canari — SelfModerate, les deux régimes
+        run: |
+          # @plante
+          # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
+          sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+          grep -qx '✅ 288/288 contrôles passés' <<< "$sortie" \
+            || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
+                 echo "::error::le banc de modération intact ne joue pas ses 288 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # La déclaration de l'hôte et ce qu'elle décide : le repli sur la démonstration,
+          # le ban et le retrait du vote en service, les bornes du service et de la
+          # démonstration, `dm` sous HORS_MOTEUR ; la sanction due et la réponse de
+          # l'arbitre — rouverte à la rechute, sortie de la file par un ban ou une
+          # suspension, gardée hors de la file au plancher, sans relancer le quorum ; les
+          # actes du retrait et des deux gestes, leurs gardes et leurs motifs ; le ban en
+          # attente au vote de soutien ; l'état du site ; l'`\Error` du journal contenue
+          # au retrait. Chaque plantation est jugée, même après l'échec d'une autre, et
+          # doit rougir sur ce qui la nomme.
+          M=bi-self/selfmoderate/src/Moderate.php
+          C=bi-self/selfmoderate/src/Config.php
+          cp "$M" /tmp/regimes.M.intact
+          cp "$C" /tmp/regimes.C.intact
+          echecs=0
+          cas_liste="repli plancher plafond quorum_eteint borne_ban ban_du_rechute ban_arbitre suspension_acte texte_meute liens_muets balayage_perte retrait_sans_journal attente_classable quorum_rendu retrait_acte garde_peine suspension_file suspendu_avant plancher_perte soutien_attente borne_retrait meute_service balayage_zero rendu_motif rendu_rattrape rendu_origine perte_classable erreur_contenue ban_ferme_perte"
+          for cas in $cas_liste; do
+            attendu=$(CAS="$cas" python3 - <<'PY'
+          import os
+          M = 'bi-self/selfmoderate/src/Moderate.php'
+          C = 'bi-self/selfmoderate/src/Config.php'
+          RENDRE = 'public static function adminRendreVote('
+          SERVICE = "✗ ⭐ un service accepte un réglage plus faible que prod()"
+          SUSPENSION = "✗ ⭐ une suspension du vote passe sans ses gardes"
+          RETOUR = "✗ ⭐ la perte due revient à l'arbitre après sa suspension"
+          RENDU = "✗ ⭐ rendre le vote accepte un motif vide de sens"
+          REGLAGE = "✗ ⭐ un réglage vide ou plus faible que prod() passe"
+          RELANCE = "✗ ⭐ la perte du vote due relance le quorum"
+          TRACE = "✗ ⭐ le vote se retire sans trace"
+          ERREUR = "✗ ⭐ une \\Error du journal au retrait du vote remonte"
+          fichier, portee, avant, apres, attendu = {
+              'repli':          (M, None, "return self::$config ?? throw new \\LogicException(",
+                                 "return self::$config ??= Config::demo() ?? throw new \\LogicException(",
+                                 "✗ ⭐ le moteur tourne sans déclaration, ou sans sa config"),
+              'plancher':       (C, None, "if ($this->$champ < $minimum) {", "if (false) {", SERVICE),
+              'plafond':        (C, None, "if ($this->$champ > $maximum) {", "if (false) {", SERVICE),
+              'quorum_eteint':  (C, None, "if (!$this->quorumAuxSeuils) {", "if (false) {", SERVICE),
+              'borne_ban':      (C, None, "max($this->dureesBan) > self::PALIER_DEMONSTRATION_MAX", "false",
+                                 "✗ ⭐ la démonstration accepte un palier de plus"),
+              'ban_du_rechute': (M, None, "                if ($service && $avant > self::config()->banA) {\n                    self::rouvrirEtat($pdo, $accountId, 'reputation_zero');",
+                                 "                if (false) {\n                    self::rouvrirEtat($pdo, $accountId, 'reputation_zero');",
+                                 "✗ ⭐ le ban dû classé ne revient pas à la rechute"),
+              'ban_arbitre':    (M, None, "            self::designaler($pdo, $accountId, 'ban_en_attente');\n            self::retirerDeLaFile($pdo, $accountId, self::deCause($etat['signaux'], 'reputation_zero', 'perte_du_vote_due'));\n",
+                                 "", "✗ ⭐ un ban d'arbitre laisse ouverte une sanction due"),
+              'suspension_acte': (M, None, "                'acte'       => 'vote_retire',\n                'compte'     => $accountId,\n                'origine'    => 'admin',",
+                                  "                'acte'       => 'autre',\n                'compte'     => $accountId,\n                'origine'    => 'admin',", SUSPENSION),
+              'texte_meute':    (M, None, "Droit de vote suspendu par un arbitre jusqu\\'au %s.",
+                                 "Droit de vote suspendu jusqu\\'au %s (participation à une meute).", "✗ la remontée a effacé la peine"),
+              'liens_muets':    (M, None, "                $etats[] = ['cause' => 'liens_muets', 'depuis' => (int) $premier];\n", "",
+                                 "✗ ⭐ des liens muets passent sous silence"),
+              'balayage_perte': (M, None, "s.cause IN ('chute_sans_quorum', 'perte_du_vote_due')", "s.cause IN ('chute_sans_quorum')", RELANCE),
+              'retrait_sans_journal': (M, None, "        if (self::$journal === null || self::dansLaTransactionDeLHote($pdo)) {\n            return false;",
+                                       "        if (false) {\n            return false;", TRACE),
+              'attente_classable': (M, None, "['ban_auto', 'journal_en_panne', 'ban_en_attente']", "['ban_auto', 'journal_en_panne']",
+                                    "✗ ⭐ le ban en attente se classe"),
+              'quorum_rendu':   (M, None, "$voteEnJeu = $votait && !$voteDu;", "$voteEnJeu = $votait;", RELANCE),
+              'retrait_acte':   (M, None, "                'acte'       => 'vote_retire',\n                'compte'     => $accountId,\n                'origine'    => 'auto',",
+                                 "                'acte'       => 'autre',\n                'compte'     => $accountId,\n                'origine'    => 'auto',", TRACE),
+              'garde_peine':    (M, None, "        if ($reputation <= self::config()->banA && $libre) {\n            self::exigerAucunePeineOuverte($pdo, $accountId);\n        }\n",
+                                 "", "✗ ⭐ un retrait du vote reste au journal"),
+              'suspension_file': (M, None, "            self::retirerDeLaFile($pdo, $accountId, self::deCause($etat['signaux'], 'perte_du_vote_due'));",
+                                  "            self::designaler($pdo, $accountId, 'perte_du_vote_due');", RETOUR),
+              'suspendu_avant': (M, None, "                    if ($suspendu) {\n                        self::poserHorsDeLaFile",
+                                 "                    if (false) {\n                        self::poserHorsDeLaFile", RETOUR),
+              'plancher_perte': (M, None, "            if ($service && $votait && $quorum(self::config()->perteDroitDeVoteSous - 1)) {\n                self::poserHorsDeLaFile",
+                                 "            if (false) {\n                self::poserHorsDeLaFile",
+                                 "✗ ⭐ au plancher, en service, une chute ou une perte due répondues reviennent"),
+              'soutien_attente': (M, None, "        if ($value === 1 && $newRep > self::config()->banA) {\n            self::designaler($pdo, $author, 'ban_en_attente');\n        }\n",
+                                  "", "✗ ⭐ le ban en attente survit à un vote de soutien"),
+              'borne_retrait':  (C, None, "$this->usage === Usage::DEMONSTRATION && $this->perteDroitDeVoteSous * $this->intervalleConvalescenceSecondes > self::PALIER_DEMONSTRATION_MAX",
+                                 "false", "✗ ⭐ la démonstration retire le vote plus d'une heure"),
+              'meute_service':  (C, None, "        'fenetreMeuteJours',\n", "", REGLAGE),
+              'balayage_zero':  (C, None, "if ($this->balayagePeriodeSecondes < 1) {", "if (false) {", REGLAGE),
+              'rendu_motif':    (M, RENDRE, "        if ($motif !== '') {\n            [$motifOk, $pourquoi] = self::validateReason($motif);",
+                                 "        if (false) {\n            [$motifOk, $pourquoi] = self::validateReason($motif);", RENDU),
+              'rendu_rattrape': (M, RENDRE, "        self::rattraperSeul($pdo, $accountId);\n", "", RENDU),
+              'rendu_origine':  (M, RENDRE, "                'origine'    => 'admin',\n", "", SUSPENSION),
+              'perte_classable': (M, None, "\n                    && !($s['cause'] === 'perte_du_vote_due' && self::config()->usage === Usage::DEMONSTRATION),", ",",
+                                  "✗ ⭐ en démonstration, la perte du vote due se classe"),
+              'erreur_contenue': (M, None, "        } catch (\\Throwable $e) {\n            if ($e instanceof LectureDansUneEcriture) {\n                throw $e;\n            }\n            error_log(sprintf('SelfModerate : retrait du vote",
+                                  "        } catch (\\Exception $e) {\n            if ($e instanceof LectureDansUneEcriture) {\n                throw $e;\n            }\n            error_log(sprintf('SelfModerate : retrait du vote", ERREUR),
+              'ban_ferme_perte': (M, None, "'reputation_zero', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum'",
+                                  "'reputation_zero', 'ban_en_attente', 'droit_de_vote_perdu', 'chute_sans_quorum'", ERREUR),
+          }[os.environ['CAS']]
+          s = open(fichier, encoding='utf-8').read()
+          debut, fin = 0, len(s)
+          if portee:
+              debut = s.index(portee)
+              suite = s.find('\n    public static function ', debut + 1)
+              fin = len(s) if suite < 0 else suite
+          zone = s[debut:fin]
+          assert zone.count(avant) == 1, 'plantation impossible'
+          open(fichier, 'w', encoding='utf-8').write(s[:debut] + zone.replace(avant, apres) + s[fin:])
+          print(attendu)
+          PY
+            ) || { cp /tmp/regimes.M.intact "$M"; cp /tmp/regimes.C.intact "$C"; echo "::error::la plantation « $cas » n'a pas pris — elle ne prouve rien"; echecs=$((echecs + 1)); continue; }
+            sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+            cp /tmp/regimes.M.intact "$M"
+            cp /tmp/regimes.C.intact "$C"
+            if [ "$rc" -eq 0 ]; then
+              echo "::error::le banc reste VERT avec la plantation « $cas »"; echecs=$((echecs + 1)); continue
+            fi
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
+              grep -E 'Fatal error|Uncaught' <<< "$sortie" | head -2 || true
+              echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir"; echecs=$((echecs + 1)); continue
+            fi
+            if ! grep -qF -- "$attendu" <<< "$sortie"; then
+              grep -E '✗' <<< "$sortie" | head -3 || true
+              echo "::error::rouge avec « $cas », mais pas sur ce qui la nomme : $attendu"; echecs=$((echecs + 1)); continue
+            fi
+            echo "✓ plantation « $cas » : le banc rougit, et sur ce qui la nomme"
+          done
+          cmp -s /tmp/regimes.M.intact "$M" || { echo "::error::$M n'a pas été restauré à l'identique"; exit 1; }
+          cmp -s /tmp/regimes.C.intact "$C" || { echo "::error::$C n'a pas été restauré à l'identique"; exit 1; }
+          [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
 
       - name: Garde-fou — premier administrateur et dernier administrateur
         run: |

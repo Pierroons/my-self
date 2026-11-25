@@ -45,6 +45,9 @@ switch ($action) {
             'prolonger' => Moderate::adminProlonger($pdo, $id, (int) $moi['id'], $motif, (int) ($body['secondes'] ?? 0)),
             'maintenir' => Moderate::adminMaintenir($pdo, $id, (int) $moi['id'], $motif, $vu),
             'classer'   => Moderate::adminClasser($pdo, $id, (int) $moi['id'], $motif, $vu),
+            // Sans durée, celle d'un ban d'arbitre.
+            'suspendre' => Moderate::adminSuspendreVote($pdo, $id, (int) $moi['id'], $motif, (int) ($body['secondes'] ?? 0) > 0 ? (int) $body['secondes'] : null),
+            'rendre'    => Moderate::adminRendreVote($pdo, $id, (int) $moi['id'], $motif),
             default     => ['ok' => false, 'message' => 'Opération inconnue.'],
         };
         json_out($r, $r['ok'] ? 200 : 400);

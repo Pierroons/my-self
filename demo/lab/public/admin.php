@@ -80,7 +80,7 @@ $causes = [
     'levee_en_attente' => 'meute reconnue avant la 0.9.0, levée du ban non inscrite : le journal l\'a refusée — la grâce rend les strikes, et remet tout le compte au départ',
     'ban_en_attente'  => 'réputation à zéro, ban automatique non inscrit : le journal l\'a refusé — le vote négatif suivant le retente',
     'droit_de_vote_perdu' => 'droit de vote perdu : réputation sous le seuil du vote',
-    'perte_du_vote_due' => 'droit de vote dû au retrait, que la machine n\'a pas fait : un arbitre décide',
+    'perte_du_vote_due' => 'droit de vote dû au retrait, que la machine n\'a pas fait : un arbitre décide — suspendre le vote, bannir, ou laisser la remontée le rendre',
     'ban_sans_fin'    => 'ban d\'arbitre sans fin en cours',
     'ban_auto'        => 'ban automatique en cours',
     'signal_anterieur' => 'signalement repris d\'une version antérieure, sans cause',
@@ -242,13 +242,15 @@ table.adm tr:last-child td{border-bottom:none}
       <tr><th colspan="5" style="text-align:left"><?= h($causes[$f['cause']] ?? $f['cause']) ?>
         <span class="muted">— <?= $affiches ?> <?= $affiches > 1 ? 'signaux' : 'signal' ?><?= $f['total_cause'] > $affiches ? ' affichés sur ' . (int) $f['total_cause'] . ', les plus anciens d\'abord' : '' ?></span></th></tr>
       <?php endif; ?>
-      <tr><td>@<?= h($f['username']) ?><?php if ($f['cause'] === 'chute_sans_quorum'): ?>
+      <tr><td>@<?= h($f['username']) ?><?php if (in_array($f['cause'], ['chute_sans_quorum', 'reputation_zero', 'perte_du_vote_due'], true)): ?>
             <br><span class="muted"><?= h($quorumEnClair(Moderate::compositionChute($pdo, (int) $f['account_id'], time()))) ?></span><?php endif; ?></td>
           <td><?= (int) $f['occurrences'] ?><?php if ($f['detections'] > $f['occurrences']): ?> <span class="muted">· <?= (int) $f['detections'] ?> détections</span><?php endif; ?></td>
           <td><?= h(date('d/m/Y H:i', $f['ouvert_le'])) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>
           <td style="white-space:nowrap">
-            <?php if ($f['cause'] !== 'journal_en_panne'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="classer" data-signal="<?= $f['signal'] ?>" data-det="<?= $f['detections'] ?>">📁 classer</button><?php endif; ?>
+            <?php // Ce que le moteur refuse de classer : la console ne l'offre pas.
+            if (!in_array($f['cause'], ['journal_en_panne', 'ban_en_attente'], true) && !($f['cause'] === 'perte_du_vote_due' && Moderate::config()->usage === \Pierroons\SelfModerate\Usage::DEMONSTRATION)): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="classer" data-signal="<?= $f['signal'] ?>" data-det="<?= $f['detections'] ?>">📁 classer</button><?php endif; ?>
+            <?php if ($f['cause'] === 'perte_du_vote_due'): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="suspendre">🔇 suspendre le vote</button><?php endif; ?>
             <button class="btn btn-ghost mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="ban">🔨 bannir</button>
             <button class="btn mini js-modaction" data-id="<?= $f['account_id'] ?>" data-op="pardon">✅ gracier</button>
           </td></tr>
@@ -266,12 +268,13 @@ table.adm tr:last-child td{border-bottom:none}
       <tr>
         <td><?= (int) $c['id'] ?></td>
         <td>@<?= h($c['username']) ?> <?php if ($c['is_admin']): ?><span class="tag-sm" style="color:var(--acc);border-color:var(--acc)">admin</span><?php endif; ?></td>
-        <td>★ <?= (int) ($c['reputation'] ?? Moderate::config()->reputationInitiale) ?><?php if ((int) $c['banned_until'] > time()): ?> <span class="tag-sm" style="color:var(--danger);border-color:var(--danger)">banni</span><?php endif; ?></td>
+        <td>★ <?= (int) ($c['reputation'] ?? Moderate::config()->reputationInitiale) ?><?php if ((int) $c['banned_until'] > time()): ?> <span class="tag-sm" style="color:var(--danger);border-color:var(--danger)">banni</span><?php endif; ?><?php if ((int) $c['vote_muted_until'] > time()): ?> <span class="tag-sm" title="jusqu'au <?= h(date('d/m/Y H:i', (int) $c['vote_muted_until'])) ?>">vote suspendu</span><?php endif; ?></td>
         <td><?= $dt((int) $c['created_at']) ?></td>
         <td><button class="btn btn-ghost mini js-voirprofil" data-id="<?= (int) $c['id'] ?>">👁 voir (mémo)</button>
             <div id="prof-<?= (int) $c['id'] ?>"></div></td>
         <td style="white-space:nowrap">
           <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $c['id'] ?>" data-op="ban">🔨 bannir</button>
+          <?php if ((int) $c['vote_muted_until'] > time()): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $c['id'] ?>" data-op="rendre">🔊 rendre le vote</button><?php else: ?><button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $c['id'] ?>" data-op="suspendre">🔇 suspendre le vote</button><?php endif; ?>
           <button class="btn mini js-modaction" data-id="<?= (int) $c['id'] ?>" data-op="pardon">✅ gracier</button>
         </td>
       </tr>
@@ -474,12 +477,20 @@ function modAction(id,op,vu){
     pardon:'Motif de la grâce — exigé avant le plancher de la peine, facultatif ensuite. La grâce remet le compte au départ, récidive comprise :',
     prolonger:'Motif du rallongement — pourquoi la peine s\'allonge :',
     maintenir:'Motif du maintien — pourquoi la peine continue :',
-    classer:'Motif du classement — pourquoi ce signalement n\'appelle aucun geste :'
+    classer:'Motif du classement — pourquoi ce signalement n\'appelle aucun geste :',
+    suspendre:'Motif de la suspension du vote — une phrase de 40 caractères au moins, inscrite au journal :',
+    rendre:'Motif du retour du vote — facultatif :'
   };
   // Le moteur juge la durée : une saisie illisible part à 0, et il la refuse.
   let secondes=0;
   if(op==='prolonger'){
     const minutes=prompt('Durée à ajouter à la peine, en minutes :','10');
+    if(minutes===null) return;
+    secondes=Math.round(parseFloat(minutes)*60)||0;
+  }
+  if(op==='suspendre'){
+    // Vide : la durée d'un ban d'arbitre.
+    const minutes=prompt('Durée de la suspension, en minutes (vide : celle d\'un ban d\'arbitre) :','');
     if(minutes===null) return;
     secondes=Math.round(parseFloat(minutes)*60)||0;
   }

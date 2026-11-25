@@ -22,9 +22,12 @@
  * attendrait un verrou que le moteur tient ; une implémentation lente retarde
  * d'autant les écritures concurrentes. Et le journal ne se défait pas avec la
  * base : aucun geste d'arbitre ne se fait donc dans la transaction d'un hôte,
- * et un vote n'y arme pas le ban automatique. Une clôture de peine ou une levée
- * pour meute faites là, puis défaites avec elle, se refont au passage suivant,
- * et s'inscrivent alors deux fois.
+ * et un vote n'y arme ni le ban ni le retrait du vote automatiques. Une clôture
+ * de peine faite là, puis défaite avec elle, se refait au passage suivant, et
+ * s'inscrit alors deux fois.
+ *
+ * Le retour du vote que la machine a retiré, en démonstration, ne s'inscrit
+ * pas : il revient avec la remontée, que rien ne date au journal.
  */
 
 declare(strict_types=1);
@@ -40,7 +43,8 @@ interface Journal
      *              `revue_classee` | `vote_retire` | `vote_rendu`
      *   compte     identifiant numérique du membre visé
      *   origine    `auto` (la machine, en démonstration) | `admin` (arbitre) ; null pour
-     *              un ban posé avant que l'origine ne soit enregistrée
+     *              un ban posé avant que l'origine ne soit enregistrée. Absente de
+     *              `grace` et de `revue_classee`, toujours d'un arbitre
      *   arbitre    nom du compte de l'arbitre au moment du geste, ou null quand
      *              c'est la machine
      *   arbitre_id identifiant de ce compte (`accounts.id`), celui que l'hôte a

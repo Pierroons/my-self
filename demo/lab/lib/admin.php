@@ -75,7 +75,8 @@ final class Admin
         $stmt = $pdo->prepare(
             'SELECT a.id, a.username, a.is_admin, a.created_at,
                     m.reputation AS reputation,
-                    COALESCE(m.banned_until, 0) AS banned_until
+                    COALESCE(m.banned_until, 0) AS banned_until,
+                    COALESCE(m.vote_muted_until, 0) AS vote_muted_until
                FROM accounts a
                LEFT JOIN member_moderation m ON m.account_id = a.id
               ORDER BY a.created_at DESC LIMIT ?'

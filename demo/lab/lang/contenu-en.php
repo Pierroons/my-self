@@ -328,8 +328,8 @@ return [
     'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
     'Ce ban n\'attend aucune revue : un signalement se classe.'
         => 'This ban awaits no review: a flag is closed instead.',
-    'Ce signal ne se classe pas : un ban automatique se maintient, une fin de peine ou un ban dû attend le journal.'
-        => 'This flag cannot be closed: an automatic ban is maintained, and a penalty end or a due ban waits for the journal.',
+    'Ce signal ne se classe pas : un ban automatique se maintient ; une fin de peine, un ban dû ou, en démonstration, une perte du vote due attendent le journal.'
+        => 'This flag cannot be closed: an automatic ban is maintained; a penalty end, a due ban or, in a demonstration, a due loss of the vote wait for the journal.',
     'Ce signalement a changé depuis ton affichage : recharge la console.'
         => 'This flag has changed since it was displayed: reload the console.',
     'Ce signalement n\'est plus ouvert : recharge la console.'

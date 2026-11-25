@@ -245,7 +245,7 @@ render_header(t('prf.title'), $account);
   <?php if ($rep['vote_muted']): ?>
     <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d96459;background:var(--elev);border-radius:0 6px 6px 0">
       <strong style="color:#d96459"><?= h(t('prf.mod.suspension.h')) ?></strong>
-      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.suspension'), date('d/m/Y', $rep['vote_muted_until']))) ?></p>
+      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.suspension'), date('d/m/Y H:i', $rep['vote_muted_until']))) ?></p>
     </div>
   <?php endif; ?>
 </div>

@@ -29,7 +29,7 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 
 **SelfRecover sans SelfModerate** est un joli tour de passe-passe de récupération de compte, mais pas une communauté. On peut récupérer son compte sans email, mais il n'y a pas de tissu pour la vie collective.
 
-**SelfModerate, avec ou sans SelfRecover**, reste de la modération par vote, et un vote ne vaut que ce que coûte un compte de plus. SelfRecover n'augmente pas ce coût : il retire l'email, une barrière faible, et ne prouve pas qu'une personne ne tient qu'un compte. Les freins sont dans SelfModerate : un compte neuf ne vote qu'après un délai — 24 h en service (`Config::prod()`), 2 min en démonstration (`Config::demo()`) — ou un premier message ; là où le moteur lit les messages privés, des comptes liés entre eux qui votent contre la même cible ne pèsent pas plus qu'un seul ; et une rafale de votes sans lien part en revue humaine.
+**SelfModerate, avec ou sans SelfRecover**, reste de la modération par vote, et un vote ne vaut que ce que coûte un compte de plus. SelfRecover n'augmente pas ce coût : il retire l'email, une barrière faible, et ne prouve pas qu'une personne ne tient qu'un compte. Les freins sont dans SelfModerate : un compte neuf ne vote qu'après un délai — 24 h en service (`Config::prod()`), 2 min en démonstration (`Config::demo()`) — ou un premier message ; là où le moteur lit les messages privés, des comptes liés entre eux qui votent contre la même cible ne font qu'une voix au quorum qui décide d'une sanction — leurs votes, eux, portent comme les autres ; et une rafale de votes sans lien part en revue humaine.
 
 **Ensemble** :
 
@@ -42,7 +42,7 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 ## Workflows croisés
 
 - **Nouveau membre arrive** → crée un compte avec un mot de récupération (SelfRecover). Zéro email. Pendant ce délai, SelfModerate ne le laisse voter que s'il a publié (période d'échauffement anti-Sybil).
-- **Comportement toxique signalé** → les membres votent (SelfModerate), sous les freins anti-Sybil décrits plus haut. Une réputation tombée à zéro bannit automatiquement si l'hébergeur a branché un journal ; sinon elle lève un drapeau, et aucun arbitre ne peut agir avant qu'un journal soit branché.
+- **Comportement toxique signalé** → les membres votent (SelfModerate), sous les freins anti-Sybil décrits plus haut. En démonstration, une réputation tombée à zéro bannit automatiquement si l'hébergeur a branché un journal ; en service, elle se signale à un arbitre, qui décide. Sans journal branché, rien ne bannit, et aucun arbitre ne peut agir.
 - **Mot de passe perdu** → le membre récupère son compte au niveau 1 ou 2 (SelfRecover), sans email et sans rien demander à personne. Le niveau 3 passe par un admin humain, qui lit le dossier.
 
 ---

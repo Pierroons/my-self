@@ -106,6 +106,25 @@ function quorumExigeEnService(): bool|string
     return construit([...$base, 'quorumAuxSeuils' => true]) && !construit([...$base, 'quorumAuxSeuils' => false]);
 }
 
+/**
+ * La plus longue remontée qui rend en démonstration un vote retiré au plancher : `perteDroitDeVoteSous`
+ * intervalles de convalescence, mesurés autour de `PALIER_DEMONSTRATION_MAX`.
+ */
+function retraitDemonstrationMax(): int|string
+{
+    $demo = jeu('demo');
+    if (is_string($demo)) {
+        return $demo;
+    }
+    $max = Config::PALIER_DEMONSTRATION_MAX;
+    $base = get_object_vars($demo);
+    $pas = intdiv($max, $base['perteDroitDeVoteSous']);
+    return construit([...$base, 'intervalleConvalescenceSecondes' => $pas])
+        && !construit([...$base, 'intervalleConvalescenceSecondes' => $pas + 1])
+        ? $max
+        : "aucune borne du retrait du vote à $max s en démonstration";
+}
+
 /** Le plus long palier qu'une démonstration accepte, mesuré autour de `PALIER_DEMONSTRATION_MAX`. */
 function palierDemonstrationMax(): int|string
 {
@@ -141,6 +160,7 @@ function applique(string $jeu, string $champ): mixed
         'quorumDuBan()'             => static fn (Config $c): int => $c->voixPourSanction($c->banA),
         'quorumExigeEnService()'    => static fn (): bool|string => quorumExigeEnService(),
         'palierDemonstrationMax()'  => static fn (): int|string => palierDemonstrationMax(),
+        'retraitDemonstrationMax()' => static fn (): int|string => retraitDemonstrationMax(),
     ];
     return match (true) {
         isset($deduites[$champ])     => $deduites[$champ]($config),
@@ -180,8 +200,8 @@ function ligneDeBorne(string $fichier, string $champ): array
 
 $h = 3600; $j = 86400;
 $bornesDuService = ['ageMinPourVoterSecondes', 'ageEtabliSecondes', 'fenetreSalveSecondes', 'arrondiFinBanSecondes',
-    'fenetreFarmingJours', 'ciblesParVotantMax', 'farmingDownvotesMax', 'farmingUpvotesMax', 'salveVotantsMin',
-    'messagesPourVoterAvantAge'];
+    'fenetreFarmingJours', 'fenetreMeuteJours', 'ciblesParVotantMax', 'farmingDownvotesMax', 'farmingUpvotesMax',
+    'salveVotantsMin', 'messagesPourVoterAvantAge'];
 
 // [fichier, phrase, lecture] — `lecture` rend, depuis les captures, les valeurs
 // promises sous la forme [champ, jeu, valeur].
@@ -196,7 +216,7 @@ $porteurs = [
         fn ($m) => [...deuxJeux('perteDroitDeVoteSous', (int) $m[1]), ...deuxJeux('sortieConvalescence()', (int) $m[2])]],
     ['README.fr.md', '/Conditionner la remontée à « score < (\d+) » l\'arrête pile au seuil qui rend le droit de vote/u',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
-    ['README.fr.md', '/^- Score < (\d+) → \*\*perte du droit de vote\*\* : la machine le retire en démonstration, et l\'inscrit au journal \(`vote_retire`\) ; en service, elle signale la perte due à l\'arbitre/mu',
+    ['README.fr.md', '/^- Score < (\d+) → \*\*perte du droit de vote\*\* : la machine le retire en démonstration, l\'inscrit au journal \(`vote_retire`\), et la remontée le rend en une heure de calme au plus ; en service, elle signale la perte due à l\'arbitre/mu',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
     ['README.fr.md', '/^- Score = (\d+) → \*\*ban temporaire, gradué\*\* : (\d+) → (\d+) → (\d+) min en démonstration \(`Config::demo\(\)`\)\. Le dernier palier/mu',
         fn ($m) => [...deuxJeux('banA', (int) $m[1]),
@@ -246,7 +266,7 @@ $porteurs = [
         fn ($m) => [...deuxJeux('perteDroitDeVoteSous', (int) $m[1]), ...deuxJeux('sortieConvalescence()', (int) $m[2])]],
     ['README.md', '/Gating recovery on "score < (\d+)" stops it exactly at the threshold that restores voting rights/u',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
-    ['README.md', '/^- Score < (\d+) → \*\*loss of voting rights\*\*: the machine removes it in demonstration, and records it in the journal \(`vote_retire`\); in service, it flags the loss as due to the arbiter/mu',
+    ['README.md', '/^- Score < (\d+) → \*\*loss of voting rights\*\*: the machine removes it in demonstration, records it in the journal \(`vote_retire`\), and the recovery gives it back within one quiet hour at most; in service, it flags the loss as due to the arbiter/mu',
         fn ($m) => deuxJeux('perteDroitDeVoteSous', (int) $m[1])],
     ['README.md', '/^- Score = (\d+) → \*\*temporary ban, graduated\*\*: (\d+) → (\d+) → (\d+) min in demonstration \(`Config::demo\(\)`\)\. The last tier/mu',
         fn ($m) => [...deuxJeux('banA', (int) $m[1]),
@@ -310,6 +330,10 @@ $porteurs = [
         fn ($m) => [['palierDemonstrationMax()', 'demo', $m[1] * $h]]],
     ['README.md', '/A `dureesBan` tier there lasts \*\*(\d+) hour\*\* at most\s+\(`Config::PALIER_DEMONSTRATION_MAX`\)/u',
         fn ($m) => [['palierDemonstrationMax()', 'demo', $m[1] * $h]]],
+    ['README.fr.md', '/`perteDroitDeVoteSous`\s+intervalles de convalescence y tiennent en \*\*(\d+) h\*\* au plus/u',
+        fn ($m) => [['retraitDemonstrationMax()', 'demo', $m[1] * $h]]],
+    ['README.md', '/`perteDroitDeVoteSous` recovery intervals\s+fit in \*\*(\d+) hour\*\* at most there/u',
+        fn ($m) => [['retraitDemonstrationMax()', 'demo', $m[1] * $h]]],
     ['README.fr.md', '/^\| `quorumAuxSeuils` \| [^|\n]+ \| \*\*(toujours actif|éteignable)\*\* \|$/mu',
         fn ($m) => [['quorumExigeEnService()', 'prod', $m[1] === 'toujours actif']]],
     ['README.md', '/^\| `quorumAuxSeuils` \| [^|\n]+ \| \*\*(always on|can be turned off)\*\* \|$/mu',
