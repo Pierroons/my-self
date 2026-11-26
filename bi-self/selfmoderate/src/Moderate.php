@@ -807,7 +807,17 @@ class Moderate
     /** Anti-Sybil + sanctions : ce membre peut-il voter ? Retourne [bool, raison]. */
     public static function canVote(PDO $pdo, int $accountId): array
     {
-        $rep = self::getReputation($pdo, $accountId);
+        return self::droitDeVote($pdo, $accountId, self::getReputation($pdo, $accountId));
+    }
+
+    /**
+     * Le droit de vote d'un compte dont l'état est `$rep` : lu par `getReputation()`
+     * pour une page, par `etat()` sous le verrou du vote.
+     *
+     * @return array{0: bool, 1: string}
+     */
+    private static function droitDeVote(PDO $pdo, int $accountId, array $rep): array
+    {
         if ($rep['banned']) {
             return [false, self::estSansFin($rep['banned_until'])
                 ? static::t('Compte banni sans fin.')
@@ -944,8 +954,9 @@ class Moderate
             $id = $stmt->fetchColumn();
             return $id === false ? null : (int) $id;
         }
-        // post → auteur du post
-        $stmt = $pdo->prepare('SELECT account_id FROM posts WHERE id = ?');
+        // L'auteur d'un message, s'il est un compte : un auteur absent d'`accounts`
+        // ne paraît dans aucune liste de l'arbitre, et aucun geste ne l'atteint.
+        $stmt = $pdo->prepare('SELECT p.account_id FROM posts p JOIN accounts a ON a.id = p.account_id WHERE p.id = ?');
         $stmt->execute([$targetId]);
         $id = $stmt->fetchColumn();
         return $id === false ? null : (int) $id;
@@ -965,12 +976,60 @@ class Moderate
         int $value,
         ?string $reason,
         ?string $reasonCode,
-        string $raison
+        string $raison,
+        ?int $creeLe
     ): void {
         $pdo->prepare(
-            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $raison, self::maintenant()]);
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, voter_created_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?, ?)'
+        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $raison, $creeLe, self::maintenant()]);
+    }
+
+    /**
+     * La date de création d'un compte, telle que `accounts` la porte : un entier, ou
+     * null si elle n'en est pas un. Le vote la garde (`voter_created_at`) : sa
+     * classe, récent ou établi, ne dépend plus d'un compte qui disparaît ensuite.
+     */
+    private static function creeLe(PDO $pdo, int $accountId): ?int
+    {
+        $stmt = $pdo->prepare('SELECT created_at FROM accounts WHERE id = ?');
+        $stmt->execute([$accountId]);
+        $cree = $stmt->fetchColumn();
+        $stmt->closeCursor();
+
+        return is_int($cree) || (is_string($cree) && ctype_digit($cree)) ? (int) $cree : null;
+    }
+
+    /**
+     * Un compte créé à `$creeLe` est-il établi à l'instant `$t`
+     * (`ageEtabliSecondes`) ? Une date absente, nulle, négative ou à venir n'établit
+     * personne : une date aberrante ne donne jamais plus de poids.
+     */
+    private static function etabli(?int $creeLe, int $t): bool
+    {
+        return $creeLe !== null && $creeLe > 0 && $creeLe <= $t && $t - $creeLe >= self::config()->ageEtabliSecondes;
+    }
+
+    /**
+     * La condition SQL « ce vote est d'un compte récent », sur l'alias `v` de
+     * `mod_votes` : la date que le vote a gardée, comparée à l'instant du vote, la
+     * même règle qu'`etabli()`. Le seuil est interpolé, pas lié : comparée à un
+     * paramètre arrivé en TEXT, une expression sans affinité serait toujours plus
+     * petite sous SQLite.
+     */
+    private static function recentEnSql(): string
+    {
+        $age = self::config()->ageEtabliSecondes;
+
+        return $age === 0
+            ? '0'
+            : '(NOT (COALESCE(v.voter_created_at, 0) > 0 AND v.voter_created_at <= v.created_at AND v.created_at - v.voter_created_at >= ' . $age . '))';
+    }
+
+    /** Ce que rend un vote compté, et tout vote que les votes des autres font tomber. */
+    private static function voteEnregistre(): array
+    {
+        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote enregistré.')];
     }
 
     /**
@@ -987,10 +1046,19 @@ class Moderate
      * la détection en tire tiennent dans une transaction — celle du moteur,
      * ouverte s'il n'y en a pas, ou un point de reprise dans celle de l'hôte,
      * qui reste maître de la sienne. Ce qui refuse sans rien écrire se décide
-     * avant : paramètres, droit de vote, motif, cible — sauf dans la transaction
-     * d'un hôte, où le rattrapage du votant prend d'abord le verrou d'écriture,
-     * refus compris — sauf celui de paramètres invalides —, et l'hôte le garde
-     * jusqu'à sa fin (`rattraperSeul()`).
+     * avant : paramètres, motif, droit de vote, cible — sauf dans la transaction
+     * d'un hôte, où le rattrapage du votant prend le verrou d'écriture avant le
+     * droit de vote et la cible, et l'hôte le garde jusqu'à sa fin
+     * (`rattraperSeul()`) ; un refus de paramètres ou de motif ne le prend pas. Le
+     * droit de vote se relit sous le verrou du vote : un ban ou une suspension
+     * posés entre-temps refusent le vote.
+     *
+     * `blocked` dit qu'un vote est neutralisé pour l'excès de son votant — trop de
+     * votes vers un même membre, ou contre trop de membres —, et le message le lui
+     * dit. Un vote que les votes des autres font tomber (un croisement, une trêve,
+     * la part pleine des comptes récents) rend ce que rend un vote compté : le
+     * dire apprendrait au votant ces votes-là. L'arbitre les lit dans
+     * `blockedVotes()`.
      *
      * Le journal s'écrit hors de la base, avant elle : une validation qui
      * échoue après lui laisse une entrée sans effet, jamais une peine sans
@@ -1138,9 +1206,9 @@ class Moderate
     }
 
     /**
-     * La colonne de la 0.9.0 que le moteur écrit au solde d'une chute : absente,
-     * l'écriture qui la touche échoue après l'acte qu'elle a déjà inscrit au
-     * journal, et chaque essai en ajoute un. Vérifiée une fois par connexion, sous
+     * Les colonnes de la 0.9.0 que le moteur écrit — au solde d'une chute, et la
+     * date de création que garde un vote : absente, l'écriture qui la touche échoue
+     * après l'acte qu'elle a déjà inscrit au journal, et chaque essai en ajoute un. Vérifiée une fois par connexion, sous
      * le verrou de la première écriture — une lecture avant lui ferait refuser
      * aussitôt la transaction différée d'un hôte quand un autre écrit — et à la
      * première lecture des voix d'une chute.
@@ -1151,15 +1219,20 @@ class Moderate
         if (isset(self::$schemaVerifie[$pdo])) {
             return;
         }
-        try {
-            $lu = $pdo->query('SELECT chute_soldee_le FROM member_moderation LIMIT 0');
-        } catch (\PDOException) {
-            $lu = false;
+        foreach ([
+            ['member_moderation', 'chute_soldee_le', 'ALTER TABLE member_moderation ADD COLUMN chute_soldee_le INTEGER NOT NULL DEFAULT 0'],
+            ['mod_votes', 'voter_created_at', 'ALTER TABLE mod_votes ADD COLUMN voter_created_at INTEGER'],
+        ] as [$table, $colonne, $ajout]) {
+            try {
+                $lu = $pdo->query("SELECT $colonne FROM $table LIMIT 0");
+            } catch (\PDOException) {
+                $lu = false;
+            }
+            if ($lu === false) {
+                throw new \LogicException(sprintf('SelfModerate : la base n\'a pas la colonne « %s.%s » — la note de montée vers la 0.9.0 (README) l\'ajoute : %s.', $table, $colonne, $ajout));
+            }
+            $lu->closeCursor();
         }
-        if ($lu === false) {
-            throw new \LogicException('SelfModerate : la base n\'a pas la colonne « member_moderation.chute_soldee_le » — la note de montée vers la 0.9.0 (README) l\'ajoute : ALTER TABLE member_moderation ADD COLUMN chute_soldee_le INTEGER NOT NULL DEFAULT 0.');
-        }
-        $lu->closeCursor();
         self::$schemaVerifie[$pdo] = true;
     }
 
@@ -1193,25 +1266,9 @@ class Moderate
             return null;
         }
 
-        self::rattraperSeul($pdo, $voterId);
-        [$can, $why] = self::canVote($pdo, $voterId);
-        if (!$can) {
-            $refus = ['ok' => false, 'message' => $why];
-
-            return null;
-        }
-        // Seul l'état inscrit autorise une écriture : une page montre la peine
-        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
-        // fin, le compte ne vote pas — et il sait pourquoi. La page ne le dit pas
-        // d'avance : seul un essai sait si le journal est revenu.
-        if (self::getReputation($pdo, $voterId)['fin_en_attente']) {
-            $refus = ['ok' => false, 'message' => static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
-
-            return null;
-        }
-
         // 🔑 Le MOTIF se valide AVANT que la cible soit résolue, et c'est une
-        // mesure de sûreté, pas de style.
+        // mesure de sûreté, pas de style. Il se valide aussi avant le rattrapage du
+        // votant : un refus qui ne lit rien ne prend pas le verrou d'écriture.
         //
         // Dans l'ordre inverse — celui d'avant —, un `target_id` nu suffisait à
         // distinguer l'existant de l'inexistant : la cible introuvable rendait
@@ -1221,8 +1278,8 @@ class Moderate
         // internes se balayait en boucle, gratuitement**, y compris les comptes
         // qui n'ont jamais publié et qu'aucune autre route ne montre.
         //
-        // Les trois autres refus ci-dessous ne divulguent rien sur un tiers — son
-        // propre identifiant, et un vote qu'on sait avoir déposé —, donc ils
+        // Les autres refus ci-dessous ne divulguent rien sur un tiers — son propre
+        // état, son propre identifiant, un vote qu'on sait avoir déposé —, donc ils
         // gardent leur message : un refus indistinct aurait coûté de
         // l'intelligibilité sans fermer quoi que ce soit de plus.
         //
@@ -1250,6 +1307,23 @@ class Moderate
             return null;
         }
 
+        self::rattraperSeul($pdo, $voterId);
+        [$can, $why] = self::canVote($pdo, $voterId);
+        if (!$can) {
+            $refus = ['ok' => false, 'message' => $why];
+
+            return null;
+        }
+        // Seul l'état inscrit autorise une écriture : une page montre la peine
+        // finie à son échéance, mais tant que le journal refuse d'en inscrire la
+        // fin, le compte ne vote pas — et il sait pourquoi. La page ne le dit pas
+        // d'avance : seul un essai sait si le journal est revenu.
+        if (self::getReputation($pdo, $voterId)['fin_en_attente']) {
+            $refus = ['ok' => false, 'message' => static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
+
+            return null;
+        }
+
         $author = self::resolveAuthor($pdo, $targetType, $targetId);
         if ($author === null) {
             $refus = ['ok' => false, 'message' => static::t('Cible introuvable.')];
@@ -1270,8 +1344,9 @@ class Moderate
      * Le votant est-il récent, et la part des comptes récents sur cet auteur
      * est-elle déjà pleine dans le sens de son vote ?
      *
-     * Un compte est récent au moment de SON vote (`ageEtabliSecondes`) : un vote
-     * reste dans la part quand son auteur vieillit, jusqu'à sortir de la fenêtre.
+     * Un compte est récent au moment de SON vote (`ageEtabliSecondes`), d'après la
+     * date de création que le vote garde : un vote reste dans la part quand son
+     * auteur vieillit, jusqu'à sortir de la fenêtre, et quand il disparaît.
      * La part se lit en solde net de ce que les votes qui portent ont déplacé
      * (`effet`) : un vote puis son contraire, ou un vote que la cible fait tomber en
      * le croisant, la laissent libre — la cible ne la remplit pas à vide avec ses
@@ -1285,17 +1360,9 @@ class Moderate
      * plancher. Lue sous le verrou du vote, sans la dispense par message de
      * `canVote()`.
      */
-    private static function partDesRecentsPleine(PDO $pdo, int $voterId, int $author, int $value): bool
+    private static function partDesRecentsPleine(PDO $pdo, ?int $creeLe, int $author, int $value): bool
     {
-        $ageEtabli = self::config()->ageEtabliSecondes;
-        if ($ageEtabli === 0) {
-            return false;
-        }
-        $stmt = $pdo->prepare('SELECT created_at FROM accounts WHERE id = ?');
-        $stmt->execute([$voterId]);
-        $cree = (int) $stmt->fetchColumn();
-        $stmt->closeCursor();
-        if (self::maintenant() - $cree >= $ageEtabli) {
+        if (self::config()->ageEtabliSecondes === 0 || self::etabli($creeLe, self::maintenant())) {
             return false;
         }
         // Le seuil est interpolé, pas lié : comparée à un paramètre arrivé en TEXT,
@@ -1310,9 +1377,8 @@ class Moderate
         $stmt = $pdo->prepare(
             'SELECT COALESCE(SUM(CASE WHEN v.effet = 0 THEN (CASE WHEN ' . $aLaBorne . ' AND v.value = ' . $sens . ' AND v.created_at > ' . $soldee . ' THEN v.value ELSE 0 END)
                                       ELSE COALESCE(v.effet, v.value) END), 0)
-               FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
-              WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ?
-                AND v.created_at - a.created_at < ' . $ageEtabli
+               FROM mod_votes v
+              WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ? AND ' . self::recentEnSql()
         );
         $stmt->execute([$author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
         $solde = (int) $stmt->fetchColumn();
@@ -1333,6 +1399,19 @@ class Moderate
         ?string $reason,
         ?string $reasonCode
     ): array {
+        // Le droit de vote se relit sous le verrou : lu avant la transaction, il
+        // laisserait passer le vote d'un compte qu'un arbitre bannit ou suspend
+        // entre-temps.
+        $etatVotant = self::etat($pdo, $voterId);
+        [$can, $why] = self::droitDeVote($pdo, $voterId, $etatVotant);
+        if (!$can) {
+            return ['ok' => false, 'message' => $why];
+        }
+        if ($etatVotant['fin_en_attente']) {
+            return ['ok' => false, 'message' => static::t('La fin de ta peine attend que le journal l\'inscrive : ton vote reprendra dès qu\'elle le sera.')];
+        }
+        $creeLe = self::creeLe($pdo, $voterId);
+
         // Double vote ?
         $stmt = $pdo->prepare('SELECT id FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?');
         $stmt->execute([$voterId, $targetType, $targetId]);
@@ -1347,7 +1426,7 @@ class Moderate
             );
             $stmt->execute([$voterId, $author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
-                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming');
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming', $creeLe);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'upvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).')];
             }
@@ -1362,7 +1441,7 @@ class Moderate
             );
             $stmt->execute([$voterId, $author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
-                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming');
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming', $creeLe);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'downvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).')];
             }
@@ -1371,19 +1450,24 @@ class Moderate
         // Un votant ne vise pas tout le forum : le plafond anti-farming le borne
         // par cible, celui-ci par nombre de cibles. Au-delà, un downvote vers un
         // membre de plus est neutralisé, et le votant est signalé à l'arbitre.
-        if ($value === -1) {
+        // Seules comptent les cibles établies au moment du vote : des comptes neufs
+        // qui provoquent un défenseur n'épuisent pas son plafond, et un compte neuf
+        // n'y est pas soumis.
+        if ($value === -1 && self::etabli(self::creeLe($pdo, $author), self::maintenant())) {
+            $etablie = 'COALESCE(a.created_at, 0) > 0 AND v.created_at - a.created_at >= ' . self::config()->ageEtabliSecondes;
             $stmt = $pdo->prepare(
-                'SELECT COUNT(DISTINCT target_author) AS cibles, MAX(target_author = ?) AS deja
-                   FROM mod_votes WHERE voter_id = ? AND value = -1 AND ' . self::VOTE_AU_PLAFOND . ' AND created_at >= ?'
+                'SELECT COUNT(DISTINCT CASE WHEN ' . $etablie . ' THEN v.target_author END) AS cibles, MAX(v.target_author = ?) AS deja
+                   FROM mod_votes v LEFT JOIN accounts a ON a.id = v.target_author
+                  WHERE v.voter_id = ? AND v.value = -1 AND ' . self::VOTE_AU_PLAFOND . ' AND v.created_at >= ?'
             );
             $stmt->execute([$author, $voterId, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);
             $portee = $stmt->fetch();
             if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {
-                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant');
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant', $creeLe);
                 self::signaler($pdo, $voterId, 'votant_etendu');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'plafond_votant',
                         'message' => sprintf(
-                            static::t('Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'),
+                            static::t('Vote enregistré mais neutralisé : tu as déjà voté contre %d membres établis différents ces %d derniers jours.'),
                             self::config()->ciblesParVotantMax,
                             self::config()->fenetreFarmingJours
                         )];
@@ -1393,29 +1477,28 @@ class Moderate
         // Les comptes récents, ensemble, ne pèsent pas plus qu'un membre seul sur un
         // même auteur (`partDesRecentsPleine()`). Avant le croisement : un vote qui
         // ne pèse pas ne fait tomber personne et n'ouvre aucune trêve.
-        if (self::partDesRecentsPleine($pdo, $voterId, $author, $value)) {
-            self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'comptes_recents');
+        if (self::partDesRecentsPleine($pdo, $creeLe, $author, $value)) {
+            self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'comptes_recents', $creeLe);
             self::signaler($pdo, $author, 'comptes_recents');
-            // Le message est celui d'un vote compté : la part se remplit des votes
+            // Le retour est celui d'un vote compté : la part se remplit des votes
             // d'autres comptes, et la dire pleine leur apprendrait ces votes.
-            return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'comptes_recents', 'message' => static::t('Vote enregistré.')];
+            return self::voteEnregistre();
         }
 
         // Deux membres qui votent l'un contre l'autre se croisent : les deux votes
-        // tombent, dans cette transaction (`croiser()`). Le message est celui d'un
-        // vote compté ; `blocked` et sa raison sont pour l'hôte, dont la route ne
-        // les rend pas au votant. Sous le seuil du vote, plus de croisement : une
-        // cible que le quorum laisse voter effacerait sinon chacun de ses critiques
-        // avant qu'il fasse une voix.
+        // tombent, dans cette transaction (`croiser()`). Le retour est celui d'un
+        // vote compté : il apprendrait au votant le vote de l'autre. Sous le seuil
+        // du vote, plus de croisement : une cible que le quorum laisse voter
+        // effacerait sinon chacun de ses critiques avant qu'il fasse une voix.
         $seuil = self::config()->perteDroitDeVoteSous;
         if ($value === -1 && self::etat($pdo, $voterId)['reputation'] >= $seuil && self::etat($pdo, $author)['reputation'] >= $seuil) {
             $croise = self::croiser($pdo, $voterId, $author);
             if ($croise !== null) {
-                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $croise);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $croise, $creeLe);
                 // Tombé, le vote a été émis : il peut compléter une salve, et la
                 // détection passe comme au vote compté.
                 self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
-                return ['ok' => true, 'blocked' => true, 'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')];
+                return self::voteEnregistre();
             }
         }
 
@@ -1425,9 +1508,9 @@ class Moderate
         $rep = self::etat($pdo, $author);
         $newRep = max(self::config()->banA, min(self::config()->reputationMax, $rep['reputation'] + $value));
         $pdo->prepare(
-            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $newRep - $rep['reputation'], self::maintenant()]);
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, voter_created_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $newRep - $rep['reputation'], $creeLe, self::maintenant()]);
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, updated_at = ? WHERE account_id = ?')
             ->execute([$newRep, self::maintenant(), $author]);
         // Le ban dû qui attend le journal vit avec la chute au plancher : un vote de
@@ -1445,7 +1528,7 @@ class Moderate
             self::enforceThresholds($pdo, $author, $newRep, $rep['reputation']);
         }
 
-        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote enregistré.')];
+        return self::voteEnregistre();
     }
 
     /**
@@ -2886,22 +2969,22 @@ class Moderate
      * dans un ordre d'arrivée se remplirait des comptes de la cible. Un vote suivi
      * de son contraire ne fait pas de votant, et un vote d'avant la colonne
      * `effet` (NULL) n'en fait pas non plus. `recent` dit qu'un votant n'a émis que
-     * des votes négatifs de compte récent (`ageEtabliSecondes`) ; `premier` et
-     * `dernier` sont ses votes négatifs extrêmes.
+     * des votes négatifs de compte récent (`ageEtabliSecondes`), d'après la date de
+     * création que chaque vote a gardée (`voter_created_at`) : un compte supprimé
+     * ensuite garde sa classe, et un vote sans date compte comme récent. `cree_le`
+     * est cette date, `premier` et `dernier` ses votes négatifs extrêmes.
      *
-     * @return list<array{voter_id: int|string, cree_le: int|string, recent: int|string, premier: int|string, dernier: int|string}>
+     * @return list<array{voter_id: int|string, cree_le: int|string|null, recent: int|string, premier: int|string, dernier: int|string}>
      */
     private static function votantsDeLaChute(PDO $pdo, int $cible, int $t): array
     {
         [$depuis, $jusqua, $soldee] = self::fenetreDesVoix($pdo, $cible, $t);
-        // Le seuil est interpolé, pas lié : comparée à un paramètre PDO (TEXT),
-        // une expression sans affinité est toujours la plus petite sous SQLite.
         $stmt = $pdo->prepare(
-            'SELECT v.voter_id, a.created_at AS cree_le,
-                    MIN(CASE WHEN v.value = -1 THEN v.created_at - a.created_at < ' . self::config()->ageEtabliSecondes . ' END) AS recent,
+            'SELECT v.voter_id, MAX(v.voter_created_at) AS cree_le,
+                    MIN(CASE WHEN v.value = -1 THEN ' . self::recentEnSql() . ' END) AS recent,
                     MIN(CASE WHEN v.value = -1 THEN v.created_at END) AS premier,
                     MAX(CASE WHEN v.value = -1 THEN v.created_at END) AS dernier
-               FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
+               FROM mod_votes v
               WHERE v.target_author = ? AND v.blocked = 0 AND v.effet IS NOT NULL AND v.created_at BETWEEN ? AND ?
                 AND (v.created_at > ? OR v.effet <> 0)
            GROUP BY v.voter_id
@@ -3480,6 +3563,22 @@ class Moderate
     }
 
     /**
+     * Les comptes qui ont reçu au moins un vote qui a porté (`votesRecus()`), par
+     * ordre d'identifiant : ceux dont `reasonsFor()` peut rendre des motifs. Un
+     * relevé de l'hôte qui parcourt les comptes votés part d'ici — filtrer
+     * `blocked = 0` lui-même perdrait ceux dont les seuls votes reçus ont été
+     * croisés après avoir compté.
+     *
+     * @return list<int>
+     */
+    public static function comptesAvecVotesRecus(PDO $pdo): array
+    {
+        return array_map('intval', $pdo->query(
+            'SELECT DISTINCT target_author FROM mod_votes WHERE ' . self::VOTE_RECU . ' ORDER BY target_author'
+        )->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    /**
      * Les motifs qu'un membre a reçus. Le protocole veut qu'il voie les raisons
      * sans voir qui a voté : aucune colonne de votant ne sort d'ici.
      *
@@ -3501,35 +3600,34 @@ class Moderate
         // dirait à sa cible lequel venait de l'autre. Une riposte ou un vote de
         // trêve n'ont jamais porté, et ne se montrent pas (`VOTE_RECU`).
         $recus = "FROM mod_votes WHERE target_author = ? AND " . self::VOTE_RECU . " AND reason IS NOT NULL AND reason <> ''";
-        // Sous ce nombre de votants, un motif peut désigner son auteur : rien n'est rendu.
-        if (self::config()->motifsVotantsMin > 1) {
-            $votants = $pdo->prepare("SELECT COUNT(DISTINCT voter_id) $recus");
-            $votants->execute([$accountId]);
-            $assez = (int) $votants->fetchColumn() >= self::config()->motifsVotantsMin;
-            $votants->closeCursor();
-            if (!$assez) {
-                return [];
-            }
-        }
         $borne = $pdo->prepare("SELECT created_at $recus ORDER BY created_at DESC LIMIT 1 OFFSET ?");
         $borne->bindValue(1, $accountId, PDO::PARAM_INT);
         $borne->bindValue(2, max(0, $limit - 1), PDO::PARAM_INT);
         $borne->execute();
         $dernierLu = $borne->fetchColumn();
         $borne->closeCursor();
-        $stmt = $pdo->prepare("SELECT value, reason, reason_code, created_at $recus AND created_at >= ?");
+        $stmt = $pdo->prepare("SELECT voter_id, value, reason, reason_code, created_at $recus AND created_at >= ?");
         $stmt->bindValue(1, $accountId, PDO::PARAM_INT);
         $stmt->bindValue(2, $dernierLu === false ? 0 : (int) strtotime(date('Y-m-d', (int) $dernierLu)), PDO::PARAM_INT);
         $stmt->execute();
-        $motifs = array_map(static fn (array $v): array => [
+        $lus = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        usort($lus, static fn (array $a, array $b): int => [date('Y-m-d', (int) $b['created_at']), $a['reason']] <=> [date('Y-m-d', (int) $a['created_at']), $b['reason']]);
+        $lus = array_slice($lus, 0, $limit);
+        // Sous ce nombre de votants dans un sens, parmi les motifs rendus, un motif de
+        // ce sens peut désigner son auteur : le sens ne se rend pas.
+        $votants = [-1 => [], 1 => []];
+        foreach ($lus as $v) {
+            $votants[(int) $v['value'] < 0 ? -1 : 1][(int) $v['voter_id']] = true;
+        }
+        $rendus = array_filter($lus, static fn (array $v): bool =>
+            count($votants[(int) $v['value'] < 0 ? -1 : 1]) >= self::config()->motifsVotantsMin);
+
+        return array_values(array_map(static fn (array $v): array => [
             'value'       => $v['value'],
             'reason'      => $v['reason'],
             'reason_code' => $v['reason_code'],
             'jour'        => date('Y-m-d', (int) $v['created_at']),
-        ], $stmt->fetchAll(PDO::FETCH_ASSOC));
-        usort($motifs, static fn (array $a, array $b): int => [$b['jour'], $a['reason']] <=> [$a['jour'], $b['reason']]);
-
-        return array_slice($motifs, 0, $limit);
+        ], $rendus));
     }
 
     /**
@@ -4468,7 +4566,10 @@ class Moderate
     public static function compositionChute(PDO $pdo, int $accountId, int $debut): array
     {
         $votants = self::votantsDeLaChute($pdo, $accountId, $debut);
-        $ages = array_map(static fn (array $v): int => intdiv(max(0, $debut - (int) $v['cree_le']), 86400), $votants);
+        // Une date absente ou nulle se lit à zéro jour, comme une date à venir.
+        $ages = array_map(static fn (array $v): int => $v['cree_le'] === null || (int) $v['cree_le'] <= 0
+            ? 0
+            : intdiv(max(0, $debut - (int) $v['cree_le']), 86400), $votants);
         sort($ages);
         $quorum = self::voixDeLaChute($pdo, $accountId, $debut, self::config()->voixPourSanction(self::config()->banA));
 

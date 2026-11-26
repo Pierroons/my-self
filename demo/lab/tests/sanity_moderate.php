@@ -209,6 +209,33 @@ function voteBrut(PDO $pdo, int $votant, int $post, int $auteur): void
         'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
          VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)'
     )->execute([$votant, 'post', $post, $auteur, motif(), 'agressif', time()]);
+    datesDesVotants($pdo);
+}
+
+/**
+ * La date de création que garde chaque vote, reprise du compte pour les votes
+ * que le banc inscrit à la main — ce que la note de montée fait sur une base
+ * d'avant la colonne. Un vote sans elle compterait comme celui d'un compte récent.
+ */
+function datesDesVotants(PDO $pdo): void
+{
+    $pdo->exec('UPDATE mod_votes SET voter_created_at = (SELECT a.created_at FROM accounts a WHERE a.id = mod_votes.voter_id) WHERE voter_created_at IS NULL');
+}
+
+/**
+ * Ce qu'est devenu le dernier vote inscrit, lu en base : `porte`, ou la raison qui
+ * l'a neutralisé. Un vote que les votes des autres font tomber rend ce que rend un
+ * vote compté : seule la base le distingue. Un refus se lit dans la réponse. À
+ * lire juste après le vote.
+ */
+function sortDuVote(PDO $pdo, array $reponse): string
+{
+    if (!($reponse['ok'] ?? false)) {
+        return 'refus : ' . ($reponse['message'] ?? '');
+    }
+    $v = $pdo->query('SELECT blocked, blocked_reason FROM mod_votes ORDER BY id DESC LIMIT 1')->fetch();
+
+    return $v === false ? 'aucun' : ((int) $v['blocked'] ? (string) $v['blocked_reason'] : 'porte');
 }
 
 /**
@@ -666,6 +693,7 @@ foreach ($poses as $k => $texte) {
          VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)'
     )->execute([membre($pdo, "date-motif-$k"), 'post', $postDate, $recoit, $texte, 'hors_sujet', $midi + 60 * $k]);
 }
+datesDesVotants($pdo);
 $datesRecues = Moderate::reasonsFor($pdo, $recoit);
 $colonnesRecues = $datesRecues ? array_keys($datesRecues[0]) : [];
 sort($colonnesRecues);
@@ -1224,19 +1252,25 @@ $pendant['banned'] && $pendant['review_reason'] === 'salve_rapide'
 // de ces comptes, et en combien de temps. Un soutien qui a voté pour le compte
 // n'a rien retiré, et un vote d'il y a deux cents jours sort de la fenêtre des
 // voix : ni l'un ni l'autre n'en fait partie.
+// L'horloge est figée pendant la chute : trois votes à l'heure réelle peuvent passer une
+// seconde, et l'étalement mesuré la compterait.
+$tE = time();
+Moderate::setHorloge(static fn (): int => $tE);
 $espacee = membre($pdo, 'chute-espacee');
 poserReputation($pdo, $espacee, 2);
 Moderate::applyVote($pdo, membre($pdo, 'soutien-ancien'), 'member', $espacee, 1);
 $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, effet, created_at)
                VALUES (?, ?, ?, ?, -1, ?, -1, ?)')
     ->execute([membre($pdo, 'votant-d-il-y-a-200-jours'), 'member', $espacee, $espacee, motif(), time() - 200 * 86400]);
+datesDesVotants($pdo);
 foreach ([['jeune-1', 2], ['jeune-2', 2], ['ancien-1', 30]] as [$nom, $jours]) {
     $votantE = membre($pdo, $nom);
-    $pdo->prepare('UPDATE accounts SET created_at = ? WHERE id = ?')->execute([time() - $jours * 86400, $votantE]);
+    $pdo->prepare('UPDATE accounts SET created_at = ? WHERE id = ?')->execute([$tE - $jours * 86400, $votantE]);
     Moderate::applyVote($pdo, $votantE, 'member', $espacee, -1, motif(), 'agressif');
     $pdo->prepare('UPDATE mod_votes SET created_at = created_at - 400 WHERE target_author = ?')->execute([$espacee]);
 }
 $vueE = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $espacee));
+Moderate::setHorloge(null);
 $chuteE = $vueE[0]['chute'] ?? null;
 count($vueE) === 1 && $vueE[0]['origine'] === 'auto' && $chuteE !== null
     && $chuteE['votants'] === 3 && $chuteE['ages_jours'] === [2, 2, 30] && $chuteE['etalement'] === 800
@@ -1529,6 +1563,7 @@ function votesDeFond(PDO $pdo, int $auteur, int $post, int $combien, string $nom
             'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, effet, created_at)
              VALUES (?, ?, ?, ?, -1, ?, -1, ?)'
         )->execute([membre($pdo, "fond-$nom-$j"), 'post', $post, $auteur, motif(), time() - 3600]);
+        datesDesVotants($pdo);
     }
 }
 
@@ -2688,6 +2723,7 @@ foreach (['a', 'b', 'c'] as $n) {
     $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at)
                    VALUES (?, ?, ?, ?, -1, ?, ?)')
         ->execute([membre($pdo, "salve-$n-71"), 'member', $oublie71, $oublie71, motif(), time()]);
+        datesDesVotants($pdo);
 }
 $pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'meute_recidive' WHERE account_id = ?")
     ->execute([$oublie71]);
@@ -2937,6 +2973,7 @@ try {
              VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)'
         )->execute([membre($pdo, "tard-motif-$k-80"), 'post', $post80, $recoit80, $texte80, 'hors_sujet', $quand80]);
     }
+    datesDesVotants($pdo);
     $tard80  = Moderate::reasonsFor($pdo, $recoit80);
     $borne80 = Moderate::reasonsFor($pdo, $recoit80, 2);
     $attenduTard80 = (new DateTimeImmutable('@' . $poses80[2][1]))->setTimezone(new DateTimeZone('Europe/Paris'))->format('Y-m-d');
@@ -3139,6 +3176,7 @@ $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_a
                VALUES (?, ?, ?, ?, -1, ?, ?, -3, ?)')
     ->execute([membre($pdo, 'croise-86'), 'member', $rendu86, $rendu86, motif(), 'agressif', time() - 100]);
 $vote86 = (int) $pdo->lastInsertId();
+datesDesVotants($pdo);
 $rendre86 = new ReflectionMethod(Moteur::class, 'rendreLePoint');
 (new ReflectionMethod(Moteur::class, 'transaction'))->invoke(null, $pdo,
     static fn () => $rendre86->invoke(null, $pdo, $rendu86, $vote86));
@@ -3579,6 +3617,7 @@ foreach (['a', 'b', 'c'] as $n) {
     $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at)
                    VALUES (?, ?, ?, ?, -1, ?, ?)')
         ->execute([membre($pdo, "salve-$n-100"), 'member', $fautif100, $fautif100, motif(), time()]);
+        datesDesVotants($pdo);
 }
 $pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'meute_recidive' WHERE account_id = ?")
     ->execute([$fautif100]);
@@ -3717,17 +3756,18 @@ $fins103 === [[0, 0, 0], [0, 1, 1]] && count(array_filter($leves103, static fn (
     ], JSON_UNESCAPED_UNICODE));
 
 // ── 104. ⭐ Dans la transaction d'un hôte, un vote refusé ne crée pas la ligne du votant ─
+// Le refus vient après le rattrapage du votant, qui prend le verrou dans la transaction
+// de l'hôte : une cible introuvable. Un motif refusé, lui, ne le prend pas.
 $hote104 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
 $hote104->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $hote104->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 $sansLigne104 = membre($pdo, 'sans-ligne-104');
-$cible104 = membre($pdo, 'cible-104');
-poserReputation($pdo, $cible104, 20);
+$absent104 = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1000 FROM accounts')->fetchColumn();
 $hote104->beginTransaction();
-$vote104 = Moderate::applyVote($hote104, $sansLigne104, 'member', $cible104, -1, 'court', 'agressif');
+$vote104 = Moderate::applyVote($hote104, $sansLigne104, 'member', $absent104, -1, motif(), 'agressif');
 $lignes104 = (int) $hote104->query("SELECT COUNT(*) FROM member_moderation WHERE account_id = $sansLigne104")->fetchColumn();
 $hote104->rollBack();
-!($vote104['ok'] ?? true) && $lignes104 === 0
+($vote104['message'] ?? null) === 'Cible introuvable.' && $lignes104 === 0
     ? ok('⭐ dans la transaction d\'un hôte, un vote refusé n\'écrit pas la ligne de son votant')
     : nok('⭐ un vote refusé écrit la ligne de son votant : ' . json_encode(['vote' => $vote104, 'lignes' => $lignes104], JSON_UNESCAPED_UNICODE));
 
@@ -5335,7 +5375,7 @@ $sorts159 = static function (int $de, int $vers) use ($pdo): array {
     $s->execute([$de, $vers]);
     return array_map(static fn (array $v): string => (int) $v['blocked'] ? (string) $v['blocked_reason'] : 'porte', $s->fetchAll());
 };
-$raison159 = static fn (array $r): string => !$r['ok'] ? 'refus : ' . $r['message'] : ($r['blocked_reason'] ?? 'porte');
+$raison159 = static fn (array $r): string => sortDuVote($pdo, $r);
 [$a159, $b159] = [membre($pdo, 'croise-a-159'), membre($pdo, 'croise-b-159')];
 poserReputation($pdo, $a159, 15);
 poserReputation($pdo, $b159, 15);
@@ -5349,11 +5389,11 @@ $croisement159 = [
     'reputations' => [reputation($pdo, $a159), reputation($pdo, $b159)],
     'b_apres_le_premier' => $bApresLePremier159,
     'sorts' => [$sorts159($a159, $b159), $sorts159($b159, $a159)],
-    'reponses' => [$premier159['message'], $riposte159['message'], $riposte159['blocked'] ?? null],
+    'reponses' => [$premier159['message'], $riposte159['message'], $riposte159['blocked'] ?? null, array_key_exists('blocked_reason', $riposte159)],
     'mes_votes' => [Moderate::userVote($pdo, $a159, 'post', $messagesB159[0]), Moderate::userVote($pdo, $b159, 'post', $messagesA159[0])],
 ];
 $croisement159 === ['reputations' => [15, 15], 'b_apres_le_premier' => 14, 'sorts' => [['vote_croise'], ['riposte']],
-                    'reponses' => ['Vote enregistré.', 'Vote enregistré.', true], 'mes_votes' => [-1, -1]]
+                    'reponses' => ['Vote enregistré.', 'Vote enregistré.', false, false], 'mes_votes' => [-1, -1]]
     ? ok('⭐ deux membres qui votent l\'un contre l\'autre se croisent : les deux votes tombent dans la transaction du second, chacun rend son point, la réponse est celle d\'un vote compté, et chacun garde son vote sur sa page')
     : nok('⭐ le croisement rate : ' . json_encode($croisement159, JSON_UNESCAPED_UNICODE));
 
@@ -5400,11 +5440,10 @@ $horsFenetre159 === 'porte' && $haut159 === 'porte' && $unPourUn159 === [['porte
         'hors_fenetre' => $horsFenetre159, 'positif' => $haut159, 'un_pour_un' => $unPourUn159,
     ], JSON_UNESCAPED_UNICODE));
 
-// Aucune peine levée : banni par un arbitre entre son contrôle et le verrou de son
-// vote, le membre qui riposte retrouve son point, pas sa liberté. (Le vote d'un banni
-// sous le verrou est une course que le lot suivant ferme ; la règle tient d'ici là.)
-// Le ban est d'arbitre : une chute au plancher le mettrait sous le seuil du vote, où
-// plus rien ne se croise.
+// Le droit de vote se relit sous le verrou : banni par un arbitre entre son contrôle et
+// le verrou de son vote, le membre ne vote pas — rien ne se croise, le vote d'en face
+// porte encore, et sa peine tient. Le ban est d'arbitre : une chute au plancher le
+// mettrait sous le seuil du vote, où plus rien ne se croise.
 $v159 = membre($pdo, 'riposte-v-159');
 poserReputation($pdo, $v159, 7);
 $face159 = membre($pdo, 'face-159');
@@ -5443,10 +5482,11 @@ Moderate::setJournal($journalAvant159);
 if ($verrous159 !== 1) {
     nok('le contrôle 159 ne mesure plus rien : verrous pris par la riposte ' . $verrous159 . ', la chute n\'arrive plus juste avant le verrou');
 } else {
-    $etatV159['banned'] && $etatV159['ban_origine'] === 'admin' && $etatV159['strikes'] === 1 && $faceSort159 === ['vote_croise']
-        && $etatV159['reputation'] === 7
-        ? ok('⭐ un croisement ne lève aucune peine : banni entre son contrôle et le verrou, le membre qui riposte retrouve son point, pas sa liberté, et garde son strike')
-        : nok('⭐ un croisement lève une peine : ' . json_encode([
+    !$riposteBannie159['ok'] && str_starts_with($riposteBannie159['message'], 'Compte banni')
+        && $etatV159['banned'] && $etatV159['ban_origine'] === 'admin' && $etatV159['strikes'] === 1 && $faceSort159 === ['porte']
+        && $etatV159['reputation'] === 6
+        ? ok('⭐ banni entre son contrôle et le verrou, le membre ne vote pas : le droit se relit sous le verrou, rien ne se croise, et sa peine tient')
+        : nok('⭐ un banni vote sous le verrou : ' . json_encode([
             'riposte' => $riposteBannie159, 'etat' => [$etatV159['banned'], $etatV159['ban_origine'], $etatV159['strikes'], $etatV159['reputation'], $etatV159['erreur'] ?? null],
             'vote_en_face' => $faceSort159,
         ], JSON_UNESCAPED_UNICODE));
@@ -5619,6 +5659,7 @@ planterSignal($pdo, $conv162, 'reputation_zero');
 Moderate::applyVote($pdo, $critique162, 'post', message($pdo, $conv162, 'fil 162 c'), -1, motif());
 $avant162 = reputation($pdo, $conv162);
 $riposte162 = Moderate::applyVote($pdo, $conv162, 'post', message($pdo, $critique162, 'fil 162 k'), -1, motif());
+$sortRiposte162 = sortDuVote($pdo, $riposte162);
 $apres162 = [
     'reputation'   => reputation($pdo, $conv162),
     'convalescent' => (int) etatBan($pdo, $conv162)['convalescent'],
@@ -5626,7 +5667,7 @@ $apres162 = [
 ];
 Moderate::setHorloge(null);
 Moderate::setJournal($journalAvant162);
-($riposte162['blocked_reason'] ?? null) === 'riposte' && $avant162 === 5
+$sortRiposte162 === 'riposte' && $avant162 === 5
     && $apres162 === ['reputation' => 6, 'convalescent' => 1, 'chute' => true]
     ? ok('⭐ un convalescent qui riposte retrouve son point, et reste convalescent, le signal de sa chute avec lui')
     : nok('⭐ un croisement ferme la convalescence : ' . json_encode([$riposte162, $avant162, $apres162], JSON_UNESCAPED_UNICODE));
@@ -5919,7 +5960,7 @@ $sorts170 = static function (int $cible) use ($pdo): array {
     $s->execute([$cible]);
     return array_map('intval', array_column($s->fetchAll(), 'n', 'r'));
 };
-$raison170 = static fn (array $r): string => !$r['ok'] ? 'refus : ' . $r['message'] : ($r['blocked_reason'] ?? 'porte');
+$raison170 = static fn (array $r): string => sortDuVote($pdo, $r);
 
 [$cibleA170, $postsA170] = $cibleDe170('recents-cible-a-170');
 $neutre170 = null;
@@ -5935,11 +5976,11 @@ $causesA170 = causes($pdo, $cibleA170);
 $mesureA170 = [
     'rep' => $etatA170['reputation'], 'banni' => $etatA170['banned'], 'sorts' => $sorts170($cibleA170),
     'signal' => in_array('comptes_recents', $causesA170, true), 'salve' => in_array('salve_rapide', $causesA170, true),
-    'reponse' => [$neutre170['blocked'] ?? null, $neutre170['blocked_reason'] ?? null, $neutre170['message'] ?? null],
+    'reponse' => [$neutre170['blocked'] ?? null, array_key_exists('blocked_reason', $neutre170 ?? []), $neutre170['message'] ?? null],
 ];
 $mesureA170 === ['rep' => 17, 'banni' => false, 'sorts' => ['comptes_recents' => 18, 'porte' => 3], 'signal' => true, 'salve' => false,
-                 'reponse' => [true, 'comptes_recents', 'Vote enregistré.']]
-    ? ok('⭐ sept comptes récents, trois votes chacun, ne retirent que trois points : dix-huit votes neutralisés, la cible signalée, aucune salve faite de votes neutralisés, et le votant lit le message d\'un vote compté — la part pleine dirait les votes des autres')
+                 'reponse' => [false, false, 'Vote enregistré.']]
+    ? ok('⭐ sept comptes récents, trois votes chacun, ne retirent que trois points : dix-huit votes neutralisés, la cible signalée, aucune salve faite de votes neutralisés, et le votant lit la réponse d\'un vote compté — la part pleine dirait les votes des autres')
     : nok('⭐ des comptes récents pèsent plus qu\'un membre : ' . json_encode($mesureA170, JSON_UNESCAPED_UNICODE));
 
 // Deux heures plus tard, les premiers comptes sont établis, mais leurs votes ont été
@@ -6463,10 +6504,11 @@ try {
 } catch (\RuntimeException) {
 }
 $riposte184 = Moderate::applyVote($pdo, $banni184, 'post', message($pdo, $critique184, 'fil 184 c'), -1, motif());
+$sortRiposte184 = sortDuVote($pdo, $riposte184);
 $apres184 = Moderate::getReputation($pdo, $banni184);
 Moderate::setHorloge(null);
 Moderate::setJournal($journalAvant184);
-$pendant184['banned'] && ($riposte184['blocked_reason'] ?? null) === 'riposte' && !$apres184['banned']
+$pendant184['banned'] && $sortRiposte184 === 'riposte' && !$apres184['banned']
     && $apres184['reputation'] === Moderate::config()->reputationInitiale
     ? ok('⭐ un croisement après la fin d\'un ban ne rend pas une seconde fois ce que la remise au départ a rendu')
     : nok('⭐ points rendus deux fois après la fin d\'un ban : ' . json_encode([$pendant184['banned'], $riposte184, $apres184['banned'], $apres184['reputation']], JSON_UNESCAPED_UNICODE));
@@ -6478,7 +6520,8 @@ poserReputation($pdo, $ancien185, 19);
 Moderate::applyVote($pdo, $critique185, 'post', message($pdo, $ancien185, 'fil 185 a'), -1, motif());
 $pdo->prepare('UPDATE mod_votes SET effet = NULL WHERE voter_id = ? AND target_author = ?')->execute([$critique185, $ancien185]);
 $riposte185 = Moderate::applyVote($pdo, $ancien185, 'post', message($pdo, $critique185, 'fil 185 c'), -1, motif());
-($riposte185['blocked_reason'] ?? null) === 'riposte' && reputation($pdo, $ancien185) === 18
+$sortRiposte185 = sortDuVote($pdo, $riposte185);
+$sortRiposte185 === 'riposte' && reputation($pdo, $ancien185) === 18
     ? ok('⭐ un vote d\'avant la colonne effet, croisé, ne rend aucun point')
     : nok('⭐ des votes d\'avant la colonne rendent un point au croisement : ' . json_encode([$riposte185, reputation($pdo, $ancien185)], JSON_UNESCAPED_UNICODE));
 
@@ -6540,6 +6583,7 @@ $postA187 = message($pdo, $cibleA187, 'fil-187-a');
 foreach (membres($pdo, 'ancien-187', 7) as $ancien187) {
     $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at) VALUES (?, ?, ?, ?, -1, ?, ?)')
         ->execute([$ancien187, 'post', $postA187, $cibleA187, motif(), time() - 3600]);
+        datesDesVotants($pdo);
 }
 poserReputation($pdo, $cibleA187, 20);
 $cibleB187 = membre($pdo, 'cible-187-b');
@@ -6574,7 +6618,7 @@ $cible188 = membre($pdo, 'cible-188');
 poserReputation($pdo, $cible188, 5);
 $critiques188 = membres($pdo, 'critique-188', 5);
 $sorts188 = sousQuorum(static function () use ($pdo, $cible188, $critiques188): array {
-    $sort = static fn (array $r): string => $r['ok'] ? ($r['blocked_reason'] ?? 'porte') : 'refus : ' . $r['message'];
+    $sort = static fn (array $r): string => sortDuVote($pdo, $r);
     $sorts = [];
     foreach (array_slice($critiques188, 0, 4) as $k => $c) {
         $sorts[] = $sort(Moderate::applyVote($pdo, $c, 'post', message($pdo, $cible188, "fil-188-$k"), -1, motif(), 'agressif'));
@@ -6714,7 +6758,7 @@ $s193 = sousQuorum(static function () use ($pdo, $cible193, $siens193, $honnetes
     $revote = [];
     foreach ($honnetes193 as $k => $h) {
         $r = Moderate::applyVote($pdo, $h, 'post', message($pdo, $cible193, "fil-193-r$k"), -1, motif(), 'agressif');
-        $revote[] = $r['blocked_reason'] ?? 'porte';
+        $revote[] = $r['ok'] ? sortDuVote($pdo, $r) : 'porte';
     }
 
     return [$neutres, $rep, $revote, reputation($pdo, $cible193)];
@@ -8870,6 +8914,237 @@ $lu246 === [
 ]
     ? ok('⭐ la console du lab montre la composition d\'une perte due et le geste qui y répond, n\'offre pas de classer ce que le moteur refuse, et sa route suspend puis rend le vote ; un ban d\'arbitre porte la composition de sa chute')
     : nok('⭐ la console du lab ne sert pas les gestes du vote, ou tait la composition d\'une sanction due : ' . json_encode($lu246, JSON_UNESCAPED_UNICODE));
+
+// ── 247. ⭐ Un vote que les votes des autres font tomber rend ce que rend un vote compté ─
+// La riposte et le vote de trêve rendent exactement la réponse d'un vote compté : seule
+// la base dit qu'ils sont tombés. Le farming, l'excès du votant lui-même, garde `blocked`,
+// sa raison et son message.
+$t247 = time();
+Moderate::setHorloge(static function () use (&$t247): int { return $t247; });
+try {
+    [$a247, $b247] = [membre($pdo, 'croise-a-247'), membre($pdo, 'croise-b-247')];
+    poserReputation($pdo, $a247, 15);
+    poserReputation($pdo, $b247, 15);
+    $porte247 = Moderate::applyVote($pdo, $a247, 'post', message($pdo, $b247, 'fil 247 b1'), -1, motif());
+    $t247 += 10;
+    $riposte247 = Moderate::applyVote($pdo, $b247, 'post', message($pdo, $a247, 'fil 247 a1'), -1, motif());
+    $sortRiposte247 = sortDuVote($pdo, $riposte247);
+    $t247 += 10;
+    $treve247 = Moderate::applyVote($pdo, $a247, 'post', message($pdo, $b247, 'fil 247 b2'), -1, motif());
+    $sortTreve247 = sortDuVote($pdo, $treve247);
+    [$farme247, $farmeur247] = [membre($pdo, 'farme-247'), membre($pdo, 'farmeur-247')];
+    for ($k247 = 0; $k247 < Moderate::config()->farmingUpvotesMax; $k247++) {
+        Moderate::applyVote($pdo, $farmeur247, 'post', message($pdo, $farme247, "fil 247 f$k247"), 1);
+    }
+    $farming247 = Moderate::applyVote($pdo, $farmeur247, 'post', message($pdo, $farme247, 'fil 247 f-plus'), 1);
+    $compte247 = ['ok' => true, 'blocked' => false, 'message' => 'Vote enregistré.'];
+    $lu247 = [
+        'identiques' => [$porte247 === $compte247, $riposte247 === $compte247, $treve247 === $compte247],
+        'sorts'      => [$sortRiposte247, $sortTreve247],
+        'farming'    => [$farming247['blocked'] ?? null, $farming247['blocked_reason'] ?? null, str_contains($farming247['message'] ?? '', 'neutralisé')],
+    ];
+} catch (Throwable $t247e) {
+    $lu247 = ['exception' => get_class($t247e) . ' : ' . $t247e->getMessage()];
+} finally {
+    Moderate::setHorloge(null);
+}
+$lu247 === ['identiques' => [true, true, true], 'sorts' => ['riposte', 'treve'], 'farming' => [true, 'upvote_farming', true]]
+    ? ok('⭐ une riposte et un vote de trêve rendent la réponse exacte d\'un vote compté, la base seule les dit tombés ; le farming garde blocked et son message')
+    : nok('⭐ un vote que les votes des autres font tomber se distingue d\'un vote compté : ' . json_encode($lu247, JSON_UNESCAPED_UNICODE));
+
+// ── 248. ⭐ Les comptes qui ont reçu un vote qui a porté, en une lecture ───────────
+// Un compte dont le seul vote reçu a porté puis a été croisé y est, quand un filtre
+// `blocked = 0` le perd ; un compte qui n'a reçu qu'une riposte n'y est pas.
+$t248 = time();
+Moderate::setHorloge(static function () use (&$t248): int { return $t248; });
+try {
+    [$x248, $y248] = [membre($pdo, 'croise-x-248'), membre($pdo, 'croise-y-248')];
+    poserReputation($pdo, $x248, 15);
+    poserReputation($pdo, $y248, 15);
+    Moderate::applyVote($pdo, $x248, 'post', message($pdo, $y248, 'fil 248 y'), -1, motif());
+    $t248 += 10;
+    Moderate::applyVote($pdo, $y248, 'post', message($pdo, $x248, 'fil 248 x'), -1, motif());
+    $comptes248 = Moderate::comptesAvecVotesRecus($pdo);
+    $nonBloques248 = array_map('intval', $pdo->query('SELECT DISTINCT target_author FROM mod_votes WHERE blocked = 0')->fetchAll(PDO::FETCH_COLUMN));
+    $lu248 = [in_array($y248, $comptes248, true), in_array($x248, $comptes248, true), in_array($y248, $nonBloques248, true),
+              Moderate::votesRecus($pdo, $y248), $comptes248 === array_values(array_unique($comptes248))];
+} catch (Throwable $t248e) {
+    $lu248 = ['exception' => get_class($t248e) . ' : ' . $t248e->getMessage()];
+} finally {
+    Moderate::setHorloge(null);
+}
+$lu248 === [true, false, false, 1, true]
+    ? ok('⭐ comptesAvecVotesRecus() rend le compte dont le seul vote reçu a été croisé après avoir compté, que « blocked = 0 » perd, et pas celui qui n\'a reçu qu\'une riposte')
+    : nok('⭐ la lecture des comptes votés perd un compte, ou en rend un de trop : ' . json_encode($lu248, JSON_UNESCAPED_UNICODE));
+
+// ── 249. ⭐ `motifsVotantsMin` se compte par sens, parmi les motifs rendus ──────────
+// Seuil à deux votants : un critique seul parmi deux soutiens ne voit pas son motif
+// rendu, les soutiens oui ; et deux critiques d'il y a dix jours ne font pas franchir
+// le seuil au seul motif que la limite rend.
+$lu249 = sousConfig(configBanc(motifsVotantsMin: 2), static function () use ($pdo): array {
+    $sens = membre($pdo, 'sens-249');
+    poserReputation($pdo, $sens, 20);
+    Moderate::applyVote($pdo, membre($pdo, 'critique-249'), 'member', $sens, -1, motif());
+    foreach (['a', 'b'] as $k) {
+        Moderate::applyVote($pdo, membre($pdo, "soutien-249-$k"), 'member', $sens, 1, motif());
+    }
+    $histoire = membre($pdo, 'histoire-249');
+    $post = message($pdo, $histoire, 'fil 249');
+    foreach (['a', 'b'] as $k) {
+        $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
+                       VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)')
+            ->execute([membre($pdo, "ancien-249-$k"), 'post', $post, $histoire, motif(), 'agressif', time() - 10 * 86400]);
+    }
+    datesDesVotants($pdo);
+    Moderate::applyVote($pdo, membre($pdo, 'recent-249'), 'member', $histoire, -1, motif());
+
+    return [
+        array_column(Moderate::reasonsFor($pdo, $sens), 'value'),
+        Moderate::reasonsFor($pdo, $histoire, 1),
+        count(Moderate::reasonsFor($pdo, $histoire)),
+    ];
+});
+$lu249 === [[1, 1], [], 3]
+    ? ok('⭐ motifsVotantsMin se compte par sens, parmi les motifs rendus : le critique seul se tait, les soutiens se lisent, et l\'histoire du compte ne fait pas franchir le seuil')
+    : nok('⭐ motifsVotantsMin compte tous les sens, ou toute l\'histoire : ' . json_encode($lu249, JSON_UNESCAPED_UNICODE));
+
+// ── 250. ⭐ Un motif refusé ne prend pas le verrou d'écriture ────────────────────
+// Le votant a une fin de peine à inscrire, et une autre connexion tient le verrou : un
+// vote au motif refusé rend le refus du motif, sans attendre le verrou ni lever.
+$t250 = time();
+Moderate::setHorloge(static function () use (&$t250): int { return $t250; });
+$journalAvant250 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+try {
+    $votant250 = membre($pdo, 'votant-250');
+    $cible250 = membre($pdo, 'cible-250');
+    Moderate::adminBan($pdo, $votant250, idDe($pdo, 'arbitre-banc'), motif(), 60);
+    $t250 += 120;
+    $verrou250 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+    $verrou250->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $c250 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+    $c250->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $c250->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $c250->setAttribute(PDO::ATTR_TIMEOUT, 1);
+    $verrou250->exec('BEGIN IMMEDIATE');
+    try {
+        $refus250 = Moderate::applyVote($c250, $votant250, 'member', $cible250, -1, 'trop court');
+    } catch (Throwable $e250) {
+        $refus250 = ['exception' => get_class($e250) . ' : ' . $e250->getMessage()];
+    } finally {
+        $verrou250->exec('ROLLBACK');
+    }
+    $verrou250 = null;
+    $c250 = null;
+    $lu250 = [$refus250 === ['ok' => false, 'message' => Moderate::validateReason('trop court')[1]],
+              Moderate::applyVote($pdo, $votant250, 'member', $cible250, -1, motif())['ok'], Moderate::getReputation($pdo, $votant250)['banned']];
+} catch (Throwable $t250e) {
+    $lu250 = ['exception' => get_class($t250e) . ' : ' . $t250e->getMessage(), 'refus' => $refus250 ?? null];
+} finally {
+    Moderate::setHorloge(null);
+    Moderate::setJournal($journalAvant250);
+}
+$lu250 === [true, true, false]
+    ? ok('⭐ un motif refusé rend son refus sans prendre le verrou, même quand le votant a une fin de peine à inscrire et qu\'un autre écrit ; le vote au motif valide l\'inscrit ensuite')
+    : nok('⭐ un motif refusé attend le verrou d\'écriture : ' . json_encode($lu250, JSON_UNESCAPED_UNICODE));
+
+// ── 251. ⭐ Un message dont l'auteur n'est pas un compte est une cible introuvable ─
+// Sur un hôte sans clés étrangères, un message peut garder l'identifiant d'un compte
+// disparu : voter contre lui ne crée ni vote ni ligne de modération, qu'aucune liste de
+// l'arbitre ne montrerait.
+$fk251 = (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn();
+$pdo->exec('PRAGMA foreign_keys = OFF');
+try {
+    $fantome251 = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1000 FROM accounts')->fetchColumn();
+    $fil251 = message($pdo, idDe($pdo, 'arbitre-banc'), 'fil 251');
+    $pdo->prepare('UPDATE posts SET account_id = ? WHERE id = ?')->execute([$fantome251, $fil251]);
+    $vote251 = Moderate::applyVote($pdo, membre($pdo, 'votant-251'), 'post', $fil251, -1, motif());
+    $lignes251 = [
+        (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE target_author = $fantome251")->fetchColumn(),
+        (int) $pdo->query("SELECT COUNT(*) FROM member_moderation WHERE account_id = $fantome251")->fetchColumn(),
+    ];
+    $pdo->prepare('DELETE FROM posts WHERE id = ?')->execute([$fil251]);
+    $lu251 = [$vote251, $lignes251];
+} catch (Throwable $t251e) {
+    $lu251 = ['exception' => get_class($t251e) . ' : ' . $t251e->getMessage()];
+} finally {
+    $pdo->exec('PRAGMA foreign_keys = ' . ($fk251 === 1 ? 'ON' : 'OFF'));
+}
+$lu251 === [['ok' => false, 'message' => 'Cible introuvable.'], [0, 0]]
+    ? ok('⭐ un message dont l\'auteur n\'est pas un compte est une cible introuvable : ni vote, ni ligne de modération')
+    : nok('⭐ un auteur absent d\'accounts est votable : ' . json_encode($lu251, JSON_UNESCAPED_UNICODE));
+
+// ── 252. ⭐ Un vote garde la classe de son auteur ─────────────────────────────────
+// Trois comptes récents remplissent la part sur une cible. Leur date changée ensuite,
+// puis leurs comptes supprimés sur un hôte sans clés étrangères, la part reste pleine :
+// le vote suivant d'un compte récent tombe encore. Un vote sans date compte comme récent.
+$recent252 = static function (string $nom) use ($pdo): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', time() - 600]);
+    return (int) $pdo->lastInsertId();
+};
+$fk252 = (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn();
+try {
+    $cible252 = membre($pdo, 'cible-252');
+    poserReputation($pdo, $cible252, 20);
+    $posts252 = [message($pdo, $cible252, 'fil 252 a'), message($pdo, $cible252, 'fil 252 b'), message($pdo, $cible252, 'fil 252 c'), message($pdo, $cible252, 'fil 252 d')];
+    $recents252 = [];
+    foreach (['a', 'b', 'c'] as $k => $l) {
+        $recents252[] = $r = $recent252("recent-252-$l");
+        Moderate::applyVote($pdo, $r, 'post', $posts252[$k], -1, motif());
+    }
+    $pdo->exec('UPDATE accounts SET created_at = ' . (time() - 90 * 86400) . ' WHERE id IN (' . implode(',', $recents252) . ')');
+    $apresDate252 = sortDuVote($pdo, Moderate::applyVote($pdo, $recent252('recent-252-d'), 'post', $posts252[3], -1, motif()));
+    $pdo->exec('PRAGMA foreign_keys = OFF');
+    $pdo->exec('DELETE FROM accounts WHERE id IN (' . implode(',', $recents252) . ')');
+    $apresSuppression252 = sortDuVote($pdo, Moderate::applyVote($pdo, $recent252('recent-252-e'), 'member', $cible252, -1, motif()));
+    $pdo->exec('DELETE FROM mod_votes WHERE voter_id IN (' . implode(',', $recents252) . ')');
+    $pdo->exec('DELETE FROM member_moderation WHERE account_id IN (' . implode(',', $recents252) . ')');
+    $pdo->exec('PRAGMA foreign_keys = ' . ($fk252 === 1 ? 'ON' : 'OFF'));
+    $sansDate252 = membre($pdo, 'sans-date-252');
+    $visee252 = membre($pdo, 'visee-252');
+    $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
+                   VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)')
+        ->execute([$sansDate252, 'member', $visee252, $visee252, motif(), 'agressif', time()]);
+    $lu252 = [$apresDate252, $apresSuppression252, Moderate::compositionChute($pdo, $visee252, time())['recents']];
+    datesDesVotants($pdo);
+} catch (Throwable $t252e) {
+    $lu252 = ['exception' => get_class($t252e) . ' : ' . $t252e->getMessage()];
+} finally {
+    $pdo->exec('PRAGMA foreign_keys = ' . ($fk252 === 1 ? 'ON' : 'OFF'));
+}
+$lu252 === ['comptes_recents', 'comptes_recents', 1]
+    ? ok('⭐ un vote garde la classe de son auteur : sa date changée puis son compte supprimé ne vident pas la part, et un vote sans date compte comme récent')
+    : nok('⭐ la classe d\'un vote suit le compte de son auteur : ' . json_encode($lu252, JSON_UNESCAPED_UNICODE));
+
+// ── 253. ⭐ Le plafond de cibles ne compte que les cibles établies ─────────────────
+// Un défenseur vote contre dix comptes neufs : son plafond reste entier, et son vote
+// contre un membre établi porte. Contre dix membres établis, le onzième tombe ; un
+// compte neuf, ensuite, n'y est pas soumis.
+$neuf253 = static function (string $nom) use ($pdo): int {
+    $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$nom, 'x', 'x', 'x', time() - 600]);
+    return (int) $pdo->lastInsertId();
+};
+try {
+    $defenseur253 = membre($pdo, 'defenseur-253');
+    for ($k253 = 0; $k253 < Moderate::config()->ciblesParVotantMax; $k253++) {
+        Moderate::applyVote($pdo, $defenseur253, 'member', $neuf253("appat-253-$k253"), -1, motif());
+    }
+    $etabli253 = sortDuVote($pdo, Moderate::applyVote($pdo, $defenseur253, 'member', membre($pdo, 'etabli-253-0'), -1, motif()));
+    $signale253 = in_array('votant_etendu', causes($pdo, $defenseur253), true);
+    for ($k253 = 1; $k253 < Moderate::config()->ciblesParVotantMax; $k253++) {
+        Moderate::applyVote($pdo, $defenseur253, 'member', membre($pdo, "etabli-253-$k253"), -1, motif());
+    }
+    $onzieme253 = sortDuVote($pdo, Moderate::applyVote($pdo, $defenseur253, 'member', membre($pdo, 'etabli-253-plus'), -1, motif()));
+    $neufApres253 = sortDuVote($pdo, Moderate::applyVote($pdo, $defenseur253, 'member', $neuf253('neuf-253-apres'), -1, motif()));
+    $lu253 = [$etabli253, $signale253, $onzieme253, $neufApres253];
+} catch (Throwable $t253e) {
+    $lu253 = ['exception' => get_class($t253e) . ' : ' . $t253e->getMessage()];
+}
+$lu253 === ['porte', false, 'plafond_votant', 'porte']
+    ? ok('⭐ le plafond de cibles ne compte que les cibles établies : dix comptes neufs ne l\'entament pas, le onzième membre établi tombe, et un compte neuf n\'y est pas soumis')
+    : nok('⭐ des comptes neufs épuisent le plafond d\'un défenseur : ' . json_encode($lu253, JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

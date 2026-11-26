@@ -266,8 +266,8 @@ return [
         => 'Flag closed.',
     'Motif trop long : %d caractères au plus, il y en a %d.'
         => 'Reason too long: %d characters at most, this one has %d.',
-    'Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'
-        => 'Vote recorded but neutralised: you have already voted against %d different members over the last %d days.',
+    'Vote enregistré mais neutralisé : tu as déjà voté contre %d membres établis différents ces %d derniers jours.'
+        => 'Vote recorded but neutralised: you have already voted against %d different established members over the last %d days.',
     'Droit de vote suspendu par un arbitre jusqu\'au %s.'
         => 'Voting rights suspended by an arbiter until %s.',
     'Ce motif n\'est pas du texte lisible : réécris-le.' => 'This reason is not readable text: write it again.',

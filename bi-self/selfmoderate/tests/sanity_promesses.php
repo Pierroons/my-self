@@ -246,11 +246,11 @@ $porteurs = [
     ['README.fr.md', '/\*\*Farming\*\* : au-delà de (\d+) votes positifs d\'un même votant vers un même membre en (\d+) jours, les suivants sont neutralisés ; même plafond pour les votes négatifs, contre l\'érosion lente/u',
         fn ($m) => [...deuxJeux('farmingUpvotesMax', (int) $m[1]), ...deuxJeux('farmingDownvotesMax', (int) $m[1]),
                     ...deuxJeux('fenetreFarmingJours', (int) $m[2])]],
-    ['README.fr.md', '/Et un votant ne vise pas plus de (\d+) membres distincts sur la même fenêtre \(`ciblesParVotantMax`\) : au-delà/u',
+    ['README.fr.md', '/Et un votant ne vise pas plus de (\d+) membres établis distincts sur la même fenêtre \(`ciblesParVotantMax`\) : au-delà/u',
         fn ($m) => deuxJeux('ciblesParVotantMax', (int) $m[1])],
     ['README.fr.md', '/\*\*Vote croisé\*\* : deux membres qui votent l\'un contre l\'autre en moins de \*\*(\d+) h\*\* en service, \*\*(\d+) min\*\* en démonstration \(`fenetreCroiseeSecondes`\)/u',
         fn ($m) => [['fenetreCroiseeSecondes', 'prod', $m[1] * $h], ['fenetreCroiseeSecondes', 'demo', $m[2] * 60]]],
-    ['README.fr.md', '/au plus \*\*(\d+)\*\* critiques distincts sur \*\*(\d+) jours\*\* \(`ciblesParVotantMax`, `fenetreFarmingJours`\), et \*\*(\d+)\*\* votes contre chacun d\'eux \(`farmingDownvotesMax`\)/u',
+    ['README.fr.md', '/au plus \*\*(\d+)\*\* critiques établis distincts sur \*\*(\d+) jours\*\* \(`ciblesParVotantMax`, `fenetreFarmingJours`\), et \*\*(\d+)\*\* votes contre chacun d\'eux \(`farmingDownvotesMax`\)/u',
         fn ($m) => [...deuxJeux('ciblesParVotantMax', (int) $m[1]), ...deuxJeux('fenetreFarmingJours', (int) $m[2]),
                     ...deuxJeux('farmingDownvotesMax', (int) $m[3])]],
     ['README.fr.md', '/Sa fin s\'arrondit dès la pose, au multiple suivant de \*\*(\d+) h\*\* en service, \*\*(\d+) min\*\* en démonstration \(`arrondiFinBanSecondes`\)/u',
@@ -296,11 +296,11 @@ $porteurs = [
     ['README.md', '/\*\*Farming\*\*: beyond (\d+) positive votes from one voter to one member within (\d+) days, the next ones are neutralised; the same cap applies to negative votes, against the slow erosion/u',
         fn ($m) => [...deuxJeux('farmingUpvotesMax', (int) $m[1]), ...deuxJeux('farmingDownvotesMax', (int) $m[1]),
                     ...deuxJeux('fenetreFarmingJours', (int) $m[2])]],
-    ['README.md', '/And a voter targets no more than (\d+) distinct members over the same window \(`ciblesParVotantMax`\): beyond that/u',
+    ['README.md', '/And a voter targets no more than (\d+) distinct established members over the same window \(`ciblesParVotantMax`\): beyond that/u',
         fn ($m) => deuxJeux('ciblesParVotantMax', (int) $m[1])],
     ['README.md', '/\*\*Crossed votes\*\*: two members who vote against each other within \*\*(\d+) hours\*\* in service, \*\*(\d+) minutes\*\* in demonstration \(`fenetreCroiseeSecondes`\)/u',
         fn ($m) => [['fenetreCroiseeSecondes', 'prod', $m[1] * $h], ['fenetreCroiseeSecondes', 'demo', $m[2] * 60]]],
-    ['README.md', '/at most \*\*(\d+)\*\* distinct critics over \*\*(\d+) days\*\* \(`ciblesParVotantMax`, `fenetreFarmingJours`\), and \*\*(\d+)\*\* votes against each of them \(`farmingDownvotesMax`\)/u',
+    ['README.md', '/at most \*\*(\d+)\*\* distinct established critics over \*\*(\d+) days\*\* \(`ciblesParVotantMax`, `fenetreFarmingJours`\), and \*\*(\d+)\*\* votes against each of them \(`farmingDownvotesMax`\)/u',
         fn ($m) => [...deuxJeux('ciblesParVotantMax', (int) $m[1]), ...deuxJeux('fenetreFarmingJours', (int) $m[2]),
                     ...deuxJeux('farmingDownvotesMax', (int) $m[3])]],
     ['README.md', '/Its end is rounded as soon as the ban is set, to the next multiple of \*\*(\d+) hour\*\* in service, \*\*(\d+) minute\*\* in demonstration \(`arrondiFinBanSecondes`\)/u',
@@ -362,6 +362,53 @@ $nonPromis = [
 $textes = [];
 foreach (['README.fr.md', 'README.md'] as $fichier) {
     $textes[$fichier] = (string) file_get_contents(dirname(__DIR__) . '/' . $fichier);
+}
+
+// ── 0. Une config se reconstruit depuis ses propriétés publiques ────────────
+// Un hôte construit la sienne ainsi : `new Config(...get_object_vars(Config::prod(…)))`,
+// puis ses réglages par-dessus. Une propriété publique qui ne serait pas un
+// paramètre du constructeur ferait lever sa ligne au démarrage — et les mesures de
+// bornes ci-dessous, qui reconstruisent de même : ce contrôle passe d'abord, pour
+// que la première ligne rouge nomme la cause.
+$horsConstructeur = array_diff(
+    array_map(
+        static fn (ReflectionProperty $p): string => $p->getName(),
+        (new ReflectionClass(Config::class))->getProperties(ReflectionProperty::IS_PUBLIC)
+    ),
+    array_map(
+        static fn (ReflectionParameter $p): string => $p->getName(),
+        (new ReflectionMethod(Config::class, '__construct'))->getParameters()
+    )
+);
+$refaites = [];
+foreach ([
+    'prod(DM)'          => static fn (): Config => Config::prod(Messagerie::DM),
+    'prod(HORS_MOTEUR)' => static fn (): Config => Config::prod(Messagerie::HORS_MOTEUR),
+    'demo()'            => static fn (): Config => Config::demo(),
+] as $jeu => $fabrique) {
+    // Une fabrique qui lève est un écart de valeur, que les contrôles suivants
+    // nomment champ par champ : seule la reconstruction se juge ici.
+    try {
+        $config = $fabrique();
+    } catch (InvalidArgumentException) {
+        continue;
+    }
+    try {
+        if (get_object_vars(new Config(...get_object_vars($config))) !== get_object_vars($config)) {
+            $refaites[] = "$jeu : la config refaite diffère de l'originale";
+        }
+    } catch (Throwable $e) {
+        $refaites[] = "$jeu : " . get_class($e) . ' — ' . $e->getMessage();
+    }
+}
+$horsConstructeur === [] && $refaites === []
+    ? ok('une config se reconstruit depuis ses propriétés publiques (prod DM et hors moteur, démo), comme un hôte la construit')
+    : nok('une config ne se reconstruit pas depuis ses propriétés : hors du constructeur ' . json_encode(array_values($horsConstructeur))
+        . ', ' . json_encode($refaites, JSON_UNESCAPED_UNICODE));
+if ($horsConstructeur !== [] || $refaites !== []) {
+    // Les mesures suivantes reconstruisent de même : elles ne mesureraient rien.
+    echo "\n❌ la suite reconstruit des configs : arrêt après ce contrôle\n";
+    exit(1);
 }
 
 // ── 1. Chaque phrase porteuse dit ce que la config applique ─────────────────

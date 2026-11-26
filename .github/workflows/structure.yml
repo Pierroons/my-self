@@ -908,8 +908,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_promesses.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 86/86 contrôles passés' \
-            || { echo "::error::le banc des promesses n'a pas joué ses 86 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 87/87 contrôles passés' \
+            || { echo "::error::le banc des promesses n'a pas joué ses 87 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate change un seuil que le README promet
         run: |
@@ -918,13 +918,14 @@ jobs:
           # README annonce est changée dans `Config` : le banc des promesses doit
           # rougir sur CE champ, et dans le bon jeu. Puis deux retouches du README :
           # un qualificatif ajouté après une valeur, et un chiffre glissé dans la
-          # phrase d'un champ déclaré non promis.
+          # phrase d'un champ déclaré non promis. Enfin une propriété publique hors
+          # du constructeur, qui ferait lever la config qu'un hôte reconstruit.
           for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreMeuteJours \
                      ageEtabliSecondes quorumTravailMax quorumRecherchesMax quorumAuxSeuils fenetreFarmingJours \
                      farmingUpvotesMax farmingDownvotesMax ciblesParVotantMax fenetreSalveSecondes \
                      ageMinPourVoterSecondes dureesBan plancherFraction bansArbitreSignal balayageFiletMax \
                      prod:fenetreSalveSecondes prod:ageMinPourVoterSecondes prod:dureesBan \
-                     readme:qualificatif readme:sans-chiffre; do
+                     readme:qualificatif readme:sans-chiffre config:hors-constructeur; do
             PLANTE=$(mktemp -d)
             cp -r bi-self/selfmoderate "$PLANTE/m"
             CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
@@ -942,6 +943,7 @@ jobs:
               'prod:dureesBan':               ("'dureesBan'                       => [86400, 604800, 2592000]", "'dureesBan'                       => [86400, 604800, 1296000]"),
               'readme:qualificatif':          ('Score plafonné à **30** (`Config`)', 'Score plafonné à **30** en démonstration, **50** en service (`Config`)'),
               'readme:sans-chiffre':          ('la remontée passive en rend un par intervalle de calme', 'la remontée passive en rend un par jour de calme'),
+              'config:hors-constructeur':     ('    public function __construct(', '    public int $planteHorsConstructeur = 0;\n\n    public function __construct('),
           }
           if cas in speciaux:
               avant, apres = speciaux[cas]
@@ -963,6 +965,7 @@ jobs:
               dureesBan)           attendu='✗ dureesBan (demo)' ;;
               readme:qualificatif) attendu='✗ README.fr.md : la phrase porteuse est introuvable' ;;
               readme:sans-chiffre) attendu='✗ intervalleConvalescenceSecondes (non promis)' ;;
+              config:hors-constructeur) attendu='✗ une config ne se reconstruit pas depuis ses propriétés' ;;
               *)                   attendu="✗ $cas (" ;;
             esac
             echo "$sortie" | grep -qF "$attendu" \
@@ -3734,8 +3737,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 290/290 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 290 contrôles"; exit 1; }
+          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 297 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3746,9 +3749,9 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 290/290 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 290 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3906,19 +3909,21 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 290/290 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 290 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, la salve, les raisons qu'une page publique tait et la fin réelle
           # d'un ban dans le moteur ; la route de vote, la page
-          # publique, les votes reçus, les fins de ban et le blocage dans le lab. Chaque
+          # publique, les votes reçus, les fins de ban et le blocage dans le lab. Qu'un
+          # croisement ne lève aucune peine, le droit de vote relu sous le verrou le garde :
+          # un compte banni ne vote pas, donc ne croise pas (« le chemin du vote »). Chaque
           # fichier est restauré avant la plantation suivante ; chaque plantation est
           # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
           FICHIERS="bi-self/selfmoderate/src/Moderate.php bi-self/selfmoderate/src/Config.php demo/lab/public/api/vote.php demo/lab/public/moderation.php demo/lab/lib/moderate.php demo/lab/lib/dm.php demo/lab/public/profile.php demo/lab/lib/forum.php demo/lab/lib/profile.php"
           for f in $FICHIERS; do cp "$f" "/tmp/croise.$(tr / _ <<< "$f").intact"; done
           restaurer() { for f in $FICHIERS; do cp "/tmp/croise.$(tr / _ <<< "$f").intact" "$f"; done; }
           echecs=0
-          cas_liste="treve croisement tous plafonds leve_la_peine user_vote message score_rendu route_brute publique
+          cas_liste="treve croisement tous plafonds user_vote message score_rendu route_brute publique
                      limite_publique emis fin_exacte refus_exact profil blocage_envoi envoi_en_vol blocage_masque
                      convalescence motifs_face motifs_riposte recus recus_moteur fin_reelle forum_fin profil_save_fin
                      riposte_raison treve_ancre salve_croisee duree_journal pas_palier salve_derniere raisons_moteur"
@@ -3959,13 +3964,10 @@ jobs:
                                "✗ ⭐ le croisement déborde de sa règle"),
               'plafonds':     (M, "private const VOTE_AU_PLAFOND = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))\";",
                                   "private const VOTE_AU_PLAFOND = \"(blocked = 0)\";", TREVE),
-              'leve_la_peine': (M, "        $rendu = -min(0, (int) $stmt->fetchColumn());\n",
-                                  "        $rendu = -min(0, (int) $stmt->fetchColumn());\n        $pdo->prepare('UPDATE member_moderation SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, strikes = MAX(0, strikes - 1) WHERE account_id = ?')->execute([$author]);\n",
-                               "✗ ⭐ un croisement lève une peine"),
               'user_vote':    (M, "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?'",
                                   "'SELECT value FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ? AND blocked = 0'", CROISE),
-              'message':      (M, "'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')]",
-                                  "'blocked_reason' => $croise, 'message' => static::t('Vote croisé.')]", CROISE),
+              'message':      (M, "$author, $author);\n                return self::voteEnregistre();",
+                                  "$author, $author);\n                return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote croisé.')];", CROISE),
               'score_rendu':  (V, RENDU, RENDU.replace("(string) $result['message']]", "(string) $result['message'], 'score' => Moderate::score($pdo, $targetType, $targetId)]"), ROUTE),
               'route_brute':  (V, RENDU, "json_out($result, $result['ok'] ? 200 : 400);", ROUTE),
               'publique':     (O, LISTE, "$blocked = Moderate::blockedVotes($pdo, 30);", "✗ ⭐ la page publique publie un croisement"),
@@ -4000,8 +4002,8 @@ jobs:
               'pas_palier':   (C, "        if ($this->arrondiFinBanSecondes > min($this->dureesBan)) {", "        if (false) {",
                                "✗ le pas d'arrondi passe hors de ses bornes"),
               'salve_derniere': (M, "                self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);\n"
-                                    "                return ['ok' => true, 'blocked' => true,",
-                                    "                return ['ok' => true, 'blocked' => true,",
+                                    "                return self::voteEnregistre();",
+                                    "                return self::voteEnregistre();",
                                "✗ ⭐ une salve complétée par une riposte attend un balayage"),
               'raisons_moteur': (M, "public const RAISONS_DU_CROISEMENT = ['vote_croise', 'riposte', 'treve'];",
                                     "public const RAISONS_DU_CROISEMENT = ['vote_croise', 'treve'];",
@@ -4038,9 +4040,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 290/290 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 290 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La part elle-même, son solde net, les votes tombés qu'elle ne compte pas,
           # l'âge au moment du vote, sa fenêtre en jours, le signal qu'elle laisse voir et
           # la salve qu'elle ne relance pas ; ce qu'elle compte (l'effet des votes, et un
@@ -4081,13 +4083,13 @@ jobs:
               'plafond':      ("private const VOTE_AU_PLAFOND = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve'))\";",
                                "private const VOTE_AU_PLAFOND = \"(blocked = 0 OR blocked_reason IN ('vote_croise', 'riposte', 'treve', 'comptes_recents'))\";",
                                "✗ ⭐ une part remplie puis vidée fait taire les comptes récents"),
-              'message':      ("'blocked_reason' => 'comptes_recents', 'message' => static::t('Vote enregistré.')]",
-                               "'blocked_reason' => 'comptes_recents', 'message' => static::t('Vote enregistré mais neutralisé.')]", POIDS),
-              'relance_salve': ("            self::signaler($pdo, $author, 'comptes_recents');\n            // Le message",
-                                "            self::signaler($pdo, $author, 'comptes_recents');\n            self::detecter($pdo, null, $author);\n            // Le message",
+              'message':      ("apprendrait ces votes.\n            return self::voteEnregistre();",
+                               "apprendrait ces votes.\n            return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote enregistré mais neutralisé.')];", POIDS),
+              'relance_salve': ("            self::signaler($pdo, $author, 'comptes_recents');\n            // Le retour",
+                                "            self::signaler($pdo, $author, 'comptes_recents');\n            self::detecter($pdo, null, $author);\n            // Le retour",
                                 "✗ ⭐ la part relance la salve"),
-              'age_present':  ("AND v.created_at - a.created_at < ' . $ageEtabli",
-                               "AND ' . self::maintenant() . ' - a.created_at < ' . $ageEtabli", AGE),
+              'age_present':  ("AND v.created_at - v.voter_created_at >= ' . $age",
+                               "AND ' . self::maintenant() . ' - v.voter_created_at >= ' . $age", AGE),
               'fenetre':      ("$stmt->execute([$author, self::maintenant() - self::config()->fenetreFarmingJours * 86400]);",
                                "$stmt->execute([$author, self::maintenant() - self::config()->fenetreFarmingJours * 3600]);",
                                "✗ ⭐ la part oublie sa fenêtre"),
@@ -4606,8 +4608,8 @@ jobs:
           avant, apres = {
               'plafond': ("            if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {\n",
                           "            if (false) {\n"),
-              'reponse': ("        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote enregistré.')];\n",
-                          "        return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep, 'message' => static::t('Vote enregistré.')];\n"),
+              'reponse': ("        return self::voteEnregistre();\n    }\n",
+                          "        return [...self::voteEnregistre(), 'new_reputation' => $newRep];\n    }\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -4776,7 +4778,7 @@ jobs:
                              "'SELECT MIN(sender_id) FROM dm WHERE recipient_id = ? AND sender_id >= ? AND ciphertext IS NOT NULL'"),
               'tout':       ("'SELECT MIN(sender_id) FROM dm WHERE recipient_id = ? AND sender_id >= ?'",
                              "'SELECT MIN(sender_id) FROM (SELECT DISTINCT * FROM dm) WHERE recipient_id = ? AND sender_id >= ?'"),
-              'ordre':      ("        usort($motifs, static fn (array $a, array $b): int => [$b['jour'], $a['reason']] <=> [$a['jour'], $b['reason']]);\n", ''),
+              'ordre':      ("        usort($lus, static fn (array $a, array $b): int => [date('Y-m-d', (int) $b['created_at']), $a['reason']] <=> [date('Y-m-d', (int) $a['created_at']), $b['reason']]);\n", ''),
               'mois':       ("'jour'        => date('Y-m-d', (int) $v['created_at']),", "'jour'        => date('Y-m', (int) $v['created_at']),"),
               'horodatage': ("'jour'        => date('Y-m-d', (int) $v['created_at']),", "'jour'        => date('Y-m-d', (int) $v['created_at']), 'ts' => $v['created_at'],"),
               'utc':        ("'jour'        => date('Y-m-d', (int) $v['created_at']),", "'jour'        => gmdate('Y-m-d', (int) $v['created_at']),"),
@@ -5384,9 +5386,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 290/290 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 290 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La déclaration de l'hôte et ce qu'elle décide : le repli sur la démonstration,
           # le ban et le retrait du vote en service, les bornes du service et de la
           # démonstration, `dm` sous HORS_MOTEUR ; la sanction due et la réponse de
@@ -5520,6 +5522,86 @@ jobs:
           for f in "$M" "$C" "$A" "$R"; do
             cmp -s "/tmp/regimes.$(basename "$(dirname "$f")").$(basename "$f").intact" "$f" || { echo "::error::$f n'a pas été restauré à l'identique"; exit 1; }
           done
+          [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
+
+      - name: Canari — SelfModerate, le chemin du vote
+        run: |
+          # @plante
+          # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
+          sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+            || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
+                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+          # Ce que rend un vote que les votes des autres font tomber, la lecture des
+          # comptes votés, le seuil des motifs par sens et sur les motifs rendus ; le droit
+          # de vote relu sous le verrou, le motif jugé avant lui, l'auteur qui doit être un
+          # compte ; la classe que garde un vote, et le plafond des seules cibles
+          # établies. Chaque plantation est jugée, même après l'échec d'une autre, et doit
+          # rougir sur ce qui la nomme.
+          M=bi-self/selfmoderate/src/Moderate.php
+          cp "$M" /tmp/chemin.intact
+          echecs=0
+          cas_liste="retour_croise retour_part comptes_recus motifs_par_sens motifs_ancien droit_sous_verrou motif_avant_verrou auteur_absent classe_jointure classe_sans_date plafond_etabli plafond_cible_neuve"
+          for cas in $cas_liste; do
+            attendu=$(CAS="$cas" python3 - <<'PY'
+          import os
+          M = 'bi-self/selfmoderate/src/Moderate.php'
+          RETOUR = "✗ ⭐ un vote que les votes des autres font tomber se distingue d'un vote compté"
+          MOTIFS = "✗ ⭐ motifsVotantsMin compte tous les sens, ou toute l'histoire"
+          CLASSE = "✗ ⭐ la classe d'un vote suit le compte de son auteur"
+          PLAFOND = "✗ ⭐ des comptes neufs épuisent le plafond d'un défenseur"
+          avant, apres, attendu = {
+              'retour_croise':  ("$author, $author);\n                return self::voteEnregistre();",
+                                 "$author, $author);\n                return ['ok' => true, 'blocked' => true, 'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')];", RETOUR),
+              'retour_part':    ("apprendrait ces votes.\n            return self::voteEnregistre();",
+                                 "apprendrait ces votes.\n            return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'comptes_recents', 'message' => static::t('Vote enregistré.')];",
+                                 "✗ ⭐ des comptes récents pèsent plus qu'un membre"),
+              'comptes_recus':  ("'SELECT DISTINCT target_author FROM mod_votes WHERE ' . self::VOTE_RECU . ' ORDER BY target_author'",
+                                 "'SELECT DISTINCT target_author FROM mod_votes WHERE blocked = 0 ORDER BY target_author'",
+                                 "✗ ⭐ la lecture des comptes votés perd un compte"),
+              'motifs_par_sens': ("count($votants[(int) $v['value'] < 0 ? -1 : 1]) >= self::config()->motifsVotantsMin",
+                                  "count($votants[-1]) + count($votants[1]) >= self::config()->motifsVotantsMin", MOTIFS),
+              'motifs_ancien':  ("        $rendus = array_filter($lus, static fn (array $v): bool =>\n            count($votants[(int) $v['value'] < 0 ? -1 : 1]) >= self::config()->motifsVotantsMin);",
+                                 "        $total = $pdo->prepare(\"SELECT COUNT(DISTINCT voter_id) $recus\");\n        $total->execute([$accountId]);\n        $rendus = (int) $total->fetchColumn() >= self::config()->motifsVotantsMin ? $lus : [];",
+                                 MOTIFS),
+              'droit_sous_verrou': ("        [$can, $why] = self::droitDeVote($pdo, $voterId, $etatVotant);",
+                                    "        [$can, $why] = [true, ''];", "✗ ⭐ un banni vote sous le verrou"),
+              'motif_avant_verrou': ("        if ($value === -1 || ($reason !== null && $reason !== '')) {\n            [$motifOk, $pourquoi] = self::validateReason($reason);",
+                                     "        self::rattraperSeul($pdo, $voterId);\n        if ($value === -1 || ($reason !== null && $reason !== '')) {\n            [$motifOk, $pourquoi] = self::validateReason($reason);",
+                                     "✗ ⭐ un motif refusé attend le verrou d'écriture"),
+              'auteur_absent':  ("'SELECT p.account_id FROM posts p JOIN accounts a ON a.id = p.account_id WHERE p.id = ?'",
+                                 "'SELECT account_id FROM posts WHERE id = ?'", "✗ ⭐ un auteur absent d'accounts est votable"),
+              'classe_jointure': ("FROM mod_votes v\n              WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ? AND ' . self::recentEnSql()",
+                                  "FROM mod_votes v JOIN accounts a ON a.id = v.voter_id\n              WHERE v.target_author = ? AND v.blocked = 0 AND v.created_at >= ? AND v.created_at - a.created_at < ' . self::config()->ageEtabliSecondes",
+                                  CLASSE),
+              'classe_sans_date': ("'(NOT (COALESCE(v.voter_created_at, 0) > 0 AND", "'(NOT (COALESCE(v.voter_created_at, 1) > 0 AND", CLASSE),
+              'plafond_etabli': ("COUNT(DISTINCT CASE WHEN ' . $etablie . ' THEN v.target_author END) AS cibles",
+                                 "COUNT(DISTINCT v.target_author) AS cibles", PLAFOND),
+              'plafond_cible_neuve': ("        if ($value === -1 && self::etabli(self::creeLe($pdo, $author), self::maintenant())) {",
+                                      "        if ($value === -1) {", PLAFOND),
+          }[os.environ['CAS']]
+          s = open(M, encoding='utf-8').read()
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(M, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          print(attendu)
+          PY
+            ) || { cp /tmp/chemin.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — elle ne prouve rien"; echecs=$((echecs + 1)); continue; }
+            sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
+            cp /tmp/chemin.intact "$M"
+            if [ "$rc" -eq 0 ]; then
+              echo "::error::le banc reste VERT avec la plantation « $cas »"; echecs=$((echecs + 1)); continue
+            fi
+            if grep -qE 'Fatal error|Uncaught' <<< "$sortie"; then
+              grep -E 'Fatal error|Uncaught' <<< "$sortie" | head -2 || true
+              echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir"; echecs=$((echecs + 1)); continue
+            fi
+            if ! grep -qF -- "$attendu" <<< "$sortie"; then
+              grep -E '✗' <<< "$sortie" | head -3 || true
+              echo "::error::rouge avec « $cas », mais pas sur ce qui la nomme : $attendu"; echecs=$((echecs + 1)); continue
+            fi
+            echo "✓ plantation « $cas » : le banc rougit, et sur ce qui la nomme"
+          done
+          cmp -s /tmp/chemin.intact "$M" || { echo "::error::$M n'a pas été restauré à l'identique"; exit 1; }
           [ "$echecs" -eq 0 ] || { echo "::error::$echecs plantation(s) sur $(wc -w <<< "$cas_liste") ne rendent pas le rouge attendu"; exit 1; }
 
       - name: Garde-fou — premier administrateur et dernier administrateur

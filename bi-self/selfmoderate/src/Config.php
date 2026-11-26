@@ -104,9 +104,10 @@ final class Config
      *                                        automatique suivant.
      * @param int      $messagesPourVoterAvantAge Messages publiés qui dispensent de
      *                                        `ageMinPourVoterSecondes` ; 0 n'en dispense personne.
-     * @param int      $motifsVotantsMin      `reasonsFor()` ne rend les motifs reçus qu'à partir
-     *                                        de ce nombre de votants distincts : sous lui, un motif
-     *                                        peut désigner son auteur. 1 les rend toujours.
+     * @param int      $motifsVotantsMin      `reasonsFor()` ne rend les motifs d'un sens qu'à partir
+     *                                        de ce nombre de votants distincts dans ce sens, parmi
+     *                                        les motifs qu'il rend : sous lui, un motif peut désigner
+     *                                        son auteur. 1 les rend toujours.
      * @param int      $fenetreCroiseeSecondes Deux membres qui votent l'un contre l'autre dans
      *                                        cette fenêtre se croisent : les deux votes sont
      *                                        annulés. La même durée fait ensuite la trêve, où

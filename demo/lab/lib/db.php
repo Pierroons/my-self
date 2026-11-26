@@ -651,12 +651,17 @@ final class Db
             }
         }
 
-        // SelfModerate — motif de vote, et ce que le vote a changé à la réputation.
-        // Un vote d'avant cette colonne la garde à NULL : le moteur le lit sans effet connu.
+        // SelfModerate — motif de vote, ce que le vote a changé à la réputation, et la
+        // date de création de son votant. Un vote d'avant `effet` la garde à NULL : le
+        // moteur le lit sans effet connu. La date se reprend du compte, une fois, à
+        // l'ajout de la colonne : un vote sans date compte comme celui d'un compte récent.
         $cols = self::$pdo->query('PRAGMA table_info(mod_votes)')->fetchAll(PDO::FETCH_COLUMN, 1);
-        foreach (['reason' => 'TEXT', 'reason_code' => 'TEXT', 'effet' => 'INTEGER'] as $col => $type) {
+        foreach (['reason' => 'TEXT', 'reason_code' => 'TEXT', 'effet' => 'INTEGER', 'voter_created_at' => 'INTEGER'] as $col => $type) {
             if (!in_array($col, $cols, true)) {
                 self::$pdo->exec("ALTER TABLE mod_votes ADD COLUMN $col $type");
+                if ($col === 'voter_created_at') {
+                    self::$pdo->exec('UPDATE mod_votes SET voter_created_at = (SELECT a.created_at FROM accounts a WHERE a.id = mod_votes.voter_id)');
+                }
             }
         }
 

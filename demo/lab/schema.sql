@@ -176,6 +176,8 @@ CREATE TABLE IF NOT EXISTS mod_votes (
     blocked_reason TEXT,
     effet          INTEGER,                  -- ce que le vote a changé à la réputation : 0 s'il a buté sur une
                                              -- borne, remis à 0 quand la réputation revient au départ
+    voter_created_at INTEGER,                -- la date de création du votant, gardée au vote : sa classe,
+                                             -- récent ou établi, ne dépend plus de son compte
     created_at     INTEGER NOT NULL,
     FOREIGN KEY (voter_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
