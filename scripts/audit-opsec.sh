@@ -182,6 +182,10 @@ FOUND=0
 # interdirait de commiter ce que l'allowlist écarte volontairement — mais ça ne
 # vaut pas ✓ non plus : le verdict final doit pouvoir le distinguer.
 SANS_OBJET=0
+# Vaut 1 quand `--range` nomme une plage sans commit. Déclarée ici, avec les
+# autres drapeaux, et non à l'endroit où elle se calcule : `ok_si_lu` la lit, et
+# sous `set -u` un appel ajouté en amont du calcul ferait sortir le script.
+PLAGE_VIDE=0
 red()  { printf '\033[31m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[31m✗\033[0m %s\n' "$1"; FOUND=1; }
@@ -189,12 +193,36 @@ warn() { printf '  \033[31m✗\033[0m %s\n' "$1"; FOUND=1; }
 # n'est pas une fuite, mais il ne mérite pas la coche d'une passe complète — et
 # le signaler en ✗ interdirait de commiter les fichiers que l'allowlist écarte.
 note() { printf '  \033[33m•\033[0m %s\n' "$1"; }
+# Étages 1, 4 et 5 : sur un périmètre vide ils n'ont rien lu, et une coche verte
+# y serait indistinguable d'une coche obtenue sur des commits réellement lus.
+# L'étage 2 porte son propre `note`.
+ok_si_lu() { if [ "$PLAGE_VIDE" = "1" ]; then note "$2"; else ok "$1"; fi; }
 
 # grep rend 0 s'il trouve, 1 s'il ne trouve pas, et 2 ou plus si le motif est
 # invalide ou la lecture impossible. Tester « rc != 0 » confond donc « rien
 # trouvé » avec « pas pu chercher », et un motif refusé rend le même vert qu'un
 # dépôt propre. Une raison sociale avec une parenthèse, un nom terminé par une
 # barre inverse, un crochet ouvert : trois formes qui font sortir grep en 2.
+#
+# 🔑 Ne JAMAIS l'appeler en bout de tube — `… | cherche "$m"`. Deux mécanismes
+# distincts y perdent le verdict, et chacun seul suffit à rendre un faux vert :
+#
+#   · son `exit 2` ne quitte que le sous-shell du maillon. Le script continue, et
+#     un motif que grep refuse passe pour « non trouvé » ;
+#   · `grep -q` sort dès la PREMIÈRE correspondance. Au-delà de la capacité d'un
+#     tube — 64 Kio, mesuré : 65 542 octets passent, 70 006 non — le producteur
+#     prend alors SIGPIPE et rend 141, que `set -o pipefail` fait porter au tube
+#     entier. Le `if` lit « pas trouvé » pendant que grep a trouvé. Plus le motif
+#     est tôt dans l'entrée, plus sûrement il est perdu.
+#
+# Les deux formes qui ferment les deux, parce qu'elles n'engendrent aucun tube :
+#
+#     cherche "$m" <<< "$texte"        une chaîne déjà en mémoire
+#     cherche "$m" < <(commande)       la sortie d'une commande
+#
+# ⚠️ `<<<` fournit une ligne vide là où un tube vide n'en fournit aucune : sur une
+# entrée vide, un motif qui matche la chaîne vide passe de « rien trouvé » à
+# « trouvé ». Les appels dont l'entrée peut être vide la gardent en amont.
 cherche() {                       # cherche <motif> ; lit stdin ; 0 = trouvé
   local m="$1" rc
   grep -qi -e "$m"; rc=$?
@@ -217,6 +245,44 @@ if [ ! -f "$PATTERNS" ]; then
 fi
 mapfile -t MOTIFS < <(grep -vE '^\s*(#|$)' "$PATTERNS")
 [ ${#MOTIFS[@]} -eq 0 ] && { red "✗ Aucun motif dans $PATTERNS"; exit 2; }
+
+# La validité d'un motif est une propriété du FICHIER DE MOTIFS, pas du fichier
+# audité : elle se mesure une fois, ici, et le refus arrive avant la première
+# coche au lieu de se noyer au milieu d'un étage. C'est ce qui ferme la classe —
+# aucun site d'appel futur ne peut plus laisser passer un motif refusé, quelle
+# que soit la forme sous laquelle il appelle `cherche`.
+#
+# `/dev/null` est vide, donc grep y rend 1 pour tout motif valide : un code
+# supérieur ne peut venir que du motif lui-même. Et pas de tube ici, pour la
+# raison écrite au-dessus de `cherche`.
+#
+# ⚠️ Ce que ce bloc ne couvre pas, et que l'`exit 2` de `cherche` rattrape : un
+# échec au moment du match, qu'une entrée vide ne peut pas provoquer. Il ne
+# couvre pas non plus la classe voisine — un motif qui compile et ne matche
+# rien, un accent mal encodé par exemple — qui rend 1 partout et ne protège
+# rien. Et `git grep` n'est pas épinglé sur le même moteur : une configuration
+# `grep.patternType = extended` le désaccorderait de `grep`.
+MOTIFS_REFUSES=()
+for m in "${MOTIFS[@]}"; do
+  grep -qi -e "$m" /dev/null
+  rc=$?
+  # Le motif et son diagnostic se stockent séparés par une tabulation : ce qui
+  # est entre les chevrons à l'affichage doit pouvoir se chercher tel quel dans
+  # le fichier de motifs.
+  [ "$rc" -le 1 ] || MOTIFS_REFUSES+=("$m	grep sort en $rc")
+done
+if [ ${#MOTIFS_REFUSES[@]} -ne 0 ]; then
+  red "✗ ${#MOTIFS_REFUSES[@]} motif(s) inutilisable(s) dans $PATTERNS"
+  for m in "${MOTIFS_REFUSES[@]}"; do
+    printf '    « %s » — %s\n' "${m%%	*}" "${m#*	}"
+  done
+  echo
+  echo "  Un motif que grep refuse ne protège rien : l'audit rendrait propre"
+  echo "  ce qu'il devait trouver. Corrige-les avant de publier."
+  echo "  Les formes qui font sortir grep en 2 : crochet non fermé, parenthèse"
+  echo "  non appairée, barre inverse finale."
+  exit 2
+fi
 
 # ── Allowlist : chemins écartés du grep de contenu ──────────────────────────
 EXCLUDES=()
@@ -319,10 +385,10 @@ CHIFFRES=$'(^[[:space:]]*#|\t).*[0-9]{5}'
 # Une valeur qui porte un chemin absolu ou des coordonnées est une fuite quoi
 # qu'il arrive, même si aucun motif connu n'y figure.
 suspecte() {
-  printf '%s' "$1" | grep -qE '(/home/|/Users/|[A-Z]:\\|[0-9]+ deg [0-9]+)' && return 0
+  grep -qE '(/home/|/Users/|[A-Z]:\\|[0-9]+ deg [0-9]+)' <<< "$1" && return 0
   local m
   for m in "${MOTIFS[@]}"; do
-    printf '%s' "$1" | cherche "$m" && return 0
+    cherche "$m" <<< "$1" && return 0
   done
   return 1
 }
@@ -337,8 +403,16 @@ if [ "$MODE" = "message" ]; then
   [ -f "$MSGFILE" ] || exit 0
   # Ignorer les lignes de commentaire que git ajoute lui-même.
   CORPS=$(grep -v '^#' "$MSGFILE" 2>/dev/null || true)
+  # Un message sans une ligne de contenu ne se greppe pas. Le dire plutôt que
+  # rendre un vert, comme partout ailleurs — et ça ferme au passage le seul
+  # endroit où la ligne vide que `<<<` ajoute atteindrait un motif : celui qui
+  # matche la chaîne vide bloquerait un message légitime.
+  if [ -z "$CORPS" ]; then
+    note "message sans contenu — rien à auditer"
+    exit 0
+  fi
   for m in "${MOTIFS[@]}"; do
-    if printf '%s' "$CORPS" | cherche "$m"; then
+    if cherche "$m" <<< "$CORPS"; then
       echo ""
       red "❌ COMMIT BLOQUÉ — le message contient « $m »."
       printf '%s' "$CORPS" | grep -i -e "$m" | head -3 | sed 's/^/     /'
@@ -358,7 +432,15 @@ fi
 if [ "$MODE" = "staged" ]; then
   echo "▸ Audit OPSEC (fichiers indexés) — ${#MOTIFS[@]} motifs"
   mapfile -t CIBLES < <(git -c core.quotepath=false -C "$ROOT" diff --cached --name-only --diff-filter=ACMR)
-  [ ${#CIBLES[@]} -eq 0 ] && { ok "rien d'indexé"; exit 0; }
+  # Un index vide n'est pas un audit réussi, exactement comme un arbre propre
+  # plus bas. Et c'est ici que ça compte le plus : `--staged` est le mode du
+  # crochet `pre-commit`, là où `--worktree` n'est appelé par aucun crochet.
+  if [ ${#CIBLES[@]} -eq 0 ]; then
+    note "rien d'indexé — aucun fichier à auditer"
+    echo
+    printf '\033[33m• Audit sans objet — aucun fichier n'"'"'a été lu.\033[0m\n'
+    exit 0
+  fi
 elif [ "$MODE" = "worktree" ]; then
   echo "▸ Audit OPSEC (travail en cours) — ${#MOTIFS[@]} motifs"
   # Tout ce qui n'est pas encore poussé : modifié, indexé, ou jamais tracké.
@@ -373,11 +455,31 @@ elif [ "$MODE" = "worktree" ]; then
   )
   # Un working tree propre n'est pas un audit réussi : c'est un audit sans
   # objet. Le dire, plutôt que rendre un vert obtenu sur une liste vide.
-  [ ${#CIBLES[@]} -eq 0 ] && { ok "aucun fichier modifié ni intracké — rien à auditer"; exit 0; }
+  if [ ${#CIBLES[@]} -eq 0 ]; then
+    note "aucun fichier modifié ni intracké — rien à auditer"
+    echo
+    printf '\033[33m• Audit sans objet — aucun fichier n'"'"'a été lu.\033[0m\n'
+    exit 0
+  fi
 else
   echo "▸ Audit OPSEC — ${#MOTIFS[@]} motifs, ${#EXCLUDES[@]} exclusions"
 fi
 echo
+
+# ── Périmètre vide : à dire une fois, avant les étages ──────────────────────
+# Une plage sans commit ne se mesure pas : les étages qui suivent `--range` n'ont
+# rien lu, et leur coche verte ne se distinguerait pas d'une coche obtenue sur des
+# commits réellement lus (mesuré le 26/11/2026 avec `--range HEAD..HEAD`). Les
+# étages 3, 6 et 7 lisent le HEAD, l'historique et la forge : ils ont bel et bien
+# lu quelque chose, et ne sont pas concernés.
+#
+# Le code de sortie reste 0, comme pour tout `SANS_OBJET` : un périmètre vide
+# n'est pas une fuite, et les trois crochets traitent un code non nul comme un
+# refus de publier. C'est le VERDICT qui change, et il se lit.
+if [ -n "$RANGE" ] && [ -z "$(git -C "$ROOT" rev-list "${PLAGE[@]}" 2>/dev/null)" ]; then
+  PLAGE_VIDE=1
+  SANS_OBJET=1
+fi
 
 # ── 1. Secrets ──────────────────────────────────────────────────────────────
 echo "1. Secrets (gitleaks)"
@@ -416,7 +518,8 @@ else
   [ -n "$RANGE" ] && GL_PORTEE=(--log-opts "${PLAGE[*]}")
   if gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
        "${GL_PORTEE[@]}" --no-banner --redact >/dev/null 2>&1; then
-    ok "aucun secret${RANGE:+ dans les commits à publier ($RANGE_AFF)}"
+    ok_si_lu "aucun secret${RANGE:+ dans les commits à publier ($RANGE_AFF)}" \
+             "aucun commit dans le périmètre — aucun secret n'a été cherché"
   else
     warn "secret détecté — détail : gitleaks detect${RANGE:+ --log-opts \"$RANGE\"} -v"
   fi
@@ -460,7 +563,7 @@ if [ "$PAR_CIBLES" = "1" ]; then
       [ -n "$l" ] && { warn "$f — suite de cinq chiffres citée, ligne(s) $l"; C2=1; }
     fi
     for m in "${MOTIFS[@]}"; do
-      if contenu "$f" | cherche "$m"; then
+      if cherche "$m" < <(contenu "$f"); then
         warn "$f — contient « $m »"
         contenu "$f" | grep -in -e "$m" | head -2 | sed 's/^/       /'
         C2=1
@@ -542,7 +645,12 @@ else
   # Une plage vide ne se mesure pas : le dire, plutôt que rendre un vert que
   # rien ne distingue d'un vert obtenu sur des commits réellement lus.
   if [ "${#REVS[@]}" = "0" ]; then
-    ok "aucun commit dans le périmètre — rien n'a été lu"
+    note "aucun commit dans le périmètre — aucun contenu n'a été lu"
+    # `SANS_OBJET` se pose ici et pas seulement dans la garde de `--range` :
+    # cette branche se traverse aussi sans plage, quand le dépôt n'a encore
+    # aucun commit. Sans cette ligne le verdict final restait « Rien à
+    # signaler » sur un audit qui n'avait pas lu un seul commit.
+    SANS_OBJET=1
     REVS=()
   fi
   C2=0
@@ -693,7 +801,8 @@ if [ "$PAR_CIBLES" = "0" ]; then
     C4=1
   done < <(printf '%s' "$MESSAGES" | grep -ioE '\b[0-9a-f]{32}\b|\b[0-9a-f]{64}\b' | sort -u)
 
-  [ "$C4" = "0" ] && ok "aucun motif ni secret dans les messages"
+  [ "$C4" = "0" ] && ok_si_lu "aucun motif ni secret dans les messages" \
+                              "aucun commit dans le périmètre — aucun message n'a été lu"
 
   # Le filtre le plus utile de tous : c'est là que dorment les documents de
   # travail, briefs privés et captures qu'on a « rangés » d'un git rm.
@@ -741,16 +850,21 @@ if [ "$PAR_CIBLES" = "0" ]; then
         | sort -u)
       [ ${#BLOBS[@]} -eq 0 ] && continue
       for blob in "${BLOBS[@]}"; do
-        git -C "$ROOT" cat-file -p "$blob" 2>/dev/null | grep -qI . || continue
+        # Sans la redirection, `grep -qI` sort à la première ligne et le
+        # `cat-file` prend SIGPIPE : `pipefail` rendait 141, le `|| continue`
+        # écartait le blob en silence, et un orphelin de plus de 64 Kio n'était
+        # jamais grepé. Mesuré sur ce dépôt : un JSON orphelin de 619 Ko sauté.
+        grep -qI . < <(git -C "$ROOT" cat-file -p "$blob" 2>/dev/null) || continue
         for m in "${MOTIFS[@]}"; do
-          if git -C "$ROOT" cat-file -p "$blob" 2>/dev/null | cherche "$m"; then
+          if cherche "$m" < <(git -C "$ROOT" cat-file -p "$blob" 2>/dev/null); then
             warn "$f — contient « $m » (blob ${blob:0:8})"; C5=1; break 2
           fi
         done
       done
     done <<< "$ORPH"
   fi
-  [ "$C5" = "0" ] && ok "$ORPH_N orphelin(s), aucun ne porte de motif"
+  [ "$C5" = "0" ] && ok_si_lu "$ORPH_N orphelin(s), aucun ne porte de motif" \
+                              "aucun commit dans le périmètre — aucune suppression n'a été lue"
 fi
 
 # ── 6 : le TEXTE des documents, sur tout l'historique ──────────────────────
@@ -800,7 +914,7 @@ motifs_du_texte() {
   # `cherche` plutôt que `grep -qi` : l'étage lisait un motif refusé par grep
   # comme « rien trouvé ». Les deux autres étages de motifs l'employaient déjà.
   for m in "${MOTIFS[@]}"; do
-    if printf '%s' "$texte" | cherche "$m"; then
+    if cherche "$m" <<< "$texte"; then
       warn "$quoi — contient « $m »"
       return 1
     fi
@@ -899,8 +1013,13 @@ if [ "$PAR_CIBLES" = "0" ]; then
       SANS_OBJET=1
     else
       C7=0
+      # `cherche` et non `grep -qi` en bout de tube : `$LIBRE` dépasse la
+      # capacité d'un tube dès que la forge a quelques releases — 100 467 octets
+      # sur ce dépôt, mesuré le 26/11/2026 — et un motif situé dans ses premiers
+      # 64 Kio y était perdu. C'est-à-dire dans les releases et la description,
+      # ce pour quoi cet étage existe.
       for m in "${MOTIFS[@]}"; do
-        if printf '%s' "$LIBRE" | grep -qi -e "$m"; then
+        if cherche "$m" <<< "$LIBRE"; then
           warn "« $m » dans une release, une issue ou la description de $DEPOT"
           warn "  → ces textes s'éditent sans réécriture : gh release edit / gh repo edit"
           C7=1
@@ -919,8 +1038,14 @@ if [ "$FOUND" = "0" ] && [ "$SANS_OBJET" = "0" ]; then
 fi
 if [ "$FOUND" = "0" ]; then
   printf '\033[33m• Audit sans objet — aucun contenu n'"'"'a été lu.\033[0m\n'
-  echo "  Le vert ci-dessus ne porte sur rien : vérifie les lignes ↷ et, si une"
-  echo "  entrée d'allowlist écarte plus large que sa raison, resserre-la."
+  if [ "${PLAGE_VIDE:-0}" = "1" ]; then
+    echo "  La plage « $RANGE » ne contient aucun commit : rien n'a été audité."
+    echo "  Ce n'est pas un dépôt propre, c'est un périmètre vide — vérifie la"
+    echo "  plage avant de conclure quoi que ce soit de cette passe."
+  else
+    echo "  Les coches ci-dessus ne portent sur rien : vérifie les lignes ↷ et, si"
+    echo "  une entrée d'allowlist écarte plus large que sa raison, resserre-la."
+  fi
   exit 0
 fi
 red "✗ Audit en échec — voir ci-dessus."

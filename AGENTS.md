@@ -171,6 +171,19 @@ jeu de défauts plantés vit hors dépôt pour cet usage — la question posée 
 sonde neuve n'est pas « est-ce que ça passe », c'est « est-ce que ça échoue quand
 ça doit ».
 
+Les bancs de `scripts/tests/` posent cette question par un chemin que la CI ne
+peut pas prendre : chacun accepte le chemin de la sonde qu'il éprouve, pour être
+rejoué contre une version antérieure de celle-ci. `AUDIT_SOUS_TEST`,
+`CHECK_PATHS_SOUS_TEST`, `ECART_SOUS_TEST` servent à ça. Un banc qui n'a jamais
+été rejoué contre l'avant d'un correctif ne dit pas que ses cas rougissent — il
+dit seulement qu'ils passent sur du code déjà corrigé.
+
+`scripts/tests/test_audit_opsec.sh` éprouve `audit-opsec.sh`, et il reste hors
+intégration continue : non parce que les motifs vivent hors dépôt — il fournit
+les siens par `SELFOPSEC_PATTERNS` — mais parce qu'il monte des dépôts jetables
+et appelle `gitleaks`, `exiftool` et `gh`. Il se lance avant un envoi qui touche
+l'audit, et refuse de conclure si l'un des trois manque.
+
 🔑 **Une recherche rend une liste, jamais une absence.** Un résultat court se lit
 comme « il ne reste rien » tant que trois choses ne l'accompagnent pas : le
 périmètre parcouru, le motif cherché, et ce que l'outil n'a pas pu lire. Quatre
