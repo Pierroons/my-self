@@ -199,14 +199,23 @@ CELLAR_HEADERS = {
 
 
 def fetch_url(url: str, timeout: int = 60, max_retries: int = 10, opener=None,
-              headers: dict | None = None) -> bytes:
+              headers: dict | None = None, source: str = "") -> bytes:
     """Télécharger une URL avec headers appropriés et retry sur HTTP 202.
 
     Un 202 peut signifier « page en génération » : il faut attendre et
     réessayer. Sauf s'il porte un défi anti-robot, qui ne se lève pas en
     insistant.
+
+    🔑 `source` préfixe chaque message, et ne double pas la ligne
+    « [SOURCE] Téléchargement » qui précède l'appel : celle-ci part sur
+    stdout, ces messages sur stderr, et le journal reçoit les deux flux.
+    Un message qui ne se nomme pas n'est donc identifiable que par sa
+    position, qui ne se conserve pas — le 15/11/2026, un refus figurait
+    au journal avant toute source nommée.
     """
     import time
+
+    tag = f"[{source}] " if source else ""
 
     for attempt in range(max_retries):
         req = Request(url, headers=headers or HTTP_HEADERS)
@@ -221,12 +230,12 @@ def fetch_url(url: str, timeout: int = 60, max_retries: int = 10, opener=None,
                 # minutes par source, puis à conclure « échec après 10
                 # tentatives » là où il fallait lire « accès bloqué ».
                 if status == 202 and resp.headers.get("x-amzn-waf-action"):
-                    print("  HTTP 202 — défi anti-robot (AWS WAF). "
+                    print(f"  {tag}HTTP 202 — défi anti-robot (AWS WAF). "
                           "Réessayer n'y changerait rien.", file=sys.stderr)
                     return b""
                 if status == 202 or not data:
                     wait = 2 * (attempt + 1)
-                    print(f"  HTTP {status} — attente {wait}s puis retry ({attempt+1}/{max_retries})...")
+                    print(f"  {tag}HTTP {status} — attente {wait}s puis retry ({attempt+1}/{max_retries})...")
                     time.sleep(wait)
                     continue
                 return data
@@ -251,18 +260,18 @@ def fetch_url(url: str, timeout: int = 60, max_retries: int = 10, opener=None,
                 451: "accès refusé pour raisons juridiques",
             }
             if e.code in definitifs:
-                print(f"  HTTP {e.code} — {definitifs[e.code]}. "
+                print(f"  {tag}HTTP {e.code} — {definitifs[e.code]}. "
                       "Réessayer n'y changerait rien.", file=sys.stderr)
                 return b""
             wait = 2 * (attempt + 1)
-            print(f"  HTTP {e.code} — retry dans {wait}s ({attempt+1}/{max_retries})")
+            print(f"  {tag}HTTP {e.code} — retry dans {wait}s ({attempt+1}/{max_retries})")
             time.sleep(wait)
         except URLError as e:
             wait = 2 * (attempt + 1)
-            print(f"  Erreur réseau : {e} — retry dans {wait}s ({attempt+1}/{max_retries})")
+            print(f"  {tag}Erreur réseau : {e} — retry dans {wait}s ({attempt+1}/{max_retries})")
             time.sleep(wait)
 
-    print(f"  ÉCHEC après {max_retries} tentatives : {url}", file=sys.stderr)
+    print(f"  {tag}ÉCHEC après {max_retries} tentatives : {url}", file=sys.stderr)
     return b""
 
 
@@ -424,7 +433,7 @@ def parse_articles(html_bytes, source: str) -> list[dict]:
     try:
         tree = lhtml.fromstring(html_str)
     except Exception as e:
-        print(f"  ERREUR parsing HTML : {e}", file=sys.stderr)
+        print(f"  [{source}] ERREUR parsing HTML : {e}", file=sys.stderr)
         return articles
 
     # Collecter tous les éléments <p class="ti-art"> dans l'ordre du document
@@ -607,7 +616,7 @@ HORS_ARTICLE = re.compile(r"^(ti-section|ti-grseq|hd-|doc-end|separator)")
 FORMULE_FINALE = re.compile(r"\s*EN FOI DE QUOI\b")
 
 
-def tranche_jo(xhtml, debut: str, fin: str) -> str:
+def tranche_jo(xhtml, debut: str, fin: str, source: str = "") -> str:
     """Isoler un traité dans un numéro du Journal officiel.
 
     Garde les paragraphes entre le titre `doc-ti` qui correspond à `debut` et le
@@ -617,13 +626,14 @@ def tranche_jo(xhtml, debut: str, fin: str) -> str:
     """
     from lxml import html as lhtml
 
+    tag = f"[{source}] " if source else ""
     if isinstance(xhtml, bytes):
         xhtml = xhtml.decode("utf-8", errors="replace")
     xhtml = re.sub(r"^\s*<\?xml[^>]*\?>\s*", "", xhtml)
     try:
         tree = lhtml.fromstring(xhtml)
     except Exception as e:
-        print(f"  ERREUR parsing du Journal officiel : {e}", file=sys.stderr)
+        print(f"  {tag}ERREUR parsing du Journal officiel : {e}", file=sys.stderr)
         return ""
 
     def texte(e) -> str:
@@ -633,7 +643,8 @@ def tranche_jo(xhtml, debut: str, fin: str) -> str:
     titres = [i for i, e in enumerate(elements) if "doc-ti" in (e.get("class") or "")]
     a = next((i for i in titres if re.match(debut, texte(elements[i]))), None)
     if a is None:
-        print(f"  titre introuvable dans le Journal officiel : « {debut} »", file=sys.stderr)
+        print(f"  {tag}titre introuvable dans le Journal officiel : « {debut} »",
+              file=sys.stderr)
         return ""
     z = next((i for i in titres if i > a and re.match(fin, texte(elements[i]))), len(elements))
 
@@ -654,19 +665,20 @@ def telecharger(source: str, info: dict) -> bytes:
     ressource = info.get("cellar")
     if not ressource:
         print(f"[{source}] Téléchargement : {info['url']}")
-        return fetch_url(info["url"])
+        return fetch_url(info["url"], source=source)
 
     url = CELLAR + ressource
     print(f"[{source}] Téléchargement CELLAR : {url}")
     if url not in PIECES_CELLAR:
         try:
-            PIECES_CELLAR[url] = fetch_url(url, headers=CELLAR_HEADERS, opener=OUVREUR_CELLAR)
+            PIECES_CELLAR[url] = fetch_url(url, headers=CELLAR_HEADERS,
+                                           opener=OUVREUR_CELLAR, source=source)
         except RedirectionRefusee as e:
-            print(f"  redirection vers HTTP refusée : {e}", file=sys.stderr)
+            print(f"  [{source}] redirection vers HTTP refusée : {e}", file=sys.stderr)
             PIECES_CELLAR[url] = b""
     piece = PIECES_CELLAR[url]
     if piece and info.get("tranche"):
-        return tranche_jo(piece, *info["tranche"]).encode("utf-8")
+        return tranche_jo(piece, *info["tranche"], source=source).encode("utf-8")
     return piece
 
 
@@ -796,6 +808,16 @@ def enregistrer_provenance(db_path: str, traitees: list, echecs: list) -> None:
 
 
 def main():
+    # Le script est lancé avec ses deux flux vers un même journal
+    # (`>> "$LOG_FILE" 2>&1`). stdout vers un fichier est bufferisé par blocs,
+    # stderr ne l'est pas : sans cette ligne, tout ce qui s'imprime ici arrive
+    # au journal après les messages d'erreur, et après les lignes que le script
+    # appelant y écrit lui-même. Mesuré le 24/11/2026 : un refus en première
+    # ligne pour une source téléchargée en cinquième.
+    # Un banc remplace stdout par un io.StringIO, qui n'a pas reconfigure().
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(description="Construction base conventionnalité UE+CEDH")
     parser.add_argument("--db", required=True, help="Chemin vers la base SQLite de sortie")
     parser.add_argument("--only", help="Source unique à traiter (CHARTE_UE, TUE, TFUE, RGPD, CEDH)")

@@ -66,11 +66,31 @@ alerter() {
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE NON ENVOYÉE (jeton illisible : $NTFY_TOKEN_FILE) — $titre" >> "$LOG_FILE"
         return 0
     fi
-    curl -fsS -m 10 --retry 2 \
+    # 🔑 Le code de retour du `curl` se LIT. La forme d'avant
+    # — `> /dev/null 2>&1 || true` — avalait tout : silencieuse, sortie jetée,
+    # code ignoré. Un canal injoignable, un jeton révoqué ou un refus de l'hôte
+    # ne laissaient donc aucune trace, et le script continuait comme si l'alerte
+    # était partie. Mesuré le 23/11/2026 : l'alerte « date du contenu LEGI
+    # illisible » du 15/11 a bien été journalisée ici, et elle n'a été vue que
+    # huit jours plus tard, par un autre canal. Un canal qui ne remet pas doit le
+    # dire là où on le lira.
+    # ⚠️ La sortie est tronquée : un corps de réponse HTML complet remplirait le
+    # journal que cette ligne existe pour rendre lisible.
+    local sortie
+    local rc
+    sortie=$(curl -fsS -m 10 --retry 2 \
         -H "Authorization: Bearer $(cat "$NTFY_TOKEN_FILE")" \
         -H "Title: $titre" \
         -H "Priority: high" -H "Tags: warning,scales" \
-        -d "$message" "$NTFY_URL" > /dev/null 2>&1 || true
+        -d "$message" "$NTFY_URL" 2>&1)
+    rc=$?
+    sortie=${sortie:0:200}
+    if [ "$rc" -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE NON REMISE (curl rc=$rc : ${sortie:-sans message}) — $titre" >> "$LOG_FILE"
+    fi
+    # 🔑 `alerter` ne fait jamais échouer son appelant : une alerte non
+    # remise est un défaut du canal, pas de la moisson.
+    return 0
 }
 
 # 🔑 Le piège est gardé dans une variable parce qu'il faut savoir le remettre.
@@ -91,6 +111,20 @@ PIEGE_ERR='alerter "SelfJustice — sync LEGI en echec" "Arret sur : $BASH_COMMA
 trap "$PIEGE_ERR" ERR
 
 journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+# 🔑 **Le propriétaire d'une base servie n'est pas une constante** : c'est le
+# compte du groupe d'ouvriers PHP qui la lit, et ce découpage se décide hors de
+# ce script. Une valeur en dur ici le défait au premier passage — et comme une
+# base SQLite en mode WAL exige de son lecteur qu'il puisse écrire ses `-wal` et
+# `-shm`, lui reprendre le fichier ne le ralentit pas : il lui coupe l'accès.
+# On hérite donc de la base en place, et on ne décide que lorsqu'il n'y en a
+# aucune — première installation.
+proprietaire_servi() { # proprietaire_servi <base en place>
+    local p=""
+    [ -e "$1" ] && p="$(stat -c '%U:%G' "$1" 2>/dev/null)"
+    [ -n "$p" ] || p="${SELFJUSTICE_DB_OWNER:-www-data:www-data}"
+    printf '%s' "$p"
+}
 
 # --- Une seule instance à la fois -------------------------------------------
 #
@@ -198,7 +232,7 @@ if [ "$NB_ARTICLES" -lt 100000 ]; then
 fi
 
 # 6. Bascule
-chown www-data:www-data "$API_DB.nouveau"
+chown "$(proprietaire_servi "$API_DB")" "$API_DB.nouveau"
 chmod 644 "$API_DB.nouveau"
 mv "$API_DB.nouveau" "$API_DB"
 journal "Base servie remplacée : $NB_ARTICLES articles"
@@ -285,7 +319,7 @@ fi
 trap "$PIEGE_ERR" ERR
 set -e
 if [ "$EU_CODE" = "0" ] || [ "$EU_CODE" = "2" ]; then
-    chown www-data:www-data "$EU_NOUVELLE"
+    chown "$(proprietaire_servi "$EU_DB")" "$EU_NOUVELLE"
     chmod 644 "$EU_NOUVELLE"
     mv "$EU_NOUVELLE" "$EU_DB"
 else

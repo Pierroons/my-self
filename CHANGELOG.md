@@ -10,6 +10,159 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le propriétaire d'une base servie est hérité, il n'est plus décidé par le script qui la remplace — 25 novembre 2026
+
+`update_legi.sh` remplace deux bases à chaque passage, et leur posait `www-data:www-data` **en dur**.
+Tant qu'un seul groupe d'ouvriers PHP servait tout le serveur, c'était juste. Dès qu'un module reçoit son
+propre compte, ça ne l'est plus : le passage suivant reprend la base au compte qui la lit.
+
+⚠️ **Et ce n'est pas une gêne de confort.** La base de jurisprudence est en mode WAL, et SQLite exige de
+son lecteur qu'il puisse écrire les fichiers `-wal` et `-shm` qui l'accompagnent. Reprendre le fichier à
+son lecteur ne le ralentit pas : ça lui ferme la base. La panne serait arrivée au passage suivant, des
+jours après le changement de compte, sans que rien ne relie l'une à l'autre.
+
+Le propriétaire est donc **hérité de la base en place**, et choisi seulement quand il n'y en a aucune —
+première installation, où le repli reste l'utilisateur historique et peut se surcharger par
+l'environnement.
+
+**Éprouvé** : trois contrôles ajoutés au garde-fou du pilote, dont le stub de `chown` **enregistre
+désormais ses arguments** au lieu de les jeter — un `chown` dont on ne lit pas les arguments ne peut pas
+dire à quel compte la base a été donnée. Un seul passage éprouve les deux chemins : la base européenne
+existe et garde son propriétaire, la base LEGI est retirée et tombe sur le repli. Deux mutants vus rouges :
+le propriétaire en dur rétabli (les deux contrôles d'héritage tombent), et le repli supprimé (le passage
+entier échoue, donc le défaut est bruyant et non silencieux).
+
+🔑 **Le banc a trouvé un défaut dans le correctif lui-même** : le repli rendait d'abord `www-data` sans son
+groupe, et `chown` aurait laissé le groupe du créateur — root — sur une base neuve. Une valeur de repli se
+lit dans la même forme que ce qu'elle remplace.
+
+### Les sites PHP ne partagent plus une seule identité : quatre groupes d'ouvriers, quatre utilisateurs — 24 novembre 2026
+
+Jusqu'ici, un unique groupe d'ouvriers PHP servait les **huit** vhosts de la machine, tous sous
+`www-data`. Une exécution de code dans n'importe lequel d'entre eux donnait donc accès à l'état et aux
+secrets de tous les autres. Les gabarits déclarent désormais **cinq groupes sous quatre identités** :
+`bi-self` et sa route de flux sous `php-biself`, SelfDataGuard sous `php-dataguard`, SelfJustice sous
+`php-justice`, et un groupe résiduel qui garde `www-data` pour les vhosts sans état propre. Chaque
+groupe a sa socket, en `0660` et fermée à tout ce qui n'est pas le frontal.
+
+**C'est une condition de déploiement, pas un durcissement opportuniste.** SelfDataGuard 0.10.0 range
+le poivre **hors** de la base, dans un fichier que PHP lit : sous une identité partagée, ce poivre ne
+protégerait plus que d'une fuite de la base seule — et d'aucun voisin. Il perdrait ce pour quoi il
+existe.
+
+**La clé d'API du portail de jurisprudence quitte le groupe partagé.** Un groupe d'ouvriers partage
+ses ouvriers, mais aussi ses variables d'environnement : elle était lisible par `getenv()` depuis les
+huit vhosts alors qu'elle ne sert qu'à six routes. Elle part avec elles, et le groupe résiduel n'en
+porte plus aucune — un contrôle le vérifie.
+
+**🔑 Un gain qui n'était pas celui qu'on cherchait, et que seule la mesure a montré.** Ce qui
+dimensionne un groupe d'ouvriers n'est pas leur poids au repos mais leur **pic** : une dérivation
+Argon2id fait allouer son `memlimit` par libsodium, **hors** du `memory_limit` de PHP. Tant qu'un seul
+groupe servait tout, **chacun** de ses ouvriers pouvait atteindre le plafond de relecture d'enveloppe,
+puisque n'importe lequel pouvait servir SelfDataGuard — 12 × 285 Mio, soit **88 % du budget mémoire
+retenu**. Après le découpage, seuls les trois ouvriers de `dataguard` peuvent y monter, et le pire cas
+de la machine tombe à **1 703 Mio sur 3 885**, pour **dix-neuf** ouvriers au lieu de douze. Le
+cloisonnement a donc acheté de la capacité en même temps que de l'isolement.
+
+**Deux contrôles neufs ou refondus**, parce qu'aucun ne mesurait cette propriété :
+`cloisonnement-pools.sh` établit que les gabarits déclarent bien des identités et des sockets
+distinctes, qu'aucun groupe autre que le résiduel ne tourne sous `www-data`, que celui-ci ne porte
+aucun secret, et — c'est le volet qui attrape la faute la plus chère — qu'aucun vhost ne réclame une
+socket qu'aucun gabarit ne déclare, ce que `nginx -t` accepte sans broncher avant de rendre 502.
+`pic-ouvrier-php.sh` et `ecart-pool-php.sh`, tous deux codés en dur sur le groupe unique, lisent
+maintenant les cinq : restés sur un seul, ils auraient continué de rendre vert sur un cinquième de ce
+qu'on leur prêtait. Chaque gabarit déclare son profil de pic par une ligne `; @pic: …`, sur le modèle
+du `# @plante` des canaris — une sonde qui devine rend un vert dont personne ne connaît la portée.
+
+⚠️ **Rien n'est posé** : `deploy/` est exclu de ce que `deploy.sh` déploie, et l'ordre de pose n'est
+pas indifférent — les groupes avant les vhosts, le résiduel en dernier, et l'état change de
+propriétaire dans le même geste que son groupe. La procédure, les trois utilisateurs à créer et les
+mesures qui prouvent sont dans `deploy/my-self/README.md`. 🔑 **Et une règle y décide de tout** :
+aucun de ces utilisateurs n'entre dans le groupe `www-data` — 74 répertoires de l'arbre servi sont
+inscriptibles par lui, et un membre y déposerait un fichier PHP que tous les groupes exécuteraient.
+Le réflexe qui « donne les droits » défait exactement ce que le découpage construit.
+
+### Une date de contenu révisée à la main ne s'accuse plus d'une fausse synchronisation — 24 novembre 2026
+
+Le contrôle de fraîcheur porte une règle dite du trompe-l'œil : une date qui avance sur une base dont le
+volume ne bouge pas signale du mouvement affiché sans travail derrière. Elle ne regardait que la date du
+contenu. Or cette date peut aussi avancer parce qu'on **corrige** un marqueur qui vieillissait la base, sans
+qu'aucune synchronisation ait tourné — et la règle criait alors « synchronisation en trompe-l'œil » là où il
+n'y avait aucune synchronisation à accuser.
+
+La règle exige désormais que la date de synchronisation ait bougé elle aussi. Quand elle est figée, le
+mouvement du marqueur se dit au rapport — « date du contenu révisée hors passage » — sans déclencher
+d'alerte. Un vrai trompe-l'œil fait toujours avancer cette date, puisque c'est le passage lui-même qui
+l'écrit : la garde ne masque donc rien.
+
+⚠️ **Un état mémorisé avant cette clé n'en porte pas.** La garde exige deux valeurs présentes et égales ; à
+défaut, l'alerte tient, le temps d'un passage. Un garde-fou se trompe du côté du bruit, jamais du côté du
+silence.
+
+**Éprouvé** : deux contrôles ajoutés au garde-fou de la sentinelle, qui peut maintenant servir une date de
+synchronisation dans son faux `/status` ; trois mutants vus rouges chacun sur sa raison — la garde qui se
+tait dès que la date existe (un vrai trompe-l'œil passe), la garde retirée (le cas neuf n'est plus vu), et
+la garde qui ne vérifie pas que les deux valeurs sont présentes. Ce dernier est le plus instructif :
+comparer deux valeurs absentes revient à les déclarer égales, ce qui aurait rendu la règle muette sur tout
+état d'avant — **quatre détections tombent d'un coup**, dont le trompe-l'œil historique et un index figé
+derrière le mouvement d'une source voisine.
+
+### Un refus de l'amont nomme la source qu'il concerne, et le journal de la synchronisation reprend son ordre — 24 novembre 2026
+
+La construction de la base de conventionnalité télécharge six sources. Ses messages de réussite portent le
+nom de la source — `[CEDH]`, `[TUE]`, `[RGPD]`… —, ses messages d'échec n'en portaient aucun : ils venaient
+d'une table de codes HTTP commune à toutes. Un « HTTP 403 — accès refusé par le serveur » au journal ne
+disait donc pas **quelle** source avait été refusée.
+
+Les dix messages de diagnostic du chemin de téléchargement nomment désormais leur source : les six de
+`fetch_url`,
+la redirection refusée de `telecharger`, l'erreur de parsing de `parse_articles`, et les deux du
+découpage du Journal officiel — `tranche_jo` ne recevait pas la source, elle la reçoit. Le cas où elle est inconnue reste
+sans préfixe plutôt que d'écrire des crochets vides.
+
+**Le journal recevait aussi ses lignes dans le désordre, et c'est la moitié du défaut.** Le script est lancé
+avec ses deux flux vers un même fichier (`>> "$LOG_FILE" 2>&1`). La sortie standard vers un fichier est
+bufferisée par blocs, la sortie d'erreur non : le refus arrivait donc **avant** la ligne qui nomme la source
+en cours, et avant les lignes que le script appelant écrit lui-même. Mesuré sur le motif réel : un refus en
+première ligne pour une source téléchargée en cinquième. La sortie standard est désormais rendue
+ligne à ligne, et les deux flux s'entrelacent dans l'ordre où ils sont écrits.
+
+🔑 **Un message d'erreur qui ne nomme pas son objet coûte deux fois** : il n'aide pas sur le moment, et il
+empêche l'enquête plus tard. Celui-ci a rendu inexploitable le journal du 15 novembre, où l'on cherchait à
+savoir si le repli de la Convention européenne des droits de l'homme sur une copie locale venait d'un refus
+de sa source — question à laquelle le journal ne pouvait pas répondre, alors qu'il contenait la réponse.
+
+⚠️ **Ce que ce changement ne fait pas** : il ne rend pas la source joignable. Le domaine du Conseil de
+l'Europe est derrière un défi anti-robot depuis le 20 août 2026, et la Convention est servie depuis une
+copie déposée à la main — ce que l'état des bases annonce désormais, avec sa date de dépôt.
+
+**Éprouvé** : six contrôles ajoutés au garde-fou du découpage du Journal officiel, avec un serveur local qui
+refuse ; cinq mutants vus rouges chacun sur sa raison — le préfixe neutralisé dans chacune des trois
+fonctions, le préfixe appliqué sans son cas sans source (crochets vides), et la garde qui protège un banc
+remplaçant la sortie standard, sans laquelle le banc de la mise à jour LEGI tombe.
+
+### Une alerte qui n'a pas pu être remise le dit — ce que la correction de la veille laissait passer — 23 novembre 2026
+
+Les quatre scripts de mise à jour terminaient leur notification par `curl -fsS … > /dev/null 2>&1 || true` :
+silencieuse, sortie jetée, code de retour avalé. Un canal injoignable, un jeton révoqué ou un refus de
+l'hôte ne laissaient donc **aucune trace**, et le script continuait comme si l'alerte était partie. Le code
+de retour est désormais lu, et un échec s'écrit « ALERTE NON REMISE » avec son code et le début du message
+de l'outil, dans le journal du script.
+
+**Ce qui a rendu ce défaut visible.** Une alerte « date du contenu LEGI illisible » a été journalisée le
+15 novembre et n'a été vue que **huit jours plus tard**, par un autre canal. Le signalement avait
+fonctionné ; c'est sa remise qui n'était pas mesurée. ⚠️ Savoir si cet envoi-là est arrivé n'est plus
+possible : les journaux du serveur frontal ne remontent pas si loin.
+
+**L'entrée de la veille ne couvrait que la moitié du défaut** : elle journalisait le renoncement quand le
+*jeton* est illisible, et laissait le `|| true` du *curl*. Le cas corrigé était celui qu'on lisait dans le
+code, pas celui qui se produit en service. Éprouvé dans les deux sens, avec témoin : sur un hôte
+injoignable, canal configuré et jeton lisible, les quatre versions corrigées écrivent la non-remise et les
+versions d'avant restent muettes.
+
+`alerter()` continue de rendre 0 en toute circonstance : une alerte non remise est un défaut du canal, pas
+de la moisson, et elle ne doit pas faire échouer une mise à jour qui a réussi.
+
 ### La clé Judilibre se cherche au même endroit des deux côtés, et une alerte qui ne part pas le dit — 21 novembre 2026
 
 **Un seul secret était cherché à deux chemins par défaut différents.** `JUDILIBRE_KEY_FILE` valait

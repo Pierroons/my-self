@@ -28,3 +28,27 @@ cles_de_zone() {
 zones_a_cle_changee() {
   join <(cles_de_zone "$1") <(cles_de_zone "$2") | awk '$2 != $3 { print $1 " : " $2 " -> " $3 }'
 }
+
+# 🔑 **Une zone déclarée deux fois fait refuser la configuration ENTIÈRE** —
+# « limit_req_zone "x" is already bound to key … ». C'est un autre échec que celui du haut de ce
+# fichier : celui-là, `nginx -t` l'attrape, donc il ne passe pas inaperçu. Mais il fait échouer la
+# pose au dernier moment, après la copie, alors qu'il se voit AVANT en comparant deux listes.
+#
+# Le cas est réel sur l'instance de production, mesuré le 25/11/2026 :
+# `conf.d/dataguard-ratelimit.conf` et
+# `conf.d/selfjustice-ratelimit.conf` déclarent cinq zones que les gabarits de ces deux vhosts
+# déclarent aussi — leurs commentaires le disent en prose (« retire ces lignes avant de poser »),
+# et une prose ne refuse rien.
+#
+# $1 = candidat. $2 = fichier « <zone> <source> », une ligne par zone déjà déclarée sur le serveur,
+# que le déployeur produit depuis la machine.
+#
+# ⚠️ **Le fichier $2 doit EXCLURE le vhost qu'on remplace.** Les zones qu'il déclare lui-même ne
+# sont pas des collisions : elles disparaissent avec lui. Sans cette exclusion, toute pose d'un
+# vhost qui garde ses propres zones serait refusée — le contrôle crierait sur le cas nominal.
+zones_deja_declarees() {
+  join -j 1 \
+    <(cles_de_zone "$1" | awk '{ print $1 }' | sort -u) \
+    <(awk 'NF >= 2 { print $1, $2 }' "$2" | sort -u -k1,1) \
+    | awk '{ print $1 " : déjà déclarée dans " $2 }'
+}
