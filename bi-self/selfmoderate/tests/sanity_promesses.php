@@ -107,8 +107,8 @@ function quorumExigeEnService(): bool|string
 }
 
 /**
- * La plus longue remontée qui rend en démonstration un vote retiré au plancher : `perteDroitDeVoteSous`
- * intervalles de convalescence, mesurés autour de `PALIER_DEMONSTRATION_MAX`.
+ * La plus longue remontée qui rend en démonstration un vote retiré au plancher : du plancher (`banA`) au
+ * seuil du vote, en intervalles de convalescence, mesurée autour de `PALIER_DEMONSTRATION_MAX`.
  */
 function retraitDemonstrationMax(): int|string
 {
@@ -118,7 +118,7 @@ function retraitDemonstrationMax(): int|string
     }
     $max = Config::PALIER_DEMONSTRATION_MAX;
     $base = get_object_vars($demo);
-    $pas = intdiv($max, $base['perteDroitDeVoteSous']);
+    $pas = intdiv($max, $base['perteDroitDeVoteSous'] - $base['banA']);
     return construit([...$base, 'intervalleConvalescenceSecondes' => $pas])
         && !construit([...$base, 'intervalleConvalescenceSecondes' => $pas + 1])
         ? $max
@@ -330,9 +330,9 @@ $porteurs = [
         fn ($m) => [['palierDemonstrationMax()', 'demo', $m[1] * $h]]],
     ['README.md', '/A `dureesBan` tier there lasts \*\*(\d+) hour\*\* at most\s+\(`Config::PALIER_DEMONSTRATION_MAX`\)/u',
         fn ($m) => [['palierDemonstrationMax()', 'demo', $m[1] * $h]]],
-    ['README.fr.md', '/`perteDroitDeVoteSous`\s+intervalles de convalescence y tiennent en \*\*(\d+) h\*\* au plus/u',
+    ['README.fr.md', '/la remontée du plancher\s+\(`banA`\) au seuil du vote y tient en \*\*(\d+) h\*\* au plus de convalescence/u',
         fn ($m) => [['retraitDemonstrationMax()', 'demo', $m[1] * $h]]],
-    ['README.md', '/`perteDroitDeVoteSous` recovery intervals\s+fit in \*\*(\d+) hour\*\* at most there/u',
+    ['README.md', '/the climb from the floor \(`banA`\) to the voting\s+threshold fits in \*\*(\d+) hour\*\* at most of recovery there/u',
         fn ($m) => [['retraitDemonstrationMax()', 'demo', $m[1] * $h]]],
     ['README.fr.md', '/^\| `quorumAuxSeuils` \| [^|\n]+ \| \*\*(toujours actif|éteignable)\*\* \|$/mu',
         fn ($m) => [['quorumExigeEnService()', 'prod', $m[1] === 'toujours actif']]],

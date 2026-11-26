@@ -8263,7 +8263,7 @@ $acteRendu233 = $journalC->de($du233, 'vote_rendu')[0] ?? [];
 $apres233 = [$muet233($du233), Moderate::canVote($pdo, $du233)[0], $rendre233($du233)];
 $rendre233($defaut233);
 $posee233 = $pose233['ok'] && in_array('perte_du_vote_due', $ouverts233, true)
-    && (signalDe($pdo, $du233, 'perte_du_vote_due')['vu_le'] ?? null) !== null
+    && !in_array('perte_du_vote_due', causes($pdo, $du233), true)
     && ($acte233['origine'] ?? null) === 'admin' && $acte233['arbitre_id'] === $arbitre233 && $acte233['arbitre'] === 'arbitre-banc'
     && $acte233['motif'] === 'Ses votes visent toujours les mêmes membres, sans un mot sur leurs messages.'
     && $acte233['jusqu_a'] === $jusqua233 && $jusqua233 - $acte233['debut'] === 3600 && $acte233['reputation'] === 4
@@ -8276,7 +8276,7 @@ $rendue233 = $rendu233['ok'] && ($acteRendu233['arbitre_id'] ?? null) === $arbit
     && $acteRendu233['motif'] === 'Le vote revient : la suspension n\'a plus d\'objet.'
     && $apres233[0] === 0 && $apres233[1] === true && !$apres233[2]['ok'] && str_contains($apres233[2]['message'], 'Aucune suspension');
 $refusMal233 === [] && $intact233 && $posee233 && $rendue233
-    ? ok('⭐ la suspension du vote refuse sans journal, dans l\'hôte, sur une fin en attente ou un motif et une durée invalides ; posée, elle sort la perte due de la file, s\'inscrit et se dit ; rendue, elle s\'inscrit et le vote revient')
+    ? ok('⭐ la suspension du vote refuse sans journal, dans l\'hôte, sur une fin en attente ou un motif et une durée invalides ; posée, elle ferme la perte due, s\'inscrit et se dit ; rendue, elle s\'inscrit et le vote revient')
     : nok('⭐ une suspension du vote passe sans ses gardes, sans son acte, ou ne se lève pas : ' . json_encode([
         'refus' => $refusMal233, 'intact' => $intact233, 'pose' => [$pose233, $acte233, $canVote233, $double233, $acteDefaut233],
         'rendu' => [$rendu233, $acteRendu233, $apres233],
@@ -8448,13 +8448,13 @@ $lu236 === [
     ? ok('⭐ une dm déclarée et vide fait dire « muets » à la composition, et liens_muets à l\'état du site passé la fenêtre des liens ; hors du moteur ou après un message, rien')
     : nok('⭐ des liens muets passent sous silence, ou se signalent sur un site neuf : ' . json_encode([$lu236, $depuis236], JSON_UNESCAPED_UNICODE));
 
-// ── 237. ⭐ Une suspension répond à la perte due : elle ne revient pas avant que le seuil soit recroisé ─
+// ── 237. ⭐ Une suspension répond à la perte due tant qu'elle court ───────────────
 // En service, six critiques mènent la cible à 4 : la perte du vote se signale due.
-// L'arbitre suspend le vote : la perte quitte la file et reste en base, réponse
-// rendue. Deux votes de plus ne la remettent pas dans la file et ne recherchent pas le
-// quorum ; la suspension échue, un vote de plus non plus. Remontée au seuil par des
-// votes de soutien, puis une nouvelle chute : elle revient. Sur un compte suspendu
-// d'abord, le quorum atteint pose la perte due hors de la file.
+// L'arbitre suspend le vote : la perte se ferme. Deux votes de plus, pendant la
+// suspension, ne la rouvrent pas et ne recherchent pas le quorum. La suspension échue,
+// le vote négatif suivant recherche le quorum et la remet dans la file ; rendue avant
+// son échéance, de même. Sur un compte suspendu d'abord, le quorum atteint ne pose rien
+// tant que la suspension court ; rendue, le vote suivant la pose dans la file.
 $c237 = new PdoQuorum('sqlite:' . getenv('LAB_DB_PATH'));
 $c237->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $c237->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -8469,41 +8469,42 @@ try {
     // Une fonction fléchée capture par valeur : l'horloge ne verrait pas `$t237` avancer.
     $r237 = sousJournal(static function () use ($pdo, $c237, &$t237, $enFile237): array {
         return sousConfig(configService(), static function () use ($pdo, $c237, &$t237, $enFile237): array {
-        $arbitre = idDe($pdo, 'arbitre-banc');
-        $du = membre($pdo, 'du-237');
-        poserReputation($pdo, $du, 10);
-        frapper($pdo, $du, membres($pdo, 'critique-237', 6), 1, '237');
-        $lu = ['due' => $enFile237($du)];
-        $lu['suspendu'] = Moderate::adminSuspendreVote($pdo, $du, $arbitre, motif(), 600)['ok'];
-        $lu['apres_geste'] = [$enFile237($du), signalDe($pdo, $du, 'perte_du_vote_due') !== null];
-        $c237->recherches = 0;
-        foreach (['a', 'b'] as $k) {
-            Moderate::applyVote($c237, membre($pdo, "encore-237-$k"), 'member', $du, -1, motif(), 'agressif');
-        }
-        $lu['pendant'] = [$c237->recherches, $enFile237($du)];
-        $t237 += 700;
-        $c237->recherches = 0;
-        Moderate::applyVote($c237, membre($pdo, 'encore-237-c'), 'member', $du, -1, motif(), 'agressif');
-        $lu['echue'] = [$c237->recherches, $enFile237($du), Moderate::canVote($pdo, $du)[0]];
-        foreach (range(1, 4) as $k) {
-            Moderate::applyVote($pdo, membre($pdo, "soutien-237-$k"), 'member', $du, 1);
-        }
-        try {
-            Moderate::balayerBansEchus($pdo);
-        } catch (\RuntimeException) {
-            // Un refus du journal sur un autre compte remonte en fin de passe, après elle.
-        }
-        $lu['remonte'] = [reputation($pdo, $du), signalDe($pdo, $du, 'perte_du_vote_due') === null];
-        Moderate::applyVote($pdo, membre($pdo, 'rechute-237'), 'member', $du, -1, motif(), 'agressif');
-        $lu['recroise'] = [reputation($pdo, $du), $enFile237($du)];
-        $avant = membre($pdo, 'avant-237');
-        poserReputation($pdo, $avant, 10);
-        Moderate::adminSuspendreVote($pdo, $avant, $arbitre, motif(), 6000);
-        frapper($pdo, $avant, membres($pdo, 'critique-237-avant', 6), 1, '237-avant');
-        $pose = signalDe($pdo, $avant, 'perte_du_vote_due');
-        $lu['suspendu_avant'] = [$pose !== null, ($pose['vu_le'] ?? null) !== null];
+            $arbitre = idDe($pdo, 'arbitre-banc');
+            $chute = static function (string $nom) use ($pdo): int {
+                $cible = membre($pdo, $nom);
+                poserReputation($pdo, $cible, 10);
+                frapper($pdo, $cible, membres($pdo, "critique-$nom", 6), 1, $nom);
 
-        return $lu;
+                return $cible;
+            };
+            $du = $chute('du-237');
+            $lu = ['due' => $enFile237($du)];
+            $lu['suspendu'] = Moderate::adminSuspendreVote($pdo, $du, $arbitre, motif(), 600)['ok'];
+            $lu['apres_geste'] = signalDe($pdo, $du, 'perte_du_vote_due') === null;
+            $c237->recherches = 0;
+            foreach (['a', 'b'] as $k) {
+                Moderate::applyVote($c237, membre($pdo, "encore-237-$k"), 'member', $du, -1, motif(), 'agressif');
+            }
+            $lu['pendant'] = [$c237->recherches, signalDe($pdo, $du, 'perte_du_vote_due') === null];
+            $t237 += 700;
+            $c237->recherches = 0;
+            Moderate::applyVote($c237, membre($pdo, 'encore-237-c'), 'member', $du, -1, motif(), 'agressif');
+            $lu['echue'] = [$c237->recherches > 0, $enFile237($du), Moderate::canVote($pdo, $du)[0]];
+            $rendu = $chute('rendu-237');
+            Moderate::adminSuspendreVote($pdo, $rendu, $arbitre, motif(), 6000);
+            $lu['rendu'] = Moderate::adminRendreVote($pdo, $rendu, $arbitre)['ok'];
+            Moderate::applyVote($pdo, membre($pdo, 'encore-237-d'), 'member', $rendu, -1, motif(), 'agressif');
+            $lu['apres_rendu'] = $enFile237($rendu);
+            $avant = membre($pdo, 'avant-237');
+            poserReputation($pdo, $avant, 10);
+            Moderate::adminSuspendreVote($pdo, $avant, $arbitre, motif(), 6000);
+            frapper($pdo, $avant, membres($pdo, 'critique-237-avant', 6), 1, '237-avant');
+            $lu['suspendu_avant'] = signalDe($pdo, $avant, 'perte_du_vote_due') === null;
+            Moderate::adminRendreVote($pdo, $avant, $arbitre);
+            Moderate::applyVote($pdo, membre($pdo, 'encore-237-e'), 'member', $avant, -1, motif(), 'agressif');
+            $lu['avant_rendu'] = $enFile237($avant);
+
+            return $lu;
         });
     });
 } catch (Throwable $t237e) {
@@ -8513,11 +8514,11 @@ try {
 }
 $c237 = null;
 $r237 === [
-    'due' => true, 'suspendu' => true, 'apres_geste' => [false, true], 'pendant' => [0, false], 'echue' => [0, false, true],
-    'remonte' => [5, true], 'recroise' => [4, true], 'suspendu_avant' => [true, true],
+    'due' => true, 'suspendu' => true, 'apres_geste' => true, 'pendant' => [0, true], 'echue' => [true, true, true],
+    'rendu' => true, 'apres_rendu' => true, 'suspendu_avant' => true, 'avant_rendu' => true,
 ]
-    ? ok('⭐ une suspension sort la perte due de la file : ni les votes suivants ni son échéance ne la lui rendent, une nouvelle chute après la remontée si ; un compte déjà suspendu la reçoit hors de la file')
-    : nok('⭐ la perte due revient à l\'arbitre après sa suspension, sans que le seuil soit recroisé : ' . json_encode($r237, JSON_UNESCAPED_UNICODE));
+    ? ok('⭐ une suspension ferme la perte due tant qu\'elle court ; échue ou rendue, le vote négatif suivant la remet dans la file, et rien ne se pose pendant')
+    : nok('⭐ la perte due revient à l\'arbitre pendant la suspension, ou se tait après elle : ' . json_encode($r237, JSON_UNESCAPED_UNICODE));
 
 // ── 238. ⭐ Au plancher, en service, une chute répondue ne revient pas à chaque vote ─
 // Six critiques sans lien, deux votes chacun : la cible tombe au plancher sous le
@@ -8581,10 +8582,12 @@ in_array('ban_en_attente', $avant239, true) && $apres239[0] === 1
     : nok('⭐ le ban en attente survit à un vote de soutien qui sort le compte du plancher : ' . json_encode([$avant239, $apres239], JSON_UNESCAPED_UNICODE));
 
 // ── 240. ⭐ En démonstration, un vote retiré revient en une heure de calme au plus ─
-// La borne d'une heure tient le retrait du vote comme le ban : `perteDroitDeVoteSous`
-// intervalles de convalescence tiennent en `PALIER_DEMONSTRATION_MAX`. Une config qui
-// en demande plus lève, en convalescence comme en seuil ; le service n'a pas cette
-// borne. Un compte privé de son vote au plancher le retrouve une heure plus tard.
+// La borne d'une heure tient le retrait du vote comme le ban : la remontée du plancher
+// (`banA`) au seuil du vote tient en `PALIER_DEMONSTRATION_MAX`. Une config qui en
+// demande plus lève, en convalescence, en seuil comme en plancher ; le service n'a pas
+// cette borne. Partout, les seuils gardent leur ordre : une réputation de départ sous
+// le seuil du vote ne rendrait jamais un vote retiré. Un compte privé de son vote au
+// plancher le retrouve une heure plus tard.
 $essai240 = static function (mixed ...$reglages): string {
     try {
         new Config(...$reglages);
@@ -8600,18 +8603,25 @@ poserReputation($pdo, $retire240, 0);
 $pdo->prepare('UPDATE member_moderation SET voting_rights = 0, convalescent = 1, last_regen_at = ? WHERE account_id = ?')
     ->execute([time() - Config::PALIER_DEMONSTRATION_MAX, $retire240]);
 $lu240 = [
-    'demo'       => Config::demo()->perteDroitDeVoteSous * Config::demo()->intervalleConvalescenceSecondes <= Config::PALIER_DEMONSTRATION_MAX,
+    'demo'       => (Config::demo()->perteDroitDeVoteSous - Config::demo()->banA) * Config::demo()->intervalleConvalescenceSecondes <= Config::PALIER_DEMONSTRATION_MAX,
     'trop_lente' => $essai240(Messagerie::DM, Usage::DEMONSTRATION, intervalleConvalescenceSecondes: 721),
     'juste'      => $essai240(Messagerie::DM, Usage::DEMONSTRATION, intervalleConvalescenceSecondes: 720),
     'seuil_haut' => $essai240(Messagerie::DM, Usage::DEMONSTRATION, perteDroitDeVoteSous: 6),
     'service'    => $essai240(...[...$prod240, 'intervalleConvalescenceSecondes' => 31536000]),
+    'plancher_bas' => $essai240(Messagerie::DM, Usage::DEMONSTRATION, banA: -10),
+    'plancher_bas_service' => $essai240(...[...$prod240, 'banA' => -10]),
+    'initiale_basse' => $essai240(Messagerie::DM, Usage::DEMONSTRATION, reputationInitiale: 3),
+    'initiale_basse_service' => $essai240(...[...$prod240, 'reputationInitiale' => 3]),
+    'ordre_rompu' => $essai240(...[...$prod240, 'banA' => 5]),
     'revient'    => [Moderate::getReputation($pdo, $retire240)['voting_rights'], Moderate::canVote($pdo, $retire240)[0]],
 ];
 // La lecture montre la remontée sans l'inscrire : la base garde le plancher tant
 // qu'aucune écriture ne passe, et le banc ne laisse pas une chute sans son signal.
 rattraper($pdo, $retire240);
-$lu240 === ['demo' => true, 'trop_lente' => 'refusée', 'juste' => 'construite', 'seuil_haut' => 'refusée', 'service' => 'construite', 'revient' => [true, true]]
-    ? ok('⭐ en démonstration, un vote retiré revient en une heure de calme au plus : une convalescence ou un seuil qui l\'allongent lèvent, le service n\'a pas cette borne')
+$lu240 === ['demo' => true, 'trop_lente' => 'refusée', 'juste' => 'construite', 'seuil_haut' => 'refusée', 'service' => 'construite',
+    'plancher_bas' => 'refusée', 'plancher_bas_service' => 'construite', 'initiale_basse' => 'refusée',
+    'initiale_basse_service' => 'refusée', 'ordre_rompu' => 'refusée', 'revient' => [true, true]]
+    ? ok('⭐ en démonstration, un vote retiré revient en une heure de calme au plus : une convalescence, un seuil ou un plancher qui l\'allongent lèvent, le service n\'a pas cette borne, et partout les seuils gardent leur ordre')
     : nok('⭐ la démonstration retire le vote plus d\'une heure : ' . json_encode($lu240, JSON_UNESCAPED_UNICODE));
 
 // ── 241. ⭐ La fenêtre des liens, la convalescence et le balayage refusent un réglage vide ─
@@ -8769,6 +8779,97 @@ try {
 $r244 === ['contenue' => [true, true], 'ferme' => true]
     ? ok('⭐ au retrait automatique, une \\Error du journal est contenue comme un refus, et le ban qui suit nomme la perte due qu\'il ferme')
     : nok('⭐ une \\Error du journal au retrait du vote remonte, ou le ban tait la perte due qu\'il ferme : ' . json_encode($r244, JSON_UNESCAPED_UNICODE));
+
+// ── 245. ⭐ En démonstration, la machine ne retire pas le vote d'un compte suspendu ─
+// Suspendu par un arbitre, le compte tombe sous le seuil avec le quorum du vote, puis au
+// plancher, sous le quorum du ban : rien ne se retire par-dessus la suspension, et la
+// perte ne se signale pas. Rendu, le vote négatif suivant le retire, au journal.
+try {
+    $r245 = sousQuorum(static function (JournalDeBanc $j) use ($pdo): array {
+        $arbitre = idDe($pdo, 'arbitre-banc');
+        $cible = membre($pdo, 'suspendu-245');
+        poserReputation($pdo, $cible, 10);
+        Moderate::adminSuspendreVote($pdo, $cible, $arbitre, motif(), 3000);
+        $critiques = membres($pdo, 'critique-245', 6);
+        frapper($pdo, $cible, $critiques, 2, '245');
+        $auto = static fn (): int => count(array_filter($j->de($cible, 'vote_retire'), static fn (array $a): bool => $a['origine'] === 'auto'));
+        $pendant = [Moderate::getReputation($pdo, $cible)['voting_rights'], $auto(), signalDe($pdo, $cible, 'perte_du_vote_due') === null];
+        Moderate::adminRendreVote($pdo, $cible, $arbitre);
+        Moderate::applyVote($pdo, $critiques[0], 'post', message($pdo, $cible, 'fil-245-apres'), -1, motif(), 'agressif');
+
+        return [$pendant, [Moderate::getReputation($pdo, $cible)['voting_rights'], $auto()]];
+    });
+} catch (Throwable $t245) {
+    $r245 = ['exception' => get_class($t245) . ' : ' . $t245->getMessage()];
+}
+$r245 === [[true, 0, true], [false, 1]]
+    ? ok('⭐ en démonstration, la machine ne retire pas le vote d\'un compte suspendu ; rendu, le vote suivant le retire au journal')
+    : nok('⭐ en démonstration, la machine retire le vote par-dessus une suspension : ' . json_encode($r245, JSON_UNESCAPED_UNICODE));
+
+// ── 246. ⭐ La console du lab sert les deux gestes du vote, et montre la composition des sanctions dues ─
+// Par HTTP, comme l'arbitre. Une perte due s'affiche avec la composition de sa chute et
+// le geste qui y répond, sans « classer » en démonstration ; un ban en attente ne
+// s'offre pas au classement. La route suspend puis rend le vote. Un ban d'arbitre porte,
+// dans la liste des bans en cours, la composition de la chute qu'il a jugée.
+$journalAvant246 = Moderate::journal();
+Moderate::setJournal(new JournalDeBanc());
+try {
+    $session246 = sessionArbitre($pdo, 'arbitre-246');
+    $serveur246 = serveurLab();
+    $cible246 = membre($pdo, 'cible-246');
+    poserReputation($pdo, $cible246, 4);
+    $pdo->prepare("INSERT INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, 'perte_du_vote_due', ?, ?)")
+        ->execute([$cible246, time(), time()]);
+    recalerCase($pdo, $cible246);
+    $attente246 = banEnAttente($pdo, 'attente-246');
+    $page246 = requeteLab($serveur246, '/admin.php', $session246)['corps'];
+    $ligne246 = static function (string $nom) use ($page246): string {
+        $i = strpos($page246, '<tr><td>@' . $nom);
+
+        return $i === false ? '' : substr($page246, $i, (int) strpos($page246, '</tr>', $i) - $i);
+    };
+    // Le groupe d'une cause : de son en-tête au suivant.
+    $groupe246 = static function (string $libelle) use ($page246): string {
+        $i = strpos($page246, $libelle);
+        if ($i === false) {
+            return '';
+        }
+        $j = strpos($page246, '<tr><th', $i);
+
+        return substr($page246, $i, $j === false ? null : $j - $i);
+    };
+    $csrf246 = csrfDeLaPage($page246);
+    $geste246 = static fn (string $op, string $motif): array => $csrf246 !== null
+        ? requeteLab($serveur246, '/api/admin.php', $session246, $csrf246,
+            ['action' => 'moderate', 'account_id' => $cible246, 'op' => $op, 'motif' => $motif, 'secondes' => 600])
+        : ['code' => 0, 'corps' => ''];
+    $lu246 = [
+        'composition' => str_contains($ligne246('cible-246'), 'voix sans lien sur'),
+        'suspendre'   => str_contains($ligne246('cible-246'), 'data-op="suspendre"'),
+        'sans_classer' => !str_contains($ligne246('cible-246'), 'data-op="classer"')
+            && str_contains($groupe246('ban automatique non inscrit'), '@attente-246')
+            && !str_contains($groupe246('ban automatique non inscrit'), 'data-op="classer"'),
+    ];
+    $suspendu246 = $geste246('suspendre', motif());
+    $lu246['suspendu'] = [$suspendu246['code'], Moderate::getReputation($pdo, $cible246)['vote_muted']];
+    $rendu246 = $geste246('rendre', '');
+    $lu246['rendu'] = [$rendu246['code'], Moderate::getReputation($pdo, $cible246)['vote_muted']];
+    arreterLab($serveur246);
+    Moderate::adminBan($pdo, $cible246, idDe($pdo, 'arbitre-banc'), motif(), 3600);
+    $ban246 = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $cible246));
+    $lu246['ban_compose'] = ($ban246[0]['origine'] ?? null) === 'admin' && is_array($ban246[0]['chute'] ?? null);
+    Moderate::adminLever($pdo, $cible246, idDe($pdo, 'arbitre-banc'), motif());
+} catch (Throwable $t246) {
+    $lu246 = ['exception' => get_class($t246) . ' : ' . $t246->getMessage()];
+} finally {
+    Moderate::setJournal($journalAvant246);
+}
+$lu246 === [
+    'composition' => true, 'suspendre' => true, 'sans_classer' => true,
+    'suspendu' => [200, true], 'rendu' => [200, false], 'ban_compose' => true,
+]
+    ? ok('⭐ la console du lab montre la composition d\'une perte due et le geste qui y répond, n\'offre pas de classer ce que le moteur refuse, et sa route suspend puis rend le vote ; un ban d\'arbitre porte la composition de sa chute')
+    : nok('⭐ la console du lab ne sert pas les gestes du vote, ou tait la composition d\'une sanction due : ' . json_encode($lu246, JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un

@@ -88,9 +88,10 @@ final class Config
      * @param int      $intervalleConvalescenceSecondes Convalescence : +1 point par
      *                                        intervalle. La réputation remonte avec le
      *                                        temps, pas avec le mérite. En démonstration,
-     *                                        `perteDroitDeVoteSous` intervalles tiennent
-     *                                        en `PALIER_DEMONSTRATION_MAX` : un vote retiré
-     *                                        y revient en une heure de calme au plus.
+     *                                        la remontée du plancher (`banA`) au seuil du
+     *                                        vote tient en `PALIER_DEMONSTRATION_MAX` : un
+     *                                        vote retiré y revient en une heure de calme
+     *                                        au plus.
      * @param float    $plancherFraction      Part de la peine EN COURS avant laquelle un
      *                                        arbitre ne lève un ban qu'avec un motif écrit.
      * @param int      $balayageFiletMax      Sans planificateur, le premier vote négatif d'une
@@ -231,12 +232,25 @@ final class Config
                 max($this->dureesBan)
             ));
         }
-        if ($this->usage === Usage::DEMONSTRATION && $this->perteDroitDeVoteSous * $this->intervalleConvalescenceSecondes > self::PALIER_DEMONSTRATION_MAX) {
+        // La convalescence remonte jusqu'à `reputationInitiale` : sous le seuil du vote,
+        // un vote retiré ne reviendrait jamais.
+        if (!($this->banA < $this->perteDroitDeVoteSous && $this->perteDroitDeVoteSous <= $this->reputationInitiale
+            && $this->reputationInitiale <= $this->reputationMax)) {
             throw new InvalidArgumentException(sprintf(
-                'En démonstration, un vote retiré revient en une heure de calme au plus : %d intervalles de convalescence (perteDroitDeVoteSous) de %d s demandent %d s.',
+                'Les seuils de réputation gardent leur ordre : banA (%d) < perteDroitDeVoteSous (%d) ≤ reputationInitiale (%d) ≤ reputationMax (%d).',
+                $this->banA,
                 $this->perteDroitDeVoteSous,
+                $this->reputationInitiale,
+                $this->reputationMax
+            ));
+        }
+        $remontee = ($this->perteDroitDeVoteSous - $this->banA) * $this->intervalleConvalescenceSecondes;
+        if ($this->usage === Usage::DEMONSTRATION && $remontee > self::PALIER_DEMONSTRATION_MAX) {
+            throw new InvalidArgumentException(sprintf(
+                'En démonstration, un vote retiré revient en une heure de calme au plus : %d intervalles de convalescence de %d s, du plancher (banA) au seuil du vote, demandent %d s.',
+                $this->perteDroitDeVoteSous - $this->banA,
                 $this->intervalleConvalescenceSecondes,
-                $this->perteDroitDeVoteSous * $this->intervalleConvalescenceSecondes
+                $remontee
             ));
         }
         if ($this->usage === Usage::SERVICE) {

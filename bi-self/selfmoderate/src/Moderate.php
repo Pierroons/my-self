@@ -2151,11 +2151,7 @@ class Moderate
             $pdo->prepare('UPDATE member_moderation SET reputation = MIN(reputation + ?, ?), updated_at = ? WHERE account_id = ?')
                 ->execute([$rendu, self::config()->reputationMax, self::maintenant(), $author]);
         }
-        $apres = self::etat($pdo, $author)['reputation'];
-        if ($apres > self::config()->banA) {
-            self::designaler($pdo, $author, 'ban_en_attente');
-        }
-        if ($apres >= self::config()->perteDroitDeVoteSous) {
+        if (self::etat($pdo, $author)['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
             self::designaler($pdo, $author, 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum');
         }
@@ -2773,12 +2769,13 @@ class Moderate
         $votait = $droit !== false && (int) $droit['voting_rights'] === 1;
         $suspendu = $droit !== false && (int) $droit['vote_muted_until'] > self::maintenant();
         // Une perte due posée est une décision rendue, qu'elle attende l'arbitre ou
-        // qu'il y ait répondu (elle reste alors en base, hors de la file) : le quorum
-        // du vote ne se recherche pas à chaque vote, et elle ne revient qu'après une
-        // remontée au seuil puis une nouvelle chute. En démonstration, le retrait se
-        // retente.
+        // qu'il y ait répondu par un ban ou un classement (elle reste alors en base,
+        // hors de la file) : le quorum du vote ne se recherche pas à chaque vote, et
+        // elle ne revient qu'après une remontée au seuil puis une nouvelle chute. Une
+        // suspension, elle, répond tant qu'elle court : finie, le vote négatif
+        // suivant recherche le quorum. En démonstration, le retrait se retente.
         $voteDu = $votait && self::etatOuvert($pdo, $accountId, 'perte_du_vote_due');
-        $voteEnJeu = $votait && !$voteDu;
+        $voteEnJeu = $votait && !$voteDu && !$suspendu;
         if (self::config()->quorumAuxSeuils) {
             // Le quorum ne se cherche que s'il reste une sanction à décider : une
             // peine automatique EST la sanction du plancher, et un vote déjà retiré
@@ -2797,20 +2794,17 @@ class Moderate
         $perdLeVote = $voteEnJeu && $quorum(self::config()->perteDroitDeVoteSous - 1);
 
         $retire = false;
-        if ($quorum(self::config()->perteDroitDeVoteSous - 1)) {
-            // Une suspension en cours répond déjà au seuil du vote : la machine ne
-            // retire rien par-dessus.
+        if ($suspendu && !$auPlancher) {
+            // Une suspension en cours répond au seuil du vote : rien ne s'y décide tant
+            // qu'elle court, ni retrait, ni perte due, ni chute levée sans quorum lu.
+        } elseif ($quorum(self::config()->perteDroitDeVoteSous - 1)) {
             $retire = $votait && !$service && !$suspendu && self::retirerLeVote($pdo, $accountId, $reputation);
             // Au plancher, la chute prend sa place, et un ban automatique porte déjà
             // son signal : la perte du vote n'en ajoute pas.
             if (!$auPlancher) {
                 self::designaler($pdo, $accountId, 'chute_sans_quorum');
                 if ($votait && !$retire) {
-                    if ($suspendu) {
-                        self::poserHorsDeLaFile($pdo, $accountId, 'perte_du_vote_due');
-                    } else {
-                        self::signaler($pdo, $accountId, 'perte_du_vote_due');
-                    }
+                    self::signaler($pdo, $accountId, 'perte_du_vote_due');
                 }
                 if (($retire || (!$votait && !$service)) && !$enPeine) {
                     self::signaler($pdo, $accountId, 'droit_de_vote_perdu');
@@ -3674,8 +3668,10 @@ class Moderate
 
     /**
      * Suspension du vote par un arbitre : le geste plus léger que le ban, qui
-     * répond en service à `perte_du_vote_due` et la sort de la file. Le motif est
-     * exigé et contrôlé comme au ban ; la durée est celle d'un ban d'arbitre par
+     * répond en service à `perte_du_vote_due`, qu'il ferme : tant qu'elle court,
+     * rien ne se signale au seuil du vote ; finie, le vote négatif suivant remet la
+     * perte due dans la file si le quorum tient. Le motif est exigé et contrôlé
+     * comme au ban ; la durée est celle d'un ban d'arbitre par
      * défaut, un siècle au plus (`DUREE_MAX`). Elle s'inscrit au journal
      * (`vote_retire`, origine `admin`), et se lève par `adminRendreVote()` ou par
      * la grâce.
@@ -3742,9 +3738,9 @@ class Moderate
             ]);
             $pdo->prepare('UPDATE member_moderation SET vote_muted_until = ?, updated_at = ? WHERE account_id = ?')
                 ->execute([$jusqua, $maintenant, $accountId]);
-            // Comme au ban : la perte due quitte la file et reste en base, réponse
-            // rendue, jusqu'à ce que la réputation repasse le seuil du vote.
-            self::retirerDeLaFile($pdo, $accountId, self::deCause($etat['signaux'], 'perte_du_vote_due'));
+            // La suspension répond à la perte due tant qu'elle court : finie, le vote
+            // négatif suivant la remet dans la file si le quorum tient encore.
+            self::designaler($pdo, $accountId, 'perte_du_vote_due');
 
             return ['ok' => true, 'message' => sprintf(static::t('Vote suspendu jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
         });
@@ -4317,7 +4313,8 @@ class Moderate
     /**
      * Les bans en cours, avec ce qu'un arbitre doit voir avant de toucher à
      * l'un d'eux : l'origine, le motif, le temps restant, la date du plancher,
-     * et pour un ban automatique la composition de sa chute.
+     * et la composition de la chute à son début — celle qu'un ban d'arbitre a
+     * jugée comme celle qui a causé un ban automatique.
      *
      * `a_revoir` : un ban automatique que personne n'a encore maintenu ; `revue`
      * est alors ce que `adminMaintenir()` attend en `$vu`.
@@ -4356,7 +4353,6 @@ class Moderate
         return array_map(static function (array $r) use ($pdo, $maintenant): array {
             $debut = (int) $r['ban_debut'];
             $fin   = (int) $r['banned_until'];
-            $auto  = $r['ban_origine'] === 'auto';
             return [
                 'account_id' => (int) $r['account_id'],
                 'username'   => (string) $r['username'],
@@ -4370,7 +4366,7 @@ class Moderate
                 'episode'    => (int) $r['strikes'],
                 'a_revoir'   => $r['revue'] !== null,
                 'revue'      => $r['revue'] !== null ? ['signal' => (int) $r['revue'], 'detections' => (int) $r['detections']] : null,
-                'chute'      => $auto ? self::compositionChute($pdo, (int) $r['account_id'], $debut) : null,
+                'chute'      => self::compositionChute($pdo, (int) $r['account_id'], $debut),
                 'peine'      => (int) $r['peine'],
                 'arbitre'    => self::compteSigne($r['arbitre_id'], $r['arbitre_nom']),
                 'echeance_initiale' => (int) $r['echeance_initiale'],
