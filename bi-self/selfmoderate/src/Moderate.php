@@ -90,16 +90,40 @@ class Moderate
      * lit la même par `maintenant()` pour afficher ce que le moteur décide.
      * Le journal date ses entrées à sa manière : ce branchement ne le touche pas.
      * Une horloge qui rend autre chose qu'un instant entier, positif et avant
-     * `SANS_FIN` lève ; une horloge qui recule fait reculer le moteur avec elle.
+     * `SANS_FIN` lève.
+     *
+     * L'instant du moteur ne redescend jamais sous le plus avancé qu'il a inscrit
+     * dans la base (`mod_horloge`) : une horloge qui recule ne rallonge ni un ban ni
+     * une convalescence, ne remet pas une chute soldée en jeu, et n'antidate aucun
+     * vote. Chaque écriture le lit sous son verrou et l'avance avant de valider ; une
+     * lecture le lit une fois par connexion. Une horloge en retard sur lui se lit
+     * dans `etatDuSite()` (`horloge_en_retard`). Une horloge qui avance trop ne se
+     * voit pas : le moteur la suit. Brancher une horloge oublie le plancher lu, que
+     * la connexion suivante relit en base : une démonstration qui remonte le temps
+     * vide aussi `mod_horloge`.
      */
     private static $horloge = null;
+
+    /** Le plus avancé des instants que le moteur a lus dans `mod_horloge`. */
+    private static int $plancher = 0;
+
+    /** Les connexions dont le plancher est lu (`caler()`). */
+    private static ?\WeakMap $plancherLu = null;
 
     public static function setHorloge(?callable $fn): void
     {
         self::$horloge = $fn;
+        self::$plancher = 0;
+        self::$plancherLu = null;
     }
 
     public static function maintenant(): int
+    {
+        return max(self::horlogeBrute(), self::$plancher);
+    }
+
+    /** L'heure de l'horloge, sans le plancher du moteur. */
+    private static function horlogeBrute(): int
     {
         if (self::$horloge === null) {
             return time();
@@ -113,6 +137,40 @@ class Moderate
         }
 
         return $t;
+    }
+
+    /**
+     * Le plancher de l'horloge, lu dans la base une fois par connexion : une lecture
+     * publique ne le relit pas à chaque appel. Une base sans `mod_horloge` ne donne
+     * aucun plancher, et la première écriture nomme la table qui manque
+     * (`exigerSchema()`).
+     */
+    private static function caler(PDO $pdo): void
+    {
+        self::$plancherLu ??= new \WeakMap();
+        if (isset(self::$plancherLu[$pdo])) {
+            return;
+        }
+        self::lirePlancher($pdo);
+        self::$plancherLu[$pdo] = true;
+    }
+
+    private static function lirePlancher(PDO $pdo): void
+    {
+        try {
+            $instant = $pdo->query('SELECT instant FROM mod_horloge WHERE id = 1')->fetchColumn();
+        } catch (\PDOException) {
+            return;
+        }
+        self::$plancher = max(self::$plancher, (int) $instant);
+    }
+
+    /** L'écriture qui se valide porte l'instant du moteur dans la base, s'il avance. */
+    private static function avancerHorloge(PDO $pdo): void
+    {
+        $t = self::maintenant();
+        $pdo->prepare('INSERT OR IGNORE INTO mod_horloge (id, instant) VALUES (1, ?)')->execute([$t]);
+        $pdo->prepare('UPDATE mod_horloge SET instant = ? WHERE id = 1 AND instant < ?')->execute([$t, $t]);
     }
 
     /**
@@ -356,6 +414,7 @@ class Moderate
         if (self::$ecritures > 0) {
             throw new LectureDansUneEcriture('SelfModerate : un écrivain du moteur lit l\'état par etat(), sous son verrou — getReputation() n\'inscrit rien.');
         }
+        self::caler($pdo);
         $t       = self::maintenant();
         $row     = self::ligne($pdo, $accountId);
         $avance  = self::avancer($row, $t);
@@ -515,8 +574,12 @@ class Moderate
                     $tombentRegen[] = 'ban_en_attente';
                 }
                 if ($rep >= self::config()->perteDroitDeVoteSous) {
-                    $l['voting_rights'] = 1;
-                    array_push($tombentRegen, 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum');
+                    // Un ban en cours garde le vote retiré : sa fin le rend, plus bas.
+                    if ((int) $l['banned_until'] <= $t) {
+                        $l['voting_rights'] = 1;
+                        $tombentRegen[] = 'droit_de_vote_perdu';
+                    }
+                    array_push($tombentRegen, 'perte_du_vote_due', 'chute_sans_quorum');
                 }
                 if ($rep >= self::config()->sortieConvalescence()) {
                     $l['convalescent'] = 0;
@@ -725,6 +788,7 @@ class Moderate
         if (self::dansLaTransactionDeLHote($pdo)) {
             throw new \LogicException('SelfModerate : balayerBansEchus() s\'appelle hors de la transaction de l\'hôte — une fin inscrite au journal y survivrait à son annulation.');
         }
+        self::caler($pdo);
         $stmt = $pdo->prepare(
             "SELECT account_id FROM member_moderation m
               WHERE (banned_until > 0 AND banned_until <= :t)
@@ -855,6 +919,13 @@ class Moderate
             return [false, static::t('Date de création du compte illisible : le vote attend un horodatage en secondes.')];
         }
         $createdAt = (int) $cree;
+        // Une date nulle, négative ou à venir — des millisecondes en sont une — ne
+        // date aucun compte : elle ferait voter un compte de 1970, ou récent à vie.
+        if ($createdAt <= 0 || $createdAt > self::maintenant()) {
+            error_log(sprintf('SelfModerate : « accounts.created_at » du compte %d vaut %d, qui n\'est pas un instant passé en secondes : il ne vote pas.', $accountId, $createdAt));
+
+            return [false, static::t('Date de création du compte illisible : le vote attend un horodatage en secondes.')];
+        }
         $age = self::maintenant() - $createdAt;
         $ageMin = self::config()->ageMinPourVoterSecondes;
         if ($age < $ageMin) {
@@ -1182,7 +1253,9 @@ class Moderate
             if (self::config()->quorumAuxSeuils && self::config()->messagerie === Messagerie::DM) {
                 self::exigerIndexPaire($pdo);
             }
+            self::lirePlancher($pdo);
             $resultat = $ecriture();
+            self::avancerHorloge($pdo);
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
 
             return $resultat;
@@ -1222,6 +1295,8 @@ class Moderate
         foreach ([
             ['member_moderation', 'chute_soldee_le', 'ALTER TABLE member_moderation ADD COLUMN chute_soldee_le INTEGER NOT NULL DEFAULT 0'],
             ['mod_votes', 'voter_created_at', 'ALTER TABLE mod_votes ADD COLUMN voter_created_at INTEGER'],
+            ['member_moderation', 'soutien_lu_le', 'ALTER TABLE member_moderation ADD COLUMN soutien_lu_le INTEGER NOT NULL DEFAULT 0'],
+            ['mod_horloge', 'instant', 'CREATE TABLE mod_horloge (id INTEGER PRIMARY KEY CHECK (id = 1), instant INTEGER NOT NULL)'],
         ] as [$table, $colonne, $ajout]) {
             try {
                 $lu = $pdo->query("SELECT $colonne FROM $table LIMIT 0");
@@ -1229,7 +1304,7 @@ class Moderate
                 $lu = false;
             }
             if ($lu === false) {
-                throw new \LogicException(sprintf('SelfModerate : la base n\'a pas la colonne « %s.%s » — la note de montée vers la 0.9.0 (README) l\'ajoute : %s.', $table, $colonne, $ajout));
+                throw new \LogicException(sprintf('SelfModerate : la base n\'a pas « %s.%s » — la note de montée vers la 0.9.0 (README) l\'ajoute : %s.', $table, $colonne, $ajout));
             }
             $lu->closeCursor();
         }
@@ -1527,8 +1602,71 @@ class Moderate
             self::detecter($pdo, self::balayageDu($pdo) ? null : $author, $author);
             self::enforceThresholds($pdo, $author, $newRep, $rep['reputation']);
         }
+        self::quorumTenu($pdo, $author, $newRep);
 
         return self::voteEnregistre();
+    }
+
+    /**
+     * Le quorum tenu par des soutiens : des critiques sans lien entre eux atteignent
+     * le quorum du ban, mais des votes de soutien tiennent le score au seuil du vote
+     * ou au-dessus, où rien d'autre ne saisit l'arbitre — sans eux, la cible serait au
+     * plancher. Sous ce seuil, la chute le saisit déjà. La machine ne sanctionne rien et ne
+     * retire aucun soutien : elle le signale à l'arbitre (`quorum_tenu`, un état), qui
+     * lit les deux camps (`compositionChute()`, `compositionSoutiens()`).
+     *
+     * Deux agrégats d'abord — le nombre de critiques à solde négatif, ce que les
+     * soutiens ont rendu au score sur la même fenêtre —, puis la recherche des voix,
+     * une fois par cible et par tranche de balayage (`soutien_lu_le`). Le signal tombe
+     * quand un agrégat ne tient plus, à une recherche qui ne trouve plus le quorum, et
+     * sous le seuil du vote, où la chute prend sa place. Classé, il reste hors de la
+     * file tant qu'il tient.
+     */
+    private static function quorumTenu(PDO $pdo, int $accountId, int $reputation): void
+    {
+        $banA = self::config()->banA;
+        if ($reputation < self::config()->perteDroitDeVoteSous) {
+            self::designaler($pdo, $accountId, 'quorum_tenu');
+
+            return;
+        }
+        if (!self::config()->quorumAuxSeuils) {
+            return;
+        }
+        $t = self::maintenant();
+        $quorum = self::config()->voixPourSanction($banA);
+        if (count(self::votantsDeLaChute($pdo, $accountId, $t)) < $quorum
+            || self::renduParLesSoutiens($pdo, $accountId, $t) < $reputation - $banA) {
+            self::designaler($pdo, $accountId, 'quorum_tenu');
+
+            return;
+        }
+        $lu = $pdo->prepare('SELECT soutien_lu_le FROM member_moderation WHERE account_id = ?');
+        $lu->execute([$accountId]);
+        $dernier = (int) $lu->fetchColumn();
+        $lu->closeCursor();
+        if ($t - $dernier < self::config()->balayagePeriodeSecondes) {
+            return;
+        }
+        $pdo->prepare('UPDATE member_moderation SET soutien_lu_le = ? WHERE account_id = ?')->execute([$t, $accountId]);
+        $voix = self::voixDeLaChute($pdo, $accountId, $t, $quorum);
+        if ($voix['illisibles'] === 0 && $voix['voix'] >= $quorum) {
+            self::signaler($pdo, $accountId, 'quorum_tenu');
+        } else {
+            self::designaler($pdo, $accountId, 'quorum_tenu');
+        }
+    }
+
+    /** Ce que les votes de soutien qui portent ont rendu au score sur la fenêtre des voix. */
+    private static function renduParLesSoutiens(PDO $pdo, int $accountId, int $t): int
+    {
+        [$depuis, $jusqua] = self::fenetreDesVoix($pdo, $accountId, $t);
+        $stmt = $pdo->prepare('SELECT COALESCE(SUM(effet), 0) FROM mod_votes WHERE target_author = ? AND blocked = 0 AND value = 1 AND effet > 0 AND created_at BETWEEN ? AND ?');
+        $stmt->execute([$accountId, $depuis, $jusqua]);
+        $rendu = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
+
+        return $rendu;
     }
 
     /**
@@ -1620,12 +1758,15 @@ class Moderate
      * recherches : au-delà, la fonction rend null. Le coût suit les votants et
      * leurs expéditeurs distincts, jamais le volume des messages.
      *
+     * `$illisibles` reçoit le nombre de sens dont la date ne s'est pas lue.
+     *
      * @param int[] $voters
      * @param array<int, int>|null $premiers
      * @return list<array{int, int}>|null paires [a, b] avec a < b, ou null au-delà de `$max`
      */
-    private static function mutualPairs(PDO $pdo, array $voters, ?int $t = null, ?array $premiers = null, ?int $max = null): ?array
+    private static function mutualPairs(PDO $pdo, array $voters, ?int $t = null, ?array $premiers = null, ?int $max = null, ?int &$illisibles = null): ?array
     {
+        $illisibles = 0;
         if (count(array_unique($voters)) < 2) {
             return [];
         }
@@ -1636,7 +1777,7 @@ class Moderate
         foreach ($l['votants'] as $r) {
             $recus = self::recusDe($l, $r);
             if ($recus === null || $l['budget'] < 0) {
-                self::conclureLecture($l);
+                $illisibles = self::conclureLecture($l);
 
                 return null;
             }
@@ -1644,7 +1785,7 @@ class Moderate
                 $dates[$s][$r] = $quand;
             }
         }
-        self::conclureLecture($l);
+        $illisibles = self::conclureLecture($l);
         $profondeur = self::config()->fenetreMeuteJours * 86400;
         $paires = [];
         foreach ($dates as $de => $versQui) {
@@ -1669,12 +1810,15 @@ class Moderate
      * recherches : un votant qu'elle n'a pas fini de lire ne compte pas, et le
      * minimum reste exact.
      *
+     * `$illisibles` reçoit le nombre de sens dont la date ne s'est pas lue.
+     *
      * @param int[] $voters
      * @param array<int, int> $premiers
      * @return list<int>
      */
-    private static function liesAPersonne(PDO $pdo, array $voters, int $t, array $premiers, int $assez, int $max): array
+    private static function liesAPersonne(PDO $pdo, array $voters, int $t, array $premiers, int $assez, int $max, ?int &$illisibles = null): array
     {
+        $illisibles = 0;
         $seuls = [];
         if ($assez <= 0 || $voters === []) {
             return $seuls;
@@ -1703,7 +1847,7 @@ class Moderate
                 }
             }
         }
-        self::conclureLecture($l);
+        $illisibles = self::conclureLecture($l);
 
         return $seuls;
     }
@@ -1816,8 +1960,10 @@ class Moderate
      * La date du sens `$s` → `$r` : la plus récente jusqu'à `t`, lisible si elle tombe
      * dans `[t / 2, t]` — un instant en secondes est du même ordre que maintenant,
      * et des millisecondes, des dixièmes de seconde, un jour julien n'y tombent pas.
-     * Sinon, la plus récente tout court dit le reste : un sens dont le dernier
-     * message tient dans `]t, 2 t]` est lisible, et hors de la fenêtre (0) ; un
+     * Le dernier message se lit d'abord : au-delà de `2 t`, le sens est illisible ;
+     * dans `[t / 2, t]`, il est la date. Sinon, la plus récente jusqu'à `t` dit le
+     * reste : un sens dont le dernier message tient dans `]t, 2 t]` est lisible, et
+     * hors de la fenêtre (0) ; un
      * instant écrit en texte (une vue en `strftime('%s', …)`) se relit avec `t` en
      * texte ; tout autre sens — des dates NULL, en clair, hors d'échelle — est
      * illisible, retenu à part (`conclureLecture()`), et ne lie personne. Un sens
@@ -1831,16 +1977,29 @@ class Moderate
     {
         $t = $l['t'];
         $lisible = static fn (?int $quand): bool => $quand !== null && $quand >= intdiv($t, 2) && $quand <= $t;
+        $dernier = self::lireDate($l, $l['dernier'], [$r, $s], brut: $brut);
+        if ($dernier === false) {
+            return false;
+        }
+        // Un message plus récent que `2 t` n'est pas daté en secondes : le sens est
+        // illisible, même quand ses lignes plus anciennes se lisent — une messagerie
+        // passée aux millisecondes cacherait sinon chaque lien neuf derrière les anciens.
+        if ($dernier !== null && $dernier > 2 * $t) {
+            $l['illisibles'][$r][$s] = true;
+
+            return null;
+        }
+        if ($lisible($dernier)) {
+            $l['lisibles']++;
+
+            return $dernier;
+        }
         $quand = self::lireDate($l, $l['date'], [$r, $s, $t]);
         if ($quand === false) {
             return false;
         }
         if (!$lisible($quand)) {
-            $dernier = self::lireDate($l, $l['dernier'], [$r, $s], brut: $brut);
-            if ($dernier === false) {
-                return false;
-            }
-            if ($dernier !== null && $dernier > $t && $dernier <= 2 * $t) {
+            if ($dernier !== null && $dernier > $t) {
                 $l['lisibles']++;
 
                 return 0;
@@ -1901,17 +2060,17 @@ class Moderate
     }
 
     /**
-     * Ce qu'une lecture dit des dates de `dm` quand elle a rencontré des sens
-     * illisibles. Si aucun sens n'était lisible et qu'une paire est illisible dans
-     * ses deux sens, c'est la convention de la colonne qui est fausse : la lecture lève, en
-     * nommant une date — sinon le quorum ne lirait aucun lien, et chaque votant
-     * ferait une voix. Sinon, les sens illisibles ne lient personne, et le journal
-     * d'erreurs le dit : un vieux message mal daté ne gèle aucune chute.
+     * Ce qu'une lecture dit des dates de `dm` : le nombre de sens illisibles, qui ne
+     * lient personne. Le journal d'erreurs les compte ; si aucun sens n'était lisible
+     * et qu'une paire est illisible dans ses deux sens, c'est la convention de la
+     * colonne qui est fausse, et il cite une date. Le quorum qui a lu un sens
+     * illisible ne décide pas (`voixDeLaChute()`) : la chute est indécise, et dite à
+     * l'arbitre.
      */
-    private static function conclureLecture(array $l): void
+    private static function conclureLecture(array $l): int
     {
         if ($l['illisibles'] === []) {
-            return;
+            return 0;
         }
         $illisibles = array_sum(array_map('count', $l['illisibles']));
         foreach ($l['illisibles'] as $r => $expediteurs) {
@@ -1921,16 +2080,19 @@ class Moderate
                     $exemple->execute([$r, $s]);
                     $ligne = $exemple->fetch(PDO::FETCH_NUM) ?: ['?', '?'];
                     $exemple->closeCursor();
-                    throw new \LogicException(sprintf(
-                        'SelfModerate : « dm.created_at » de l\'hôte porte « %s » (%s), qui n\'est pas un instant Unix en secondes, du même ordre que maintenant (%d) — aucun message entre les votants n\'a de date lisible, et le quorum des seuils compare des instants.',
+                    error_log(sprintf(
+                        'SelfModerate : « dm.created_at » de l\'hôte porte « %s » (%s), qui n\'est pas un instant Unix en secondes, du même ordre que maintenant (%d) — aucun message entre les votants n\'a de date lisible.',
                         mb_substr((string) $ligne[0], 0, 40),
                         $ligne[1],
                         $l['t']
                     ));
+                    break 2;
                 }
             }
         }
-        error_log(sprintf('SelfModerate : %d sens de messages privés entre votants ont une date illisible (ni un instant en secondes, ni du même ordre que maintenant) ; ils ne lient personne.', $illisibles));
+        error_log(sprintf('SelfModerate : %d sens de messages privés entre votants ont une date illisible (ni un instant en secondes, ni du même ordre que maintenant) ; ils ne lient personne, et la chute est indécise.', $illisibles));
+
+        return $illisibles;
     }
 
     /**
@@ -2278,7 +2440,7 @@ class Moderate
     /** Les causes d'état, que lisent `famille()` et la reprise (`migrerSignaux()`). */
     private static function causesEtat(): array
     {
-        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum'];
+        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum', 'quorum_tenu'];
     }
 
     /**
@@ -2868,12 +3030,15 @@ class Moderate
                     self::config()->voixPourSanction(self::config()->perteDroitDeVoteSous - 1),
                     $auPlancher ? self::config()->voixPourSanction(self::config()->banA) : 0
                 ));
-                if ($voix['indecis']) {
+                if ($voix['illisibles'] > 0) {
+                    error_log(sprintf('SelfModerate : le quorum du compte %d a lu %d sens de messages privés à la date illisible ; il ne décide pas, et la chute est signalée.', $accountId, $voix['illisibles']));
+                } elseif ($voix['indecis']) {
                     error_log(sprintf('SelfModerate : le quorum du compte %d n\'a pas pu décider (travail ou recherches dans l\'index au-delà de leur borne) ; seules ses %d voix trouvées comptent.', $accountId, $voix['voix']));
                 }
             }
         }
-        $quorum = static fn (int $seuil): bool => $voix === null || $voix['voix'] >= self::config()->voixPourSanction($seuil);
+        $quorum = static fn (int $seuil): bool => $voix === null
+            || ($voix['illisibles'] === 0 && $voix['voix'] >= self::config()->voixPourSanction($seuil));
         $perdLeVote = $voteEnJeu && $quorum(self::config()->perteDroitDeVoteSous - 1);
 
         $retire = false;
@@ -2927,10 +3092,15 @@ class Moderate
         // Sous le seuil de vote, la convalescence s'ouvre, sanction ou non.
         // `AND convalescent = 0` n'est pas une précaution d'idempotence : sans
         // lui, chaque nouveau downvote remettrait l'horloge à zéro, et un votant
-        // patient suffirait à repousser la remontée indéfiniment.
+        // patient suffirait à repousser la remontée indéfiniment. Son ancre
+        // s'arrondit au pas de la fin d'un ban automatique (`arrondiFinBanSecondes`),
+        // vers le bas : l'instant de chaque point, que la page du compte montre, ne
+        // date pas le vote qui l'a fait passer sous le seuil, et ne vient jamais plus
+        // tard.
+        $pas = self::config()->arrondiFinBanSecondes;
         $pdo->prepare(
             'UPDATE member_moderation SET convalescent = 1, last_regen_at = ? WHERE account_id = ? AND convalescent = 0'
-        )->execute([self::maintenant(), $accountId]);
+        )->execute([intdiv(self::maintenant(), $pas) * $pas, $accountId]);
     }
 
     /**
@@ -2972,23 +3142,26 @@ class Moderate
      * des votes négatifs de compte récent (`ageEtabliSecondes`), d'après la date de
      * création que chaque vote a gardée (`voter_created_at`) : un compte supprimé
      * ensuite garde sa classe, et un vote sans date compte comme récent. `cree_le`
-     * est cette date, `premier` et `dernier` ses votes négatifs extrêmes.
+     * est cette date, `premier` et `dernier` ses votes négatifs extrêmes. Avec
+     * `$sens` à 1, les mêmes pour le camp des soutiens : un solde positif, ses votes
+     * positifs.
      *
      * @return list<array{voter_id: int|string, cree_le: int|string|null, recent: int|string, premier: int|string, dernier: int|string}>
      */
-    private static function votantsDeLaChute(PDO $pdo, int $cible, int $t): array
+    private static function votantsDeLaChute(PDO $pdo, int $cible, int $t, int $sens = -1): array
     {
         [$depuis, $jusqua, $soldee] = self::fenetreDesVoix($pdo, $cible, $t);
+        $sens = $sens < 0 ? -1 : 1;
         $stmt = $pdo->prepare(
             'SELECT v.voter_id, MAX(v.voter_created_at) AS cree_le,
-                    MIN(CASE WHEN v.value = -1 THEN ' . self::recentEnSql() . ' END) AS recent,
-                    MIN(CASE WHEN v.value = -1 THEN v.created_at END) AS premier,
-                    MAX(CASE WHEN v.value = -1 THEN v.created_at END) AS dernier
+                    MIN(CASE WHEN v.value = ' . $sens . ' THEN ' . self::recentEnSql() . ' END) AS recent,
+                    MIN(CASE WHEN v.value = ' . $sens . ' THEN v.created_at END) AS premier,
+                    MAX(CASE WHEN v.value = ' . $sens . ' THEN v.created_at END) AS dernier
                FROM mod_votes v
               WHERE v.target_author = ? AND v.blocked = 0 AND v.effet IS NOT NULL AND v.created_at BETWEEN ? AND ?
                 AND (v.created_at > ? OR v.effet <> 0)
            GROUP BY v.voter_id
-             HAVING SUM(v.value) < 0'
+             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0')
         );
         $stmt->execute([$cible, $depuis, $jusqua, $soldee]);
 
@@ -3011,16 +3184,18 @@ class Moderate
      * `quorumRecherchesMax` recherches dans l'index, où seuls les votants liés à
      * personne se comptent (`liesAPersonne()`) : `voix` n'est alors qu'un minimum,
      * et la machine ne sanctionne que ce qu'il porte. `paires_liees` est null quand
-     * les liens n'ont pas été lus en entier.
+     * les liens n'ont pas été lus en entier. `illisibles` compte les sens dont la
+     * date ne s'est pas lue : un seul rend la recherche indécise, et la machine ne
+     * sanctionne rien — elle ne sait pas qui est lié.
      *
-     * @return array{voix: int, votants: int, recents: int, paires_liees: int|null, indecis: bool}
+     * @return array{voix: int, votants: int, recents: int, paires_liees: int|null, indecis: bool, illisibles: int}
      */
-    private static function voixDeLaChute(PDO $pdo, int $cible, int $t, int $assez): array
+    private static function voixDeLaChute(PDO $pdo, int $cible, int $t, int $assez, int $sens = -1): array
     {
         $etablis = [];
         $premiers = [];
         $recents = 0;
-        foreach (self::votantsDeLaChute($pdo, $cible, $t) as $r) {
+        foreach (self::votantsDeLaChute($pdo, $cible, $t, $sens) as $r) {
             if ((int) $r['recent'] === 1) {
                 $recents++;
             } else {
@@ -3038,11 +3213,13 @@ class Moderate
                 'recents'      => $recents,
                 'paires_liees' => null,
                 'indecis'      => false,
+                'illisibles'   => 0,
             ];
         }
-        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumRecherchesMax);
+        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumRecherchesMax, $illisibles);
         if ($paires === null) {
-            $sansLien = count(self::liesAPersonne($pdo, $etablis, $t, $premiers, $assez - $classe, self::config()->quorumRecherchesMax));
+            $sansLien = count(self::liesAPersonne($pdo, $etablis, $t, $premiers, $assez - $classe, self::config()->quorumRecherchesMax, $illisiblesRepli));
+            $illisibles += $illisiblesRepli;
             $indecis = $sansLien + $classe < $assez;
             $pairesLiees = null;
         } else {
@@ -3055,7 +3232,8 @@ class Moderate
             'votants'      => count($etablis) + $recents,
             'recents'      => $recents,
             'paires_liees' => $pairesLiees,
-            'indecis'      => $indecis,
+            'indecis'      => $indecis || $illisibles > 0,
+            'illisibles'   => $illisibles,
         ];
     }
 
@@ -4433,6 +4611,7 @@ class Moderate
     public static function bansEnCours(PDO $pdo, int $limite = 100): array
     {
         self::exigerRepriseFaite($pdo);
+        self::caler($pdo);
         $maintenant = self::maintenant();
         $stmt = $pdo->prepare(
             "SELECT m.account_id, a.username, m.ban_origine, m.ban_motif, m.ban_debut, m.banned_until,
@@ -4555,13 +4734,14 @@ class Moderate
      * `recents`, les votants que leur âge range dans une seule voix ;
      * `paires_liees`, les liens entre les autres, null quand la lecture des liens
      * dépasse sa borne (`quorumRecherchesMax`) ; `indecis`, une
-     * recherche qui n'a pas pu décider ; `liens`, ce que valent ces liens :
+     * recherche qui n'a pas pu décider ; `illisibles`, les sens de messages privés
+     * dont la date ne s'est pas lue, qui rendent la chute indécise ; `liens`, ce que valent ces liens :
      * `lus`, `non_lus` sur un hôte dont la messagerie passe hors du moteur, `muets`
      * quand l'hôte déclare `dm` et que la table n'a aucune ligne — chaque votant
      * y fait alors sa voix (`etatDuSite()`).
      *
      * @return array{votants: int, ages_jours: list<int>, etalement: int, voix_sans_lien: int,
-     *               recents: int, paires_liees: int|null, indecis: bool, liens: string}
+     *               recents: int, paires_liees: int|null, indecis: bool, illisibles: int, liens: string}
      */
     public static function compositionChute(PDO $pdo, int $accountId, int $debut): array
     {
@@ -4583,9 +4763,36 @@ class Moderate
             'recents'        => $quorum['recents'],
             'paires_liees'   => $quorum['paires_liees'],
             'indecis'        => $quorum['indecis'],
+            'illisibles'     => $quorum['illisibles'],
             'liens'          => self::config()->messagerie === Messagerie::HORS_MOTEUR
                 ? 'non_lus'
                 : (self::dmSansLigne($pdo) ? 'muets' : 'lus'),
+        ];
+    }
+
+    /**
+     * Le camp des soutiens d'un compte à l'instant `$t`, en regard de sa chute
+     * (`compositionChute()`) : les votants dont le solde des votes qui portent pour
+     * lui est positif sur la même fenêtre, leurs voix sans lien deux à deux, les
+     * comptes récents (une voix à eux tous), et ce que leurs votes ont rendu au score.
+     * Une lecture d'arbitre, pour `quorum_tenu` : des soutiens liés entre eux, ou
+     * récents, pèsent moins qu'ils n'ont rendu.
+     *
+     * @return array{votants: int, voix_sans_lien: int, recents: int, paires_liees: int|null, indecis: bool, illisibles: int, rendu: int}
+     */
+    public static function compositionSoutiens(PDO $pdo, int $accountId, int $t): array
+    {
+        $votants = count(self::votantsDeLaChute($pdo, $accountId, $t, 1));
+        $voix = self::voixDeLaChute($pdo, $accountId, $t, max(1, $votants), 1);
+
+        return [
+            'votants'        => $votants,
+            'voix_sans_lien' => $voix['voix'],
+            'recents'        => $voix['recents'],
+            'paires_liees'   => $voix['paires_liees'],
+            'indecis'        => $voix['indecis'],
+            'illisibles'     => $voix['illisibles'],
+            'rendu'          => self::renduParLesSoutiens($pdo, $accountId, $t),
         ];
     }
 
@@ -4599,11 +4806,32 @@ class Moderate
      * entière, le quorum compte chaque votant pour une voix sans que personne
      * l'ait déclaré. Une `dm` vide est l'état d'un site neuf : l'alarme attend.
      *
-     * @return list<array{cause: string, depuis: int}>
+     * `horloge_en_retard` : l'horloge rend un instant antérieur au plus avancé que le
+     * moteur a inscrit (`depuis`) ; le moteur reste à celui-là, `ecart` dit de
+     * combien elle retarde.
+     *
+     * `dates_aberrantes` : des comptes dont `accounts.created_at` n'est pas un instant
+     * passé en secondes — nul, négatif, à venir, des millisecondes —, `comptes` dit
+     * combien, `depuis` l'instant de la lecture : ils ne votent pas.
+     *
+     * @return list<array{cause: string, depuis: int, ecart?: int, comptes?: int}>
      */
     public static function etatDuSite(PDO $pdo): array
     {
         $etats = [];
+        self::caler($pdo);
+        self::lirePlancher($pdo);
+        $brute = self::horlogeBrute();
+        if (self::$plancher > $brute) {
+            $etats[] = ['cause' => 'horloge_en_retard', 'depuis' => self::$plancher, 'ecart' => self::$plancher - $brute];
+        }
+        $aberrants = $pdo->prepare('SELECT COUNT(*) FROM accounts WHERE created_at IS NULL OR NOT (CAST(created_at AS INTEGER) > 0 AND CAST(created_at AS INTEGER) <= ?)');
+        $aberrants->execute([self::maintenant()]);
+        $comptes = (int) $aberrants->fetchColumn();
+        $aberrants->closeCursor();
+        if ($comptes > 0) {
+            $etats[] = ['cause' => 'dates_aberrantes', 'depuis' => self::maintenant(), 'comptes' => $comptes];
+        }
         if (self::config()->messagerie === Messagerie::DM && self::dmSansLigne($pdo)) {
             $premier = $pdo->query('SELECT MIN(created_at) FROM mod_votes')->fetchColumn();
             if ($premier !== null && $premier !== false

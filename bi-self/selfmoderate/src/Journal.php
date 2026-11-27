@@ -109,8 +109,12 @@ interface Journal
      * d'arbitre le fait remonter aussitôt. Au début d'un ban automatique, le
      * refus ne défait pas le vote qui l'a causé : la chute est signalée avec le
      * ban dû (`ban_en_attente`), et le vote négatif suivant le retente. Un refus
-     * se lève par n'importe quelle exception ; sur le chemin du balayage, une
-     * `\Error` est un défaut, et remonte.
+     * se lève par n'importe quelle exception, une `\Error` comprise : là où le
+     * refus est contenu — une fin de peine, le début d'un ban automatique, le
+     * retrait du vote, le balayage —, elle se consigne et se signale comme lui ;
+     * d'un geste d'arbitre, elle remonte. Un début de ban inscrit ici, puis défait
+     * avec la base, reste sans effet : le suivant porte ses propres dates, et le
+     * dernier est celui de la peine.
      *
      * Une implémentation ne rappelle pas le moteur : elle est appelée au milieu
      * d'une de ses écritures, où la lecture d'un compte par le moteur

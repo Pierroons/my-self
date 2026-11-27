@@ -3737,8 +3737,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
-            || { echo "::error::le banc de modération n'a pas joué ses 297 contrôles"; exit 1; }
+          grep -qx '✅ 304/304 contrôles passés' <<< "$sortie" \
+            || { echo "::error::le banc de modération n'a pas joué ses 304 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate, le socle de la 0.9.0 — l'horloge, l'historique des peines, l'arbitre devenu compte
         run: |
@@ -3749,9 +3749,9 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
           # Recherches par here-string : sous `pipefail`, un `grep -q` qui sort tôt tue
           # l'`echo` d'une sortie de plus de 64 Ko, et le tube dirait « absent ».
-          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 304/304 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 304 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Des défauts plantés un à un — le moteur, la console, la route de balayage, la
           # règle du lab et sa migration —,
           # chaque fichier restauré avant le suivant ; chaque plantation est jugée, même
@@ -3909,9 +3909,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 304/304 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 304 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Le croisement, sa trêve, ses plafonds, la convalescence, les motifs, la salve, les raisons qu'une page publique tait et la fin réelle
           # d'un ban dans le moteur ; la route de vote, la page
           # publique, les votes reçus, les fins de ban et le blocage dans le lab. Qu'un
@@ -4040,9 +4040,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 304/304 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 304 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La part elle-même, son solde net, les votes tombés qu'elle ne compte pas,
           # l'âge au moment du vote, sa fenêtre en jours, le signal qu'elle laisse voir et
           # la salve qu'elle ne relance pas ; ce qu'elle compte (l'effet des votes, et un
@@ -4256,8 +4256,9 @@ jobs:
           import sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
-          lu = "        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumRecherchesMax);\n"
-          boucle = ("        $paires = [];\n"
+          lu = "        $paires = self::mutualPairs($pdo, $etablis, $t, $premiers, self::config()->quorumRecherchesMax, $illisibles);\n"
+          boucle = ("        $illisibles = 0;\n"
+                    "        $paires = [];\n"
                     "        foreach ($etablis as $i => $a) {\n"
                     "            foreach (array_slice($etablis, $i + 1) as $b) {\n"
                     "                if (self::areLinked($pdo, $a, $b)) {\n"
@@ -4422,7 +4423,7 @@ jobs:
                               "        $pdo->prepare('DELETE FROM mod_signaux WHERE account_id = ? AND cause <> ?')->execute([$accountId, $cause]);\n        $pose = $pdo->prepare('INSERT OR IGNORE INTO mod_signaux (account_id, cause, ouvert_le, derniere_le) VALUES (?, ?, ?, ?)');\n"),
               'composition': ("              WHERE v.target_author = ? AND v.blocked = 0 AND v.effet IS NOT NULL AND v.created_at BETWEEN ? AND ?\n"
                               "                AND (v.created_at > ? OR v.effet <> 0)\n"
-                              "           GROUP BY v.voter_id\n             HAVING SUM(v.value) < 0'\n        );\n        $stmt->execute([$cible",
+                              "           GROUP BY v.voter_id\n             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0')\n        );\n        $stmt->execute([$cible",
                               "              WHERE v.target_author = ? AND ? > 0 AND ? > 0 AND ? >= 0\n"
                               "           GROUP BY v.voter_id'\n        );\n        $stmt->execute([$cible"),
           }[os.environ['CAS']]
@@ -4481,26 +4482,26 @@ jobs:
           s = open(p, encoding='utf-8').read()
           avant, apres = {
               'classe':      ('        $classe = min(1, $recents);\n', '        $classe = $recents;\n'),
-              'borne':       ("             HAVING SUM(v.value) < 0'\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);",
-                              "             HAVING SUM(v.value) < 0 ORDER BY MIN(v.created_at) LIMIT 200'\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);"),
+              'borne':       ("             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0')\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);",
+                              "             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0') . ' ORDER BY MIN(v.created_at) LIMIT 200'\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);"),
               'glouton':     ('            $explorer(array_diff_key($reste, [$v => true]), $pris);\n', ''),
-              'saute':       ("        $quorum = static fn (int $seuil): bool => $voix === null || $voix['voix'] >= self::config()->voixPourSanction($seuil);",
+              'saute':       ("        $quorum = static fn (int $seuil): bool => $voix === null\n            || ($voix['illisibles'] === 0 && $voix['voix'] >= self::config()->voixPourSanction($seuil));",
                               "        $quorum = static fn (int $seuil): bool => true;"),
-              'famille':     (", 'ban_sans_fin', 'chute_sans_quorum'];", ", 'ban_sans_fin'];"),
+              'famille':     (", 'ban_sans_fin', 'chute_sans_quorum', 'quorum_tenu'];", ", 'ban_sans_fin', 'quorum_tenu'];"),
               'balai':       ("(voting_rights = 0 OR EXISTS (\n                                                   SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.cause IN ('chute_sans_quorum', 'perte_du_vote_due')))",
                               "(voting_rights = 0)"),
-              'remontee':    ("array_push($tombentRegen, 'droit_de_vote_perdu', 'perte_du_vote_due', 'chute_sans_quorum');", "array_push($tombentRegen, 'droit_de_vote_perdu', 'perte_du_vote_due');"),
+              'remontee':    ("array_push($tombentRegen, 'perte_du_vote_due', 'chute_sans_quorum');", "array_push($tombentRegen, 'perte_du_vote_due');"),
               'budget':      ('                if (($travail += count($reste)) > self::config()->quorumTravailMax) {',
                               '                if (($travail += count($reste)) > PHP_INT_MAX) {'),
               'neutralises': ("WHERE v.target_author = ? AND v.blocked = 0 AND v.effet IS NOT NULL AND v.created_at BETWEEN ? AND ?\n"
                               "                AND (v.created_at > ? OR v.effet <> 0)\n"
-                              "           GROUP BY v.voter_id\n             HAVING SUM(v.value) < 0'\n        );\n        $stmt->execute([$cible",
+                              "           GROUP BY v.voter_id\n             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0')\n        );\n        $stmt->execute([$cible",
                               "WHERE v.target_author = ? AND v.effet IS NOT NULL AND v.created_at BETWEEN ? AND ?\n"
                               "                AND (v.created_at > ? OR v.effet <> 0)\n"
-                              "           GROUP BY v.voter_id\n             HAVING SUM(v.value) < 0'\n        );\n        $stmt->execute([$cible"),
+                              "           GROUP BY v.voter_id\n             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0')\n        );\n        $stmt->execute([$cible"),
               'soldee':      ("        if ($soldee > $t) {\n            $soldee = 0;", "        if ($soldee >= $t) {\n            $soldee = 0;"),
-              'net':         ("             HAVING SUM(v.value) < 0'\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);",
-                              "             HAVING MIN(v.value) < 0'\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);"),
+              'net':         ("             HAVING SUM(v.value) ' . ($sens < 0 ? '< 0' : '> 0')\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);",
+                              "             HAVING ' . ($sens < 0 ? 'MIN(v.value) < 0' : 'SUM(v.value) > 0')\n        );\n        $stmt->execute([$cible, $depuis, $jusqua, $soldee]);"),
               'riposte':     ("if ($value === -1 && self::etat($pdo, $voterId)['reputation'] >= $seuil && self::etat($pdo, $author)['reputation'] >= $seuil) {",
                               "if ($value === -1) {"),
               'arbitre':     ("SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,\n                        strikes = ?, updated_at = ?",
@@ -4508,9 +4509,9 @@ jobs:
               'lecture':     ('        $l = self::lecteurDeSens($pdo, $voters, $t, $max ?? PHP_INT_MAX);',
                               '        $l = self::lecteurDeSens($pdo, $voters, $t, PHP_INT_MAX);'),
               'typedm':      ("                if ($l['lisibles'] === 0 && isset($l['illisibles'][$s][$r])) {", '                if (false) {'),
-              'strftime':    ("            $quand = is_string($brut) ? self::lireDate($l, $l['date'], [$r, $s, (string) $t]) : null;",
-                              '            $quand = null;'),
-              'millisecondes': ('$dernier > $t && $dernier <= 2 * $t', '$dernier > $t && $dernier <= 2000 * $t'),
+              'strftime':    ('            is_string($brut) && is_numeric($brut)  => (int) (float) $brut,',
+                              '            is_string($brut) && is_numeric($brut)  => null,'),
+              'millisecondes': ('$dernier !== null && $dernier > 2 * $t', '$dernier !== null && $dernier > 2000 * $t'),
               'julien':      ('$quand >= intdiv($t, 2) && $quand <= $t;', '$quand >= 0 && $quand <= $t;'),
               'index':       ("        if (!$seul($plan, '\\S+=\\? AND \\S+>\\?') || !$seul($planDate, '\\S+=\\? AND \\S+=\\? AND \\S+<\\?')) {", '        if (false) {'),
               'index_date':  ("        if (!$seul($plan, '\\S+=\\? AND \\S+>\\?') || !$seul($planDate, '\\S+=\\? AND \\S+=\\? AND \\S+<\\?')) {", "        if (!$seul($plan, '\\S+=\\? AND \\S+>\\?')) {"),
@@ -5180,8 +5181,8 @@ jobs:
               'cible':     (M, "detections = detections + 1 WHERE account_id = ? AND cause = ?')\n                ->execute([$accountId, $cause]);",
                                "detections = detections + 1 WHERE account_id = ?')\n                ->execute([$accountId]);", 1),
               'borne':     (M, "AND cause = ? AND derniere_le <= ?'", "AND cause = ? AND derniere_le < ?'", 1),
-              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum'];",
-                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum', 'signal_anterieur'];", 1),
+              'anterieur': (M, "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum', 'quorum_tenu'];",
+                               "        return ['reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum', 'quorum_tenu', 'signal_anterieur'];", 1),
               'machine':   (M, "                throw new \\LogicException('SelfModerate : seul un arbitre ferme un signal de comportement (' . $cause . ').');\n",
                                "                continue;\n", 1),
               'fermedet':  (M, "            'detections'  => $s['detections'],\n        ], $signaux)", "        ], $signaux)", 1),
@@ -5259,7 +5260,7 @@ jobs:
           M, B = 'bi-self/selfmoderate/src/Moderate.php', 'demo/lab/lib/bootstrap.php'
           A, D, P = 'demo/lab/public/admin.php', 'demo/lab/public/api/detect_abuse.php', 'demo/lab/public/moderation.php'
           fichier, avant, apres, n = {
-              'listes':  (M, "        self::exigerRepriseFaite($pdo);\n        $maintenant = self::maintenant();\n", "        $maintenant = self::maintenant();\n", 1),
+              'listes':  (M, "        self::exigerRepriseFaite($pdo);\n        self::caler($pdo);\n        $maintenant = self::maintenant();\n", "        self::caler($pdo);\n        $maintenant = self::maintenant();\n", 1),
               'autrui':  (M, "        if ($compte === $voteSur) {\n            return $geste();\n        }\n", "        if (true) {\n            return $geste();\n        }\n", 1),
               'refus':   (M, "        } catch (LectureDansUneEcriture $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {",
                              "        } catch (LectureDansUneEcriture | \\RuntimeException $e) {\n            throw $e;\n        } catch (\\Exception $e) {\n            if ($e === self::$transactionDefaitePar) {", 1),
@@ -5386,9 +5387,9 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 304/304 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 304 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # La déclaration de l'hôte et ce qu'elle décide : le repli sur la démonstration,
           # le ban et le retrait du vote en service, les bornes du service et de la
           # démonstration, `dm` sous HORS_MOTEUR ; la sanction due et la réponse de
@@ -5529,19 +5530,21 @@ jobs:
           # @plante
           # Témoin d'abord : le banc intact doit jouer tous ses contrôles.
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) && rc=0 || rc=$?
-          grep -qx '✅ 297/297 contrôles passés' <<< "$sortie" \
+          grep -qx '✅ 304/304 contrôles passés' <<< "$sortie" \
             || { grep -m 5 -e '✗' <<< "$sortie" || true; tail -2 <<< "$sortie"
-                 echo "::error::le banc de modération intact ne joue pas ses 297 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
+                 echo "::error::le banc de modération intact ne joue pas ses 304 contrôles (rc=$rc) : ce canari ne prouverait rien"; exit 1; }
           # Ce que rend un vote que les votes des autres font tomber, la lecture des
           # comptes votés, le seuil des motifs par sens et sur les motifs rendus ; le droit
           # de vote relu sous le verrou, le motif jugé avant lui, l'auteur qui doit être un
           # compte ; la classe que garde un vote, et le plafond des seules cibles
-          # établies. Chaque plantation est jugée, même après l'échec d'une autre, et doit
-          # rougir sur ce qui la nomme.
+          # établies ; le silence refusé — une date de compte ou de message illisible, une
+          # horloge qui recule —, le quorum tenu par des soutiens, le vote gardé retiré
+          # pendant un ban, l'ancre de la convalescence arrondie. Chaque plantation est
+          # jugée, même après l'échec d'une autre, et doit rougir sur ce qui la nomme.
           M=bi-self/selfmoderate/src/Moderate.php
           cp "$M" /tmp/chemin.intact
           echecs=0
-          cas_liste="retour_croise retour_part comptes_recus motifs_par_sens motifs_ancien droit_sous_verrou motif_avant_verrou auteur_absent classe_jointure classe_sans_date plafond_etabli plafond_cible_neuve"
+          cas_liste="retour_croise retour_part comptes_recus motifs_par_sens motifs_ancien droit_sous_verrou motif_avant_verrou auteur_absent classe_jointure classe_sans_date plafond_etabli plafond_cible_neuve date_compte etat_dates dm_millisecondes dm_decide horloge_plancher horloge_ecriture horloge_etat soutiens_signal soutiens_tranche soutiens_seuil soutiens_lies soutiens_rendu vote_pendant_ban ancre_arrondie"
           for cas in $cas_liste; do
             attendu=$(CAS="$cas" python3 - <<'PY'
           import os
@@ -5550,6 +5553,10 @@ jobs:
           MOTIFS = "✗ ⭐ motifsVotantsMin compte tous les sens, ou toute l'histoire"
           CLASSE = "✗ ⭐ la classe d'un vote suit le compte de son auteur"
           PLAFOND = "✗ ⭐ des comptes neufs épuisent le plafond d'un défenseur"
+          DATE = "✗ ⭐ une date de création aberrante vote, ou se tait"
+          DM = "✗ ⭐ une messagerie passée aux millisecondes cache un lien, ou sanctionne"
+          HORLOGE = "✗ ⭐ l'instant du moteur redescend avec l'horloge"
+          SOUTIENS = "✗ ⭐ un quorum de critiques tenu par des soutiens se tait, ou sanctionne"
           avant, apres, attendu = {
               'retour_croise':  ("$author, $author);\n                return self::voteEnregistre();",
                                  "$author, $author);\n                return ['ok' => true, 'blocked' => true, 'blocked_reason' => $croise, 'message' => static::t('Vote enregistré.')];", RETOUR),
@@ -5579,6 +5586,24 @@ jobs:
                                  "COUNT(DISTINCT v.target_author) AS cibles", PLAFOND),
               'plafond_cible_neuve': ("        if ($value === -1 && self::etabli(self::creeLe($pdo, $author), self::maintenant())) {",
                                       "        if ($value === -1) {", PLAFOND),
+              'date_compte':    ("        if ($createdAt <= 0 || $createdAt > self::maintenant()) {", "        if ($createdAt < 0) {", DATE),
+              'etat_dates':     ("        if ($comptes > 0) {", "        if (false) {", DATE),
+              'dm_millisecondes': ("        if ($dernier !== null && $dernier > 2 * $t) {", "        if (false) {", DM),
+              'dm_decide':      ("            || ($voix['illisibles'] === 0 && $voix['voix'] >= self::config()->voixPourSanction($seuil));",
+                                 "            || $voix['voix'] >= self::config()->voixPourSanction($seuil);", DM),
+              'horloge_plancher': ("        return max(self::horlogeBrute(), self::$plancher);", "        return self::horlogeBrute();", HORLOGE),
+              'horloge_ecriture': ("            self::avancerHorloge($pdo);\n", "", HORLOGE),
+              'horloge_etat':   ("        if (self::$plancher > $brute) {", "        if (false) {", HORLOGE),
+              'soutiens_signal': ("            self::signaler($pdo, $accountId, 'quorum_tenu');", "            self::designaler($pdo, $accountId, 'quorum_tenu');", SOUTIENS),
+              'soutiens_tranche': ("        if ($t - $dernier < self::config()->balayagePeriodeSecondes) {", "        if (false) {", SOUTIENS),
+              'soutiens_seuil': ("        if ($reputation < self::config()->perteDroitDeVoteSous) {\n            self::designaler($pdo, $accountId, 'quorum_tenu');",
+                                 "        if ($reputation <= $banA) {\n            self::designaler($pdo, $accountId, 'quorum_tenu');", SOUTIENS),
+              'soutiens_lies':  ("        if ($voix['illisibles'] === 0 && $voix['voix'] >= $quorum) {", "        if ($voix['illisibles'] === 0) {", SOUTIENS),
+              'soutiens_rendu': ("            'rendu'          => self::renduParLesSoutiens($pdo, $accountId, $t),", "            'rendu'          => 0,", SOUTIENS),
+              'vote_pendant_ban': ("                    if ((int) $l['banned_until'] <= $t) {", "                    if (true) {",
+                                   "✗ ⭐ la remontée rend le droit de vote pendant un ban"),
+              'ancre_arrondie': ("        )->execute([intdiv(self::maintenant(), $pas) * $pas, $accountId]);",
+                                 "        )->execute([self::maintenant(), $accountId]);", "✗ ⭐ l'ancre de la convalescence date le vote qui l'ouvre"),
           }[os.environ['CAS']]
           s = open(M, encoding='utf-8').read()
           assert s.count(avant) == 1, 'plantation impossible'

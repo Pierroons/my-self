@@ -73,6 +73,7 @@ $causes = [
     'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus), signalée avant la 0.9.0',
     'votants_tronques' => 'trop de votants pour la détection de meute, signalé avant la 0.9.0',
     'chute_sans_quorum' => 'chute sous un seuil sans assez de votants sans lien entre eux : la sanction qu\'ils ne portent pas attend un arbitre',
+    'quorum_tenu'     => 'critiques sans lien au quorum du ban, score tenu par des soutiens : rien n\'est sanctionné, un arbitre lit les deux camps',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
     'comptes_recents' => 'comptes récents qui ont voulu peser plus qu\'un membre établi sur ce compte',
     'bans_arbitre'    => 'bans d\'arbitre répétés sur ce compte',
@@ -94,7 +95,14 @@ $quorumEnClair = static fn (array $ch): string => sprintf('%d voix sans lien sur
         default => sprintf(' · %d paire(s) liée(s)', $ch['paires_liees']),
     }
     . ($ch['recents'] > 0 ? sprintf(' · %d compte(s) récent(s), une voix à eux tous', $ch['recents']) : '')
-    . ($ch['indecis'] ? ' · recherche indécise : seules les voix trouvées comptent' : '');
+    . match (true) {
+        ($ch['illisibles'] ?? 0) > 0 => sprintf(' · %d sens de messages privés à la date illisible : recherche indécise, rien n\'est sanctionné', $ch['illisibles']),
+        $ch['indecis']               => ' · recherche indécise : seules les voix trouvées comptent',
+        default                      => '',
+    };
+// Le camp qui tient le score devant le quorum des critiques (`compositionSoutiens()`).
+$soutiensEnClair = static fn (array $so): string => sprintf('soutiens : %d voix sans lien sur %d votant(s), %d point(s) rendu(s)', $so['voix_sans_lien'], $so['votants'], $so['rendu'])
+    . ($so['recents'] > 0 ? sprintf(' · %d compte(s) récent(s), une voix à eux tous', $so['recents']) : '');
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
 $suites = [
     'avertissement'  => 'avertissement',
@@ -198,6 +206,10 @@ table.adm tr:last-child td{border-bottom:none}
     <?php foreach (Moderate::etatDuSite($pdo) as $etatSite): ?>
       <?php if ($etatSite['cause'] === 'liens_muets'): ?>
         <span style="color:var(--warn)">⚠ Aucun message privé en base depuis le <?= h(date('d/m/Y', $etatSite['depuis'])) ?> : le quorum ne lit aucun lien, chaque votant fait sa voix.</span><br>
+      <?php elseif ($etatSite['cause'] === 'horloge_en_retard'): ?>
+        <span style="color:var(--danger)">⚠ L'horloge du serveur retarde de <?= h(Moderate::dureeEnClair((int) $etatSite['ecart'])) ?> sur le moteur, resté au <?= h(date('d/m/Y H:i', $etatSite['depuis'])) ?> : rien ne s'y rallonge, mais l'heure du serveur est à corriger.</span><br>
+      <?php elseif ($etatSite['cause'] === 'dates_aberrantes'): ?>
+        <span style="color:var(--warn)">⚠ <?= (int) $etatSite['comptes'] ?> compte(s) à la date de création illisible (nulle, négative, à venir ou en millisecondes) : ils ne votent pas tant que l'hôte ne la corrige pas.</span><br>
       <?php endif; ?>
     <?php endforeach; ?>
     <?php if ($erreurJournal !== null): ?>
@@ -243,7 +255,10 @@ table.adm tr:last-child td{border-bottom:none}
         <span class="muted">— <?= $affiches ?> <?= $affiches > 1 ? 'signaux' : 'signal' ?><?= $f['total_cause'] > $affiches ? ' affichés sur ' . (int) $f['total_cause'] . ', les plus anciens d\'abord' : '' ?></span></th></tr>
       <?php endif; ?>
       <tr><td>@<?= h($f['username']) ?><?php if (in_array($f['cause'], ['chute_sans_quorum', 'reputation_zero', 'perte_du_vote_due'], true)): ?>
-            <br><span class="muted"><?= h($quorumEnClair(Moderate::compositionChute($pdo, (int) $f['account_id'], time()))) ?></span><?php endif; ?></td>
+            <br><span class="muted"><?= h($quorumEnClair(Moderate::compositionChute($pdo, (int) $f['account_id'], time()))) ?></span><?php endif; ?>
+          <?php if ($f['cause'] === 'quorum_tenu'): ?>
+            <br><span class="muted">critiques : <?= h($quorumEnClair(Moderate::compositionChute($pdo, (int) $f['account_id'], time()))) ?></span>
+            <br><span class="muted"><?= h($soutiensEnClair(Moderate::compositionSoutiens($pdo, (int) $f['account_id'], time()))) ?></span><?php endif; ?></td>
           <td><?= (int) $f['occurrences'] ?><?php if ($f['detections'] > $f['occurrences']): ?> <span class="muted">· <?= (int) $f['detections'] ?> détections</span><?php endif; ?></td>
           <td><?= h(date('d/m/Y H:i', $f['ouvert_le'])) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>

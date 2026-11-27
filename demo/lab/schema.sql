@@ -158,6 +158,8 @@ CREATE TABLE IF NOT EXISTS member_moderation (
                                                  -- voting_rights, que la convalescence rendrait dès 5 points
     chute_soldee_le INTEGER NOT NULL DEFAULT 0, -- dernière chute soldée (fin de ban, grâce, levée) : le
                                                  -- quorum ne lit que les votes d'après
+    soutien_lu_le  INTEGER NOT NULL DEFAULT 0,  -- dernière recherche du quorum tenu par des soutiens :
+                                                 -- une par tranche de balayage
     updated_at     INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
@@ -213,12 +215,18 @@ CREATE TABLE IF NOT EXISTS mod_sweeps (
 -- Un signal clos n'y est plus : un comportement, l'acte qui l'a classé le nomme au
 -- journal ; un état tombe avec son état. Un tiers qui recommence sans fin fait monter
 -- `occurrences`, il n'ajoute pas de ligne.
+-- L'instant le plus avancé que le moteur a inscrit : son horloge ne redescend jamais
+-- en dessous (`Moderate::maintenant()`). Une ligne, celle du site.
+CREATE TABLE IF NOT EXISTS mod_horloge (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    instant INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS mod_signaux (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,  -- jamais réutilisé : un geste nomme l'instance qu'il a vue
     account_id  INTEGER NOT NULL,
     cause       TEXT NOT NULL,     -- état : 'reputation_zero' | 'ban_auto' | 'journal_en_panne' |
                                    -- 'ban_en_attente' | 'droit_de_vote_perdu' | 'perte_du_vote_due' |
-                                   -- 'ban_sans_fin' | 'chute_sans_quorum' ; comportement :
+                                   -- 'ban_sans_fin' | 'chute_sans_quorum' | 'quorum_tenu' ; comportement :
                                    -- 'salve_rapide' | 'votant_etendu' | 'comptes_recents' | 'bans_arbitre' ;
                                    -- avant la 0.9.0 : 'levee_en_attente' (état), 'meute_recidive' et
                                    -- 'votants_tronques' (comportements) ;

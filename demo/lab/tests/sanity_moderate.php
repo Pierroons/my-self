@@ -163,7 +163,7 @@ function recalerCase(PDO $pdo, int $id): void
         "UPDATE member_moderation
             SET review_reason = COALESCE(
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL
-                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum') ORDER BY id LIMIT 1),
+                        AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum', 'quorum_tenu') ORDER BY id LIMIT 1),
                     (SELECT cause FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL ORDER BY id DESC LIMIT 1)),
                 needs_review = EXISTS (SELECT 1 FROM mod_signaux WHERE account_id = :id AND vu_le IS NULL)
           WHERE account_id = :id"
@@ -220,6 +220,17 @@ function voteBrut(PDO $pdo, int $votant, int $post, int $auteur): void
 function datesDesVotants(PDO $pdo): void
 {
     $pdo->exec('UPDATE mod_votes SET voter_created_at = (SELECT a.created_at FROM accounts a WHERE a.id = mod_votes.voter_id) WHERE voter_created_at IS NULL');
+}
+
+/**
+ * L'horloge du banc rendue au temps réel — ou à `$fn` —, et le plancher du moteur
+ * oublié (`mod_horloge`) : un cas qui a avancé l'heure ne la laisse pas aux suivants,
+ * et un cas qui la recule exprès le dit.
+ */
+function horlogeRendue(PDO $pdo, ?callable $fn = null): void
+{
+    $pdo->exec('DELETE FROM mod_horloge');
+    Moderate::setHorloge($fn);
 }
 
 /**
@@ -1270,7 +1281,7 @@ foreach ([['jeune-1', 2], ['jeune-2', 2], ['ancien-1', 30]] as [$nom, $jours]) {
     $pdo->prepare('UPDATE mod_votes SET created_at = created_at - 400 WHERE target_author = ?')->execute([$espacee]);
 }
 $vueE = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $espacee));
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $chuteE = $vueE[0]['chute'] ?? null;
 count($vueE) === 1 && $vueE[0]['origine'] === 'auto' && $chuteE !== null
     && $chuteE['votants'] === 3 && $chuteE['ages_jours'] === [2, 2, 30] && $chuteE['etalement'] === 800
@@ -2317,7 +2328,7 @@ function invariantsSignaux(PDO $p): array
                        EXISTS (SELECT 1 FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL) AS attendu_besoin,
                        COALESCE(
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL
-                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum') ORDER BY id LIMIT 1),
+                               AND cause NOT IN ('reputation_zero', 'ban_auto', 'journal_en_panne', 'levee_en_attente', 'ban_en_attente', 'droit_de_vote_perdu', 'perte_du_vote_due', 'ban_sans_fin', 'chute_sans_quorum', 'quorum_tenu') ORDER BY id LIMIT 1),
                            (SELECT cause FROM mod_signaux s WHERE s.account_id = m.account_id AND s.vu_le IS NULL ORDER BY id DESC LIMIT 1)
                        ) AS attendu_cause
                   FROM member_moderation m)
@@ -4430,7 +4441,7 @@ try {
 } catch (Throwable $e139) {
     $juste139 = ['ok' => false, 'message' => get_class($e139) . ' : ' . $e139->getMessage()];
 }
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $inconnue139 = membre($pdo, 'origine-inconnue-139');
 poserReputation($pdo, $inconnue139, 15);
 Moderate::adminBan($pdo, $inconnue139, idDe($pdo, 'arbitre-banc'), motif());
@@ -4719,7 +4730,7 @@ $banni145 = Moderate::getReputation($pdo, $chute145)['banned'];
 $h145 += $duree145;
 $echu145 = Moderate::getReputation($pdo, $chute145);
 $lu145 = Moderate::maintenant();
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $reel145 = Moderate::getReputation($pdo, $chute145)['banned'];
 Moderate::setHorloge($horloge145);
 $banni145 && !$echu145['banned'] && $echu145['fin_en_attente'] && $lu145 === $t145 + $duree145 && $reel145
@@ -4941,7 +4952,7 @@ $inscrits150 = count($journal145->actes) - $actes150;
 $repris150 = Moderate::migrerBans($pdo);
 $rejoue150 = Moderate::migrerBans($pdo);
 $hist150 = Moderate::peinesDe($pdo, $ancien150, precis: true);
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant145);
 $refus150 === array_fill_keys(['lecture', 'levee', 'console', 'historique'], 'nommée') && $inscrits150 === 0
     && $repris150 === 1 && $rejoue150 === 0 && count($hist150) === 1 && $hist150[0]['reprise'] === true
@@ -4983,7 +4994,7 @@ for ($k151 = 1; $k151 <= 60; $k151++) {
     } catch (Throwable $e) {
         $leves151[$k151] = get_class($e) . ' : ' . $e->getMessage();
     }
-    Moderate::setHorloge(null);
+    horlogeRendue($pdo);
     $o151 = $pdo->prepare('SELECT 1 FROM mod_peines p JOIN member_moderation m ON m.account_id = p.account_id
                             WHERE p.account_id = ? AND p.fin IS NULL AND m.banned_until = 0');
     $o151->execute([$id151]);
@@ -5181,7 +5192,7 @@ foreach (['null' => null, 'chaine' => '2026-11-10 12:00', 'zero' => 0, 'fin des 
         $horloges154[$forme154] = $e instanceof LogicException && str_contains($e->getMessage(), 'setHorloge()')
             ? 'nommée' : get_class($e) . ' : ' . $e->getMessage();
     } finally {
-        Moderate::setHorloge(null);
+        horlogeRendue($pdo);
     }
 }
 $horloges154 === array_fill_keys(['null', 'chaine', 'zero', 'fin des temps'], 'nommée')
@@ -5477,7 +5488,7 @@ try {
     $faceSort159 = $sorts159($face159, $v159);
 }
 Moderate::migrerBans($pdo);
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant159);
 if ($verrous159 !== 1) {
     nok('le contrôle 159 ne mesure plus rien : verrous pris par la riposte ' . $verrous159 . ', la chute n\'arrive plus juste avant le verrou');
@@ -5665,7 +5676,7 @@ $apres162 = [
     'convalescent' => (int) etatBan($pdo, $conv162)['convalescent'],
     'chute'        => in_array('reputation_zero', causes($pdo, $conv162), true),
 ];
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant162);
 $sortRiposte162 === 'riposte' && $avant162 === 5
     && $apres162 === ['reputation' => 6, 'convalescent' => 1, 'chute' => true]
@@ -5746,7 +5757,7 @@ foreach ([60, 3600] as $pas164) {
         return $lu;
     });
 }
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant164);
 $attendu164 = ['multiple' => true, 'borne' => true, 'journal' => true, 'duree' => true, 'historique' => true, 'affichee' => true, 'avant' => true, 'a_la_fin' => false];
 $fins164 === [60 => $attendu164, 3600 => $attendu164]
@@ -5866,7 +5877,7 @@ $forum167 = \Pierroons\MySelfLab\Forum::createPost($pdo, $banni167, 1, 'Un messa
 $profil167 = \Pierroons\MySelfLab\Profile::save($pdo, $banni167, ['bio' => 'Une bio.']);
 Moderate::adminLever($pdo, $banni167, idDe($pdo, 'arbitre-banc'), motif());
 arreterLab($serveur167);
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant167);
 ($forum167['error'] ?? null) === 'compte_banni' && str_contains($forum167['message'] ?? '', $fin167)
     && ($profil167['error'] ?? null) === 'compte_banni' && str_contains($profil167['message'] ?? '', $fin167)
@@ -5892,7 +5903,7 @@ foreach ([1, 2] as $i168) {
 $balaye168 = balayerLeSite($pdo);
 $sortA168 = $pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = {$votants168[0]} AND target_author = $cible168")->fetchColumn();
 $causes168 = causes($pdo, $cible168);
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant168);
 !isset($balaye168['erreur']) && $sortA168 === 'vote_croise' && in_array('salve_rapide', $causes168, true)
     ? ok('⭐ trois votants sans lien dont l\'un est croisé forment encore une salve')
@@ -5913,7 +5924,7 @@ $avantB168 = causes($pdo, $cibleB168);
 Moderate::applyVote($pdo, $z168, 'post', message($pdo, $cibleB168, 'fil 168 riposte z'), -1, motif());
 $sortZ168 = $pdo->query("SELECT blocked_reason FROM mod_votes WHERE voter_id = $z168 AND target_author = $cibleB168")->fetchColumn();
 $apresB168 = causes($pdo, $cibleB168);
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant168);
 $sortZ168 === 'riposte' && !in_array('salve_rapide', $avantB168, true) && in_array('salve_rapide', $apresB168, true)
     ? ok('⭐ une riposte qui complète une salve la fait signaler à son vote, sans balayage')
@@ -6066,7 +6077,7 @@ try {
 } catch (InvalidArgumentException) {
     $refusNegatif170 = true;
 }
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant170);
 $repF170 === 14 && $refusNegatif170
     ? ok('⭐ ageEtabliSecondes à 0 éteint la part, et une durée négative est refusée')
@@ -6506,7 +6517,7 @@ try {
 $riposte184 = Moderate::applyVote($pdo, $banni184, 'post', message($pdo, $critique184, 'fil 184 c'), -1, motif());
 $sortRiposte184 = sortDuVote($pdo, $riposte184);
 $apres184 = Moderate::getReputation($pdo, $banni184);
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 Moderate::setJournal($journalAvant184);
 $pendant184['banned'] && $sortRiposte184 === 'riposte' && !$apres184['banned']
     && $apres184['reputation'] === Moderate::config()->reputationInitiale
@@ -6565,7 +6576,7 @@ foreach (['fin', 'fin_au_vote', 'grace', 'levee'] as $issue186) {
         return [$banni, $remise, bilan($pdo, $cible), Moderate::compositionChute($pdo, $cible, Moderate::maintenant())];
     });
 }
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $rates186 = array_filter($soldes186, static fn (array $s): bool => !($s[0] && $s[1] === 20 && $s[2]['rep'] === 0
     && !$s[2]['banni'] && $s[2]['vote'] && in_array('chute_sans_quorum', $s[2]['causes'], true)
     && $s[3]['voix_sans_lien'] === 1 && $s[3]['votants'] === 7));
@@ -6658,7 +6669,7 @@ lierTous($pdo, $paire189);
 
     return [bilan($pdo, $cible189), Moderate::compositionChute($pdo, $cible189, Moderate::maintenant())];
 });
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $b189['rep'] === 0 && !$b189['banni'] && $b189['vote'] && $c189['voix_sans_lien'] === 3 && $c189['votants'] === 9
     ? ok('⭐ une clique qui cesse de s\'écrire reste une clique tant que ses votes comptent : un mois de silence ne fait pas sept voix, et chaque paire lit ses liens depuis ses propres votes')
     : nok('⭐ une clique muette depuis un mois fait des voix : ' . json_encode([$b189, $c189]));
@@ -6822,10 +6833,10 @@ $a195[0]['banni'] && $a195[1]['voix_sans_lien'] >= 7 && $a195[1]['paires_liees']
     ? ok('⭐ au-delà de quorumRecherchesMax, seuls les votants liés à personne font des voix : sept bannissent, cinq laissent la chute indécise')
     : nok('⭐ la borne de lecture compte mal : ' . json_encode([$a195, $b195]));
 
-// ── 196. ⭐ Une `dm` datée en clair se nomme ; une vue sans l'index de la paire aussi ─
+// ── 196. ⭐ Une `dm` datée en clair rend la chute indécise ; une vue sans l'index de la paire se nomme ─
 // Sur des connexions neuves où `dm` est une vue temporaire d'une table indexée : datée
-// en clair, elle ne lierait personne, et la chute qui passe un seuil lève une erreur
-// qui nomme la date ; un instant écrit en chiffres dans une colonne sans type se lit, et
+// en clair, aucun sens ne se lit, et la chute qui passe un seuil est indécise —
+// signalée, sans sanction, le journal d'erreurs citant une date et son type ; un instant écrit en chiffres dans une colonne sans type se lit, et
 // la clique ne fait qu'une voix. Une vue qui calcule ses identifiants (`+ 0`) ou sa date
 // (`strftime`) ne laisse pas l'index servir : la lecture relirait les messages de chaque
 // paire, et l'erreur nomme l'index à créer.
@@ -6858,33 +6869,39 @@ $formes196 = sousQuorum(static function () use ($monter196, $cibles196, $clique1
     $frappe = static function (PDO $c, int $cible, string $nom) use ($clique196): array {
         try {
             frapper($c, $cible, $clique196, 3, $nom);
+
+            return bilan($c, $cible) + ['composition' => Moderate::compositionChute($c, $cible, time())];
         } catch (Throwable $t) {
             return ['erreur' => get_class($t) . ' : ' . $t->getMessage()];
         }
-
-        return bilan($c, $cible);
     };
     $texte = $monter196('de AS sender_id, a AS recipient_id, quand AS created_at', 'a, de, quand');
     $enTexte = null;
+    $journal = dirname((string) getenv('LAB_DB_PATH')) . '/erreurs-196.log';
+    $journalAvant = ini_set('error_log', $journal);
     try {
         Moderate::applyVote($texte, $clique196[0], 'member', $cibles196['texte'], -1, motif(), 'agressif');
         Moderate::applyVote($texte, $clique196[1], 'member', $cibles196['texte'], -1, motif(), 'agressif');
     } catch (Throwable $t) {
         $enTexte = get_class($t) . ' : ' . $t->getMessage();
     }
+    ini_set('error_log', (string) $journalAvant);
+    $enTexte ??= in_array('chute_sans_quorum', causes($texte, $cibles196['texte']), true) ? 'indécise' : 'muette';
 
     return [
         'texte'    => $enTexte,
+        'colonne'  => str_contains((string) @file_get_contents($journal), '« dm.created_at » de l\'hôte porte'),
         'chiffres' => $frappe($monter196('de AS sender_id, a AS recipient_id, quand_txt AS created_at', 'a, de, quand_txt'), $cibles196['chiffres'], '196-c'),
         'ids'      => $frappe($monter196('de + 0 AS sender_id, a + 0 AS recipient_id, quand_ms / 1000 AS created_at', 'a, de, quand_ms'), $cibles196['ids'], '196-i'),
         'strftime' => $frappe($monter196("de AS sender_id, a AS recipient_id, strftime('%s', quand) AS created_at", 'a, de, quand'), $cibles196['strftime'], '196-s'),
     ];
 });
 $nomme196 = static fn (mixed $r, string $mot): bool => str_contains(is_array($r) ? (string) ($r['erreur'] ?? '') : (string) $r, $mot);
-$nomme196($formes196['texte'], 'dm.created_at') && reputation($pdo, $cibles196['texte']) === 5
+$formes196['texte'] === 'indécise' && $formes196['colonne'] && reputation($pdo, $cibles196['texte']) === 4
     && ($formes196['chiffres']['rep'] ?? null) === 0 && !$formes196['chiffres']['banni'] && $formes196['chiffres']['vote']
+    && ($formes196['chiffres']['composition']['illisibles'] ?? null) === 0
     && $nomme196($formes196['ids'], 'idx_dm_paire') && $nomme196($formes196['strftime'], 'idx_dm_paire')
-    ? ok('⭐ une dm datée en clair lève une erreur qui nomme la date ; des instants en chiffres dans une colonne de texte lient, et la clique ne sanctionne pas ; une vue qui calcule ses identifiants ou sa date nomme l\'index de la paire')
+    ? ok('⭐ une dm datée en clair rend la chute indécise, signalée sans sanction, et le journal d\'erreurs cite la colonne ; des instants en chiffres dans une colonne de texte lient, et la clique ne sanctionne pas ; une vue qui calcule ses identifiants ou sa date nomme l\'index de la paire')
     : nok('⭐ une dm mal typée se tait, ou une vue calculée ne lie personne : ' . json_encode([$formes196, reputation($pdo, $cibles196['texte'])], JSON_UNESCAPED_UNICODE));
 
 // ── 197. ⭐ La console montre à l'arbitre ce que le quorum a lu ─────────────────────
@@ -6948,7 +6965,7 @@ echangePrive($pdo, $tard198, $sept198[2]);
 
     return [$debut, $pendant, $enCours[0]['chute'] ?? null, Moderate::compositionChute($pdo, $cible198, $debut)];
 });
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $c198['votants'] === 7 && $c198['voix_sans_lien'] === 7 && $c198['paires_liees'] === 0 && $ch198 === $c198 && $fini198 === $c198
     ? ok('⭐ la composition d\'un ban se lit à son début : un lien et un vote venus après n\'y entrent pas')
     : nok('⭐ la composition d\'un ban lit ce qui l\'a suivi : ' . json_encode([$debut198, $c198, $ch198, $fini198, bilan($pdo, $cible198),
@@ -6974,7 +6991,7 @@ $cinq199 = membres($pdo, 'critique-199', 5);
 
     return [bilan($pdo, $cible199), Moderate::compositionChute($pdo, $cible199, Moderate::maintenant())];
 });
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $b199['banni'] && $c199['recents'] === 1 && $c199['voix_sans_lien'] === 7
     ? ok('⭐ un votant dont un vote négatif est d\'un compte établi fait une voix à lui : sept voix, la cible est bannie')
     : nok('⭐ un votant établi est rangé avec les récents : ' . json_encode([$b199, $c199]));
@@ -7054,6 +7071,7 @@ foreach (['vieux' => 80, 'recent' => 25, 'repli' => 80] as $nom201 => $jours201)
     }
     $scenes201[$nom201] = sousQuorum(static function () use ($pdo, $cible, $comptes, $critiques, $nom201, &$t201): array {
         $t201 -= 55 * 86400;
+        horlogeRendue($pdo, static function () use (&$t201): int { return $t201; });
         frapper($pdo, $cible, $comptes, 1, "201-$nom201-ancien");
         $t201 += 55 * 86400;
         frapper($pdo, $cible, $critiques, 3, "201-$nom201");
@@ -7061,7 +7079,7 @@ foreach (['vieux' => 80, 'recent' => 25, 'repli' => 80] as $nom201 => $jours201)
         return [bilan($pdo, $cible), Moderate::compositionChute($pdo, $cible, Moderate::maintenant())];
     }, ...($nom201 === 'repli' ? ['quorumRecherchesMax' => 200] : []));
 }
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $attendu201 = static fn (array $s, bool $banni, int $voix, ?int $paires): bool => $s[0]['banni'] === $banni
     && $s[1]['voix_sans_lien'] === $voix && $s[1]['paires_liees'] === $paires;
 $attendu201($scenes201['vieux'], true, 7, 0) && $attendu201($scenes201['repli'], true, 7, null)
@@ -7181,7 +7199,7 @@ Moderate::setHorloge(static function () use (&$t204): int { return $t204; });
 
     return [$banni, $gestes, count($journal->de($cible204, 'ban_fin'))];
 });
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $a204 = null;
 $banni204 && $gestes204 === ['balayage' => 'nommée', 'vote' => 'nommée', 'grace' => 'nommée'] && $fins204 === 0
     ? ok('⭐ une base sans chute_soldee_le se nomme à la première écriture d\'une connexion, et le journal ne reçoit aucune fin de peine')
@@ -7250,14 +7268,12 @@ $scenes206['haut'] === ['rep' => 30, 'banni' => false, 'scores' => 3, 'sorts' =>
     ? ok('⭐ aux bornes, la part des comptes récents borne encore leurs votes, et un vote sans effet ne compte pas dans l\'autre sens')
     : nok('⭐ aux bornes, les comptes récents votent sans borne, ou un vote sans effet ouvre l\'autre sens : ' . json_encode($scenes206, JSON_UNESCAPED_UNICODE));
 
-// ── 207. ⭐ Une date de `dm` illisible se nomme, ou ne lie personne ; l'index sert ──
+// ── 207. ⭐ Une date de `dm` illisible rend la chute indécise ; l'index sert ──────
 // Sur une connexion où `dm` est une vue temporaire de tables indexées : datée en
-// millisecondes ou en jour julien, aucun sens ne se lit, et la chute qui passe un seuil
-// lève une erreur qui nomme la date — elle ne lierait personne, et chaque votant ferait
-// une voix. Une colonne dont une partie seulement est en clair ne lève pas : le sens
-// illisible ne lie personne, et le journal d'erreurs le dit. Sur la table du lab, un seul
-// vieux message daté en millisecondes, dans un sens, ne gèle aucune chute ; et la
-// recherche d'expéditeur passe par l'index de la paire.
+// millisecondes, en jour julien, ou en partie en clair, la chute qui passe un seuil est
+// indécise — signalée, sans sanction : le moteur ne sait pas qui est lié. Sur la table
+// du lab, un seul vieux message daté en millisecondes, dans un sens, suffit de même ; et
+// la recherche d'expéditeur passe par l'index de la paire.
 final class PdoEspion extends PDO
 {
     /** @var list<string> */
@@ -7281,7 +7297,16 @@ $formes207 = [
     'julien'        => [2440587.5 + (time() - 3600) / 86400, 2440587.5 + (time() - 3600) / 86400],
     'melange'       => [time() - 3600, date('Y-m-d H:i:s', time() - 3600)],
 ];
-$leve207 = sousQuorum(static function () use ($c207, $pdo, $paire207, $formes207): array {
+// Indécise se lit dans la composition — des sens illisibles, une chute qui ne conclut
+// pas —, et non au signal seul : deux votants ne tiennent jamais le quorum.
+$issue207 = static function (PDO $c, int $cible) use ($pdo): string {
+    $composition = Moderate::compositionChute($c, $cible, time());
+
+    return ($composition['illisibles'] > 0 && $composition['indecis'] ? 'indécise' : 'lue')
+        . (in_array('chute_sans_quorum', causes($pdo, $cible), true) ? ', signalée' : ', muette')
+        . ', réputation ' . reputation($pdo, $cible);
+};
+$leve207 = sousQuorum(static function () use ($c207, $pdo, $paire207, $formes207, $issue207): array {
     $leve = [];
     foreach ($formes207 as $forme => [$aller, $retour]) {
         // NUMERIC garde à chaque date son type : `execute()` lie tout en texte.
@@ -7295,16 +7320,16 @@ $leve207 = sousQuorum(static function () use ($c207, $pdo, $paire207, $formes207
         $c207->exec("CREATE TEMP VIEW dm AS SELECT de AS sender_id, a AS recipient_id, quand AS created_at FROM dm_207_$forme");
         try {
             frapper($c207, $cible, $paire207, 1, "207-$forme");
-            $leve[$forme] = 'muette, réputation ' . reputation($pdo, $cible);
+            $leve[$forme] = $issue207($c207, $cible);
         } catch (Throwable $e) {
-            $leve[$forme] = $e instanceof LogicException && str_contains($e->getMessage(), 'dm.created_at') ? 'nommée' : get_class($e) . ' : ' . $e->getMessage();
+            $leve[$forme] = get_class($e) . ' : ' . $e->getMessage();
         }
         $c207->exec('DROP VIEW temp.dm');
     }
 
     return $leve;
 });
-$ancien207 = sousQuorum(static function () use ($pdo): string {
+$ancien207 = sousQuorum(static function () use ($pdo, $issue207): string {
     $cible = membre($pdo, 'cible-207-ancien');
     poserReputation($pdo, $cible, 6);
     $deux = membres($pdo, 'paire-207-ancien', 2);
@@ -7312,11 +7337,11 @@ $ancien207 = sousQuorum(static function () use ($pdo): string {
         ->execute([$deux[0], $deux[1], 'chiffre', (time() - 2 * 365 * 86400) * 1000]);
     try {
         frapper($pdo, $cible, $deux, 1, '207-ancien');
+
+        return $issue207($pdo, $cible);
     } catch (Throwable $e) {
         return get_class($e) . ' : ' . $e->getMessage();
     }
-
-    return 'réputation ' . reputation($pdo, $cible);
 });
 $plan207 = sousQuorum(static function () use ($c207, $pdo): string {
     $cible = membre($pdo, 'cible-207-index');
@@ -7331,10 +7356,11 @@ $plan207 = sousQuorum(static function () use ($c207, $pdo): string {
     return implode(' | ', array_column($c207->query('EXPLAIN QUERY PLAN ' . $recherche[0])->fetchAll(), 'detail'));
 });
 $c207 = null;
-$leve207 === ['millisecondes' => 'nommée', 'julien' => 'nommée', 'melange' => 'muette, réputation 4'] && $ancien207 === 'réputation 4'
+$leve207 === ['millisecondes' => 'indécise, signalée, réputation 4', 'julien' => 'indécise, signalée, réputation 4', 'melange' => 'indécise, signalée, réputation 4']
+    && $ancien207 === 'indécise, signalée, réputation 4'
     && str_contains($plan207, 'USING COVERING INDEX idx_dm_paire (recipient_id=? AND sender_id>?)')
-    ? ok('⭐ une dm en millisecondes ou en jour julien se nomme ; un sens illisible parmi des sens lisibles, ou un vieux message mal daté, ne lie personne sans geler la chute ; la recherche d\'expéditeur passe par l\'index de la paire')
-    : nok('⭐ une dm mal datée se tait ou gèle la chute, ou la lecture des liens quitte l\'index : ' . json_encode([$leve207, $ancien207, $plan207], JSON_UNESCAPED_UNICODE));
+    ? ok('⭐ une dm en millisecondes, en jour julien ou en partie en clair, ou un seul vieux message mal daté, rend la chute indécise et signalée ; la recherche d\'expéditeur passe par l\'index de la paire')
+    : nok('⭐ une dm mal datée se tait ou sanctionne, ou la lecture des liens quitte l\'index : ' . json_encode([$leve207, $ancien207, $plan207], JSON_UNESCAPED_UNICODE));
 
 // ── 208. ⭐ La recherche s'arrête au quorum ─────────────────────────────────────────
 // Dix-sept critiques sans lien mènent la cible au plancher : la composition dit sept
@@ -7509,7 +7535,7 @@ $bans214 = sousQuorum(static function (JournalDeBanc $journal) use ($pdo, $cible
 
     return [count($journal->de($cible214, 'ban_debut')), bilan($pdo, $cible214)];
 });
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $bans214[0] === 2 && $bans214[1]['banni']
     ? ok('⭐ des votes sans effet émis pendant un ban n\'occupent pas la part après lui : les comptes récents honnêtes font leur voix, et la cible est bannie une seconde fois')
     : nok('⭐ une part remplie pendant un ban fait taire les comptes récents : ' . json_encode($bans214, JSON_UNESCAPED_UNICODE));
@@ -7704,7 +7730,7 @@ $bans219 = sousQuorum(static function (JournalDeBanc $journal) use ($pdo, $cible
 
     return [count($journal->de($cible219, 'ban_debut')), $auPlancher, bilan($pdo, $cible219)];
 });
-Moderate::setHorloge(null);
+horlogeRendue($pdo);
 $bans219[0] === 2 && $bans219[1]['rep'] === 0 && !$bans219[1]['banni'] && $bans219[2]['banni']
     ? ok('⭐ des votes sans effet émis pendant un ban n\'occupent pas la part quand la cible revient au plancher : les récents honnêtes font la septième voix')
     : nok('⭐ une part remplie pendant un ban fait taire les récents au plancher : ' . json_encode($bans219, JSON_UNESCAPED_UNICODE));
@@ -7802,11 +7828,11 @@ $sauts222['paires_liees'] === 0 && $repli222[0] === null && $repli222[1] <= 2 * 
     ? ok('⭐ soixante boîtes d\'un expéditeur qui ne vote pas se lisent en un saut chacune, et le repli s\'arrête à sa borne (' . $repli222[1] . ' requêtes)')
     : nok('⭐ la lecture paie chaque votant, ou le repli passe sa borne : ' . json_encode([$sauts222['paires_liees'], $repli222], JSON_UNESCAPED_UNICODE));
 
-// ── 223. ⭐ Une paire illisible ne lève pas quand d'autres sens se lisent ─────────
+// ── 223. ⭐ Une paire illisible rend la chute indécise, même quand d'autres sens se lisent ─
 // Huit critiques : deux s'écrivent en millisecondes, deux en secondes, quatre sont
-// seuls. La paire en millisecondes est illisible dans ses deux sens, mais la paire en
-// secondes se lit : la première ne lie personne, le journal d'erreurs le dit, et la
-// cible est bannie.
+// seuls. La paire en millisecondes est illisible dans ses deux sens : le moteur ne sait
+// pas si elle est liée, la chute est indécise — aucun ban, la chute signalée à
+// l'arbitre avec ses deux sens illisibles —, et le journal d'erreurs le dit.
 $cible223 = membre($pdo, 'cible-223');
 poserReputation($pdo, $cible223, 20);
 $critiques223 = membres($pdo, 'critique-223', 8);
@@ -7823,13 +7849,14 @@ $c223 = sousQuorum(static function () use ($pdo, $cible223, $critiques223): arra
         return [get_class($t) . ' : ' . $t->getMessage()];
     }
 
-    return [bilan($pdo, $cible223)['banni'], Moderate::compositionChute($pdo, $cible223, time())];
+    return [bilan($pdo, $cible223)['banni'], Moderate::compositionChute($pdo, $cible223, time()), causes($pdo, $cible223)];
 });
 ini_set('error_log', (string) $journalAvant223);
 $illisibles223 = str_contains((string) @file_get_contents($journal223), 'date illisible');
-$c223[0] === true && $c223[1]['paires_liees'] === 1 && $c223[1]['voix_sans_lien'] === 7 && $illisibles223
-    ? ok('⭐ une paire en millisecondes ne lève pas quand d\'autres sens se lisent : elle ne lie personne, le journal le dit, et la cible est bannie')
-    : nok('⭐ une paire illisible gèle la chute, ou se tait : ' . json_encode([$c223, $illisibles223], JSON_UNESCAPED_UNICODE));
+$c223[0] === false && $c223[1]['illisibles'] === 2 && $c223[1]['indecis'] === true && $c223[1]['paires_liees'] === 1
+    && in_array('chute_sans_quorum', $c223[2], true) && $illisibles223
+    ? ok('⭐ une paire en millisecondes rend la chute indécise : aucun ban, la chute signalée avec ses deux sens illisibles, et le journal le dit')
+    : nok('⭐ une paire illisible sanctionne, ou se tait : ' . json_encode([$c223, $illisibles223], JSON_UNESCAPED_UNICODE));
 
 // ── 224. ⭐ Une `dm` sans l'index de la paire se nomme au premier vote ────────────
 // Une base où `dm` ne porte que l'index de la boîte reçue, une cible à 20 et un seul
@@ -8028,6 +8055,12 @@ function chuteDeService(PDO $pdo, string $nom, int $depart, int $critiques, int 
     poserReputation($pdo, $cible, $depart);
     $votants = membres($pdo, "critique-$nom", $critiques);
     sousConfig(configService(), static fn () => frapper($pdo, $cible, $votants, $tours, $nom));
+    // La chute s'écrit en service, où l'ancre de la convalescence s'arrondit à l'heure ;
+    // le cas la relit en démonstration, où un point vient toutes les douze minutes.
+    // L'ancre revient à l'instant de la chute : l'arrondi d'une config ne se lit pas au
+    // pas de l'autre.
+    $pdo->prepare('UPDATE member_moderation SET last_regen_at = ? WHERE account_id = ? AND convalescent = 1')
+        ->execute([time(), $cible]);
 
     return $cible;
 }
@@ -8554,7 +8587,7 @@ try {
 } catch (Throwable $t237e) {
     $r237 = ['exception' => get_class($t237e) . ' : ' . $t237e->getMessage()];
 } finally {
-    Moderate::setHorloge(null);
+    horlogeRendue($pdo);
 }
 $c237 = null;
 $r237 === [
@@ -8733,7 +8766,7 @@ try {
     $lu242 = ['exception' => get_class($t242e) . ' : ' . $t242e->getMessage()];
 } finally {
     Moderate::setJournal($journalAvant242);
-    Moderate::setHorloge(null);
+    horlogeRendue($pdo);
 }
 $lu242 === ['ban' => true, 'suspendu' => true, 'motif_x' => false, 'premier' => 'refusé', 'second' => true, 'fins' => 1]
     ? ok('⭐ rendre le vote contrôle un motif donné, et referme une peine échue avant sa transaction : un refus du journal ne l\'inscrit pas deux fois')
@@ -8946,7 +8979,7 @@ try {
 } catch (Throwable $t247e) {
     $lu247 = ['exception' => get_class($t247e) . ' : ' . $t247e->getMessage()];
 } finally {
-    Moderate::setHorloge(null);
+    horlogeRendue($pdo);
 }
 $lu247 === ['identiques' => [true, true, true], 'sorts' => ['riposte', 'treve'], 'farming' => [true, 'upvote_farming', true]]
     ? ok('⭐ une riposte et un vote de trêve rendent la réponse exacte d\'un vote compté, la base seule les dit tombés ; le farming garde blocked et son message')
@@ -8971,7 +9004,7 @@ try {
 } catch (Throwable $t248e) {
     $lu248 = ['exception' => get_class($t248e) . ' : ' . $t248e->getMessage()];
 } finally {
-    Moderate::setHorloge(null);
+    horlogeRendue($pdo);
 }
 $lu248 === [true, false, false, 1, true]
     ? ok('⭐ comptesAvecVotesRecus() rend le compte dont le seul vote reçu a été croisé après avoir compté, que « blocked = 0 » perd, et pas celui qui n\'a reçu qu\'une riposte')
@@ -9041,7 +9074,7 @@ try {
 } catch (Throwable $t250e) {
     $lu250 = ['exception' => get_class($t250e) . ' : ' . $t250e->getMessage(), 'refus' => $refus250 ?? null];
 } finally {
-    Moderate::setHorloge(null);
+    horlogeRendue($pdo);
     Moderate::setJournal($journalAvant250);
 }
 $lu250 === [true, true, false]
@@ -9145,6 +9178,263 @@ try {
 $lu253 === ['porte', false, 'plafond_votant', 'porte']
     ? ok('⭐ le plafond de cibles ne compte que les cibles établies : dix comptes neufs ne l\'entament pas, le onzième membre établi tombe, et un compte neuf n\'y est pas soumis')
     : nok('⭐ des comptes neufs épuisent le plafond d\'un défenseur : ' . json_encode($lu253, JSON_UNESCAPED_UNICODE));
+
+// ── 254. ⭐ Une date de création aberrante ne vote pas, et l'arbitre la lit ──────
+// Un compte daté de 0, d'un instant négatif, en millisecondes ou de demain ne vote pas,
+// et le refus le dit ; l'état du site compte ces comptes. Un vote dont la date gardée
+// est nulle compte comme celui d'un compte récent.
+$aberrants254 = [];
+try {
+    foreach (['zero' => 0, 'negatif' => -5, 'ms' => (time() - 3600) * 1000, 'futur' => time() + 86400] as $nom254 => $cree254) {
+        $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+            ->execute(["date-254-$nom254", 'x', 'x', 'x', $cree254]);
+        $aberrants254[$nom254] = (int) $pdo->lastInsertId();
+    }
+    $cible254 = membre($pdo, 'cible-254');
+    $refus254 = array_map(static fn (int $id): array => Moderate::applyVote($pdo, $id, 'member', $cible254, -1, motif()), $aberrants254);
+    $etat254 = array_values(array_filter(Moderate::etatDuSite($pdo), static fn (array $e): bool => $e['cause'] === 'dates_aberrantes'));
+    $visee254 = membre($pdo, 'visee-254');
+    $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, voter_created_at, created_at)
+                   VALUES (?, ?, ?, ?, -1, ?, ?, -1, 0, ?)')
+        ->execute([membre($pdo, 'ancien-254'), 'member', $visee254, $visee254, motif(), 'agressif', time()]);
+    $refus254Attendu = ['ok' => false, 'message' => 'Date de création du compte illisible : le vote attend un horodatage en secondes.'];
+    $lu254 = [
+        array_values(array_unique(array_map(static fn (array $r): bool => $r === $refus254Attendu, $refus254))),
+        ($etat254[0]['comptes'] ?? 0) >= 4,
+        (int) $pdo->query('SELECT COUNT(*) FROM mod_votes WHERE voter_id IN (' . implode(',', $aberrants254) . ')')->fetchColumn(),
+        Moderate::compositionChute($pdo, $visee254, time())['recents'],
+    ];
+} catch (Throwable $t254e) {
+    $lu254 = ['exception' => get_class($t254e) . ' : ' . $t254e->getMessage()];
+} finally {
+    if ($aberrants254 !== []) {
+        $pdo->exec('DELETE FROM accounts WHERE id IN (' . implode(',', $aberrants254) . ')');
+    }
+}
+$lu254 === [[true], true, 0, 1]
+    ? ok('⭐ une date de création nulle, négative, en millisecondes ou à venir ne vote pas, le refus le dit, l\'état du site les compte, et un vote à la date nulle compte comme récent')
+    : nok('⭐ une date de création aberrante vote, ou se tait : ' . json_encode($lu254, JSON_UNESCAPED_UNICODE));
+
+// ── 255. ⭐ Une messagerie passée aux millisecondes ne cache pas un lien ─────────────
+// Sept critiques ; deux se sont écrit en secondes il y a dix jours, puis l'un écrit à
+// l'autre en millisecondes. Le sens qui porte des millisecondes est illisible, même si
+// ses lignes anciennes se lisent : la chute est indécise, signalée avec son sens
+// illisible, et rien n'est sanctionné.
+$lu255 = sousQuorum(static function () use ($pdo): array {
+    $cible = membre($pdo, 'cible-255');
+    poserReputation($pdo, $cible, 20);
+    $critiques = membres($pdo, 'critique-255', 7);
+    $dm = $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)');
+    $dm->execute([$critiques[0], $critiques[1], 'chiffre', time() - 10 * 86400]);
+    $dm->execute([$critiques[1], $critiques[0], 'chiffre', time() - 10 * 86400]);
+    $dm->execute([$critiques[0], $critiques[1], 'chiffre', (time() - 60) * 1000]);
+    try {
+        frapper($pdo, $cible, $critiques, 3, '255');
+    } catch (Throwable $t) {
+        return [get_class($t) . ' : ' . $t->getMessage()];
+    }
+    $composition = Moderate::compositionChute($pdo, $cible, time());
+
+    return [bilan($pdo, $cible)['banni'], $composition['illisibles'], $composition['indecis'], in_array('chute_sans_quorum', causes($pdo, $cible), true)];
+});
+$lu255 === [false, 1, true, true]
+    ? ok('⭐ un message en millisecondes derrière des dates en secondes rend le sens illisible : la chute est indécise, signalée, sans sanction')
+    : nok('⭐ une messagerie passée aux millisecondes cache un lien, ou sanctionne : ' . json_encode($lu255, JSON_UNESCAPED_UNICODE));
+
+// ── 256. ⭐ L'instant du moteur ne redescend jamais ───────────────────────────────
+// Un ban de dix minutes posé, l'horloge recule de quarante jours : le ban ne reste pas
+// plus longtemps, un vote ne s'antidate pas, et l'état du site dit le retard.
+$t256 = time() + 1000;
+$haut256 = $t256;
+horlogeRendue($pdo, static function () use (&$t256): int { return $t256; });
+$banni256 = null;
+try {
+    $banni256 = membre($pdo, 'banni-256');
+    Moderate::adminBan($pdo, $banni256, idDe($pdo, 'arbitre-banc'), motif(), 600);
+    $t256 = time() - 40 * 86400;
+    Moderate::setHorloge(static function () use (&$t256): int { return $t256; });
+    $ban256 = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $banni256));
+    $votant256 = membre($pdo, 'votant-256');
+    Moderate::applyVote($pdo, $votant256, 'member', membre($pdo, 'cible-256'), -1, motif());
+    $quand256 = (int) $pdo->query("SELECT created_at FROM mod_votes WHERE voter_id = $votant256")->fetchColumn();
+    $retard256 = array_values(array_filter(Moderate::etatDuSite($pdo), static fn (array $e): bool => $e['cause'] === 'horloge_en_retard'));
+    $lu256 = [
+        ($ban256[0]['reste'] ?? -1) > 0 && ($ban256[0]['reste'] ?? 0) <= 600,
+        $quand256 >= $haut256,
+        ($retard256[0]['ecart'] ?? 0) >= 40 * 86400,
+        Moderate::getReputation($pdo, $banni256)['banned'],
+    ];
+} catch (Throwable $t256e) {
+    $lu256 = ['exception' => get_class($t256e) . ' : ' . $t256e->getMessage()];
+} finally {
+    horlogeRendue($pdo);
+    if ($banni256 !== null && Moderate::getReputation($pdo, $banni256)['banned']) {
+        Moderate::adminLever($pdo, $banni256, idDe($pdo, 'arbitre-banc'), motif());
+    }
+}
+$lu256 === [true, true, true, true]
+    ? ok('⭐ l\'horloge qui recule ne rallonge pas un ban ni n\'antidate un vote : le moteur reste à son instant, et l\'état du site dit le retard')
+    : nok('⭐ l\'instant du moteur redescend avec l\'horloge : ' . json_encode($lu256, JSON_UNESCAPED_UNICODE));
+
+// ── 257. ⭐ Des soutiens qui tiennent le score devant un quorum de critiques se signalent ─
+// En service : sept soutiens puis sept critiques sans lien ; le score reste au seuil du
+// vote, où rien d'autre ne saisit l'arbitre, et sans les soutiens il serait au
+// plancher. Rien n'est sanctionné : `quorum_tenu` se pose, une recherche par tranche, et
+// l'arbitre lit les deux camps. Des critiques liés entre eux ne le posent pas. Sous le
+// seuil du vote, il tombe : la chute prend sa place.
+// L'heure du cas est en avance de deux minutes : un compte créé pendant le cas a ses
+// trente jours d'ancienneté au moment de ses votes.
+$t257 = time() + 120;
+horlogeRendue($pdo, static function () use (&$t257): int { return $t257; });
+try {
+    $lu257 = sousConfig(configService(), static function () use ($pdo, &$t257): array {
+        $scene = static function (string $nom, bool $lies) use ($pdo): array {
+            $cible = membre($pdo, "cible-257-$nom");
+            poserReputation($pdo, $cible, 5);
+            foreach (membres($pdo, "soutien-257-$nom", 7) as $s) {
+                Moderate::applyVote($pdo, $s, 'member', $cible, 1);
+            }
+            $critiques = membres($pdo, "critique-257-$nom", 7);
+            if ($lies) {
+                lierTous($pdo, $critiques);
+            }
+            foreach ($critiques as $c) {
+                Moderate::applyVote($pdo, $c, 'member', $cible, -1, motif(), 'agressif');
+            }
+
+            return [$cible, bilan($pdo, $cible)];
+        };
+        $lu = static fn (int $id): int => (int) $pdo->query("SELECT soutien_lu_le FROM member_moderation WHERE account_id = $id")->fetchColumn();
+        [$cible, $etat] = $scene('libres', false);
+        $lu1 = $lu($cible);
+        $t257 += 60;
+        Moderate::applyVote($pdo, membre($pdo, 'soutien-257-tard'), 'member', $cible, 1);
+        $memeTranche = $lu($cible) === $lu1;
+        $soutiens = Moderate::compositionSoutiens($pdo, $cible, $t257);
+        [, $etatLies] = $scene('lies', true);
+        Moderate::applyVote($pdo, membre($pdo, 'critique-257-plus-a'), 'member', $cible, -1, motif(), 'agressif');
+        Moderate::applyVote($pdo, membre($pdo, 'critique-257-plus-b'), 'member', $cible, -1, motif(), 'agressif');
+        $sous = bilan($pdo, $cible);
+
+        return [
+            'pose'    => [$etat['rep'], $etat['banni'], in_array('quorum_tenu', $etat['causes'], true), $lu1 > 0],
+            'tranche' => $memeTranche,
+            'camps'   => [$soutiens['votants'], $soutiens['voix_sans_lien'], $soutiens['rendu'] >= 7],
+            'lies'    => in_array('quorum_tenu', $etatLies['causes'], true),
+            'sous'    => [$sous['rep'] < 5, in_array('quorum_tenu', $sous['causes'], true)],
+        ];
+    });
+} catch (Throwable $t257e) {
+    $lu257 = ['exception' => get_class($t257e) . ' : ' . $t257e->getMessage()];
+} finally {
+    horlogeRendue($pdo);
+}
+$lu257 === ['pose' => [5, false, true, true], 'tranche' => true, 'camps' => [8, 8, true], 'lies' => false, 'sous' => [true, false]]
+    ? ok('⭐ sept critiques sans lien devant des soutiens qui tiennent le score posent quorum_tenu, sans sanction, une recherche par tranche, avec les deux camps ; liés, ils ne le posent pas ; sous le seuil du vote, il tombe')
+    : nok('⭐ un quorum de critiques tenu par des soutiens se tait, ou sanctionne : ' . json_encode($lu257, JSON_UNESCAPED_UNICODE));
+
+// ── 258. ⭐ Pendant un ban, la remontée ne rend pas le droit de vote en base ────────
+// Un compte sous le seuil, vote retiré, reçoit un ban d'arbitre de trente jours ; la
+// convalescence le remonte au seuil pendant le ban : `voting_rights` reste à zéro, et la
+// fin du ban le rend.
+$t258 = time();
+horlogeRendue($pdo, static function () use (&$t258): int { return $t258; });
+try {
+    $x258 = membre($pdo, 'convalescent-258');
+    Moderate::ensureRow($pdo, $x258);
+    $pdo->prepare('UPDATE member_moderation SET reputation = 3, voting_rights = 0, convalescent = 1, last_regen_at = ? WHERE account_id = ?')
+        ->execute([$t258, $x258]);
+    Moderate::adminBan($pdo, $x258, idDe($pdo, 'arbitre-banc'), motif(), 30 * 86400);
+    $t258 += 3 * Moderate::config()->intervalleConvalescenceSecondes + 10;
+    Moderate::regenerate($pdo, $x258);
+    $pendant258 = etatBan($pdo, $x258);
+    $t258 += 31 * 86400;
+    rattraper($pdo, $x258);
+    $apres258 = etatBan($pdo, $x258);
+    $lu258 = [(int) $pendant258['reputation'] >= 5, (int) $pendant258['voting_rights'], (int) $apres258['banned_until'], (int) $apres258['voting_rights']];
+} catch (Throwable $t258e) {
+    $lu258 = ['exception' => get_class($t258e) . ' : ' . $t258e->getMessage()];
+} finally {
+    horlogeRendue($pdo);
+}
+$lu258 === [true, 0, 0, 1]
+    ? ok('⭐ pendant un ban, la remontée laisse le vote retiré en base ; la fin du ban le rend')
+    : nok('⭐ la remontée rend le droit de vote pendant un ban : ' . json_encode($lu258, JSON_UNESCAPED_UNICODE));
+
+// ── 259. ⭐ L'ancre de la convalescence ne date pas le vote qui l'ouvre ────────────
+// Un compte passe sous le seuil du vote à une seconde quelconque : l'ancre de sa
+// convalescence tombe sur le pas d'arrondi de la fin d'un ban, avant le vote.
+$pas259 = Moderate::config()->arrondiFinBanSecondes;
+$t259 = intdiv(time(), $pas259) * $pas259 + 37;
+horlogeRendue($pdo, static function () use (&$t259): int { return $t259; });
+try {
+    $y259 = membre($pdo, 'ancre-259');
+    poserReputation($pdo, $y259, Moderate::config()->perteDroitDeVoteSous);
+    Moderate::applyVote($pdo, membre($pdo, 'critique-259'), 'member', $y259, -1, motif());
+    $ancre259 = (int) etatBan($pdo, $y259)['last_regen_at'];
+    $lu259 = [$ancre259 % $pas259, $ancre259 <= $t259, $t259 - $ancre259 < $pas259];
+} catch (Throwable $t259e) {
+    $lu259 = ['exception' => get_class($t259e) . ' : ' . $t259e->getMessage()];
+} finally {
+    horlogeRendue($pdo);
+}
+$lu259 === [0, true, true]
+    ? ok('⭐ l\'ancre de la convalescence tombe sur le pas d\'arrondi, avant le vote : elle ne date pas la seconde du vote qui l\'ouvre')
+    : nok('⭐ l\'ancre de la convalescence date le vote qui l\'ouvre : ' . json_encode($lu259, JSON_UNESCAPED_UNICODE));
+
+// ── 260. ⭐ Un ban automatique défait laisse un début sans effet ; le dernier dit la peine ─
+// En démonstration, le journal inscrit `ban_debut`, puis la base refuse de valider : le
+// ban n'a pas eu lieu. Le vote suivant le pose et inscrit un second `ban_debut`, à ses
+// dates : de deux débuts sans fin entre eux, le dernier est celui de la peine.
+final class PdoCommitRefuse extends PDO
+{
+    public int $refus = 0;
+
+    public function exec(string $statement): int|false
+    {
+        if ($statement === 'COMMIT' && $this->refus > 0) {
+            $this->refus--;
+
+            return false;
+        }
+
+        return parent::exec($statement);
+    }
+}
+$t260 = time();
+horlogeRendue($pdo, static function () use (&$t260): int { return $t260; });
+$journalAvant260 = Moderate::journal();
+$journal260 = new JournalDeBanc();
+Moderate::setJournal($journal260);
+try {
+    $cible260 = membre($pdo, 'cible-260');
+    poserReputation($pdo, $cible260, Moderate::config()->banA + 1);
+    $c260 = new PdoCommitRefuse('sqlite:' . getenv('LAB_DB_PATH'));
+    $c260->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $c260->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $c260->refus = 1;
+    try {
+        Moderate::applyVote($c260, membre($pdo, 'critique-260-a'), 'member', $cible260, -1, motif());
+        $defait260 = false;
+    } catch (Throwable) {
+        $defait260 = true;
+    }
+    $c260 = null;
+    $t260 += 5;
+    Moderate::applyVote($pdo, membre($pdo, 'critique-260-b'), 'member', $cible260, -1, motif());
+    $debuts260 = $journal260->de($cible260, 'ban_debut');
+    $peines260 = $pdo->query("SELECT debut FROM mod_peines WHERE account_id = $cible260 AND fin IS NULL")->fetchAll(PDO::FETCH_COLUMN);
+    $lu260 = [$defait260, count($debuts260), count($peines260),
+              (int) (end($debuts260)['debut'] ?? 0) === (int) ($peines260[0] ?? -1), (int) ($debuts260[0]['debut'] ?? 0) !== (int) ($peines260[0] ?? -1)];
+} catch (Throwable $t260e) {
+    $lu260 = ['exception' => get_class($t260e) . ' : ' . $t260e->getMessage()];
+} finally {
+    Moderate::setJournal($journalAvant260);
+    horlogeRendue($pdo);
+}
+$lu260 === [true, 2, 1, true, true]
+    ? ok('⭐ un ban automatique défait au COMMIT laisse au journal un début sans effet ; le vote suivant en inscrit un second, celui de la peine')
+    : nok('⭐ un début de ban défait se confond avec celui de la peine : ' . json_encode($lu260, JSON_UNESCAPED_UNICODE));
 
 // ── Fin 1. ⭐ En fin de banc : un état et son signal vont ensemble, la case dit la table ─
 // Une transition qui oublierait de lever son signal le laisserait orphelin ; un
